@@ -57,16 +57,17 @@ Every broker binary uses a component-local wrapper around BrokerKit's shared
 installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/huggingface/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/sudo/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
 ```
 
 Common environment variables:
 
 ```text
 VERSION      optional release tag, for example v0.1.0
-INSTALL_DIR  optional install directory
+INSTALL_DIR  optional absolute writable install directory; defaults to $HOME/.local/bin
 ```
 
 The installer should:
@@ -75,9 +76,11 @@ The installer should:
 - detect `amd64` and `arm64`
 - download the release tarball for the selected version
 - download and verify `checksums.txt`
+- verify both files' GitHub attestations against the BrokerKit release workflow
+  and selected tag with a checksum-pinned verifier
 - install only the binary
-- prefer `$INSTALL_DIR`, then `/usr/local/bin` with `sudo`, then
-  `$HOME/.local/bin`
+- default to `$HOME/.local/bin` and require an explicit writable
+  `$INSTALL_DIR` for any other destination
 - print the installed binary path and `--version`
 
 The installer must not create users, service files, config files, token files,
@@ -127,11 +130,12 @@ Common flags:
 --state-dir <path>     default: /var/lib/<broker>
 --systemd-dir <path>   default: /etc/systemd/system
 --binary <path>        default: resolved current binary
---client <name>        default: bob or broker-specific default
+--client <name>        required client identity
+--operator <name>      required operator identity when the inbox is enabled
 --shared-secret-file <path> optional; read client secret from a file
 --shared-secret-stdin       optional; read client secret from stdin
---bind-addr <addr>     default: 127.0.0.1
---port <port>          broker-specific default
+--endpoint <uri>       complete deployment-owned agent endpoint
+--operator-endpoint <uri> distinct deployment-owned operator endpoint
 --dry-run
 --no-start
 ```
@@ -148,7 +152,7 @@ Common flags:
 - write the broker policy file
 - write the systemd unit
 - enable and start the service unless `--no-start` is set
-- print the broker URL and client setup instructions
+- print the broker endpoint and client setup instructions
 
 `setup systemd` must never accept raw secret values as command-line arguments.
 Those leak through shell history and process listings.
@@ -199,8 +203,10 @@ be printed by diagnostics after initial setup.
 Common environment names should follow each broker prefix:
 
 ```text
-<PREFIX>_BIND_ADDR
-<PREFIX>_PORT
+<PREFIX>_AGENT_ENDPOINT
+<PREFIX>_OPERATOR_ENDPOINT
+<PREFIX>_DEVELOPMENT
+<PREFIX>_NETWORK_EXPOSURE
 <PREFIX>_SCOPE_FILE or <PREFIX>_POLICY_FILE
 <PREFIX>_SECRETS_FILE
 <PREFIX>_STATE_DIR
@@ -223,7 +229,11 @@ service setup should prefer file paths.
 Every broker should expose the same client setup concept:
 
 ```sh
-<broker> setup client --client bob [flags]
+<broker> setup client \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/<provider>/agent/broker.sock \
+  --secret-file /etc/<broker>/secrets \
+  --home-dir /home/agent-a
 ```
 
 That command should write a client-owned config file under:
@@ -235,7 +245,7 @@ That command should write a client-owned config file under:
 The file should contain only:
 
 ```text
-export <PREFIX>_URL=<url>
+export <PREFIX>_ENDPOINT=<endpoint-uri>
 export <PREFIX>_SHARED_SECRET=<client-secret>
 ```
 
@@ -257,7 +267,7 @@ Common rule shape:
     {
       "id": "example",
       "effect": "request",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["operation.name"],
       "targets": [{"kind": "target-kind"}],
       "attrs": {},
@@ -304,17 +314,22 @@ brokerkit owns:
 Brokers own the approval summary text and the provider-specific fields shown to
 the operator.
 
-The common HTTP API is:
+Protocol and window-grant brokers expose the shared request shape through:
 
 ```text
 GET  /healthz
 POST /api/grants
 GET  /api/grants
 GET  /api/grants/{id}
-POST /api/grants/{id}/approve
-POST /api/grants/{id}/deny
-POST /api/grants/{id}/revoke
 ```
+
+Provider surfaces may add requester-owned cancellation or revocation where the
+underlying protocol uses a grant outside Agent V1. Agent V1 operations use the
+shared operation cancellation route instead.
+
+Operator decisions use the separate Operator V1 routes documented in
+[OPERATOR_INBOX.md](OPERATOR_INBOX.md). Agent credentials cannot approve or
+deny requests.
 
 Brokers may add platform-specific streaming and read routes, such as Git
 smart-HTTP. Discrete approved operations use the common Agent V1 lifecycle

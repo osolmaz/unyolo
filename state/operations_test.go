@@ -29,6 +29,9 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	if count, err := database.CountOperations(t.Context()); err != nil || count != 1 {
 		t.Fatalf("CountOperations() = %d, %v", count, err)
 	}
+	if usage, err := database.OperationUsage(t.Context(), "agent"); err != nil || usage.ClientActive != 1 || usage.ClientPending != 0 || usage.GlobalActive != 1 || usage.GlobalExecuting != 0 {
+		t.Fatalf("OperationUsage() = %+v, %v", usage, err)
+	}
 	if err := database.InsertOperation(t.Context(), record); err == nil {
 		t.Fatal("duplicate operation unexpectedly inserted")
 	}
@@ -59,6 +62,9 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	}
 	if unfinished, err := database.UnfinishedOperations(t.Context()); err != nil || len(unfinished) != 0 {
 		t.Fatalf("terminal UnfinishedOperations() = %+v, %v", unfinished, err)
+	}
+	if usage, err := database.OperationUsage(t.Context(), "agent"); err != nil || usage != (OperationUsage{}) {
+		t.Fatalf("terminal OperationUsage() = %+v, %v", usage, err)
 	}
 	if deleted, err := database.DeleteTerminalOperationsBefore(t.Context(), now.Add(2*time.Minute)); err != nil || deleted != 1 {
 		t.Fatalf("DeleteTerminalOperationsBefore() = %d, %v", deleted, err)

@@ -2,21 +2,21 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/serverhttp"
+	"github.com/osolmaz/brokerkit/statecmd"
 )
 
 var version = "dev"
@@ -58,30 +58,62 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 }
 
 func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
-	switch args[0] {
-	case "--version", "version":
-		_, err := fmt.Fprintln(stdout, version)
-		return err
-	case "doctor":
-		return runDoctor(ctx, stdout, stderr, args[1:])
-	case "setup":
-		return runSetup(ctx, stdout, stderr, args[1:])
-	case "client":
-		return runClientCommand(ctx, getenv, stdout, stderr, args[1:])
-	case "mcp":
-		return runMCP(ctx, getenv, os.Stdin, stdout, stderr, args[1:])
-	case "__doctor-isolation-probe":
-		return runDoctorIsolationProbe(stdout, stderr, args[1:])
-	default:
-		return runAuxiliaryCommand(ctx, stdout, stderr, args)
+	run, found := commandRunners[args[0]]
+	if !found {
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp|state]"}
 	}
+	return run(commandContext{ctx: ctx, getenv: getenv, stdout: stdout, stderr: stderr}, args[1:])
 }
 
-func runAuxiliaryCommand(ctx context.Context, stdout, stderr io.Writer, args []string) error {
-	if args[0] == "policy" {
-		return runPolicy(ctx, stdout, stderr, args[1:])
-	}
-	return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp]"}
+type commandContext struct {
+	ctx            context.Context
+	getenv         func(string) string
+	stdout, stderr io.Writer
+}
+
+var commandRunners = map[string]func(commandContext, []string) error{
+	"--version":                runVersionCommand,
+	"version":                  runVersionCommand,
+	"doctor":                   runDoctorCommand,
+	"setup":                    runSetupCommand,
+	"policy":                   runPolicyCommand,
+	"client":                   runClientTopLevelCommand,
+	"mcp":                      runMCPCommand,
+	"state":                    runStateCommand,
+	"__doctor-isolation-probe": runIsolationProbeCommand,
+}
+
+func runVersionCommand(command commandContext, _ []string) error {
+	_, err := fmt.Fprintln(command.stdout, version)
+	return err
+}
+
+func runDoctorCommand(command commandContext, args []string) error {
+	return runDoctor(command.ctx, command.stdout, command.stderr, args)
+}
+
+func runSetupCommand(command commandContext, args []string) error {
+	return runSetup(command.ctx, command.stdout, command.stderr, args)
+}
+
+func runPolicyCommand(command commandContext, args []string) error {
+	return runPolicy(command.ctx, command.stdout, command.stderr, args)
+}
+
+func runClientTopLevelCommand(command commandContext, args []string) error {
+	return runClientCommand(command.ctx, command.getenv, command.stdout, command.stderr, args)
+}
+
+func runMCPCommand(command commandContext, args []string) error {
+	return runMCP(command.ctx, command.getenv, os.Stdin, command.stdout, command.stderr, args)
+}
+
+func runStateCommand(command commandContext, args []string) error {
+	return statecmd.Run(command.ctx, args, command.stdout, command.stderr)
+}
+
+func runIsolationProbeCommand(command commandContext, args []string) error {
+	return runDoctorIsolationProbe(command.stdout, command.stderr, args)
 }
 
 func runClientCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
@@ -96,69 +128,83 @@ func runServer(ctx context.Context, getenv func(string) string, stdout, stderr i
 	if err != nil {
 		return err
 	}
-	pol, err := policy.LoadFile(cfg.ScopeFile)
-	if err != nil {
-		return err
-	}
-	auditRecorder := audit.New(stdout)
-	handler, err := httpapi.New(httpapi.Options{
-		Config:                cfg,
-		Scope:                 pol,
-		Audit:                 auditRecorder,
-		Context:               ctx,
-		UpstreamBaseURL:       cfg.UpstreamHubURL,
-		UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
-		OperatorAudit:         auditRecorder,
-	})
+	handler, err := buildHTTPHandler(ctx, stdout, cfg)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = handler.Close() }()
-	servers := []*http.Server{{
-		Addr:              net.JoinHostPort(cfg.BindAddr, strconv.Itoa(cfg.Port)),
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}}
-	if len(cfg.Operators) > 0 {
-		servers = append(servers, &http.Server{
-			Addr:    net.JoinHostPort(cfg.OperatorBindAddr, strconv.Itoa(cfg.OperatorPort)),
-			Handler: handler.OperatorHandler(), ReadHeaderTimeout: 10 * time.Second,
-		})
-	}
-	return serveServersWithContext(ctx, servers, stderr)
-}
-
-func serveServersWithContext(ctx context.Context, servers []*http.Server, stderr io.Writer) error {
-	errs := make(chan error, len(servers))
-	for _, server := range servers {
-		go func(server *http.Server) { errs <- server.ListenAndServe() }(server)
-	}
-	select {
-	case <-ctx.Done():
-		if err := shutdownServers(servers); err != nil {
-			return err
-		}
-		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
-		return nil
-	case err := <-errs:
-		_ = shutdownServers(servers)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
+	bindings, err := buildServerBindings(handler, cfg)
+	if err != nil {
 		return err
 	}
+	if err := writeDevelopmentReadiness(stdout, cfg, bindings); err != nil {
+		_ = serverhttp.Shutdown(bindings)
+		return err
+	}
+	err = serverhttp.Serve(ctx, bindings)
+	if ctx.Err() != nil && err == nil {
+		_, _ = fmt.Fprintln(stderr, "hf-broker stopped")
+	}
+	return err
 }
 
-func shutdownServers(servers []*http.Server) error {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var errs []error
-	for _, server := range servers {
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			errs = append(errs, err)
-		}
+func writeDevelopmentReadiness(stdout io.Writer, cfg config.Config, bindings []serverhttp.Binding) error {
+	if !cfg.Development {
+		return nil
 	}
-	return errors.Join(errs...)
+	return writeReadiness(stdout, cfg, bindings)
+}
+
+func buildHTTPHandler(ctx context.Context, stdout io.Writer, cfg config.Config) (*httpapi.Server, error) {
+	pol, err := policy.LoadFile(cfg.ScopeFile)
+	if err != nil {
+		return nil, err
+	}
+	auditRecorder := audit.New(stdout)
+	return httpapi.New(httpapi.Options{Config: cfg, Scope: pol, Audit: auditRecorder, Context: ctx,
+		UpstreamBaseURL: cfg.UpstreamHubURL, UpstreamRouterBaseURL: cfg.UpstreamRouterURL, OperatorAudit: auditRecorder})
+}
+
+func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverhttp.Binding, error) {
+	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
+	if len(cfg.Operators) > 0 {
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
+	}
+	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+	if err != nil {
+		return nil, err
+	}
+	agentServer, err := serverhttp.New(handler, serverhttp.ProfileStreaming)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		return nil, err
+	}
+	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if len(cfg.Operators) > 0 {
+		operatorServer, serverErr := serverhttp.New(handler.OperatorHandler(), serverhttp.ProfileOperator)
+		if serverErr != nil {
+			_ = endpoint.CloseSet(listeners)
+			return nil, serverErr
+		}
+		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	return bindings, nil
+}
+
+func writeReadiness(stdout io.Writer, cfg config.Config, bindings []serverhttp.Binding) error {
+	agent, err := endpoint.Resolved(cfg.AgentEndpoint, bindings[0].Listener)
+	if err != nil {
+		return err
+	}
+	record := map[string]string{"event": "broker.ready", "agent_endpoint": agent.String()}
+	if cfg.OperatorEndpoint != nil {
+		operator, resolveErr := endpoint.Resolved(*cfg.OperatorEndpoint, bindings[1].Listener)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		record["operator_endpoint"] = operator.String()
+	}
+	return json.NewEncoder(stdout).Encode(record)
 }
 
 type exitError struct {

@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package service
 
@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+
+	"github.com/osolmaz/brokerkit/clienthttp"
 )
 
 // LocalHTTPClient returns a client for broker-local readiness checks without
@@ -15,6 +18,15 @@ func LocalHTTPClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	return &http.Client{Transport: transport}
+}
+
+// EndpointReadyCheck returns a readiness check over a directly dialable broker endpoint.
+func EndpointReadyCheck(endpointURI, requestPath string) ReadinessCheck {
+	baseURL, client, err := clienthttp.ForEndpoint(endpointURI, LocalHTTPClient())
+	if err != nil || requestPath == "" || !strings.HasPrefix(requestPath, "/") {
+		return func(context.Context) error { return errors.New("invalid readiness endpoint") }
+	}
+	return HTTPReadyCheck(strings.TrimRight(baseURL, "/")+requestPath, client)
 }
 
 // HTTPReadyCheck returns a readiness check that accepts any successful HTTP

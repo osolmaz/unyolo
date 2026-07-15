@@ -5,21 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
-	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubsurface"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/serverhttp"
+	"github.com/osolmaz/brokerkit/statecmd"
 )
 
 var version = "dev"
+
+type cliCommand func(context.Context, []string, io.Writer, io.Writer) error
 
 func main() {
 	os.Exit(mainCode())
@@ -35,33 +38,62 @@ func run(ctx context.Context) error {
 	return runServer(ctx)
 }
 
-//nolint:cyclop // Top-level CLI dispatch keeps every supported command explicit.
 func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
 		return runServer(ctx)
 	}
-	switch args[0] {
-	case "--version", "version":
-		_, err := fmt.Fprintln(stdout, version)
+	if err, handled := runNamedCommand(ctx, args, stdout, stderr); handled {
 		return err
-	case "setup":
-		return runSetupWithContext(ctx, stdout, stderr, args[1:])
-	case "doctor":
-		return runDoctor(ctx, stdout, stderr, args[1:])
-	case "operations":
-		return runOperations(stdout, args[1:])
-	case "operation":
-		return runOperation(ctx, stdout, args[1:])
-	case "stream":
-		return runStream(ctx, stdout, args[1:])
-	case "mcp":
-		return runMCP(ctx, os.Getenv, os.Stdin, stdout, args[1:])
-	default:
-		if found, err := runGeneratedCLI(ctx, stdout, args); found {
-			return err
-		}
-		return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|operations|operation|stream|mcp]")
 	}
+	if found, err := runGeneratedCLI(ctx, stdout, args); found {
+		return err
+	}
+	return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|policy|operations|operation|stream|mcp|state]")
+}
+
+func runNamedCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) (error, bool) {
+	command, found := namedCommands()[args[0]]
+	if !found {
+		return nil, false
+	}
+	return command(ctx, args[1:], stdout, stderr), true
+}
+
+func namedCommands() map[string]cliCommand {
+	commands := map[string]cliCommand{
+		"--version": runVersionCommand,
+		"version":   runVersionCommand,
+		"setup": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+			return runSetupWithContext(ctx, stdout, stderr, args)
+		},
+		"doctor": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+			return runDoctor(ctx, stdout, stderr, args)
+		},
+		"policy": func(_ context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+			return runPolicy(stdout, stderr, args)
+		},
+		"operations": func(_ context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+			return runOperations(stdout, args)
+		},
+		"operation": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+			return runOperation(ctx, stdout, args)
+		},
+		"stream": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+			return runStream(ctx, stdout, args)
+		},
+		"mcp": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+			return runMCP(ctx, os.Getenv, os.Stdin, stdout, args)
+		},
+		"state": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+			return statecmd.Run(ctx, args, stdout, stderr)
+		},
+	}
+	return commands
+}
+
+func runVersionCommand(_ context.Context, _ []string, stdout io.Writer, _ io.Writer) error {
+	_, err := fmt.Fprintln(stdout, version)
+	return err
 }
 
 type exitError struct {
@@ -100,7 +132,27 @@ func runServer(ctx context.Context) error {
 	return serveServers(ctx, servers)
 }
 
-func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error) {
+func buildServers(ctx context.Context, cfg config.Config) ([]serverhttp.Binding, error) {
+	api, err := newGitHubAPI(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	listeners, err := listenGitHubEndpoints(cfg)
+	if err != nil {
+		_ = api.Close()
+		return nil, err
+	}
+	servers, err := newGitHubServers(api, listeners, cfg.OperatorSecret != "")
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		_ = api.Close()
+		return nil, err
+	}
+	registerGitHubServerShutdown(servers, api)
+	return servers, nil
+}
+
+func newGitHubAPI(ctx context.Context, cfg config.Config) (*httpapi.Server, error) {
 	if err := githubsurface.Validate(); err != nil {
 		return nil, fmt.Errorf("validate generated GitHub surface: %w", err)
 	}
@@ -113,86 +165,40 @@ func buildServers(ctx context.Context, cfg config.Config) ([]*http.Server, error
 		return nil, err
 	}
 	api.Start(ctx)
-	servers := []*http.Server{configuredAgentServer(cfg.BindAddr, cfg.Port, api.Handler(), cfg)}
+	return api, nil
+}
+
+func listenGitHubEndpoints(cfg config.Config) (map[string]net.Listener, error) {
+	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
 	if cfg.OperatorSecret != "" {
-		servers = append(servers, configuredOperatorServer(cfg.OperatorBindAddr, cfg.OperatorPort, api.OperatorHandler(), cfg))
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
 	}
-	for _, server := range servers {
-		server.RegisterOnShutdown(func() { _ = api.Close() })
+	return endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+}
+
+func newGitHubServers(api *httpapi.Server, listeners map[string]net.Listener, operatorEnabled bool) ([]serverhttp.Binding, error) {
+	agentServer, err := serverhttp.New(api.Handler(), serverhttp.ProfileStreaming)
+	if err != nil {
+		return nil, err
+	}
+	servers := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if operatorEnabled {
+		operatorServer, serverErr := serverhttp.New(api.OperatorHandler(), serverhttp.ProfileOperator)
+		if serverErr != nil {
+			return nil, serverErr
+		}
+		servers = append(servers, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
 	}
 	return servers, nil
 }
 
-func configuredOperatorServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
-	server := configuredHTTPServer(bindAddr, port, handler, cfg)
-	server.WriteTimeout = 0
-	return server
-}
-
-func buildServer(ctx context.Context, cfg config.Config) (*http.Server, error) {
-	servers, err := buildServers(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return servers[0], nil
-}
-
-func configuredHTTPServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
-	return &http.Server{
-		Addr:              net.JoinHostPort(bindAddr, port),
-		Handler:           handler,
-		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
-		ReadTimeout:       cfg.ReadTimeout,
-		WriteTimeout:      cfg.WriteTimeout,
-		IdleTimeout:       cfg.IdleTimeout,
+func registerGitHubServerShutdown(servers []serverhttp.Binding, api *httpapi.Server) {
+	var closeOnce sync.Once
+	for _, binding := range servers {
+		binding.Server.RegisterOnShutdown(func() { closeOnce.Do(func() { _ = api.Close() }) })
 	}
 }
 
-func configuredAgentServer(bindAddr string, port string, handler http.Handler, cfg config.Config) *http.Server {
-	server := configuredHTTPServer(bindAddr, port, handler, cfg)
-	server.ReadTimeout = max(server.ReadTimeout, cfg.GitHubStreamTimeout)
-	server.WriteTimeout = max(server.WriteTimeout, cfg.GitHubStreamTimeout)
-	return server
-}
-
-func serve(ctx context.Context, server *http.Server, bindAddr string, port string) error {
-	server.Addr = net.JoinHostPort(bindAddr, port)
-	return serveServers(ctx, []*http.Server{server})
-}
-
-func serveServers(ctx context.Context, servers []*http.Server) error {
-	errCh := make(chan error, len(servers))
-	for _, server := range servers {
-		server := server
-		go func() {
-			log.Printf("gh-broker listening on %s", server.Addr)
-			errCh <- server.ListenAndServe()
-		}()
-	}
-	select {
-	case err := <-errCh:
-		_ = shutdownServers(servers)
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		return shutdownServers(servers)
-	}
-}
-
-func shutdown(server *http.Server) error {
-	return shutdownServers([]*http.Server{server})
-}
-
-func shutdownServers(servers []*http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	var errs []error
-	for _, server := range servers {
-		if err := server.Shutdown(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("shutdown server: %w", err))
-		}
-	}
-	return errors.Join(errs...)
+func serveServers(ctx context.Context, servers []serverhttp.Binding) error {
+	return serverhttp.Serve(ctx, servers)
 }

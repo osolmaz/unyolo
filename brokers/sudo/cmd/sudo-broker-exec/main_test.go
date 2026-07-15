@@ -4,9 +4,12 @@ import (
 	"context"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 )
 
 func TestParseOptions(t *testing.T) {
@@ -54,4 +57,41 @@ func TestMainCodeAndUnprivilegedRunFailClosed(t *testing.T) {
 	if err := run(context.Background(), options{}); err == nil {
 		t.Fatalf("unprivileged run error = %v", err)
 	}
+}
+
+func TestRuntimeValidationHelpersFailClosed(t *testing.T) {
+	t.Parallel()
+	if err := validateSocketPath("/definitely-missing-sudo-broker-helper-test.sock", uint32(os.Getuid())); err != nil { // #nosec G115 -- uid is non-negative.
+		t.Fatal(err)
+	}
+	badOptions := options{catalogPath: filepath.Join(t.TempDir(), "catalog.json"), statePath: "/var/lib/sudo-broker/state.json"}
+	if err := validateStaticInputs(badOptions); err == nil {
+		t.Fatal("user-owned catalog passed static validation")
+	}
+	if _, err := validateRuntime(badOptions); err == nil {
+		t.Fatal("invalid runtime options passed validation")
+	}
+	if _, _, err := runtimeServerAndListener(badOptions); err == nil {
+		t.Fatal("invalid runtime options produced a server")
+	}
+	if _, err := newExecutorServer(badOptions, testIdentity()); err == nil {
+		t.Fatal("invalid executor server inputs were accepted")
+	}
+	if _, _, err := buildRuntimeServerAndListener(badOptions, testIdentity()); err == nil {
+		t.Fatal("invalid runtime build inputs were accepted")
+	}
+	current, err := user.Current()
+	if err == nil && os.Getuid() != 0 {
+		identity, lookupErr := lookupBrokerIdentity(current.Username)
+		if lookupErr != nil || identity.UID != uint32(os.Getuid()) { // #nosec G115 -- uid is non-negative.
+			t.Fatalf("lookupBrokerIdentity() = %+v, %v", identity, lookupErr)
+		}
+	}
+	if _, err := newPrivilegedRunner(uint32(os.Getuid())); err == nil { // #nosec G115 -- uid is non-negative.
+		t.Fatal("user-owned test binary was accepted as privileged runner")
+	}
+}
+
+func testIdentity() plan.Identity {
+	return plan.Identity{Name: "broker", UID: uint32(os.Getuid()), GID: uint32(os.Getgid())} // #nosec G115 -- ids are non-negative.
 }

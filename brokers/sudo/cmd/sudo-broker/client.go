@@ -9,8 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -29,49 +27,77 @@ func runCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.
 	if err != nil {
 		return err
 	}
+	common, operationID, reason, err := parseRunCommandFlags(rest)
+	if err != nil {
+		return err
+	}
+	request, err := buildRunSubmitRequest(commandID, common, operationID, reason)
+	if err != nil {
+		return err
+	}
+	client, err := loadAgentClient()
+	if err != nil {
+		return err
+	}
+	operation, err := submitAndWait(ctx, client, request)
+	if err != nil {
+		return err
+	}
+	if err := validateCommandOperation(operation); err != nil {
+		return err
+	}
+	return writeCommandResult(stdout, stderr, operation.Result)
+}
+
+func parseRunCommandFlags(args []string) (commandFlags, string, string, error) {
 	var common commandFlags
 	var operationID, reason string
 	flags := flag.NewFlagSet("sudo-broker run", flag.ContinueOnError)
 	addCommandFlags(flags, &common)
 	flags.StringVar(&operationID, "operation-id", "", "idempotent operation id")
 	flags.StringVar(&reason, "reason", "", "operator-visible reason")
-	if err := flags.Parse(rest); err != nil {
-		return err
+	if err := flags.Parse(args); err != nil {
+		return commandFlags{}, "", "", err
 	}
 	if flags.NArg() != 0 || common.targetUser == "" || strings.TrimSpace(reason) == "" {
-		return errors.New("run requires --as USER and --reason TEXT")
+		return commandFlags{}, "", "", errors.New("run requires --as USER and --reason TEXT")
 	}
 	if operationID == "" {
+		var err error
 		operationID, err = randomClientID("command-")
 		if err != nil {
-			return err
+			return commandFlags{}, "", "", err
 		}
 	}
+	return common, operationID, strings.TrimSpace(reason), nil
+}
+
+func buildRunSubmitRequest(commandID string, common commandFlags, operationID string, reason string) (agentv1.SubmitRequest, error) {
 	arguments, err := json.Marshal(map[string]any{"command_id": commandID, "arguments": map[string]json.RawMessage(common.arguments)})
 	if err != nil {
-		return err
+		return agentv1.SubmitRequest{}, err
 	}
 	target, _ := json.Marshal(map[string]string{"kind": "user", "name": common.targetUser})
-	client, err := loadAgentClient()
+	return agentv1.SubmitRequest{IdempotencyKey: operationID, Operation: sudopolicy.OperationExecCommand,
+		Target: target, Arguments: arguments, Reason: reason}, nil
+}
+
+func submitAndWait(ctx context.Context, client *agentclient.Client, request agentv1.SubmitRequest) (agentv1.Operation, error) {
+	operation, err := client.Submit(ctx, request)
 	if err != nil {
-		return err
+		return agentv1.Operation{}, err
 	}
-	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: operationID, Operation: sudopolicy.OperationExecCommand,
-		Target: target, Arguments: arguments, Reason: strings.TrimSpace(reason)})
-	if err != nil {
-		return err
-	}
-	operation, err = client.Wait(ctx, operation)
-	if err != nil {
-		return err
-	}
+	return client.Wait(ctx, operation)
+}
+
+func validateCommandOperation(operation agentv1.Operation) error {
 	if operation.State != agentv1.StateSucceeded {
 		if operation.Error != nil {
 			return errors.New(operation.Error.Message)
 		}
 		return fmt.Errorf("command ended in state %s", operation.State)
 	}
-	return writeCommandResult(stdout, stderr, operation.Result)
+	return nil
 }
 
 func writeCommandResult(stdout, stderr io.Writer, raw json.RawMessage) error {
@@ -100,16 +126,12 @@ func writeCommandResult(stdout, stderr io.Writer, raw json.RawMessage) error {
 }
 
 func loadAgentClient() (*agentclient.Client, error) {
-	baseURL := strings.TrimSpace(os.Getenv("SUDO_BROKER_URL"))
+	endpointURI := strings.TrimSpace(os.Getenv("SUDO_BROKER_AGENT_ENDPOINT"))
 	secret := strings.TrimSpace(os.Getenv("SUDO_BROKER_SHARED_SECRET"))
-	parsed, err := url.Parse(baseURL)
-	if baseURL == "" || secret == "" || err != nil || parsed.Scheme != "http" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, errors.New("SUDO_BROKER_URL and SUDO_BROKER_SHARED_SECRET must identify a local broker")
+	if endpointURI == "" || secret == "" {
+		return nil, errors.New("SUDO_BROKER_AGENT_ENDPOINT and SUDO_BROKER_SHARED_SECRET must identify a local broker")
 	}
-	if err := validateLoopbackAddress(parsed.Host); err != nil {
-		return nil, errors.New("SUDO_BROKER_URL must use a loopback address")
-	}
-	return agentclient.New(agentclient.Options{BaseURL: baseURL, Credential: secret, HTTPClient: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}})
+	return agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret})
 }
 
 func addCommandFlags(flags *flag.FlagSet, values *commandFlags) {

@@ -14,10 +14,12 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/capability"
 )
 
 var checkOnly bool
 var reviewedOverrides overrideFile
+var reviewedPolicyEffects map[string]capability.DefaultPolicyEffect
 
 func main() {
 	flag.BoolVar(&checkOnly, "check", false, "verify checked-in generated artifacts")
@@ -28,10 +30,7 @@ func main() {
 	}
 	base := filepath.Join(root, "brokers", "github")
 	upstream := filepath.Join(base, "internal", "upstream", "snapshots")
-	if err := loadOverrides(filepath.Join(base, "internal", "inventory", "overrides.json")); err != nil {
-		panic(err)
-	}
-	if err := verifyProvenance(upstream); err != nil {
+	if err := loadReviewedGenerationInputs(base, upstream); err != nil {
 		panic(err)
 	}
 	state, err := generate(upstream)
@@ -63,6 +62,16 @@ func main() {
 	if err := writePermissionProfiles(filepath.Join(base, "internal", "appmanifest", "profiles.json"), state.descriptors); err != nil {
 		panic(err)
 	}
+}
+
+func loadReviewedGenerationInputs(base, upstream string) error {
+	if err := loadOverrides(filepath.Join(base, "internal", "inventory", "overrides.json")); err != nil {
+		return err
+	}
+	if err := loadPolicyEffects(filepath.Join(base, "internal", "inventory", "policy-effects.json")); err != nil {
+		return err
+	}
+	return verifyProvenance(upstream)
 }
 
 func loadOverrides(path string) error {
@@ -159,6 +168,9 @@ func generate(dir string) (generatedState, error) {
 		return generatedState{}, err
 	}
 	state.descriptors = uniqueSortedDescriptors(state.descriptors)
+	if err := applyPolicyEffects(state.descriptors); err != nil {
+		return generatedState{}, err
+	}
 	slices.SortFunc(state.bindings, func(a, b restBinding) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(state.restCoverage, func(a, b restCoverage) int { return strings.Compare(a.UpstreamID, b.UpstreamID) })
 	slices.SortFunc(state.graphqlCoverage, func(a, b graphqlCoverage) int {
@@ -169,6 +181,43 @@ func generate(dir string) (generatedState, error) {
 	})
 	state.highRisk = buildHighRiskReview(state.restCoverage, state.graphqlCoverage)
 	return state, nil
+}
+
+func loadPolicyEffects(path string) error {
+	// #nosec G304 -- path is fixed beneath the discovered repository root.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var document struct {
+		Version int                                       `json:"version"`
+		Effects map[string]capability.DefaultPolicyEffect `json:"effects"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		return err
+	}
+	if document.Version != 1 || len(document.Effects) == 0 {
+		return errors.New("GitHub policy effect review is incomplete")
+	}
+	reviewedPolicyEffects = document.Effects
+	return nil
+}
+
+func applyPolicyEffects(descriptors []opcatalog.Descriptor) error {
+	if len(descriptors) != len(reviewedPolicyEffects) {
+		return fmt.Errorf("GitHub policy effect review has %d entries for %d operations", len(reviewedPolicyEffects), len(descriptors))
+	}
+	for index := range descriptors {
+		effect, found := reviewedPolicyEffects[descriptors[index].Name]
+		if !found {
+			return fmt.Errorf("GitHub operation %q has no reviewed default policy effect", descriptors[index].Name)
+		}
+		if effect != capability.DefaultEffectAllow && effect != capability.DefaultEffectRequest && effect != capability.DefaultEffectDeny {
+			return fmt.Errorf("GitHub operation %q has invalid default policy effect %q", descriptors[index].Name, effect)
+		}
+		descriptors[index].DefaultPolicyEffect = effect
+	}
+	return nil
 }
 
 func finalizeRESTReconciliation(state *generatedState) {

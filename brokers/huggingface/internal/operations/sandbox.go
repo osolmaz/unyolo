@@ -173,87 +173,99 @@ func (a *sandboxAdapter) ValidateClient(input Input, client, requestKey string) 
 	return a.store.Validate(*arguments.SealedPayload)
 }
 
-//nolint:cyclop // Resource-kind decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) decodeTarget(raw json.RawMessage) (sandboxTarget, error) {
 	var target sandboxTarget
 	if err := decodeClosed(raw, &target, maxTargetBytes); err != nil || !hubclient.ValidNamespaceSegment(target.Namespace) {
 		return sandboxTarget{}, errors.New("sandbox target is invalid")
 	}
-	switch a.descriptor.Name {
-	case "sandbox.create":
-		if target.Kind != "sandbox" || !hubclient.ValidNamespaceSegment(target.Name) || target.JobID != "" || target.LocalID != "" ||
-			target.Pool != "" && !hubclient.ValidNamespaceSegment(target.Pool) {
-			return sandboxTarget{}, errors.New("sandbox create target is invalid")
-		}
-	case "sandbox.pool.create", "sandbox.pool.delete", "sandbox.pool.warm":
-		if target.Kind != "sandbox_pool" || !hubclient.ValidNamespaceSegment(target.Name) || target.Pool != "" || target.JobID != "" || target.LocalID != "" {
-			return sandboxTarget{}, errors.New("sandbox pool target is invalid")
-		}
-	default:
-		ref := target.ref()
-		if target.Kind != "sandbox" || target.Name != "" || target.Pool != "" || ref.Validate() != nil {
-			return sandboxTarget{}, errors.New("sandbox target is invalid")
-		}
+	validate, message := sandboxTargetValidation(a.descriptor.Name)
+	if !validate(target) {
+		return sandboxTarget{}, errors.New(message)
 	}
 	return target, nil
 }
 
-//nolint:cyclop // Sandbox operation dispatch is explicit and tracked by the exact HF CRAP baseline.
+func sandboxTargetValidation(operation string) (func(sandboxTarget) bool, string) {
+	if operation == "sandbox.create" {
+		return validSandboxCreateTarget, "sandbox create target is invalid"
+	}
+	if strings.HasPrefix(operation, "sandbox.pool.") {
+		return validSandboxPoolTarget, "sandbox pool target is invalid"
+	}
+	return validExistingSandboxTarget, "sandbox target is invalid"
+}
+
+func validSandboxCreateTarget(target sandboxTarget) bool {
+	return target.Kind == "sandbox" && hubclient.ValidNamespaceSegment(target.Name) && target.JobID == "" && target.LocalID == "" &&
+		(target.Pool == "" || hubclient.ValidNamespaceSegment(target.Pool))
+}
+
+func validSandboxPoolTarget(target sandboxTarget) bool {
+	return target.Kind == "sandbox_pool" && hubclient.ValidNamespaceSegment(target.Name) && target.Pool == "" && target.JobID == "" && target.LocalID == ""
+}
+
+func validExistingSandboxTarget(target sandboxTarget) bool {
+	return target.Kind == "sandbox" && target.Name == "" && target.Pool == "" && target.ref().Validate() == nil
+}
+
 func (a *sandboxAdapter) decodeArguments(target sandboxTarget, raw json.RawMessage) (any, error) {
-	switch a.descriptor.Name {
-	case "sandbox.create":
-		return a.decodeSealedPublic(raw, func(public json.RawMessage) (any, error) {
-			var value sandboxCreatePublic
-			if err := decodeClosed(public, &value, maxArgumentsBytes); err != nil || validateSandboxCreatePublic(target, value) != nil {
-				return nil, errors.New("sandbox create arguments are invalid")
-			}
-			return value, nil
-		})
-	case "sandbox.pool.create":
-		var value sandboxPoolCreatePublic
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateSandboxPoolCreatePublic(value) != nil {
-			return nil, errors.New("sandbox pool create arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.file.write":
-		var value sandboxFileWriteArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateSandboxFileWrite(value) != nil {
-			return nil, errors.New("sandbox file write arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.file.delete":
-		var value sandboxFileDeleteArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !validSandboxOperationPath(value.Path) {
-			return nil, errors.New("sandbox file delete arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.file.mkdir":
-		var value sandboxFileMkdirArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !validSandboxOperationPath(value.Path) {
-			return nil, errors.New("sandbox directory arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.pool.warm":
-		var value sandboxPoolWarmArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value.NumHosts < 1 || value.NumHosts > 32 {
-			return nil, errors.New("sandbox pool warm arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.process.kill":
-		var value sandboxProcessKillArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value.PID < 1 {
-			return nil, errors.New("sandbox process arguments are invalid")
-		}
-		return value, nil
-	case "sandbox.delete", "sandbox.pool.delete":
-		var value emptyArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil {
-			return nil, errors.New("sandbox operation arguments must be empty")
-		}
-		return value, nil
-	default:
+	decode, found := sandboxArgumentDecoders[a.descriptor.Name]
+	if !found {
 		return nil, errors.New("sandbox operation is not implemented")
 	}
+	return decode(a, target, raw)
+}
+
+var sandboxArgumentDecoders = map[string]func(*sandboxAdapter, sandboxTarget, json.RawMessage) (any, error){
+	"sandbox.create":       decodeSandboxCreateArguments,
+	"sandbox.pool.create":  sandboxArgumentDecoder(func(value sandboxPoolCreatePublic) bool { return validateSandboxPoolCreatePublic(value) == nil }, "sandbox pool create arguments are invalid"),
+	"sandbox.file.write":   sandboxArgumentDecoder(func(value sandboxFileWriteArguments) bool { return validateSandboxFileWrite(value) == nil }, "sandbox file write arguments are invalid"),
+	"sandbox.file.delete":  sandboxArgumentDecoder(func(value sandboxFileDeleteArguments) bool { return validSandboxOperationPath(value.Path) }, "sandbox file delete arguments are invalid"),
+	"sandbox.file.mkdir":   sandboxArgumentDecoder(func(value sandboxFileMkdirArguments) bool { return validSandboxOperationPath(value.Path) }, "sandbox directory arguments are invalid"),
+	"sandbox.pool.warm":    decodeSandboxPoolWarmArguments,
+	"sandbox.process.kill": decodeSandboxProcessKillArguments,
+	"sandbox.delete":       decodeEmptySandboxArguments,
+	"sandbox.pool.delete":  decodeEmptySandboxArguments,
+}
+
+func decodeSandboxCreateArguments(a *sandboxAdapter, target sandboxTarget, raw json.RawMessage) (any, error) {
+	return a.decodeSealedPublic(raw, func(public json.RawMessage) (any, error) {
+		var value sandboxCreatePublic
+		if err := decodeClosed(public, &value, maxArgumentsBytes); err != nil || validateSandboxCreatePublic(target, value) != nil {
+			return nil, errors.New("sandbox create arguments are invalid")
+		}
+		return value, nil
+	})
+}
+
+func sandboxArgumentDecoder[T any](valid func(T) bool, message string) func(*sandboxAdapter, sandboxTarget, json.RawMessage) (any, error) {
+	return func(_ *sandboxAdapter, _ sandboxTarget, raw json.RawMessage) (any, error) {
+		return decodeValidatedArguments(raw, valid, message)
+	}
+}
+
+func decodeSandboxPoolWarmArguments(_ *sandboxAdapter, _ sandboxTarget, raw json.RawMessage) (any, error) {
+	var value sandboxPoolWarmArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value.NumHosts < 1 || value.NumHosts > 32 {
+		return nil, errors.New("sandbox pool warm arguments are invalid")
+	}
+	return value, nil
+}
+
+func decodeSandboxProcessKillArguments(_ *sandboxAdapter, _ sandboxTarget, raw json.RawMessage) (any, error) {
+	var value sandboxProcessKillArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value.PID < 1 {
+		return nil, errors.New("sandbox process arguments are invalid")
+	}
+	return value, nil
+}
+
+func decodeEmptySandboxArguments(_ *sandboxAdapter, _ sandboxTarget, raw json.RawMessage) (any, error) {
+	var value emptyArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil {
+		return nil, errors.New("sandbox operation arguments must be empty")
+	}
+	return value, nil
 }
 
 func (a *sandboxAdapter) decodeSealedPublic(raw json.RawMessage, decode func(json.RawMessage) (any, error)) (sealedBoundArguments, error) {
@@ -269,42 +281,84 @@ func (a *sandboxAdapter) decodeSealedPublic(raw json.RawMessage, decode func(jso
 	return arguments, err
 }
 
-//nolint:cyclop // Sandbox creation bounds are explicit and tracked by the exact HF CRAP baseline.
 func validateSandboxCreatePublic(target sandboxTarget, value sandboxCreatePublic) error {
-	if value.IdleTimeoutSeconds != nil && (*value.IdleTimeoutSeconds < 30 || *value.IdleTimeoutSeconds > hubclient.SandboxMaxLifetimeSecs) ||
-		len(value.Environment) > 128 || len(value.Volumes) > 32 {
+	if sandboxCreateBoundsInvalid(value) {
 		return errors.New("sandbox create bounds are invalid")
 	}
-	if target.Pool == "" && (value.Image == "" || value.Flavor == "") {
+	if dedicatedSandboxMissingImageOrFlavor(target, value) {
 		return errors.New("dedicated sandbox image and flavor are required")
 	}
-	if target.Pool == "" && (!hubclient.ValidSandboxImage(value.Image) || !hubclient.ValidJobHardware(value.Flavor)) {
+	if dedicatedSandboxImageOrFlavorInvalid(target, value) {
 		return errors.New("dedicated sandbox image or flavor is invalid")
 	}
-	if target.Pool != "" && (value.Image != "" || value.Flavor != "" || len(value.Volumes) != 0) {
+	if pooledSandboxOverridesHost(target, value) {
 		return errors.New("pooled sandbox inherits its host image, flavor, and volumes")
 	}
-	for key, item := range value.Environment {
-		if !validEnvironmentEntry(key, item) || key == "HF_TOKEN" {
-			return errors.New("sandbox environment is invalid")
-		}
+	if !validSandboxCreateEnvironment(value.Environment) {
+		return errors.New("sandbox environment is invalid")
 	}
-	for _, volume := range value.Volumes {
-		if hubclient.ValidateSandboxVolume(volume.hubVolume()) != nil {
-			return errors.New("sandbox volume is invalid")
-		}
+	if !validSandboxCreateVolumes(value.Volumes) {
+		return errors.New("sandbox volume is invalid")
 	}
 	return nil
 }
 
-//nolint:cyclop // Pool creation bounds are explicit and tracked by the exact HF CRAP baseline.
+func sandboxCreateBoundsInvalid(value sandboxCreatePublic) bool {
+	return value.IdleTimeoutSeconds != nil && (*value.IdleTimeoutSeconds < 30 || *value.IdleTimeoutSeconds > hubclient.SandboxMaxLifetimeSecs) ||
+		len(value.Environment) > 128 || len(value.Volumes) > 32
+}
+
+func dedicatedSandboxMissingImageOrFlavor(target sandboxTarget, value sandboxCreatePublic) bool {
+	return target.Pool == "" && (value.Image == "" || value.Flavor == "")
+}
+
+func dedicatedSandboxImageOrFlavorInvalid(target sandboxTarget, value sandboxCreatePublic) bool {
+	return target.Pool == "" && (!hubclient.ValidSandboxImage(value.Image) || !hubclient.ValidJobHardware(value.Flavor))
+}
+
+func pooledSandboxOverridesHost(target sandboxTarget, value sandboxCreatePublic) bool {
+	return target.Pool != "" && (value.Image != "" || value.Flavor != "" || len(value.Volumes) != 0)
+}
+
+func validSandboxCreateEnvironment(environment map[string]string) bool {
+	for key, item := range environment {
+		if !validEnvironmentEntry(key, item) || key == "HF_TOKEN" {
+			return false
+		}
+	}
+	return true
+}
+
+func validSandboxCreateVolumes(volumes []sandboxVolumeArgument) bool {
+	for _, volume := range volumes {
+		if hubclient.ValidateSandboxVolume(volume.hubVolume()) != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func validateSandboxPoolCreatePublic(value sandboxPoolCreatePublic) error {
-	if !hubclient.ValidSandboxImage(value.Image) || !hubclient.ValidJobHardware(value.Flavor) || value.SandboxesPerHost < 1 || value.SandboxesPerHost > 500 ||
-		value.WarmUp < 1 || value.MaxHosts < value.WarmUp || value.MaxHosts > 32 ||
-		value.IdleTimeoutSeconds != nil && (*value.IdleTimeoutSeconds < 30 || *value.IdleTimeoutSeconds > hubclient.SandboxMaxLifetimeSecs) {
+	if sandboxPoolCreateInvalid(value) {
 		return errors.New("sandbox pool configuration is invalid")
 	}
 	return nil
+}
+
+func sandboxPoolCreateInvalid(value sandboxPoolCreatePublic) bool {
+	return invalidSandboxPoolRuntime(value) || invalidSandboxPoolCapacity(value) || invalidSandboxIdleTimeout(value.IdleTimeoutSeconds)
+}
+
+func invalidSandboxPoolRuntime(value sandboxPoolCreatePublic) bool {
+	return !hubclient.ValidSandboxImage(value.Image) || !hubclient.ValidJobHardware(value.Flavor)
+}
+
+func invalidSandboxPoolCapacity(value sandboxPoolCreatePublic) bool {
+	return value.SandboxesPerHost < 1 || value.SandboxesPerHost > 500 || value.WarmUp < 1 || value.MaxHosts < value.WarmUp || value.MaxHosts > 32
+}
+
+func invalidSandboxIdleTimeout(value *int) bool {
+	return value != nil && (*value < 30 || *value > hubclient.SandboxMaxLifetimeSecs)
 }
 
 func validateSandboxFileWrite(value sandboxFileWriteArguments) error {
@@ -319,20 +373,29 @@ func validSandboxOperationPath(value string) bool {
 	return value != "" && len(value) <= 4096 && !strings.ContainsRune(value, 0)
 }
 
-//nolint:cyclop // Environment syntax checks are explicit and tracked by the exact HF CRAP baseline.
 func validEnvironmentEntry(key, value string) bool {
 	if key == "" || len(key) > 128 || strings.HasPrefix(key, "SBX_") || len(value) > 64*1024 || strings.ContainsRune(value, 0) {
 		return false
 	}
 	for index, character := range key {
-		letter := character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z'
-		digit := character >= '0' && character <= '9'
-		if index == 0 && digit || character != '_' && !letter && !digit {
+		if !validEnvironmentKeyCharacter(index, character) {
 			return false
 		}
 	}
 	return true
 }
+
+func validEnvironmentKeyCharacter(index int, character rune) bool {
+	letter := asciiLetter(character)
+	digit := asciiDigit(character)
+	return (index != 0 || !digit) && (character == '_' || letter || digit)
+}
+
+func asciiLetter(character rune) bool {
+	return character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z'
+}
+
+func asciiDigit(character rune) bool { return character >= '0' && character <= '9' }
 
 func (target sandboxTarget) ref() hubclient.SandboxRef {
 	return hubclient.SandboxRef{Namespace: target.Namespace, JobID: target.JobID, LocalID: target.LocalID}
@@ -367,7 +430,6 @@ func newOperationMarker() (string, error) {
 	return hex.EncodeToString(value), nil
 }
 
-//nolint:cyclop // Operation presentation dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
 	name := target.Name
 	if name == "" {
@@ -377,60 +439,76 @@ func (a *sandboxAdapter) presentationAndPolicy(target sandboxTarget, raw json.Ra
 		Kind: hfpolicy.TargetKind(a.descriptor.TargetKind), Owner: target.Namespace, Name: name,
 	}, Attrs: map[string]any{}}
 	summary := strings.ReplaceAll(a.descriptor.Name, ".", " ") + " on " + target.Namespace + "/" + name
-	switch a.descriptor.Name {
-	case "sandbox.create":
-		var arguments sandboxCreatePublic
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		if target.Pool != "" {
-			request.Attrs["pool"] = target.Pool
-		}
-		if arguments.Flavor != "" {
-			request.Attrs["flavor"] = arguments.Flavor
-		}
-		summary = fmt.Sprintf("Create sandbox %s/%s with image %s and flavor %s", target.Namespace, target.Name, arguments.Image, arguments.Flavor)
-		if target.Pool != "" {
-			summary = fmt.Sprintf("Create sandbox %s/%s in pool %s", target.Namespace, target.Name, target.Pool)
-		}
+	if a.descriptor.Name == "sandbox.create" {
+		summary = presentSandboxCreate(target, raw, request.Attrs)
+	} else if strings.HasPrefix(a.descriptor.Name, "sandbox.pool.") {
+		summary = presentSandboxPool(a.descriptor.Name, target, raw, request.Attrs, summary)
+	} else {
+		summary = presentSandboxResource(a.descriptor.Name, target.Namespace, name, raw, request.Attrs, summary)
+	}
+	return agentv1.Presentation{Title: strings.ReplaceAll(a.descriptor.Name, ".", " "), Summary: summary}, request
+}
+
+func presentSandboxCreate(target sandboxTarget, raw json.RawMessage, attrs map[string]any) string {
+	var arguments sandboxCreatePublic
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	if target.Pool != "" {
+		attrs["pool"] = target.Pool
+		return fmt.Sprintf("Create sandbox %s/%s in pool %s", target.Namespace, target.Name, target.Pool)
+	}
+	if arguments.Flavor != "" {
+		attrs["flavor"] = arguments.Flavor
+	}
+	return fmt.Sprintf("Create sandbox %s/%s with image %s and flavor %s", target.Namespace, target.Name, arguments.Image, arguments.Flavor)
+}
+
+func presentSandboxPool(operation string, target sandboxTarget, raw json.RawMessage, attrs map[string]any, fallback string) string {
+	switch operation {
 	case "sandbox.pool.create":
 		var arguments sandboxPoolCreatePublic
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["flavor"] = arguments.Flavor
-		request.Attrs["warm_up"] = int64(arguments.WarmUp)
-		request.Attrs["max_hosts"] = int64(arguments.MaxHosts)
-		summary = fmt.Sprintf("Create sandbox pool %s/%s with %d warm host(s), at most %d host(s), flavor %s", target.Namespace, target.Name, arguments.WarmUp, arguments.MaxHosts, arguments.Flavor)
-	case "sandbox.file.write":
-		var arguments sandboxFileWriteArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["path"] = arguments.Path
-		request.Attrs["content_digest"] = digest(decodeSandboxContent(arguments.ContentBase64))
-		summary = fmt.Sprintf("Write %s in sandbox %s/%s (content digest %s)", arguments.Path, target.Namespace, name, request.Attrs["content_digest"].(string)[:12])
-	case "sandbox.file.delete":
-		var arguments sandboxFileDeleteArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["path"] = arguments.Path
-		request.Attrs["recursive"] = fmt.Sprint(arguments.Recursive)
-		summary = fmt.Sprintf("Delete %s from sandbox %s/%s (recursive: %t)", arguments.Path, target.Namespace, name, arguments.Recursive)
-	case "sandbox.file.mkdir":
-		var arguments sandboxFileMkdirArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["path"] = arguments.Path
-		summary = fmt.Sprintf("Create directory %s in sandbox %s/%s", arguments.Path, target.Namespace, name)
-	case "sandbox.process.kill":
-		var arguments sandboxProcessKillArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["pid"] = fmt.Sprint(arguments.PID)
-		summary = fmt.Sprintf("Kill process %d in sandbox %s/%s", arguments.PID, target.Namespace, name)
+		attrs["flavor"], attrs["warm_up"], attrs["max_hosts"] = arguments.Flavor, int64(arguments.WarmUp), int64(arguments.MaxHosts)
+		return fmt.Sprintf("Create sandbox pool %s/%s with %d warm host(s), at most %d host(s), flavor %s", target.Namespace, target.Name, arguments.WarmUp, arguments.MaxHosts, arguments.Flavor)
 	case "sandbox.pool.warm":
 		var arguments sandboxPoolWarmArguments
 		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		request.Attrs["num_hosts"] = int64(arguments.NumHosts)
-		summary = fmt.Sprintf("Warm sandbox pool %s/%s to %d host(s)", target.Namespace, target.Name, arguments.NumHosts)
+		attrs["num_hosts"] = int64(arguments.NumHosts)
+		return fmt.Sprintf("Warm sandbox pool %s/%s to %d host(s)", target.Namespace, target.Name, arguments.NumHosts)
 	case "sandbox.pool.delete":
-		summary = fmt.Sprintf("Delete sandbox pool %s/%s and cancel all active hosts", target.Namespace, target.Name)
-	case "sandbox.delete":
-		summary = fmt.Sprintf("Delete sandbox %s/%s", target.Namespace, name)
+		return fmt.Sprintf("Delete sandbox pool %s/%s and cancel all active hosts", target.Namespace, target.Name)
+	default:
+		return fallback
 	}
-	return agentv1.Presentation{Title: strings.ReplaceAll(a.descriptor.Name, ".", " "), Summary: summary}, request
+}
+
+func presentSandboxResource(operation, namespace, name string, raw json.RawMessage, attrs map[string]any, fallback string) string {
+	switch operation {
+	case "sandbox.file.write":
+		var arguments sandboxFileWriteArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		attrs["path"] = arguments.Path
+		attrs["content_digest"] = digest(decodeSandboxContent(arguments.ContentBase64))
+		return fmt.Sprintf("Write %s in sandbox %s/%s (content digest %s)", arguments.Path, namespace, name, attrs["content_digest"].(string)[:12])
+	case "sandbox.file.delete":
+		var arguments sandboxFileDeleteArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		attrs["path"], attrs["recursive"] = arguments.Path, fmt.Sprint(arguments.Recursive)
+		return fmt.Sprintf("Delete %s from sandbox %s/%s (recursive: %t)", arguments.Path, namespace, name, arguments.Recursive)
+	case "sandbox.file.mkdir":
+		var arguments sandboxFileMkdirArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		attrs["path"] = arguments.Path
+		return fmt.Sprintf("Create directory %s in sandbox %s/%s", arguments.Path, namespace, name)
+	case "sandbox.process.kill":
+		var arguments sandboxProcessKillArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		attrs["pid"] = fmt.Sprint(arguments.PID)
+		return fmt.Sprintf("Kill process %d in sandbox %s/%s", arguments.PID, namespace, name)
+	case "sandbox.delete":
+		return fmt.Sprintf("Delete sandbox %s/%s", namespace, name)
+	default:
+		return fallback
+	}
 }
 
 var _ ClientBoundAdapter = (*sandboxAdapter)(nil)

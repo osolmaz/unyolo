@@ -14,30 +14,60 @@ import (
 	"github.com/osolmaz/brokerkit/sealedpayload"
 )
 
-//nolint:cyclop // Authentication, descriptor binding, media, and size checks stay explicit at the upload boundary.
+type streamUpload struct {
+	client     string
+	operation  string
+	requestKey string
+	mediaType  string
+	limit      int64
+	expiresAt  time.Time
+}
+
 func (s *Server) uploadStream(c echo.Context) error {
 	client, ok := s.authenticateAgentUpload(c.Response(), c.Request())
 	if !ok {
 		return nil
 	}
-	operation := strings.TrimSpace(c.Request().Header.Get("X-Broker-Operation"))
-	requestKey := strings.TrimSpace(c.Request().Header.Get("X-Broker-Idempotency-Key"))
-	descriptor, found := opcatalog.ByName(operation)
-	bindings := opbinding.ByOperation(operation)
-	if !found || !descriptor.AgentFacing || descriptor.ExecutorKind != "bounded-stream" || len(bindings) != 1 || bindings[0].StreamDirection != "upload" ||
-		!sealedpayload.ValidRequestKey(requestKey) || c.Request().ContentLength <= 0 || c.Request().ContentLength > bindings[0].RequestBytesLimit {
+	upload, err := streamUploadFromRequest(client, c.Request())
+	if err != nil {
 		return rejectStreamInput(c, "A bounded stream upload operation is required")
 	}
-	mediaType := strings.TrimSpace(strings.Split(c.Request().Header.Get("Content-Type"), ";")[0])
-	if mediaType == "" || mediaType == "application/json" {
+	if upload.mediaType == "" || upload.mediaType == "application/json" {
 		return rejectStreamInput(c, "A binary content type is required")
 	}
-	reference, err := s.streamStore.Put(client, operation, requestKey, mediaType, c.Request().Body, bindings[0].RequestBytesLimit,
-		time.Now().Add(time.Duration(descriptor.RequestTTLSeconds+descriptor.ApprovalTTLSeconds+300)*time.Second))
+	reference, err := s.streamStore.Put(upload.client, upload.operation, upload.requestKey, upload.mediaType, c.Request().Body, upload.limit, upload.expiresAt)
 	if err != nil {
 		return rejectStreamInput(c, "The stream is empty or exceeds its limit")
 	}
 	return c.JSON(http.StatusCreated, reference)
+}
+
+func streamUploadFromRequest(client string, request *http.Request) (streamUpload, error) {
+	operation := strings.TrimSpace(request.Header.Get("X-Broker-Operation"))
+	requestKey := strings.TrimSpace(request.Header.Get("X-Broker-Idempotency-Key"))
+	descriptor, found := opcatalog.ByName(operation)
+	bindings := opbinding.ByOperation(operation)
+	if !validStreamUploadDescriptor(descriptor, found, bindings) || !sealedpayload.ValidRequestKey(requestKey) ||
+		request.ContentLength <= 0 || request.ContentLength > bindings[0].RequestBytesLimit {
+		return streamUpload{}, errors.New("stream upload is invalid")
+	}
+	return streamUpload{
+		client: client, operation: operation, requestKey: requestKey, mediaType: requestMediaType(request),
+		limit: bindings[0].RequestBytesLimit, expiresAt: streamUploadExpiresAt(descriptor),
+	}, nil
+}
+
+func validStreamUploadDescriptor(descriptor opcatalog.Descriptor, found bool, bindings []opbinding.Binding) bool {
+	return found && descriptor.AgentFacing && descriptor.ExecutorKind == "bounded-stream" &&
+		len(bindings) == 1 && bindings[0].StreamDirection == "upload"
+}
+
+func requestMediaType(request *http.Request) string {
+	return strings.TrimSpace(strings.Split(request.Header.Get("Content-Type"), ";")[0])
+}
+
+func streamUploadExpiresAt(descriptor opcatalog.Descriptor) time.Time {
+	return time.Now().Add(time.Duration(descriptor.RequestTTLSeconds+descriptor.ApprovalTTLSeconds+300) * time.Second)
 }
 
 func rejectStreamInput(c echo.Context, message string) error {

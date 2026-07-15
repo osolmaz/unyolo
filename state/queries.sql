@@ -1,6 +1,14 @@
 -- name: Health :one
 SELECT 1;
 
+-- name: OperationalStats :one
+SELECT
+    CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
+    CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
+    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
+    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
+    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications;
+
 -- name: PutPlan :exec
 INSERT INTO plans (digest, schema_name, canonical, created_at)
 VALUES (?, ?, ?, ?)
@@ -120,6 +128,14 @@ ORDER BY created_at, id;
 
 -- name: CountOperations :one
 SELECT count(*) FROM operations;
+
+-- name: GetOperationUsage :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN client_id = sqlc.arg(client_id) AND state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_active,
+    CAST((SELECT COUNT(*) FROM grants WHERE client = sqlc.arg(client_id) AND status = 'pending') AS INTEGER) AS client_pending,
+    CAST(COALESCE(SUM(CASE WHEN state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_active,
+    CAST(COALESCE(SUM(CASE WHEN state = 'executing' THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_executing
+FROM operations;
 
 -- name: DeleteTerminalOperationsBefore :execrows
 DELETE FROM operations

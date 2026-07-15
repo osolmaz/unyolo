@@ -106,6 +106,37 @@ func decodeValidated[T any](raw json.RawMessage, maximum int, valid func(T) bool
 	return value, nil
 }
 
+func decodeInput[T any](targetRaw, argumentsRaw json.RawMessage, decodeTarget func(json.RawMessage) (T, error),
+	decodeArguments func(T, json.RawMessage) (any, error)) (Input, error) {
+	target, err := decodeTarget(targetRaw)
+	if err != nil {
+		return Input{}, err
+	}
+	arguments, err := decodeArguments(target, argumentsRaw)
+	if err != nil {
+		return Input{}, err
+	}
+	canonicalTarget, _ := canonical(target)
+	canonicalArguments, _ := canonical(arguments)
+	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
+}
+
+func decodeNamedArguments(name string, decoders map[string]func(json.RawMessage) (any, error), raw json.RawMessage, message string) (any, error) {
+	decode, found := decoders[name]
+	if !found {
+		return nil, errors.New(message)
+	}
+	return decode(raw)
+}
+
+func decodeEmptyArguments(raw json.RawMessage, message string) (any, error) {
+	return decodeValidated(raw, maxArgumentsBytes, alwaysValid[emptyArguments], message)
+}
+
+func decodeValidatedArguments[T any](raw json.RawMessage, valid func(T) bool, message string) (any, error) {
+	return decodeValidated(raw, maxArgumentsBytes, valid, message)
+}
+
 func decodePlanState[T, P any](plan Plan, decodeTarget func(json.RawMessage) (T, error), maximum int,
 	valid func(P) bool, message string) (T, P, error) {
 	target, err := decodeTarget(plan.Target)

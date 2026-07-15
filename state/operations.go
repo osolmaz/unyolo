@@ -42,6 +42,13 @@ type OperationListOptions struct {
 	Limit          int
 }
 
+type OperationUsage struct {
+	ClientActive    int64
+	ClientPending   int64
+	GlobalActive    int64
+	GlobalExecuting int64
+}
+
 func (d *Database) InsertOperation(ctx context.Context, record OperationRecord) error {
 	return insertOperation(ctx, d.queries, record)
 }
@@ -150,6 +157,17 @@ func (d *Database) UnfinishedOperations(ctx context.Context) ([]OperationRecord,
 
 func (d *Database) CountOperations(ctx context.Context) (int64, error) {
 	return d.queries.CountOperations(ctx)
+}
+
+func (d *Database) OperationUsage(ctx context.Context, clientID string) (OperationUsage, error) {
+	usage, err := d.queries.GetOperationUsage(ctx, clientID)
+	if err != nil {
+		return OperationUsage{}, err
+	}
+	return OperationUsage{
+		ClientActive: usage.ClientActive, ClientPending: usage.ClientPending,
+		GlobalActive: usage.GlobalActive, GlobalExecuting: usage.GlobalExecuting,
+	}, nil
 }
 
 func (d *Database) DeleteTerminalOperationsBefore(ctx context.Context, cutoff time.Time) (int64, error) {

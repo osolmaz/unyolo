@@ -131,43 +131,84 @@ func (r *Registry) ValidateCoverage() error {
 	return r.Registry.ValidateCoverage("GitHub", opcatalog.CapabilityDescriptors(opcatalog.MustAll()))
 }
 
-//nolint:cyclop // Catalog-to-adapter construction validates every executor dependency in one startup pass.
 func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapter, error) {
 	descriptors := opcatalog.MustAll()
 	adapters := make([]Adapter, 0, len(descriptors))
 	for _, descriptor := range descriptors {
-		if !shouldHaveAdapter(descriptor) {
+		adapter, ok, err := newGeneratedAdapter(descriptor, manager, options)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
 			continue
 		}
-		if descriptor.Sealed && options.SealedStore == nil {
-			return nil, fmt.Errorf("GitHub sealed operation %q requires a sealed payload store", descriptor.Name)
-		}
-		if descriptor.CredentialOutputKind != nil && options.CredentialStore == nil {
-			return nil, fmt.Errorf("GitHub credential output operation %q requires a credential store", descriptor.Name)
-		}
-		if descriptor.ExecutorKind == "bounded-stream" && options.StreamStore == nil {
-			return nil, fmt.Errorf("GitHub stream operation %q requires a stream store", descriptor.Name)
-		}
-		switch descriptor.ExecutorKind {
-		case "rest-binding", "bounded-stream":
-			bindings := opbinding.ByOperation(descriptor.Name)
-			if len(bindings) != 1 {
-				return nil, fmt.Errorf("GitHub REST operation %q has %d bindings", descriptor.Name, len(bindings))
-			}
-			var reconciliation *opbinding.Binding
-			if id := bindings[0].ReconciliationBindingID; id != "" {
-				readback, found := opbinding.ByID(id)
-				if !found {
-					return nil, fmt.Errorf("GitHub REST operation %q has no reconciliation binding", descriptor.Name)
-				}
-				reconciliation = &readback
-			}
-			adapters = append(adapters, generatedAdapter{descriptor: descriptor, binding: &bindings[0], reconciliation: reconciliation, manager: manager, options: options})
-		default:
-			return nil, fmt.Errorf("GitHub operation %q has unsupported executor %q", descriptor.Name, descriptor.ExecutorKind)
-		}
+		adapters = append(adapters, adapter)
 	}
 	return adapters, nil
+}
+
+func newGeneratedAdapter(descriptor opcatalog.Descriptor, manager *githubauth.Manager, options Options) (Adapter, bool, error) {
+	if !shouldHaveAdapter(descriptor) {
+		return nil, false, nil
+	}
+	if err := validateGeneratedAdapterStores(descriptor, options); err != nil {
+		return nil, false, err
+	}
+	binding, err := generatedBinding(descriptor)
+	if err != nil {
+		return nil, false, err
+	}
+	reconciliation, err := generatedReconciliation(descriptor.Name, binding)
+	if err != nil {
+		return nil, false, err
+	}
+	return generatedAdapter{descriptor: descriptor, binding: binding, reconciliation: reconciliation, manager: manager, options: options}, true, nil
+}
+
+func validateGeneratedAdapterStores(descriptor opcatalog.Descriptor, options Options) error {
+	for _, requirement := range generatedAdapterStoreRequirements(descriptor, options) {
+		if requirement.missing {
+			return requirement.err
+		}
+	}
+	return nil
+}
+
+type generatedAdapterStoreRequirement struct {
+	missing bool
+	err     error
+}
+
+func generatedAdapterStoreRequirements(descriptor opcatalog.Descriptor, options Options) []generatedAdapterStoreRequirement {
+	return []generatedAdapterStoreRequirement{
+		{missing: descriptor.Sealed && options.SealedStore == nil, err: fmt.Errorf("GitHub sealed operation %q requires a sealed payload store", descriptor.Name)},
+		{missing: descriptor.CredentialOutputKind != nil && options.CredentialStore == nil, err: fmt.Errorf("GitHub credential output operation %q requires a credential store", descriptor.Name)},
+		{missing: descriptor.ExecutorKind == "bounded-stream" && options.StreamStore == nil, err: fmt.Errorf("GitHub stream operation %q requires a stream store", descriptor.Name)},
+	}
+}
+
+func generatedBinding(descriptor opcatalog.Descriptor) (*opbinding.Binding, error) {
+	switch descriptor.ExecutorKind {
+	case "rest-binding", "bounded-stream":
+		bindings := opbinding.ByOperation(descriptor.Name)
+		if len(bindings) != 1 {
+			return nil, fmt.Errorf("GitHub REST operation %q has %d bindings", descriptor.Name, len(bindings))
+		}
+		return &bindings[0], nil
+	default:
+		return nil, fmt.Errorf("GitHub operation %q has unsupported executor %q", descriptor.Name, descriptor.ExecutorKind)
+	}
+}
+
+func generatedReconciliation(operation string, binding *opbinding.Binding) (*opbinding.Binding, error) {
+	if binding.ReconciliationBindingID == "" {
+		return nil, nil
+	}
+	readback, found := opbinding.ByID(binding.ReconciliationBindingID)
+	if !found {
+		return nil, fmt.Errorf("GitHub REST operation %q has no reconciliation binding", operation)
+	}
+	return &readback, nil
 }
 
 type generatedAdapter struct {
@@ -180,34 +221,74 @@ type generatedAdapter struct {
 
 func (a generatedAdapter) Descriptor() capability.Descriptor { return a.descriptor.Descriptor }
 
-//nolint:cyclop // Closed schemas and target-owned path parameters are enforced together at decode time.
 func (a generatedAdapter) Decode(target, arguments json.RawMessage) (Input, error) {
 	decodedArguments, validationArguments, err := a.decodeArguments(target, arguments)
 	if err != nil {
 		return Input{}, err
 	}
-	if a.binding != nil {
-		argumentMap, err := decodeObject(validationArguments)
-		if err != nil {
-			return Input{}, errors.New("GitHub operation arguments are invalid")
-		}
-		targetMap, err := decodeObject(target)
-		if err != nil {
-			return Input{}, errors.New("GitHub operation target is invalid")
-		}
-		for _, name := range a.binding.PathParameters {
-			_, argumentFound := argumentMap[name]
-			field, targetOwned := targetFieldForPath(name, a.binding.TargetPathParameters)
-			targetFound := targetOwned && targetFieldPresent(field, targetMap)
-			if targetOwned && argumentFound {
-				return Input{}, fmt.Errorf("GitHub path parameter %q must come from the validated target", name)
-			}
-			if !targetOwned && !argumentFound || targetOwned && !targetFound {
-				return Input{}, fmt.Errorf("GitHub path parameter %q is missing", name)
-			}
-		}
+	if err := a.validatePathParameters(target, validationArguments); err != nil {
+		return Input{}, err
 	}
 	return Input{Target: cloneRaw(target), Arguments: decodedArguments}, nil
+}
+
+func (a generatedAdapter) validatePathParameters(target, arguments json.RawMessage) error {
+	if a.binding == nil {
+		return nil
+	}
+	argumentMap, err := decodeObject(arguments)
+	if err != nil {
+		return errors.New("GitHub operation arguments are invalid")
+	}
+	targetMap, err := decodeObject(target)
+	if err != nil {
+		return errors.New("GitHub operation target is invalid")
+	}
+	for _, name := range a.binding.PathParameters {
+		if err := validatePathParameter(name, a.binding.TargetPathParameters, targetMap, argumentMap); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePathParameter(name string, targetParameters []opbinding.TargetParameter, target, arguments map[string]any) error {
+	presence := pathParameterPresenceFor(name, targetParameters, target, arguments)
+	if presence.targetOwned {
+		return validateTargetOwnedPathParameter(presence)
+	}
+	return validateArgumentOwnedPathParameter(presence)
+}
+
+type pathParameterPresence struct {
+	name          string
+	targetOwned   bool
+	argumentFound bool
+	targetFound   bool
+}
+
+func pathParameterPresenceFor(name string, targetParameters []opbinding.TargetParameter, target, arguments map[string]any) pathParameterPresence {
+	_, argumentFound := arguments[name]
+	field, targetOwned := targetFieldForPath(name, targetParameters)
+	targetFound := targetOwned && targetFieldPresent(field, target)
+	return pathParameterPresence{name: name, targetOwned: targetOwned, argumentFound: argumentFound, targetFound: targetFound}
+}
+
+func validateTargetOwnedPathParameter(presence pathParameterPresence) error {
+	if presence.argumentFound {
+		return fmt.Errorf("GitHub path parameter %q must come from the validated target", presence.name)
+	}
+	if !presence.targetFound {
+		return fmt.Errorf("GitHub path parameter %q is missing", presence.name)
+	}
+	return nil
+}
+
+func validateArgumentOwnedPathParameter(presence pathParameterPresence) error {
+	if !presence.argumentFound {
+		return fmt.Errorf("GitHub path parameter %q is missing", presence.name)
+	}
+	return nil
 }
 
 func targetFieldForPath(name string, parameters []opbinding.TargetParameter) (string, bool) {
@@ -227,23 +308,31 @@ func targetFieldPresent(field string, target map[string]any) bool {
 
 func (a generatedAdapter) decodeArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
 	if a.streamDirection() == "upload" {
-		var stream streamArguments
-		if strictjson.Decode(arguments, &stream, true) != nil || len(stream.Public) == 0 || stream.StreamInput == nil {
-			return nil, nil, errors.New("GitHub stream upload arguments are invalid")
-		}
-		if err := schemaregistry.ValidateStreamPublic(a.descriptor.Name, target, stream.Public); err != nil {
-			return nil, nil, err
-		}
-		encoded, _ := json.Marshal(stream)
-		return encoded, stream.Public, nil
+		return a.decodeStreamUploadArguments(target, arguments)
 	}
 	if !a.descriptor.Sealed {
-		if err := schemaregistry.ValidateSubmission(a.descriptor.Name, target, arguments); err != nil {
-			return nil, nil, err
-		}
-		return cloneRaw(arguments), arguments, nil
+		return a.decodePlainArguments(target, arguments)
 	}
 	return a.decodeSealedArguments(target, arguments)
+}
+
+func (a generatedAdapter) decodeStreamUploadArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
+	stream, err := decodeStreamArguments(arguments)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := schemaregistry.ValidateStreamPublic(a.descriptor.Name, target, stream.Public); err != nil {
+		return nil, nil, err
+	}
+	encoded, _ := json.Marshal(stream)
+	return encoded, stream.Public, nil
+}
+
+func (a generatedAdapter) decodePlainArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
+	if err := schemaregistry.ValidateSubmission(a.descriptor.Name, target, arguments); err != nil {
+		return nil, nil, err
+	}
+	return cloneRaw(arguments), arguments, nil
 }
 
 func (a generatedAdapter) decodeSealedArguments(target, arguments json.RawMessage) (json.RawMessage, json.RawMessage, error) {
@@ -322,17 +411,10 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	if a.manager == nil {
 		return Plan{}, errors.New("GitHub credential provider is unavailable")
 	}
-	targetMap, err := decodeObject(input.Target)
-	if err != nil {
-		return Plan{}, errors.New("GitHub operation target is invalid")
-	}
-	publicArguments, err := a.publicArguments(input.Arguments)
+	targetMap, argumentsMap, err := a.decodePublicInputMaps(input.Target, input.Arguments,
+		"GitHub operation target is invalid", "GitHub operation arguments are invalid")
 	if err != nil {
 		return Plan{}, err
-	}
-	argumentsMap, err := decodeObject(publicArguments)
-	if err != nil {
-		return Plan{}, errors.New("GitHub operation arguments are invalid")
 	}
 	targetMap, credential, canonicalTarget, err := a.resolveTarget(ctx, targetMap, argumentsMap)
 	if err != nil {
@@ -340,14 +422,8 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	}
 	presentation := presentDescriptor(a.descriptor, targetMap)
 	authorization := authorizeDescriptor(a.descriptor, a.binding, targetMap, argumentsMap, credential)
-	if a.descriptor.CredentialOutputKind != nil {
-		protected, _ := decodeSealedArguments(input.Arguments)
-		if authorization.Attrs == nil {
-			authorization.Attrs = map[string][]string{}
-		}
-		authorization.Attrs["credential_slot"] = []string{protected.CredentialSlot}
-		authorization.Attrs["credential_kind"] = []string{*a.descriptor.CredentialOutputKind}
-		presentation.Summary += " into broker credential slot " + protected.CredentialSlot
+	if err := a.annotateCredentialOutput(input, &presentation, &authorization); err != nil {
+		return Plan{}, err
 	}
 	return Plan{
 		Operation:         a.descriptor.Name,
@@ -359,6 +435,27 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		Presentation:      presentation,
 		Authorization:     authorization,
 	}, nil
+}
+
+func (a generatedAdapter) annotateCredentialOutput(input Input, presentation *agentv1.Presentation, authorization *Authorization) error {
+	if a.descriptor.CredentialOutputKind == nil {
+		return nil
+	}
+	protected, err := decodeSealedArguments(input.Arguments)
+	if err != nil {
+		return err
+	}
+	annotateCredentialOutputPlan(presentation, authorization, protected.CredentialSlot, *a.descriptor.CredentialOutputKind)
+	return nil
+}
+
+func annotateCredentialOutputPlan(presentation *agentv1.Presentation, authorization *Authorization, slot, kind string) {
+	if authorization.Attrs == nil {
+		authorization.Attrs = map[string][]string{}
+	}
+	authorization.Attrs["credential_slot"] = []string{slot}
+	authorization.Attrs["credential_kind"] = []string{kind}
+	presentation.Summary += " into broker credential slot " + slot
 }
 
 func (a generatedAdapter) Authorize(plan Plan) Authorization {
@@ -395,52 +492,71 @@ func (a generatedAdapter) Execute(ctx context.Context, plan Plan) (Outcome, erro
 	if err != nil {
 		return Outcome{}, errors.New("GitHub operation arguments are invalid")
 	}
-	switch {
-	case a.binding != nil:
-		if a.streamDirection() == "download" {
-			return a.executeStreamDownload(ctx, plan, targetMap, argumentsMap)
-		}
-		if a.descriptor.CredentialOutputKind != nil {
-			return a.executeCredentialOutput(ctx, plan, targetMap, argumentsMap)
-		}
-		result, err := a.manager.ExecuteREST(ctx, plan.Credential, *a.binding, targetMap, argumentsMap)
-		if err != nil {
-			return Outcome{}, classifyExecutionError(a.binding.Method, err)
-		}
-		return validatedExecutionResult(*a.binding, a.descriptor.Name, result)
-	default:
+	if a.binding == nil {
 		return Outcome{}, errors.New("GitHub adapter is incomplete")
 	}
+	return a.executeBoundOperation(ctx, plan, targetMap, argumentsMap)
+}
+
+func (a generatedAdapter) executeBoundOperation(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
+	if a.streamDirection() == "download" {
+		return a.executeStreamDownload(ctx, plan, target, arguments)
+	}
+	if a.descriptor.CredentialOutputKind != nil {
+		return a.executeCredentialOutput(ctx, plan, target, arguments)
+	}
+	result, err := a.manager.ExecuteREST(ctx, plan.Credential, *a.binding, target, arguments)
+	if err != nil {
+		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+	}
+	return validatedExecutionResult(*a.binding, a.descriptor.Name, result)
 }
 
 func (a generatedAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
-	if a.binding == nil || a.binding.Reconciliation != "absence-proof" || a.reconciliation == nil {
+	if !a.hasAbsenceProofReconciliation() {
 		return Outcome{Proven: false}, nil
 	}
-	target, err := decodeObject(plan.Target)
-	if err != nil {
-		return Outcome{}, errors.New("GitHub reconciliation target is invalid")
-	}
-	public, err := a.publicArguments(plan.Arguments)
+	target, arguments, err := a.decodePublicInputMaps(plan.Target, plan.Arguments,
+		"GitHub reconciliation target is invalid", "GitHub reconciliation arguments are invalid")
 	if err != nil {
 		return Outcome{}, err
 	}
-	arguments, err := decodeObject(public)
-	if err != nil {
-		return Outcome{}, errors.New("GitHub reconciliation arguments are invalid")
-	}
 	execution, err := a.manager.ExecuteREST(ctx, plan.Credential, *a.reconciliation, target, arguments)
 	if githubauth.IsNotFound(err) {
-		result := json.RawMessage(`{}`)
-		if validationErr := schemaregistry.ValidateResult(a.descriptor.Name, result); validationErr != nil {
-			return Outcome{}, validationErr
-		}
-		return Outcome{Proven: true, Result: result, UpstreamStatus: http.StatusNotFound}, nil
+		return a.absenceProofOutcome()
 	}
 	if err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Proven: false, UpstreamStatus: execution.StatusCode}, nil
+}
+
+func (a generatedAdapter) hasAbsenceProofReconciliation() bool {
+	return a.binding != nil && a.binding.Reconciliation == "absence-proof" && a.reconciliation != nil
+}
+
+func (a generatedAdapter) decodePublicInputMaps(targetData, argumentData json.RawMessage, targetError, argumentError string) (map[string]any, map[string]any, error) {
+	target, err := decodeObject(targetData)
+	if err != nil {
+		return nil, nil, errors.New(targetError)
+	}
+	public, err := a.publicArguments(argumentData)
+	if err != nil {
+		return nil, nil, err
+	}
+	arguments, err := decodeObject(public)
+	if err != nil {
+		return nil, nil, errors.New(argumentError)
+	}
+	return target, arguments, nil
+}
+
+func (a generatedAdapter) absenceProofOutcome() (Outcome, error) {
+	result := json.RawMessage(`{}`)
+	if err := schemaregistry.ValidateResult(a.descriptor.Name, result); err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Proven: true, Result: result, UpstreamStatus: http.StatusNotFound}, nil
 }
 
 func (a generatedAdapter) Cleanup(plan Plan) error {
@@ -516,14 +632,25 @@ func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, ta
 }
 
 func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
-	if a.binding == nil || plan.Authorization.Client == "" || strings.TrimSpace(plan.ExecutionID) == "" {
-		return Outcome{}, errors.New("GitHub stream download plan is invalid")
+	if err := a.validateStreamDownloadPlan(plan); err != nil {
+		return Outcome{}, err
 	}
 	response, err := a.manager.ExecuteRESTDownload(ctx, plan.Credential, *a.binding, target, arguments)
 	if err != nil {
 		return Outcome{}, classifyExecutionError(a.binding.Method, err)
 	}
 	defer func() { _ = response.Body.Close() }()
+	return a.storeStreamDownloadResult(plan, response)
+}
+
+func (a generatedAdapter) validateStreamDownloadPlan(plan Plan) error {
+	if a.binding == nil || plan.Authorization.Client == "" || strings.TrimSpace(plan.ExecutionID) == "" {
+		return errors.New("GitHub stream download plan is invalid")
+	}
+	return nil
+}
+
+func (a generatedAdapter) storeStreamDownloadResult(plan Plan, response *http.Response) (Outcome, error) {
 	reference, err := a.options.StreamStore.Put(plan.Authorization.Client, a.descriptor.Name, plan.ExecutionID+"-result", downloadMediaType(response.Header.Get("Content-Type")),
 		response.Body, a.binding.ResponseBytesLimit, time.Now().Add(15*time.Minute))
 	if err != nil {
@@ -545,7 +672,6 @@ func downloadMediaType(value string) string {
 	return mediaType
 }
 
-//nolint:cyclop // Sealed payload consumption, zeroing, merge, and schema checks form one security boundary.
 func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.RawMessage, error) {
 	if !a.descriptor.Sealed {
 		return arguments, nil
@@ -557,6 +683,10 @@ func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.
 	if protected.SealedPayload == nil {
 		return protected.Public, nil
 	}
+	return a.materializeSealedPayload(protected)
+}
+
+func (a generatedAdapter) materializeSealedPayload(protected sealedArguments) (json.RawMessage, error) {
 	payload, err := a.options.SealedStore.Consume(*protected.SealedPayload)
 	if err != nil {
 		return nil, err
@@ -565,7 +695,11 @@ func (a generatedAdapter) materializeArguments(arguments json.RawMessage) (json.
 	if err := schemaregistry.ValidateSealedArguments(a.descriptor.Name, payload); err != nil {
 		return nil, err
 	}
-	public, err := decodeObject(protected.Public)
+	return a.mergeSealedPayload(protected.Public, payload)
+}
+
+func (a generatedAdapter) mergeSealedPayload(publicRaw, payload []byte) (json.RawMessage, error) {
+	public, err := decodeObject(publicRaw)
 	if err != nil {
 		return nil, errors.New("GitHub sealed operation public arguments are invalid")
 	}
@@ -595,9 +729,9 @@ func decodeSealedArguments(raw json.RawMessage) (sealedArguments, error) {
 }
 
 func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan, target, arguments map[string]any) (Outcome, error) {
-	protected, err := decodeSealedArguments(plan.Arguments)
-	if err != nil || !credentialstore.ValidSlot(protected.CredentialSlot) || a.binding == nil || a.descriptor.CredentialOutputKind == nil {
-		return Outcome{}, errors.New("GitHub credential output plan is invalid")
+	protected, err := a.validateCredentialOutputPlan(plan)
+	if err != nil {
+		return Outcome{}, err
 	}
 	result, err := a.manager.ExecuteRESTRaw(ctx, plan.Credential, *a.binding, target, arguments)
 	if err != nil {
@@ -608,9 +742,21 @@ func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan
 	if err != nil {
 		return Outcome{}, err
 	}
-	token := []byte(upstream.Token)
+	return a.storeCredentialOutput(protected.CredentialSlot, result.StatusCode, upstream.Token)
+}
+
+func (a generatedAdapter) validateCredentialOutputPlan(plan Plan) (sealedArguments, error) {
+	protected, err := decodeSealedArguments(plan.Arguments)
+	if err != nil || !credentialstore.ValidSlot(protected.CredentialSlot) || a.binding == nil || a.descriptor.CredentialOutputKind == nil {
+		return sealedArguments{}, errors.New("GitHub credential output plan is invalid")
+	}
+	return protected, nil
+}
+
+func (a generatedAdapter) storeCredentialOutput(slot string, statusCode int, upstreamToken string) (Outcome, error) {
+	token := []byte(upstreamToken)
 	defer zero(token)
-	stored, err := a.options.CredentialStore.Put(protected.CredentialSlot, *a.descriptor.CredentialOutputKind, token)
+	stored, err := a.options.CredentialStore.Put(slot, *a.descriptor.CredentialOutputKind, token)
 	if err != nil {
 		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
 	}
@@ -618,7 +764,7 @@ func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan
 	if err := schemaregistry.ValidateResult(a.descriptor.Name, encoded); err != nil {
 		return Outcome{}, classifyResponseValidationError(a.binding.Method, err)
 	}
-	return Outcome{Proven: true, Result: encoded, UpstreamStatus: result.StatusCode}, nil
+	return Outcome{Proven: true, Result: encoded, UpstreamStatus: statusCode}, nil
 }
 
 func mergeObjects(destination, source map[string]any) error {
@@ -692,128 +838,6 @@ func presentDescriptor(descriptor opcatalog.Descriptor, target map[string]any) a
 		Title:   descriptor.Summary,
 		Summary: descriptor.Name + " on " + targetSummary(descriptor.TargetKind, target),
 	}
-}
-
-func targetSummary(kind string, target map[string]any) string {
-	if owner, repo, ok := targetregistry.RepositoryIdentity(target); ok {
-		return owner + "/" + repo
-	}
-	if name := stringValue(target, "name"); name != "" {
-		return kind + " " + name
-	}
-	if number := integerString(target, "number"); number != "" {
-		return kind + " #" + number
-	}
-	if id := integerString(target, "id"); id != "" {
-		return kind + " " + id
-	}
-	return kind
-}
-
-func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Binding, target, arguments map[string]any,
-	credential githubauth.Metadata) Authorization {
-	attrs := authorizationAttrs(arguments)
-	attrs = normalizeOperationAuthorizationAttrs(descriptor.Name, attrs)
-	selectors := authorizationSelectorAttrs(binding, arguments)
-	if attrs == nil && (len(selectors) > 0 || credential.UserID > 0) {
-		attrs = map[string][]string{}
-	}
-	for key, values := range selectors {
-		attrs[key] = values
-	}
-	if credential.UserID > 0 {
-		attrs["actor_id"] = []string{fmt.Sprint(credential.UserID)}
-	}
-	return Authorization{
-		Operation:      descriptor.Name,
-		TargetKind:     descriptor.TargetKind,
-		TargetFields:   authorizationTargetFields(binding, target, credential),
-		Attrs:          attrs,
-		CredentialKind: descriptor.CredentialKind,
-	}
-}
-
-func authorizationSelectorAttrs(binding *opbinding.Binding, arguments map[string]any) map[string][]string {
-	if binding == nil || len(binding.AuthorizationParameters) == 0 {
-		return nil
-	}
-	result := make(map[string][]string, len(binding.AuthorizationParameters))
-	for _, parameter := range binding.AuthorizationParameters {
-		if values := scalarStrings(arguments[parameter.Name]); len(values) > 0 {
-			result[parameter.Attribute] = values
-		}
-	}
-	return result
-}
-
-func authorizationAttrs(arguments map[string]any) map[string][]string {
-	fields := map[string][]string{}
-	collectAuthorizationAttrs(arguments, fields)
-	for key, values := range fields {
-		slices.Sort(values)
-		fields[key] = slices.Compact(values)
-	}
-	if len(fields) == 0 {
-		return nil
-	}
-	return fields
-}
-
-// collectAuthorizationAttrs walks only decoded, schema-validated input and
-// maps reviewed GitHub field names into the closed policy vocabulary.
-func collectAuthorizationAttrs(value any, fields map[string][]string) {
-	switch typed := value.(type) {
-	case map[string]any:
-		for name, child := range typed {
-			if attribute, found := authorizationAttributeName(name); found {
-				values := scalarStrings(child)
-				if name == "branch" {
-					for index, value := range values {
-						values[index] = canonicalBranchRef(value)
-					}
-				}
-				fields[attribute] = append(fields[attribute], values...)
-			}
-			collectAuthorizationAttrs(child, fields)
-		}
-	case []any:
-		for _, child := range typed {
-			collectAuthorizationAttrs(child, fields)
-		}
-	}
-}
-
-func authorizationAttributeName(name string) (string, bool) {
-	aliases := map[string]string{
-		"actor_id": "actor_id", "actorId": "actor_id", "actor_login": "actor_login", "actorLogin": "actor_login",
-		"base": "base_ref", "base_ref": "base_ref", "baseRef": "base_ref", "environment": "environment",
-		"environment_name": "environment", "environmentName": "environment", "head": "head_ref", "head_ref": "head_ref",
-		"headRef": "head_ref", "label": "label", "labels": "label", "merge_method": "merge_method", "mergeMethod": "merge_method",
-		"branch": "ref", "path": "path", "paths": "path", "permission": "permission", "ref": "ref", "release_state": "release_state",
-		"releaseState": "release_state", "resource_id": "resource_id", "resourceId": "resource_id", "role": "role",
-		"visibility": "visibility", "workflow": "workflow", "workflow_ref": "workflow_ref", "workflowRef": "workflow_ref",
-		"name": "resource_name", "owner": "resource_owner",
-	}
-	attribute, found := aliases[name]
-	return attribute, found
-}
-
-func scalarStrings(value any) []string {
-	switch typed := value.(type) {
-	case string:
-		if value := strings.TrimSpace(typed); value != "" {
-			return []string{value}
-		}
-	case json.Number:
-		return []string{typed.String()}
-	case []any:
-		values := []string{}
-		for _, child := range typed {
-			values = append(values, scalarStrings(child)...)
-		}
-		return values
-	}
-	return nil
 }
 
 func classifyExecutionError(method string, err error) error {

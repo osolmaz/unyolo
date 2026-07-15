@@ -10,7 +10,7 @@ func TestPinnedSnapshotsValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	paths, err := ArtifactPaths()
-	if err != nil || len(paths) != 11 || paths[0] != "github-app-permissions-2026-03-10.json" {
+	if err != nil || len(paths) != 12 || paths[0] != "github-app-permissions-2026-03-10.json" {
 		t.Fatalf("paths=%v err=%v", paths, err)
 	}
 }

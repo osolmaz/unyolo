@@ -23,6 +23,8 @@ const (
 	StatusUpdateUsedExpired         StatusUpdateKind = "used_expired"
 )
 
+const maxNotificationAttempts = 5
+
 const (
 	NotificationStatusReserved    = "reserved"
 	NotificationStatusUsed        = "used"
@@ -106,7 +108,8 @@ func dueApprovalGrants(records []state.NotificationOutboxRecord, byID map[string
 }
 
 func approvalOutboxDue(record state.NotificationOutboxRecord, now time.Time) bool {
-	return record.Kind == "approval" && (record.Status == "pending" || record.Status == "ambiguous") && !now.Before(record.AvailableAt)
+	return record.Kind == "approval" && record.Attempts < maxNotificationAttempts &&
+		(record.Status == "pending" || record.Status == "ambiguous") && !now.Before(record.AvailableAt)
 }
 
 func pendingApprovalGrants(grants []Grant, now time.Time) []Grant {

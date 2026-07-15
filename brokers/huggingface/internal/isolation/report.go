@@ -17,14 +17,31 @@ func WriteText(w io.Writer, report Report) error {
 	if _, err := fmt.Fprintln(w); err != nil {
 		return err
 	}
+	if err := writeTextChecks(w, report.Checks); err != nil {
+		return err
+	}
+	return writeTextCredentials(w, report.Credentials)
+}
+
+func writeTextChecks(w io.Writer, checks []Check) error {
 	for _, status := range []CheckStatus{CheckFail, CheckUnknown, CheckWarn, CheckPass} {
-		for _, check := range report.Checks {
+		for _, check := range checks {
 			if check.Status != status {
 				continue
 			}
 			if _, err := fmt.Fprintf(w, "- %s %s: %s\n", check.Status, check.Name, check.Message); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func writeTextCredentials(w io.Writer, credentials []bkdoctor.CredentialStatus) error {
+	for _, credential := range credentials {
+		if _, err := fmt.Fprintf(w, "- credential %s: source=%s age=%s expiry=%s expires_at=%s rotation=%s revocation=%s\n",
+			credential.Class, credential.Source, credential.Age, credential.Expiry, credential.ExpiresAt, credential.Rotation, credential.Revocation); err != nil {
+			return err
 		}
 	}
 	return nil

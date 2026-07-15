@@ -44,59 +44,92 @@ var documentsByOperation map[string]Document
 
 func All() ([]Document, error) { once.Do(load); return slices.Clone(loaded.Documents), loadErr }
 
-//nolint:cyclop // Persisted-document safety checks stay together for auditability.
 func load() {
 	if err := json.Unmarshal(raw, &loaded); err != nil {
 		loadErr = err
 		return
 	}
-	if loaded.Version != 1 || len(loaded.Documents) != 284 {
-		loadErr = errors.New("GitHub GraphQL manifest count drifted")
+	if err := validateManifestHeader(loaded); err != nil {
+		loadErr = err
 		return
 	}
+	rootFields, err := loadPinnedRootFields(loaded)
+	if err != nil {
+		loadErr = err
+		return
+	}
+	loadErr = indexDocuments(loaded.Documents, rootFields)
+}
+
+func validateManifestHeader(manifest Manifest) error {
+	if manifest.Version != 1 || len(manifest.Documents) != 284 {
+		return errors.New("GitHub GraphQL manifest count drifted")
+	}
+	return nil
+}
+
+func loadPinnedRootFields(manifest Manifest) (map[string]bool, error) {
 	schema, err := upstream.Read("graphql-introspection-2026-07-14.json")
 	if err != nil {
-		loadErr = err
-		return
+		return nil, err
 	}
+	if !schemaFingerprintMatches(manifest, schema) {
+		return nil, errors.New("GitHub GraphQL schema fingerprint drifted")
+	}
+	return pinnedRootFields(schema)
+}
+
+func schemaFingerprintMatches(manifest Manifest, schema []byte) bool {
 	digest := sha256.Sum256(schema)
-	if loaded.SchemaFingerprint != "sha256:"+hex.EncodeToString(digest[:]) {
-		loadErr = errors.New("GitHub GraphQL schema fingerprint drifted")
-		return
-	}
-	rootFields, err := pinnedRootFields(schema)
-	if err != nil {
-		loadErr = err
-		return
-	}
+	return manifest.SchemaFingerprint == "sha256:"+hex.EncodeToString(digest[:])
+}
+
+func indexDocuments(documents []Document, rootFields map[string]bool) error {
 	previous := ""
-	documentsByOperation = make(map[string]Document, len(loaded.Documents))
-	for _, document := range loaded.Documents {
-		if document.CatalogOperation <= previous || document.RootField == "" || document.OperationName == "" || document.ExpectedCost < 1 || document.ExpectedCost > 100 || document.CredentialKind == "" {
-			loadErr = errors.New("GitHub GraphQL manifest is duplicated or unsorted")
-			return
+	documentsByOperation = make(map[string]Document, len(documents))
+	for _, document := range documents {
+		if document.CatalogOperation <= previous {
+			return errors.New("GitHub GraphQL manifest is duplicated or unsorted")
 		}
 		previous = document.CatalogOperation
-		if !rootFields[document.RootType+"."+document.RootField] {
-			loadErr = fmt.Errorf("GraphQL document %q is absent from the pinned schema", document.CatalogOperation)
-			return
-		}
-		if descriptor, found := opcatalog.ByName(document.CatalogOperation); !found || descriptor.ExecutorKind != "persisted-graphql" {
-			loadErr = fmt.Errorf("GraphQL document %q is not cataloged", document.CatalogOperation)
-			return
-		}
-		documentDigest := sha256.Sum256([]byte(document.Document))
-		operationCount := strings.Count(document.Document, "query ") + strings.Count(document.Document, "mutation ")
-		if hex.EncodeToString(documentDigest[:]) != document.SHA256 || strings.Contains(document.Document, "__schema") || strings.Contains(document.Document, "__type(") || strings.Contains(document.Document, "@") || strings.Count(document.Document, "{") != strings.Count(document.Document, "}") || operationCount != 1 {
-			loadErr = fmt.Errorf("GraphQL document %q is unsafe", document.CatalogOperation)
-			return
-		}
-		if document.VariableSchema["additionalProperties"] != false {
-			loadErr = fmt.Errorf("GraphQL variables for %q are open", document.CatalogOperation)
-			return
+		if err := validateDocument(document, rootFields); err != nil {
+			return err
 		}
 		documentsByOperation[document.CatalogOperation] = document
 	}
+	return nil
+}
+
+func validateDocument(document Document, rootFields map[string]bool) error {
+	if !validDocumentMetadata(document) {
+		return errors.New("GitHub GraphQL manifest is duplicated or unsorted")
+	}
+	if !rootFields[document.RootType+"."+document.RootField] {
+		return fmt.Errorf("GraphQL document %q is absent from the pinned schema", document.CatalogOperation)
+	}
+	if descriptor, found := opcatalog.ByName(document.CatalogOperation); !found || descriptor.ExecutorKind != "persisted-graphql" {
+		return fmt.Errorf("GraphQL document %q is not cataloged", document.CatalogOperation)
+	}
+	if !safeDocumentBody(document) {
+		return fmt.Errorf("GraphQL document %q is unsafe", document.CatalogOperation)
+	}
+	if document.VariableSchema["additionalProperties"] != false {
+		return fmt.Errorf("GraphQL variables for %q are open", document.CatalogOperation)
+	}
+	return nil
+}
+
+func validDocumentMetadata(document Document) bool {
+	return document.RootField != "" && document.OperationName != "" && document.ExpectedCost >= 1 &&
+		document.ExpectedCost <= 100 && document.CredentialKind != ""
+}
+
+func safeDocumentBody(document Document) bool {
+	documentDigest := sha256.Sum256([]byte(document.Document))
+	operationCount := strings.Count(document.Document, "query ") + strings.Count(document.Document, "mutation ")
+	return hex.EncodeToString(documentDigest[:]) == document.SHA256 && !strings.Contains(document.Document, "__schema") &&
+		!strings.Contains(document.Document, "__type(") && !strings.Contains(document.Document, "@") &&
+		strings.Count(document.Document, "{") == strings.Count(document.Document, "}") && operationCount == 1
 }
 
 func pinnedRootFields(raw []byte) (map[string]bool, error) {

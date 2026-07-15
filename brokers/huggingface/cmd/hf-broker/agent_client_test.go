@@ -38,8 +38,8 @@ func TestRunAgentClientRepoCreateWaitsForApproval(t *testing.T) {
 	defer server.Close()
 	getenv := func(name string) string {
 		switch name {
-		case "HF_BROKER_URL":
-			return server.URL
+		case "HF_BROKER_AGENT_ENDPOINT":
+			return testTCPEndpoint(server.URL)
 		case "HF_BROKER_SHARED_SECRET":
 			return agentClientTestSecret
 		default:
@@ -193,8 +193,8 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 	}))
 	defer server.Close()
 	getenv := func(name string) string {
-		if name == "HF_BROKER_URL" {
-			return server.URL
+		if name == "HF_BROKER_AGENT_ENDPOINT" {
+			return testTCPEndpoint(server.URL)
 		}
 		if name == "HF_BROKER_SHARED_SECRET" {
 			return agentClientTestSecret
@@ -218,8 +218,8 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 
 func TestLoadAgentClientRejectsMissingCredential(t *testing.T) {
 	_, err := loadAgentClient(func(name string) string {
-		if name == "HF_BROKER_URL" {
-			return "http://127.0.0.1:8080"
+		if name == "HF_BROKER_AGENT_ENDPOINT" {
+			return "tcp://127.0.0.1:32191"
 		}
 		return ""
 	})
@@ -258,9 +258,9 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 	}
 	client, err := loadAgentClient(func(name string) string {
 		switch name {
-		case "MLCLAW_HF_BROKER_URL":
-			return "http://127.0.0.1:8080/"
-		case "MLCLAW_HF_BROKER_AGENT_SECRET_FILE":
+		case "HF_BROKER_AGENT_ENDPOINT":
+			return "tcp://127.0.0.1:32191"
+		case "HF_BROKER_SHARED_SECRET_FILE":
 			return secretFile
 		default:
 			return ""
@@ -269,9 +269,9 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 	if err != nil || client.secret != agentClientTestSecret || client.operations == nil {
 		t.Fatalf("file client = %#v, %v", client, err)
 	}
-	for _, value := range []string{"", "ftp://example.test", "http://user@example.test", "http://example.test?q=1"} {
+	for _, value := range []string{"", "ftp://example.test", "tcp://localhost:1", "tcp://127.0.0.1:1?x=1"} {
 		if _, err := loadAgentClient(func(name string) string {
-			if name == "HF_BROKER_URL" {
+			if name == "HF_BROKER_AGENT_ENDPOINT" {
 				return value
 			}
 			if name == "HF_BROKER_SHARED_SECRET" {
@@ -397,14 +397,18 @@ func TestMCPWaitDeadlineReturnsResumableOperation(t *testing.T) {
 
 func agentClientTestEnv(serverURL string) func(string) string {
 	return func(name string) string {
-		if name == "HF_BROKER_URL" {
-			return serverURL
+		if name == "HF_BROKER_AGENT_ENDPOINT" {
+			return testTCPEndpoint(serverURL)
 		}
 		if name == "HF_BROKER_SHARED_SECRET" {
 			return agentClientTestSecret
 		}
 		return ""
 	}
+}
+
+func testTCPEndpoint(serverURL string) string {
+	return strings.Replace(serverURL, "http://", "tcp://", 1)
 }
 
 func testAgentOperation(state agentv1.State) agentv1.Operation {

@@ -26,7 +26,6 @@ func (c *Client) BucketInfo(ctx context.Context, ref BucketRef) (BucketInfo, err
 	return info, nil
 }
 
-//nolint:cyclop // Batch result checks are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) ApplyBucketBatch(ctx context.Context, ref BucketRef, operations []BucketBatchOperation) error {
 	if err := ref.Validate(); err != nil {
 		return err
@@ -34,23 +33,38 @@ func (c *Client) ApplyBucketBatch(ctx context.Context, ref BucketRef, operations
 	if err := ValidateBucketBatchOperations(operations); err != nil {
 		return err
 	}
+	body, err := bucketBatchNDJSON(operations)
+	if err != nil {
+		return err
+	}
+	var result mutationBatchResult
+	if err := c.call(ctx, callSpec{method: http.MethodPost, path: ref.apiPath("batch"), rawBody: body, contentType: "application/x-ndjson", out: &result}); err != nil {
+		return err
+	}
+	if !batchMutationSucceeded(result, len(operations)) {
+		return &Error{Code: CodeResultUnknown, StatusCode: http.StatusOK, Ambiguous: true}
+	}
+	return nil
+}
+
+func bucketBatchNDJSON(operations []BucketBatchOperation) ([]byte, error) {
 	var body bytes.Buffer
 	for _, operation := range operations {
 		line, err := json.Marshal(operation)
 		if err != nil || body.Len()+len(line)+1 > maxRequestBodyBytes {
-			return errors.New("hubclient: bucket batch body is invalid")
+			return nil, errors.New("hubclient: bucket batch body is invalid")
 		}
 		body.Write(line)
 		body.WriteByte('\n')
 	}
-	var result mutationBatchResult
-	if err := c.call(ctx, callSpec{method: http.MethodPost, path: ref.apiPath("batch"), rawBody: body.Bytes(), contentType: "application/x-ndjson", out: &result}); err != nil {
-		return err
-	}
-	if !result.Success || result.Processed != len(operations) || result.Succeeded != len(operations) || len(result.Failed) != 0 {
-		return &Error{Code: CodeResultUnknown, StatusCode: http.StatusOK, Ambiguous: true}
-	}
-	return nil
+	return body.Bytes(), nil
+}
+
+func batchMutationSucceeded(result mutationBatchResult, expected int) bool {
+	return result.Success &&
+		result.Processed == expected &&
+		result.Succeeded == expected &&
+		len(result.Failed) == 0
 }
 
 func ValidateBucketBatchOperations(operations []BucketBatchOperation) error {
@@ -86,36 +100,48 @@ func (c *Client) MoveBucket(ctx context.Context, from, to BucketRef) error {
 	return c.call(ctx, callSpec{method: http.MethodPost, path: "/api/repos/move", body: body})
 }
 
-//nolint:cyclop // Operation-kind validation is explicit and tracked by the exact HF CRAP baseline.
 func validateBucketBatchOperation(operation BucketBatchOperation) error {
 	if !validObjectPath(operation.Path) {
 		return errors.New("hubclient: bucket object path is invalid")
 	}
 	switch operation.Type {
 	case "addFile":
-		if !validXetHash(operation.XetHash) || operation.MTime <= 0 || len(operation.ContentType) > 255 ||
-			operation.SourceRepoType != "" || operation.SourceRepoID != "" {
-			return errors.New("hubclient: bucket add operation is invalid")
-		}
+		return validateBucketAddOperation(operation)
 	case "copyFile":
-		if !validXetHash(operation.XetHash) || operation.MTime != 0 || operation.ContentType != "" ||
-			!validSourceRepo(operation.SourceRepoType, operation.SourceRepoID) {
-			return errors.New("hubclient: bucket copy operation is invalid")
-		}
+		return validateBucketCopyOperation(operation)
 	case "deleteFile":
-		if operation.XetHash != "" || operation.MTime != 0 || operation.ContentType != "" ||
-			operation.SourceRepoType != "" || operation.SourceRepoID != "" {
-			return errors.New("hubclient: bucket delete operation is invalid")
-		}
+		return validateBucketDeleteOperation(operation)
 	default:
 		return errors.New("hubclient: bucket operation type is invalid")
+	}
+}
+
+func validateBucketAddOperation(operation BucketBatchOperation) error {
+	if !validXetHash(operation.XetHash) || operation.MTime <= 0 || len(operation.ContentType) > 255 ||
+		operation.SourceRepoType != "" || operation.SourceRepoID != "" {
+		return errors.New("hubclient: bucket add operation is invalid")
 	}
 	return nil
 }
 
-//nolint:cyclop // Path constraints are explicit and tracked by the exact HF CRAP baseline.
+func validateBucketCopyOperation(operation BucketBatchOperation) error {
+	if !validXetHash(operation.XetHash) || operation.MTime != 0 || operation.ContentType != "" ||
+		!validSourceRepo(operation.SourceRepoType, operation.SourceRepoID) {
+		return errors.New("hubclient: bucket copy operation is invalid")
+	}
+	return nil
+}
+
+func validateBucketDeleteOperation(operation BucketBatchOperation) error {
+	if operation.XetHash != "" || operation.MTime != 0 || operation.ContentType != "" ||
+		operation.SourceRepoType != "" || operation.SourceRepoID != "" {
+		return errors.New("hubclient: bucket delete operation is invalid")
+	}
+	return nil
+}
+
 func validObjectPath(value string) bool {
-	if value == "" || len(value) > 1024 || strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") || strings.Contains(value, "\\") || strings.ContainsRune(value, 0) {
+	if invalidObjectPathShape(value) {
 		return false
 	}
 	for _, part := range strings.Split(value, "/") {
@@ -124,6 +150,15 @@ func validObjectPath(value string) bool {
 		}
 	}
 	return true
+}
+
+func invalidObjectPathShape(value string) bool {
+	return value == "" ||
+		len(value) > 1024 ||
+		strings.HasPrefix(value, "/") ||
+		strings.HasSuffix(value, "/") ||
+		strings.Contains(value, "\\") ||
+		strings.ContainsRune(value, 0)
 }
 
 func validXetHash(value string) bool {

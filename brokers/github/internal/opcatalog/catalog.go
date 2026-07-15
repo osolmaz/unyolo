@@ -26,14 +26,18 @@ type Descriptor struct {
 type AuthorizationMode = capability.AuthorizationMode
 type ImplementationStatus = capability.ImplementationStatus
 type Risk = capability.Risk
+type DefaultPolicyEffect = capability.DefaultPolicyEffect
 
 const (
-	ModeWindow    = capability.ModeWindow
-	ModeExecution = capability.ModeExecution
-	RiskLow       = capability.RiskLow
-	RiskMedium    = capability.RiskMedium
-	RiskHigh      = capability.RiskHigh
-	RiskCritical  = capability.RiskCritical
+	ModeWindow           = capability.ModeWindow
+	ModeExecution        = capability.ModeExecution
+	RiskLow              = capability.RiskLow
+	RiskMedium           = capability.RiskMedium
+	RiskHigh             = capability.RiskHigh
+	RiskCritical         = capability.RiskCritical
+	DefaultEffectAllow   = capability.DefaultEffectAllow
+	DefaultEffectRequest = capability.DefaultEffectRequest
+	DefaultEffectDeny    = capability.DefaultEffectDeny
 )
 
 //go:embed catalog.json
@@ -69,7 +73,7 @@ func ByName(name string) (Descriptor, bool) {
 }
 
 func Validate(values []Descriptor) error {
-	if err := capability.Validate(CapabilityDescriptors(values), capability.ValidationOptions{Provider: "GitHub", ExpectedCount: ExpectedCount, MCPToolPrefix: "gh_"}); err != nil {
+	if err := capability.Validate(CapabilityDescriptors(values), capability.ValidationOptions{Provider: "GitHub", ExpectedCount: ExpectedCount, MCPToolPrefix: "gh_", RequireDefaultPolicyEffect: true}); err != nil {
 		return err
 	}
 	for _, value := range values {

@@ -60,38 +60,51 @@ func NewRepositorySettingsAdapters(client repositorySettingsClient) ([]Adapter, 
 
 func (a *repositorySettingsAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
-//nolint:cyclop // Settings-operation decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *repositorySettingsAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
-	var target repositoryTarget
-	if err := decodeClosed(targetRaw, &target, maxTargetBytes); err != nil || !validRepositoryTarget(target) || target.Type == "kernel" {
-		return Input{}, errors.New("repository target is invalid")
-	}
-	canonicalTarget, _ := canonical(target)
-	var arguments any
+	return decodeInput(targetRaw, argumentsRaw, decodeRepositorySettingsTarget, a.decodeArguments)
+}
+
+func decodeRepositorySettingsTarget(raw json.RawMessage) (repositoryTarget, error) {
+	return decodeValidated(raw, maxTargetBytes,
+		func(target repositoryTarget) bool { return validRepositoryTarget(target) && target.Type != "kernel" },
+		"repository target is invalid")
+}
+
+func (a *repositorySettingsAdapter) decodeArguments(target repositoryTarget, raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "repo.move":
-		var value moveArguments
-		if err := decodeClosed(argumentsRaw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidNamespaceSegment(value.Owner) || !hubclient.ValidNamespaceSegment(value.Name) || value.Owner == target.Owner && value.Name == target.Name {
-			return Input{}, errors.New("repository move destination is invalid")
-		}
-		arguments = value
+		return decodeMoveArguments(target, raw)
 	case "repo.visibility.update":
-		var value visibilityArguments
-		if err := decodeClosed(argumentsRaw, &value, maxArgumentsBytes); err != nil || !validVisibility(target.Type, value.Visibility) {
-			return Input{}, errors.New("repository visibility is invalid")
-		}
-		arguments = value
+		return decodeVisibilityArguments(target, raw)
 	case "repo.gating.update":
-		var value gatingArguments
-		if err := decodeClosed(argumentsRaw, &value, maxArgumentsBytes); err != nil || (value.Mode != "auto" && value.Mode != "manual" && value.Mode != "disabled") || target.Type == "space" {
-			return Input{}, errors.New("repository gating mode is invalid")
-		}
-		arguments = value
+		return decodeGatingArguments(target, raw)
 	default:
-		return Input{}, errors.New("repository settings operation is not implemented")
+		return nil, errors.New("repository settings operation is not implemented")
 	}
-	canonicalArguments, _ := canonical(arguments)
-	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
+}
+
+func decodeMoveArguments(target repositoryTarget, raw json.RawMessage) (any, error) {
+	var value moveArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidNamespaceSegment(value.Owner) || !hubclient.ValidNamespaceSegment(value.Name) || value.Owner == target.Owner && value.Name == target.Name {
+		return nil, errors.New("repository move destination is invalid")
+	}
+	return value, nil
+}
+
+func decodeVisibilityArguments(target repositoryTarget, raw json.RawMessage) (any, error) {
+	var value visibilityArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !validVisibility(target.Type, value.Visibility) {
+		return nil, errors.New("repository visibility is invalid")
+	}
+	return value, nil
+}
+
+func decodeGatingArguments(target repositoryTarget, raw json.RawMessage) (any, error) {
+	var value gatingArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || (value.Mode != "auto" && value.Mode != "manual" && value.Mode != "disabled") || target.Type == "space" {
+		return nil, errors.New("repository gating mode is invalid")
+	}
+	return value, nil
 }
 
 func (a *repositorySettingsAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
@@ -105,14 +118,8 @@ func (a *repositorySettingsAdapter) Resolve(ctx context.Context, input Input) (P
 	}
 	preconditions := repositorySettingsPreconditions{SourceDigest: repoInfoDigest(info)}
 	if a.descriptor.Name == "repo.move" {
-		var arguments moveArguments
-		_ = decodeClosed(input.Arguments, &arguments, maxArgumentsBytes)
-		_, destinationErr := a.client.RepoInfo(ctx, hubclient.RepoRef{Type: target.repoRef().Type, Owner: arguments.Owner, Name: arguments.Name})
-		if !hubclient.IsNotFound(destinationErr) {
-			if destinationErr != nil {
-				return Plan{}, destinationErr
-			}
-			return Plan{}, errors.New("operation target already exists")
+		if err := a.checkMoveDestinationAbsent(ctx, target, input.Arguments, "operation target already exists"); err != nil {
+			return Plan{}, err
 		}
 		preconditions.DestinationAbsent = true
 	}
@@ -123,6 +130,19 @@ func (a *repositorySettingsAdapter) Resolve(ctx context.Context, input Input) (P
 	}
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
 		Arguments: input.Arguments, Preconditions: encodedPreconditions, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *repositorySettingsAdapter) checkMoveDestinationAbsent(ctx context.Context, target repositoryTarget, raw json.RawMessage, conflictMessage string) error {
+	var arguments moveArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	_, err := a.client.RepoInfo(ctx, hubclient.RepoRef{Type: target.repoRef().Type, Owner: arguments.Owner, Name: arguments.Name})
+	if hubclient.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New(conflictMessage)
 }
 
 func (a *repositorySettingsAdapter) Authorize(plan Plan) hfpolicy.Request {
@@ -145,67 +165,97 @@ func (a *repositorySettingsAdapter) Execute(ctx context.Context, plan Plan) (Out
 	if err := a.checkPreconditions(ctx, target, plan.Arguments, preconditions); err != nil {
 		return Outcome{}, err
 	}
-	switch a.descriptor.Name {
-	case "repo.move":
-		var arguments moveArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.MoveRepo(ctx, target.repoRef(), arguments.Owner, arguments.Name)
-	case "repo.visibility.update":
-		var arguments visibilityArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		var settings hubclient.RepoSettings
-		settings, err = a.client.UpdateRepoVisibility(ctx, target.repoRef(), hubclient.Visibility(arguments.Visibility))
-		if err == nil && settings.Visibility == hubclient.Visibility(arguments.Visibility) {
-			return Outcome{Proven: true, Result: json.RawMessage(`{"updated":true}`)}, nil
-		}
-	case "repo.gating.update":
-		var arguments gatingArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.UpdateRepoGating(ctx, target.repoRef(), hubclient.GatedMode(arguments.Mode))
+	execute, found := repositorySettingsExecutors[a.descriptor.Name]
+	if !found {
+		return Outcome{}, errors.New("repository settings operation is not implemented")
 	}
-	if err != nil {
+	return execute(a, ctx, target, plan.Arguments)
+}
+
+var repositorySettingsExecutors = map[string]func(*repositorySettingsAdapter, context.Context, repositoryTarget, json.RawMessage) (Outcome, error){
+	"repo.move":              executeRepoMove,
+	"repo.visibility.update": executeRepoVisibilityUpdate,
+	"repo.gating.update":     executeRepoGatingUpdate,
+}
+
+func executeRepoMove(a *repositorySettingsAdapter, ctx context.Context, target repositoryTarget, raw json.RawMessage) (Outcome, error) {
+	var arguments moveArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	if err := a.client.MoveRepo(ctx, target.repoRef(), arguments.Owner, arguments.Name); err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
-//nolint:cyclop // Settings reconciliation is explicit and tracked by the exact HF CRAP baseline.
+func executeRepoVisibilityUpdate(a *repositorySettingsAdapter, ctx context.Context, target repositoryTarget, raw json.RawMessage) (Outcome, error) {
+	var arguments visibilityArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	settings, err := a.client.UpdateRepoVisibility(ctx, target.repoRef(), hubclient.Visibility(arguments.Visibility))
+	if err != nil {
+		return Outcome{}, err
+	}
+	proven := settings.Visibility == hubclient.Visibility(arguments.Visibility)
+	return Outcome{Proven: proven, Result: json.RawMessage(`{"updated":true}`)}, nil
+}
+
+func executeRepoGatingUpdate(a *repositorySettingsAdapter, ctx context.Context, target repositoryTarget, raw json.RawMessage) (Outcome, error) {
+	var arguments gatingArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	if err := a.client.UpdateRepoGating(ctx, target.repoRef(), hubclient.GatedMode(arguments.Mode)); err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
+}
+
 func (a *repositorySettingsAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
 	target, _, err := a.decodePlan(plan)
 	if err != nil {
 		return Outcome{}, err
 	}
-	switch a.descriptor.Name {
-	case "repo.move":
-		var arguments moveArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		_, sourceErr := a.client.RepoInfo(ctx, target.repoRef())
-		destination, destinationErr := a.client.RepoInfo(ctx, hubclient.RepoRef{Type: target.repoRef().Type, Owner: arguments.Owner, Name: arguments.Name})
-		if hubclient.IsNotFound(sourceErr) && destinationErr == nil && destination.ID == arguments.Owner+"/"+arguments.Name {
-			result, _ := canonical(map[string]any{"moved": true, "repo_id": destination.ID})
-			return Outcome{Proven: true, Result: result}, nil
-		}
-		return Outcome{Proven: false}, errors.Join(sourceErr, destinationErr)
-	case "repo.visibility.update":
-		var arguments visibilityArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		info, readErr := a.client.RepoInfo(ctx, target.repoRef())
-		if readErr != nil {
-			return Outcome{}, readErr
-		}
-		matches := arguments.Visibility == "private" && info.Private || arguments.Visibility == "public" && !info.Private
-		return Outcome{Proven: matches, Result: json.RawMessage(`{"updated":true}`)}, nil
-	case "repo.gating.update":
-		var arguments gatingArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		info, readErr := a.client.RepoInfo(ctx, target.repoRef())
-		if readErr != nil {
-			return Outcome{}, readErr
-		}
-		return Outcome{Proven: string(info.Gated) == arguments.Mode, Result: json.RawMessage(`{"updated":true}`)}, nil
-	default:
+	reconcile, found := repositorySettingsReconcilers[a.descriptor.Name]
+	if !found {
 		return Outcome{}, errors.New("repository settings operation is not implemented")
 	}
+	return reconcile(a, ctx, target, plan.Arguments)
+}
+
+var repositorySettingsReconcilers = map[string]func(*repositorySettingsAdapter, context.Context, repositoryTarget, json.RawMessage) (Outcome, error){
+	"repo.move":              reconcileRepoMove,
+	"repo.visibility.update": reconcileRepoVisibilityUpdate,
+	"repo.gating.update":     reconcileRepoGatingUpdate,
+}
+
+func reconcileRepoMove(a *repositorySettingsAdapter, ctx context.Context, target repositoryTarget, raw json.RawMessage) (Outcome, error) {
+	var arguments moveArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	_, sourceErr := a.client.RepoInfo(ctx, target.repoRef())
+	destination, destinationErr := a.client.RepoInfo(ctx, hubclient.RepoRef{Type: target.repoRef().Type, Owner: arguments.Owner, Name: arguments.Name})
+	if hubclient.IsNotFound(sourceErr) && destinationErr == nil && destination.ID == arguments.Owner+"/"+arguments.Name {
+		result, _ := canonical(map[string]any{"moved": true, "repo_id": destination.ID})
+		return Outcome{Proven: true, Result: result}, nil
+	}
+	return Outcome{Proven: false}, errors.Join(sourceErr, destinationErr)
+}
+
+func reconcileRepoVisibilityUpdate(a *repositorySettingsAdapter, ctx context.Context, target repositoryTarget, raw json.RawMessage) (Outcome, error) {
+	var arguments visibilityArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	info, err := a.client.RepoInfo(ctx, target.repoRef())
+	if err != nil {
+		return Outcome{}, err
+	}
+	matches := arguments.Visibility == "private" && info.Private || arguments.Visibility == "public" && !info.Private
+	return Outcome{Proven: matches, Result: json.RawMessage(`{"updated":true}`)}, nil
+}
+
+func reconcileRepoGatingUpdate(a *repositorySettingsAdapter, ctx context.Context, target repositoryTarget, raw json.RawMessage) (Outcome, error) {
+	var arguments gatingArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	info, err := a.client.RepoInfo(ctx, target.repoRef())
+	if err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Proven: string(info.Gated) == arguments.Mode, Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
 func (a *repositorySettingsAdapter) decodePlan(plan Plan) (repositoryTarget, repositorySettingsPreconditions, error) {
@@ -225,46 +275,46 @@ func (a *repositorySettingsAdapter) checkPreconditions(ctx context.Context, targ
 		return errors.New("operation_precondition_failed")
 	}
 	if a.descriptor.Name == "repo.move" && expected.DestinationAbsent {
-		var arguments moveArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		_, destinationErr := a.client.RepoInfo(ctx, hubclient.RepoRef{Type: target.repoRef().Type, Owner: arguments.Owner, Name: arguments.Name})
-		if !hubclient.IsNotFound(destinationErr) {
-			if destinationErr != nil {
-				return destinationErr
-			}
-			return errors.New("operation_precondition_failed")
-		}
+		return a.checkMoveDestinationAbsent(ctx, target, raw, "operation_precondition_failed")
 	}
 	return nil
 }
 
 func (a *repositorySettingsAdapter) presentationAndPolicy(target repositoryTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request, error) {
 	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(target.Type), Owner: target.Owner, Name: target.Name}, Attrs: map[string]any{}}
-	switch a.descriptor.Name {
-	case "repo.move":
-		var arguments moveArguments
-		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
-			return agentv1.Presentation{}, hfpolicy.Request{}, err
-		}
-		destination := arguments.Owner + "/" + arguments.Name
-		request.Attrs["destination"] = destination
-		return agentv1.Presentation{Title: "Move Hugging Face repository", Summary: fmt.Sprintf("Move %s/%s to %s", target.Owner, target.Name, destination)}, request, nil
-	case "repo.visibility.update":
-		var arguments visibilityArguments
-		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
-			return agentv1.Presentation{}, hfpolicy.Request{}, err
-		}
-		request.Attrs["visibility"] = arguments.Visibility
-		return agentv1.Presentation{Title: "Change repository visibility", Summary: fmt.Sprintf("Set %s/%s visibility to %s", target.Owner, target.Name, arguments.Visibility)}, request, nil
-	case "repo.gating.update":
-		var arguments gatingArguments
-		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
-			return agentv1.Presentation{}, hfpolicy.Request{}, err
-		}
-		request.Attrs["gating"] = arguments.Mode
-		return agentv1.Presentation{Title: "Change repository gating", Summary: fmt.Sprintf("Set %s/%s gating to %s", target.Owner, target.Name, arguments.Mode)}, request, nil
-	default:
+	present, found := repositorySettingsPresenters[a.descriptor.Name]
+	if !found {
 		return agentv1.Presentation{}, hfpolicy.Request{}, errors.New("repository settings operation is not implemented")
+	}
+	presentation, err := present(target, raw, request.Attrs)
+	return presentation, request, err
+}
+
+var repositorySettingsPresenters = map[string]func(repositoryTarget, json.RawMessage, map[string]any) (agentv1.Presentation, error){
+	"repo.move":              presentRepoMove,
+	"repo.visibility.update": repositorySettingPresenter[visibilityArguments]("visibility", "Change repository visibility", func(arguments visibilityArguments) string { return arguments.Visibility }),
+	"repo.gating.update":     repositorySettingPresenter[gatingArguments]("gating", "Change repository gating", func(arguments gatingArguments) string { return arguments.Mode }),
+}
+
+func presentRepoMove(target repositoryTarget, raw json.RawMessage, attrs map[string]any) (agentv1.Presentation, error) {
+	var arguments moveArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
+		return agentv1.Presentation{}, err
+	}
+	destination := arguments.Owner + "/" + arguments.Name
+	attrs["destination"] = destination
+	return agentv1.Presentation{Title: "Move Hugging Face repository", Summary: fmt.Sprintf("Move %s/%s to %s", target.Owner, target.Name, destination)}, nil
+}
+
+func repositorySettingPresenter[T any](key, title string, setting func(T) string) func(repositoryTarget, json.RawMessage, map[string]any) (agentv1.Presentation, error) {
+	return func(target repositoryTarget, raw json.RawMessage, attrs map[string]any) (agentv1.Presentation, error) {
+		var arguments T
+		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
+			return agentv1.Presentation{}, err
+		}
+		value := setting(arguments)
+		attrs[key] = value
+		return agentv1.Presentation{Title: title, Summary: fmt.Sprintf("Set %s/%s %s to %s", target.Owner, target.Name, key, value)}, nil
 	}
 }
 

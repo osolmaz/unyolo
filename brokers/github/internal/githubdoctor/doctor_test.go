@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"net/http"
@@ -12,9 +13,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/credentialstore"
 	bkdoctor "github.com/osolmaz/brokerkit/doctor"
 )
 
@@ -216,6 +219,42 @@ func TestProtectionCheckDistinguishesAbsentAndInconclusive(t *testing.T) {
 	missing := protectionCheck(true, false, githubauth.APIError{Code: "not_found", StatusCode: http.StatusNotFound})
 	if missing.Status != bkdoctor.CheckFail {
 		t.Fatalf("missing protection check = %+v", missing)
+	}
+}
+
+func TestStoredCredentialStatusesReportExactExpiryWithoutValues(t *testing.T) {
+	stateDir := t.TempDir()
+	store, err := githubauth.OpenUserCredentialStore(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
+	payload := map[string]any{
+		"user_id": 7, "login": "agent-a", "access_token": []byte("access-canary"), "refresh_token": []byte("refresh-canary"),
+		"access_expires_at": now.Add(7 * 24 * time.Hour), "refresh_expires_at": now.Add(30 * 24 * time.Hour),
+	}
+	encoded, _ := json.Marshal(payload)
+	if _, err := store.Put("github-user-7", "github-app-user-token", encoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := githubauth.InspectStoredUserCredentials(stateDir); err != nil {
+		t.Fatalf("inspect stored credentials: %v", err)
+	}
+	statuses, check := storedCredentialStatuses(stateDir, now)
+	if check == nil || check.Status != bkdoctor.CheckPass || len(statuses) != 2 {
+		t.Fatalf("statuses=%+v check=%+v", statuses, check)
+	}
+	if statuses[0].ExpiresAt == "" || statuses[0].Source != bkdoctor.CredentialSourceEncryptedStore {
+		t.Fatalf("access status = %+v", statuses[0])
+	}
+	output, _ := json.Marshal(statuses)
+	for _, forbidden := range []string{"agent-a", "access-canary", "refresh-canary"} {
+		if strings.Contains(string(output), forbidden) {
+			t.Fatalf("stored status leaked %q: %s", forbidden, output)
+		}
+	}
+	if _, err := credentialstore.OpenNamespaceExisting(stateDir, "github-users"); err != nil {
+		t.Fatal(err)
 	}
 }
 

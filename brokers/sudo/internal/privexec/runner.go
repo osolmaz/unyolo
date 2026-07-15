@@ -36,27 +36,16 @@ func NewRunner(selfPath string, brokerUID uint32) (*Runner, error) {
 }
 
 func (r *Runner) Run(ctx context.Context, value plan.Plan) (executorprotocol.Outcome, error) {
-	if r == nil || r.SelfPath == "" {
-		return executorprotocol.Outcome{}, errors.New("privileged runner is unavailable")
-	}
-	if err := hostcheck.ValidateExecution(value, r.BrokerUID); err != nil {
-		return executorprotocol.Outcome{}, err
-	}
-	canonical, err := plan.EncodeCanonical(value)
+	canonical, err := r.validatedCanonicalPlan(value)
 	if err != nil {
 		return executorprotocol.Outcome{}, err
 	}
-	readPlan, writePlan, err := os.Pipe()
+	planPipe, err := newPlanPipe()
 	if err != nil {
 		return executorprotocol.Outcome{}, err
 	}
-	defer func() { _ = readPlan.Close(); _ = writePlan.Close() }()
-	arguments := append([]string(nil), r.ChildArgs...)
-	arguments = append(arguments, "--internal-exec", "3")
-	command := exec.CommandContext(ctx, r.SelfPath, arguments...) // #nosec G204 -- root-owned self path and fixed arguments only.
-	command.Env = []string{}
-	command.ExtraFiles = []*os.File{readPlan}
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	defer planPipe.Close()
+	command := r.childCommand(ctx, planPipe.read)
 	devNull, err := os.Open(os.DevNull)
 	if err != nil {
 		return executorprotocol.Outcome{}, err
@@ -69,37 +58,38 @@ func (r *Runner) Run(ctx context.Context, value plan.Plan) (executorprotocol.Out
 	command.Stdout = budget.writer(&stdout)
 	command.Stderr = budget.writer(&stderr)
 	startedAt := time.Now()
-	if err := command.Start(); err != nil {
+	if err := startChild(command, planPipe.read); err != nil {
 		return executorprotocol.Outcome{Started: false}, err
 	}
-	_ = readPlan.Close()
 	budget.setKill(func() { _ = killProcessGroup(command.Process.Pid) })
-	writeDone := make(chan struct{})
-	go func() {
-		_, _ = writePlan.Write(canonical)
-		_ = writePlan.Close()
-		close(writeDone)
-	}()
-	waitDone := make(chan error, 1)
-	go func() { waitDone <- command.Wait() }()
-	var waitErr error
-	timedOut := false
-	select {
-	case waitErr = <-waitDone:
-	case <-ctx.Done():
-		timedOut = true
-		_ = killProcessGroup(command.Process.Pid)
-		waitErr = <-waitDone
-	}
+	writeDone := planPipe.writeAsync(canonical)
+	waitErr, timedOut := waitForChild(ctx, command)
 	<-writeDone
-	outcome := executorprotocol.Outcome{
-		Started: true, ExitCode: command.ProcessState.ExitCode(), TimedOut: timedOut,
-		Truncated: budget.truncatedOutput(), Duration: time.Since(startedAt), Stdout: stdout.Bytes(), Stderr: stderr.Bytes(),
+	outcome := runnerOutcome(command, budget, stdout.Bytes(), stderr.Bytes(), timedOut, time.Since(startedAt))
+	return finishChildOutcome(outcome, waitErr)
+}
+
+func (r *Runner) validatedCanonicalPlan(value plan.Plan) ([]byte, error) {
+	if r == nil || r.SelfPath == "" {
+		return nil, errors.New("privileged runner is unavailable")
 	}
+	if err := hostcheck.ValidateExecution(value, r.BrokerUID); err != nil {
+		return nil, err
+	}
+	return plan.EncodeCanonical(value)
+}
+
+func startChild(command *exec.Cmd, readPlan *os.File) error {
+	if err := command.Start(); err != nil {
+		return err
+	}
+	_ = readPlan.Close()
+	return nil
+}
+
+func finishChildOutcome(outcome executorprotocol.Outcome, waitErr error) (executorprotocol.Outcome, error) {
 	if exitError := (*exec.ExitError)(nil); errors.As(waitErr, &exitError) {
-		if status, ok := exitError.Sys().(syscall.WaitStatus); ok && status.Signaled() {
-			outcome.Signal = status.Signal().String()
-		}
+		outcome.Signal = exitSignal(exitError)
 		return outcome, nil
 	}
 	if waitErr != nil {
@@ -108,44 +98,147 @@ func (r *Runner) Run(ctx context.Context, value plan.Plan) (executorprotocol.Out
 	return outcome, nil
 }
 
-func RunInternalChild(args []string) (bool, error) {
-	index := -1
-	for candidate, value := range args {
-		if value == "--internal-exec" {
-			index = candidate
-			break
-		}
+func exitSignal(exitError *exec.ExitError) string {
+	status, ok := exitError.Sys().(syscall.WaitStatus)
+	if !ok {
+		return ""
 	}
+	return signaledStatus(status)
+}
+
+func signaledStatus(status syscall.WaitStatus) string {
+	if status.Signaled() {
+		return status.Signal().String()
+	}
+	return ""
+}
+
+type planPipe struct {
+	read  *os.File
+	write *os.File
+}
+
+func newPlanPipe() (planPipe, error) {
+	readPlan, writePlan, err := os.Pipe()
+	return planPipe{read: readPlan, write: writePlan}, err
+}
+
+func (p planPipe) Close() {
+	_ = p.read.Close()
+	_ = p.write.Close()
+}
+
+func (p planPipe) writeAsync(canonical []byte) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		_, _ = p.write.Write(canonical)
+		_ = p.write.Close()
+		close(done)
+	}()
+	return done
+}
+
+func (r *Runner) childCommand(ctx context.Context, readPlan *os.File) *exec.Cmd {
+	arguments := append([]string(nil), r.ChildArgs...)
+	arguments = append(arguments, "--internal-exec", "3")
+	command := exec.CommandContext(ctx, r.SelfPath, arguments...) // #nosec G204 -- root-owned self path and fixed arguments only.
+	command.Env = []string{}
+	command.ExtraFiles = []*os.File{readPlan}
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return command
+}
+
+func waitForChild(ctx context.Context, command *exec.Cmd) (error, bool) {
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- command.Wait() }()
+	select {
+	case waitErr := <-waitDone:
+		return waitErr, false
+	case <-ctx.Done():
+		_ = killProcessGroup(command.Process.Pid)
+		return <-waitDone, true
+	}
+}
+
+func runnerOutcome(command *exec.Cmd, budget *outputBudget, stdout []byte, stderr []byte, timedOut bool, duration time.Duration) executorprotocol.Outcome {
+	return executorprotocol.Outcome{
+		Started: true, ExitCode: command.ProcessState.ExitCode(), TimedOut: timedOut,
+		Truncated: budget.truncatedOutput(), Duration: duration, Stdout: stdout, Stderr: stderr,
+	}
+}
+
+func RunInternalChild(args []string) (bool, error) {
+	fd, handled, err := internalPlanDescriptor(args)
+	if !handled || err != nil {
+		return handled, err
+	}
+	return true, runInternalPlanDescriptor(fd)
+}
+
+func runInternalPlanDescriptor(fd int) error {
+	if err := requireInternalRoot(); err != nil {
+		return err
+	}
+	value, err := readInternalPlan(fd)
+	if err != nil {
+		return err
+	}
+	return executeInternalPlan(value)
+}
+
+func requireInternalRoot() error {
+	if os.Geteuid() != 0 {
+		return errors.New("internal execution requires root")
+	}
+	return nil
+}
+
+func executeInternalPlan(value plan.Plan) error {
+	if err := hostcheck.ValidateExecution(value, ^uint32(0)); err != nil {
+		return err
+	}
+	return executePlan(value)
+}
+
+func internalPlanDescriptor(args []string) (int, bool, error) {
+	index := internalExecFlagIndex(args)
 	if index < 0 {
-		return false, nil
+		return 0, false, nil
 	}
 	if index+2 != len(args) {
-		return true, errors.New("invalid internal execution arguments")
-	}
-	if os.Geteuid() != 0 {
-		return true, errors.New("internal execution requires root")
+		return 0, true, errors.New("invalid internal execution arguments")
 	}
 	fd, err := strconv.Atoi(args[index+1])
 	if err != nil || fd < 3 || fd > 64 {
-		return true, errors.New("invalid internal plan descriptor")
+		return 0, true, errors.New("invalid internal plan descriptor")
 	}
+	return fd, true, nil
+}
+
+func internalExecFlagIndex(args []string) int {
+	for candidate, value := range args {
+		if value == "--internal-exec" {
+			return candidate
+		}
+	}
+	return -1
+}
+
+func readInternalPlan(fd int) (plan.Plan, error) {
 	file := os.NewFile(uintptr(fd), "sudo-plan") // #nosec G115 -- descriptor range is validated.
 	if file == nil {
-		return true, errors.New("internal plan descriptor is unavailable")
+		return plan.Plan{}, errors.New("internal plan descriptor is unavailable")
 	}
 	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maxChildPlanBytes+1))
 	if err != nil || len(data) == 0 || len(data) > maxChildPlanBytes {
-		return true, errors.New("internal execution plan is invalid")
+		return plan.Plan{}, errors.New("internal execution plan is invalid")
 	}
 	value, err := plan.DecodeCanonical(data)
 	if err != nil {
-		return true, errors.New("internal execution plan is invalid")
+		return plan.Plan{}, errors.New("internal execution plan is invalid")
 	}
-	if err := hostcheck.ValidateExecution(value, ^uint32(0)); err != nil {
-		return true, err
-	}
-	return true, executePlan(value)
+	return value, nil
 }
 
 type outputBudget struct {

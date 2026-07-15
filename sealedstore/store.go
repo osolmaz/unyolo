@@ -30,6 +30,8 @@ const (
 	formatVersion           = 2
 	maxStoredFiles          = 256
 	maxStoredBytes          = 64 << 20
+	maxStoredFilesPerOwner  = 64
+	maxStoredBytesPerOwner  = 16 << 20
 	maxFileBytes            = 2 << 20
 	consumedMarkerRetention = 30 * 24 * time.Hour
 )
@@ -57,9 +59,13 @@ type diskEnvelope struct {
 }
 
 type Store struct {
-	dir  string
-	aead cipher.AEAD
-	mu   sync.Mutex
+	dir           string
+	aead          cipher.AEAD
+	mu            sync.Mutex
+	maxFiles      int
+	maxBytes      int64
+	maxOwnerFiles int
+	maxOwnerBytes int64
 }
 
 func Open(stateDir string) (*Store, error) {
@@ -108,7 +114,8 @@ func preparePayloadDirectory(stateDir string) (string, error) {
 }
 
 func openStore(dir string, aead cipher.AEAD) (*Store, error) {
-	store := &Store{dir: dir, aead: aead}
+	store := &Store{dir: dir, aead: aead, maxFiles: maxStoredFiles, maxBytes: maxStoredBytes,
+		maxOwnerFiles: maxStoredFilesPerOwner, maxOwnerBytes: maxStoredBytesPerOwner}
 	if _, err := store.SweepExpired(time.Now()); err != nil {
 		return nil, err
 	}
@@ -162,7 +169,7 @@ func (s *Store) createLocked(owner, purpose, requestKey string, plaintext []byte
 		if err != nil {
 			return Reference{}, err
 		}
-		stored, err := s.persistEncodedLocked(reference.ID, encoded)
+		stored, err := s.persistEncodedLocked(reference, encoded)
 		if err != nil {
 			return Reference{}, err
 		}
@@ -173,11 +180,11 @@ func (s *Store) createLocked(owner, purpose, requestKey string, plaintext []byte
 	return Reference{}, errors.New("allocate sealed payload reference")
 }
 
-func (s *Store) persistEncodedLocked(id string, encoded []byte) (bool, error) {
-	if err := s.checkQuotaLocked(int64(len(encoded))); err != nil {
+func (s *Store) persistEncodedLocked(reference Reference, encoded []byte) (bool, error) {
+	if err := s.checkQuotaLocked(reference.Owner, int64(len(encoded))); err != nil {
 		return false, err
 	}
-	path := s.path(id)
+	path := s.path(reference.ID)
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- random filename under the fixed store directory.
 	if os.IsExist(err) {
 		return false, nil
@@ -463,37 +470,47 @@ func samePayload(reference Reference, digest string, size int) bool {
 	return reference.Digest == digest && reference.Size == size
 }
 
-func (s *Store) checkQuotaLocked(additionalBytes int64) error {
-	count, total, err := s.storedUsage()
+func (s *Store) checkQuotaLocked(owner string, additionalBytes int64) error {
+	count, total, ownerCount, ownerTotal, err := s.storedUsage(owner)
 	if err != nil {
 		return err
 	}
-	if count >= maxStoredFiles || additionalBytes <= 0 || total+additionalBytes > maxStoredBytes {
+	globalOK := count < s.maxFiles && additionalBytes > 0 && total+additionalBytes <= s.maxBytes
+	ownerOK := ownerCount < s.maxOwnerFiles && ownerTotal+additionalBytes <= s.maxOwnerBytes
+	if !globalOK || !ownerOK {
 		return errors.New("sealed payload quota exceeded")
 	}
 	return nil
 }
 
-func (s *Store) storedUsage() (int, int64, error) {
+func (s *Store) storedUsage(owner string) (int, int64, int, int64, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
-		return 0, 0, errors.New("scan sealed payload directory")
+		return 0, 0, 0, 0, errors.New("scan sealed payload directory")
 	}
-	count := 0
-	var total int64
+	count, ownerCount := 0, 0
+	var total, ownerTotal int64
 	for _, entry := range entries {
-		_, ok := s.storedPayloadPath(entry)
+		path, ok := s.storedPayloadPath(entry)
 		if !ok {
 			continue
 		}
 		info, statErr := entry.Info()
 		if statErr != nil {
-			return 0, 0, errors.New("inspect sealed payload quota")
+			return 0, 0, 0, 0, errors.New("inspect sealed payload quota")
 		}
 		count++
 		total += info.Size()
+		envelope, readErr := readDiskEnvelope(path)
+		if readErr != nil {
+			return 0, 0, 0, 0, errors.New("inspect sealed payload quota")
+		}
+		if envelope.Reference.Owner == owner {
+			ownerCount++
+			ownerTotal += info.Size()
+		}
 	}
-	return count, total, nil
+	return count, total, ownerCount, ownerTotal, nil
 }
 
 func readDiskEnvelope(path string) (diskEnvelope, error) {

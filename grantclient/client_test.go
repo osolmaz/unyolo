@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -120,7 +121,7 @@ func TestClientRejectsRedirectsWithoutMutatingProvidedClient(t *testing.T) {
 	defer redirect.Close()
 	provided := &http.Client{}
 	client, err := New(Options[testGrant]{
-		BaseURL: redirect.URL, Credential: testCredential, HTTPClient: provided,
+		Endpoint: strings.Replace(redirect.URL, "http://", "tcp://", 1), Credential: testCredential, HTTPClient: provided,
 		Decode:   func([]byte) (testGrant, error) { return testGrant{}, nil },
 		Terminal: func(testGrant) bool { return true },
 	})
@@ -142,7 +143,7 @@ const testCredential = "client-credential-with-enough-entropy"
 func newTestClient(t *testing.T, baseURL string) *Client[testGrant] {
 	t.Helper()
 	client, err := New(Options[testGrant]{
-		BaseURL: baseURL, Credential: testCredential, PollInterval: time.Millisecond,
+		Endpoint: strings.Replace(baseURL, "http://", "tcp://", 1), Credential: testCredential, PollInterval: time.Millisecond,
 		Decode: func(data []byte) (testGrant, error) {
 			var grant testGrant
 			err := json.Unmarshal(data, &grant)

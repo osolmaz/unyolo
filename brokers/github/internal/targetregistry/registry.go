@@ -23,7 +23,6 @@ var once sync.Once
 var values []Descriptor
 var loadErr error
 
-//nolint:cyclop // Target safety fields are validated atomically during load.
 func All() ([]Descriptor, error) {
 	once.Do(func() {
 		if err := json.Unmarshal(raw, &values); err != nil {
@@ -32,18 +31,26 @@ func All() ([]Descriptor, error) {
 		}
 		previous := ""
 		for _, value := range values {
-			if value.Kind == "" || value.Schema != "target."+value.Kind+".v1" || len(value.PolicyFields) == 0 || previous >= value.Kind {
+			if !validDescriptor(value, previous) {
 				loadErr = errors.New("GitHub target registry is invalid")
 				return
 			}
 			previous = value.Kind
-			if slices.Contains(value.PolicyFields, "url") || slices.Contains(value.PolicyFields, "body") || slices.Contains(value.PolicyFields, "graphql") || slices.Contains(value.PolicyFields, "secret") {
+			if hasUnsafePolicyField(value.PolicyFields) {
 				loadErr = errors.New("GitHub target registry exposes unsafe policy fields")
 				return
 			}
 		}
 	})
 	return slices.Clone(values), loadErr
+}
+
+func validDescriptor(value Descriptor, previous string) bool {
+	return value.Kind != "" && value.Schema == "target."+value.Kind+".v1" && len(value.PolicyFields) > 0 && previous < value.Kind
+}
+
+func hasUnsafePolicyField(fields []string) bool {
+	return slices.Contains(fields, "url") || slices.Contains(fields, "body") || slices.Contains(fields, "graphql") || slices.Contains(fields, "secret")
 }
 
 func Known(kind string) bool {

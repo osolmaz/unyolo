@@ -98,7 +98,6 @@ func ByID(id string) (Binding, bool) {
 	return sortedlookup.LoadString(All, id, func(value Binding) string { return value.ID })
 }
 
-//nolint:cyclop // Binding transport and projection invariants are reviewed in one pass.
 func Validate(values []Binding) error {
 	if len(values) != 1152 {
 		return fmt.Errorf("GitHub REST binding count=%d, want 1152", len(values))
@@ -110,55 +109,107 @@ func Validate(values []Binding) error {
 			return errors.New("GitHub REST bindings are duplicated or unsorted")
 		}
 		previous, seenIDs[value.ID], seenOperations[value.Operation] = value.ID, true, true
-		if !validTransport(value) || !validSchemas(value) || !validExecution(value) {
-			return fmt.Errorf("GitHub REST binding %q is incomplete", value.ID)
-		}
-		if value.ServerRole == "uploads" && value.StreamDirection != "upload" {
-			return fmt.Errorf("GitHub REST binding %q has an invalid server role", value.ID)
-		}
-		if strings.Contains(strings.ToLower(value.PathTemplate), "http://") || strings.Contains(strings.ToLower(value.PathTemplate), "https://") {
-			return fmt.Errorf("GitHub REST binding %q contains a caller-selectable URL", value.ID)
-		}
-		if value.StreamDirection != "" && value.StreamDirection != "upload" && value.StreamDirection != "download" {
-			return fmt.Errorf("GitHub REST binding %q has an invalid stream direction", value.ID)
-		}
-		if (value.StreamDirection != "") != (value.RedirectPolicy == "github-download-host-allowlist") {
-			return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
-		}
-		if err := validateBindingAuthorization(value); err != nil {
+		if err := validateBinding(value); err != nil {
 			return err
-		}
-		if err := validateSuccessStatusCodes(value); err != nil {
-			return err
-		}
-		if len(value.ResponseProjection) == 0 {
-			return fmt.Errorf("GitHub REST binding %q has no safe response projection", value.ID)
-		}
-		for _, field := range value.ResponseProjection {
-			if !safeResponseField(value.Operation, field) {
-				return fmt.Errorf("GitHub REST binding %q exposes unsafe response field %q", value.ID, field)
-			}
-		}
-		for _, parameter := range value.ArgumentParameters {
-			if parameter.In != "query" || parameter.Name == "method" || parameter.Name == "graphql" || parameter.Name == "caller" || parameter.Name == "headers" {
-				return fmt.Errorf("GitHub REST binding %q exposes unsafe parameters", value.ID)
-			}
 		}
 	}
-	for _, value := range values {
-		switch value.Reconciliation {
-		case "none":
-			if value.ReconciliationBindingID != "" {
-				return fmt.Errorf("GitHub REST binding %q has an unexpected reconciliation binding", value.ID)
-			}
-		case "absence-proof":
-			read, found := bindingByID(values, value.ReconciliationBindingID)
-			if !found || read.Method != http.MethodGet || read.PathTemplate != value.PathTemplate {
-				return fmt.Errorf("GitHub REST binding %q has an invalid absence proof", value.ID)
-			}
-		default:
-			return fmt.Errorf("GitHub REST binding %q has unsupported reconciliation", value.ID)
+	return validateReconciliations(values)
+}
+
+func validateBinding(value Binding) error {
+	if !validTransport(value) || !validSchemas(value) || !validExecution(value) {
+		return fmt.Errorf("GitHub REST binding %q is incomplete", value.ID)
+	}
+	return validateBindingDetails(value)
+}
+
+func validateBindingDetails(value Binding) error {
+	if err := validateServerRole(value); err != nil {
+		return err
+	}
+	if err := validateStreamMetadata(value); err != nil {
+		return err
+	}
+	if err := validateBindingAuthorization(value); err != nil {
+		return err
+	}
+	if err := validateSuccessStatusCodes(value); err != nil {
+		return err
+	}
+	if err := validateResponseProjection(value); err != nil {
+		return err
+	}
+	return validateArgumentParameters(value)
+}
+
+func validateServerRole(value Binding) error {
+	if value.ServerRole == "uploads" && value.StreamDirection != "upload" {
+		return fmt.Errorf("GitHub REST binding %q has an invalid server role", value.ID)
+	}
+	if strings.Contains(strings.ToLower(value.PathTemplate), "http://") || strings.Contains(strings.ToLower(value.PathTemplate), "https://") {
+		return fmt.Errorf("GitHub REST binding %q contains a caller-selectable URL", value.ID)
+	}
+	return nil
+}
+
+func validateStreamMetadata(value Binding) error {
+	if value.StreamDirection != "" && value.StreamDirection != "upload" && value.StreamDirection != "download" {
+		return fmt.Errorf("GitHub REST binding %q has an invalid stream direction", value.ID)
+	}
+	if (value.StreamDirection != "") != (value.RedirectPolicy == "github-download-host-allowlist") {
+		return fmt.Errorf("GitHub REST binding %q stream metadata drifted", value.ID)
+	}
+	return nil
+}
+
+func validateResponseProjection(value Binding) error {
+	if len(value.ResponseProjection) == 0 {
+		return fmt.Errorf("GitHub REST binding %q has no safe response projection", value.ID)
+	}
+	for _, field := range value.ResponseProjection {
+		if !safeResponseField(value.Operation, field) {
+			return fmt.Errorf("GitHub REST binding %q exposes unsafe response field %q", value.ID, field)
 		}
+	}
+	return nil
+}
+
+func validateArgumentParameters(value Binding) error {
+	for _, parameter := range value.ArgumentParameters {
+		if parameter.In != "query" || parameter.Name == "method" || parameter.Name == "graphql" || parameter.Name == "caller" || parameter.Name == "headers" {
+			return fmt.Errorf("GitHub REST binding %q exposes unsafe parameters", value.ID)
+		}
+	}
+	return nil
+}
+
+func validateReconciliations(values []Binding) error {
+	for _, value := range values {
+		if err := validateReconciliation(values, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateReconciliation(values []Binding, value Binding) error {
+	switch value.Reconciliation {
+	case "none":
+		if value.ReconciliationBindingID != "" {
+			return fmt.Errorf("GitHub REST binding %q has an unexpected reconciliation binding", value.ID)
+		}
+		return nil
+	case "absence-proof":
+		return validateAbsenceProof(values, value)
+	default:
+		return fmt.Errorf("GitHub REST binding %q has unsupported reconciliation", value.ID)
+	}
+}
+
+func validateAbsenceProof(values []Binding, value Binding) error {
+	read, found := bindingByID(values, value.ReconciliationBindingID)
+	if !found || read.Method != http.MethodGet || read.PathTemplate != value.PathTemplate {
+		return fmt.Errorf("GitHub REST binding %q has an invalid absence proof", value.ID)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,71 @@ func TestInstallerDownloadsVerifiesAndInstalls(t *testing.T) {
 	if !strings.Contains(string(output), "Downloading example/test-broker v1.2.3 for linux/amd64") ||
 		!strings.Contains(string(output), "v1.2.3") {
 		t.Fatalf("installer output = %s", output)
+	}
+}
+
+func TestInstallerVerifiesExpectedReleaseProvenance(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAsset(t, filepath.Join(releaseDir, asset), "test-broker", "#!/bin/sh\necho v1.2.3\n")
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	logPath := filepath.Join(t.TempDir(), "verifier.log")
+	installDir := t.TempDir()
+	command := installerCommand(t, installDir, server.URL, "v1.2.3")
+	command.Env = append(command.Env, "BROKERKIT_VERIFY_ONLY=true", "BROKERKIT_VERIFIER_LOG="+logPath)
+	output, err := command.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "Verified example/test-broker v1.2.3 release assets and provenance") {
+		t.Fatalf("verify-only installer err=%v output=%s", err, output)
+	}
+	log, err := os.ReadFile(logPath) // #nosec G304 -- test reads its private fixture path.
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPolicy := "--repo example/test-broker --signer-workflow example/test-broker/.github/workflows/release.yml --source-ref refs/tags/v1.2.3 --deny-self-hosted-runners"
+	if strings.Count(string(log), "attestation verify ") != 2 || !strings.Contains(string(log), wantPolicy) {
+		t.Fatalf("provenance verifier log = %q", log)
+	}
+	if _, err := os.Stat(filepath.Join(installDir, "test-broker")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("verify-only installer unexpectedly installed a binary")
+	}
+}
+
+func TestInstallerVerifiesCompletePublishedRelease(t *testing.T) {
+	releaseDir := t.TempDir()
+	assets := []string{
+		"test-broker_linux_amd64.tar.gz",
+		"test-broker_linux_arm64.tar.gz",
+		"test-broker_darwin_amd64.tar.gz",
+		"test-broker_darwin_arm64.tar.gz",
+	}
+	for _, asset := range assets {
+		writeReleaseAsset(t, filepath.Join(releaseDir, asset), "test-broker", "#!/bin/sh\necho v1.2.3\n")
+	}
+	writeChecksumSet(t, releaseDir, assets)
+	if err := os.WriteFile(filepath.Join(releaseDir, "sbom.spdx.json"), []byte(`{"spdxVersion":"SPDX-2.3"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := releaseSetServer(t, releaseDir)
+	defer server.Close()
+	logPath := filepath.Join(t.TempDir(), "verifier.log")
+	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
+	command.Env = append(command.Env,
+		"BROKERKIT_VERIFY_ONLY=true",
+		"BROKERKIT_VERIFY_RELEASE_SET=true",
+		"BROKERKIT_VERIFIER_LOG="+logPath,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("complete release verification failed: %v\n%s", err, output)
+	}
+	log, err := os.ReadFile(logPath) // #nosec G304 -- test reads its private fixture path.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(log), "attestation verify ") != 6 || !strings.Contains(string(log), "sbom.spdx.json") {
+		t.Fatalf("complete release verifier log = %q", log)
 	}
 }
 
@@ -115,6 +181,30 @@ func TestInstallerVerifiesInstalledBinaryInsteadOfEarlierPATHEntry(t *testing.T)
 	}
 }
 
+func TestInstallerNeverInvokesSudoForUnwritableDestination(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAsset(t, filepath.Join(releaseDir, asset), "test-broker", "#!/bin/sh\necho v1.2.3\n")
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	marker := filepath.Join(t.TempDir(), "sudo-called")
+	binDir := t.TempDir()
+	fakeSudo := filepath.Join(binDir, "sudo")
+	if err := os.WriteFile(fakeSudo, []byte("#!/bin/sh\ntouch '"+marker+"'\nexit 99\n"), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
+		t.Fatal(err)
+	}
+	command := installerCommand(t, "/proc/brokerkit-installer-test", server.URL, "v1.2.3")
+	command.Env = append(command.Env, "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	if err == nil || strings.Contains(string(output), "sudo") {
+		t.Fatalf("unwritable install err=%v output=%s", err, output)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sudo marker error = %v", err)
+	}
+}
+
 func TestInstallerRejectsUnsupportedPlatformAndInvalidInputs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -153,8 +243,19 @@ func installerCommand(t *testing.T, installDir string, serverURL string, version
 		"BROKERKIT_UNAME_M=x86_64",
 		"BROKERKIT_LATEST_RELEASE_URL="+serverURL+"/latest",
 		"BROKERKIT_RELEASE_BASE_URL="+serverURL+"/release",
+		"BROKERKIT_VERIFIER_FILE="+writeFakeVerifier(t),
 	)
 	return command
+}
+
+func writeFakeVerifier(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "gh")
+	body := "#!/bin/sh\nif [ -n \"${BROKERKIT_VERIFIER_LOG:-}\" ]; then printf '%s\\n' \"$*\" >> \"$BROKERKIT_VERIFIER_LOG\"; fi\n"
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
+		t.Fatal(err)
+	}
+	return path
 }
 
 func scriptPath(t *testing.T) string {
@@ -199,14 +300,21 @@ func writeReleaseAssetEntries(t *testing.T, path string, entries map[string]stri
 }
 
 func writeChecksums(t *testing.T, dir string, asset string) {
+	writeChecksumSet(t, dir, []string{asset})
+}
+
+func writeChecksumSet(t *testing.T, dir string, assets []string) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, asset)) // #nosec G304 -- test reads its private fixture path.
-	if err != nil {
-		t.Fatal(err)
+	var body strings.Builder
+	for _, asset := range assets {
+		data, err := os.ReadFile(filepath.Join(dir, asset)) // #nosec G304 -- test reads its private fixture path.
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(data)
+		_, _ = fmt.Fprintf(&body, "%x  %s\n", digest, asset)
 	}
-	digest := sha256.Sum256(data)
-	body := fmt.Sprintf("%x  %s\n", digest, asset)
-	if err := os.WriteFile(filepath.Join(dir, "checksums.txt"), []byte(body), 0o600); err != nil { // #nosec G703 -- test writes its private fixture path.
+	if err := os.WriteFile(filepath.Join(dir, "checksums.txt"), []byte(body.String()), 0o600); err != nil { // #nosec G703 -- test writes its private fixture path.
 		t.Fatal(err)
 	}
 }
@@ -226,5 +334,22 @@ func releaseServer(t *testing.T, dir string, asset string) *httptest.Server {
 		default:
 			http.NotFound(w, r)
 		}
+	}))
+}
+
+func releaseSetServer(t *testing.T, dir string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		const prefix = "/release/"
+		if !strings.HasPrefix(r.URL.Path, prefix) {
+			http.NotFound(w, r)
+			return
+		}
+		name := strings.TrimPrefix(r.URL.Path, prefix)
+		if filepath.Base(name) != name {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(dir, name))
 	}))
 }

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
 )
 
@@ -26,6 +28,7 @@ type Config struct {
 	Store                *credentialstore.Store
 	Now                  func() time.Time
 	RefreshBefore        time.Duration
+	Lifecycle            *credentiallifecycle.Reporter
 }
 
 type Manager struct {
@@ -37,6 +40,7 @@ type Manager struct {
 	installation  *installationProvider
 	user          *userProvider
 	development   *Credential
+	lifecycle     *credentiallifecycle.Reporter
 }
 
 func New(cfg Config) (*Manager, error) {
@@ -49,36 +53,46 @@ func New(cfg Config) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopRedirect}
-	}
-	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client, streamTimeout: defaultStreamTimeout(cfg.StreamTimeout)}
+	client := configuredHTTPClient(cfg.HTTPClient)
+	manager := &Manager{apiURL: apiURL, webURL: webURL, client: client, streamTimeout: defaultStreamTimeout(cfg.StreamTimeout), lifecycle: cfg.Lifecycle}
 	mode, err := configuredCredentialMode(cfg)
 	if err != nil {
 		return nil, err
 	}
+	return manager.configureCredentialProviders(cfg, mode)
+}
+
+func configuredHTTPClient(client *http.Client) *http.Client {
+	if client != nil {
+		return client
+	}
+	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopRedirect}
+}
+
+func (m *Manager) configureCredentialProviders(cfg Config, mode Kind) (*Manager, error) {
 	switch mode {
 	case KindUser:
-		manager.user = manager.newUserProvider(cfg)
-		return manager, nil
+		m.user = m.newUserProvider(cfg)
+		return m, nil
 	case KindDevelopmentToken:
-		manager.development = &Credential{metadata: Metadata{Kind: KindDevelopmentToken, APIHost: apiURL.Host}, token: append([]byte(nil), cfg.DevelopmentToken...)}
-		return manager, nil
-	case KindAppJWT, KindInstallation:
-		// App JWTs remain internal to the App transport. Installation is the
-		// externally observable credential kind for an App-backed manager.
+		m.development = &Credential{metadata: Metadata{Kind: KindDevelopmentToken, APIHost: m.apiURL.Host}, token: append([]byte(nil), cfg.DevelopmentToken...)}
+		return m, nil
+	default:
+		return m.configureAppProviders(cfg)
 	}
-	app, err := newAppProvider(cfg.AppID, cfg.AppPrivateKey, apiURL, client)
+}
+
+func (m *Manager) configureAppProviders(cfg Config) (*Manager, error) {
+	app, err := newAppProvider(cfg.AppID, cfg.AppPrivateKey, m.apiURL, m.client)
 	if err != nil {
 		return nil, err
 	}
-	manager.app = app
-	manager.installation = newInstallationProvider(app, apiURL, client, cfg.Now, cfg.RefreshBefore)
+	m.app = app
+	m.installation = newInstallationProvider(app, m.apiURL, m.client, cfg.Now, cfg.RefreshBefore, cfg.Lifecycle)
 	if cfg.Store != nil {
-		manager.user = manager.newUserProvider(cfg)
+		m.user = m.newUserProvider(cfg)
 	}
-	return manager, nil
+	return m, nil
 }
 
 func defaultStreamTimeout(value time.Duration) time.Duration {
@@ -89,20 +103,31 @@ func defaultStreamTimeout(value time.Duration) time.Duration {
 }
 
 func configuredCredentialMode(cfg Config) (Kind, error) {
-	hasApp := strings.TrimSpace(cfg.AppID) != "" || len(cfg.AppPrivateKey) > 0
-	hasDevelopment := len(cfg.DevelopmentToken) > 0
+	hasApp, hasDevelopment := hasAppCredential(cfg), len(cfg.DevelopmentToken) > 0
 	if hasApp && hasDevelopment {
 		return "", errors.New("configure exactly one GitHub App or development credential")
 	}
 	if hasDevelopment {
-		if strings.TrimSpace(cfg.DevelopmentTokenFile) == "" {
-			return "", errors.New("development GitHub token must come from a protected file")
-		}
-		return KindDevelopmentToken, nil
+		return configuredDevelopmentMode(cfg)
 	}
 	if hasApp {
 		return KindInstallation, nil
 	}
+	return configuredUserMode(cfg)
+}
+
+func hasAppCredential(cfg Config) bool {
+	return strings.TrimSpace(cfg.AppID) != "" || len(cfg.AppPrivateKey) > 0
+}
+
+func configuredDevelopmentMode(cfg Config) (Kind, error) {
+	if strings.TrimSpace(cfg.DevelopmentTokenFile) == "" {
+		return "", errors.New("development GitHub token must come from a protected file")
+	}
+	return KindDevelopmentToken, nil
+}
+
+func configuredUserMode(cfg Config) (Kind, error) {
 	if cfg.Store == nil || strings.TrimSpace(cfg.AppClientID) == "" || len(cfg.AppClientSecret) == 0 {
 		return "", errors.New("GitHub credential provider is not configured")
 	}
@@ -196,21 +221,42 @@ func (m *Manager) EnrollUser(ctx context.Context, enrollment UserEnrollment) err
 	if m == nil || m.user == nil {
 		return errors.New("GitHub user credential provider is unavailable")
 	}
-	return m.user.enroll(ctx, enrollment, false)
+	err := m.user.enroll(ctx, enrollment, false)
+	return errors.Join(err, m.recordUserLifecycle(credentiallifecycle.ActionCreated, enrollment.UserID, false, err))
 }
 
 func (m *Manager) RotateUser(ctx context.Context, enrollment UserEnrollment) error {
 	if m == nil || m.user == nil {
 		return errors.New("GitHub user credential provider is unavailable")
 	}
-	return m.user.enroll(ctx, enrollment, true)
+	err := m.user.enroll(ctx, enrollment, true)
+	return errors.Join(err, m.recordUserLifecycle(credentiallifecycle.ActionRotated, enrollment.UserID, true, err))
 }
 
 func (m *Manager) RevokeUser(ctx context.Context, userID int64) error {
 	if m == nil || m.user == nil {
 		return errors.New("GitHub user credential provider is unavailable")
 	}
-	return m.user.revoke(ctx, userID)
+	err := m.user.revoke(ctx, userID)
+	return errors.Join(err, m.recordUserLifecycle(credentiallifecycle.ActionRevoked, userID, true, err))
+}
+
+func (m *Manager) recordUserLifecycle(action credentiallifecycle.Action, userID int64, hadPrevious bool, operationErr error) error {
+	if m == nil || m.lifecycle == nil || userID <= 0 {
+		return nil
+	}
+	id := fmt.Sprintf("github-user:%d", userID)
+	event := credentiallifecycle.Event{Class: "github-user-oauth", Action: action, Outcome: credentiallifecycle.OutcomeSucceeded, Provider: "github"}
+	if hadPrevious {
+		event.PreviousID = id
+	}
+	if action != credentiallifecycle.ActionRevoked {
+		event.CurrentID = id
+	}
+	if operationErr != nil {
+		event.Outcome = credentiallifecycle.OutcomeFailed
+	}
+	return m.lifecycle.Record(event)
 }
 
 func (m *Manager) InvalidateUser(userID int64) error {
@@ -256,14 +302,29 @@ func normalizeWebURL(value *url.URL) (*url.URL, error) {
 		value, _ = url.Parse("https://github.com/")
 	}
 	result := *value
-	if result.Scheme != "https" && (result.Scheme != "http" || !localHostname(result.Hostname())) {
-		return nil, errors.New("GitHub web URL must use HTTPS")
-	}
-	if result.Host == "" || result.User != nil || result.RawQuery != "" || result.Fragment != "" {
-		return nil, errors.New("GitHub web URL is invalid")
+	if err := validateWebURL(result); err != nil {
+		return nil, err
 	}
 	result.Path = strings.TrimRight(result.Path, "/") + "/"
 	return &result, nil
+}
+
+func validateWebURL(result url.URL) error {
+	if invalidWebScheme(result) {
+		return errors.New("GitHub web URL must use HTTPS")
+	}
+	if invalidWebURLParts(result) {
+		return errors.New("GitHub web URL is invalid")
+	}
+	return nil
+}
+
+func invalidWebScheme(result url.URL) bool {
+	return result.Scheme != "https" && (result.Scheme != "http" || !localHostname(result.Hostname()))
+}
+
+func invalidWebURLParts(result url.URL) bool {
+	return result.Host == "" || result.User != nil || result.RawQuery != "" || result.Fragment != ""
 }
 
 func stopRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }

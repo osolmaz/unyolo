@@ -115,7 +115,7 @@ func TestSudoAgentAmbiguousExecutionRetainsApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.advanceOperation(t.Context(), operation)
+	server.operationRuntime.Advance(t.Context(), operation)
 	failed, _ := server.operations.GetByID(operation.ID)
 	stored, _ := server.grants.Get(grant.ID)
 	if failed.State != agentv1.StateFailed || failed.Error == nil || failed.Error.Code != "execution_result_unknown" || !stored.ReservationRetained {
@@ -200,43 +200,35 @@ func TestReadinessAndNotificationFailure(t *testing.T) {
 	}
 	server.notifier = errorNotifier{}
 	server.operatorConfigured = false
+	resetOperationRuntime(t, server)
 	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("notify-failure"))
 	if err != nil || operation.State != agentv1.StateFailed {
 		t.Fatalf("notification failure = %#v, %v", operation, err)
 	}
 	server.notifier = nil
+	resetOperationRuntime(t, server)
 	operation, _, err = server.submitAgentOperation(t.Context(), "bob", validSubmission("no-approval-channel"))
 	if err != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_channel_not_configured" {
 		t.Fatalf("missing approval channel = %#v, %v", operation, err)
 	}
 	server.operatorConfigured = true
+	resetOperationRuntime(t, server)
 	server.identities = failingIdentities{}
 	operation, _, err = server.submitAgentOperation(t.Context(), "bob", validSubmission("identity-failure"))
-	if err != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "target_identity_invalid" {
+	if err != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_request_failed" {
 		t.Fatalf("identity failure = %#v, %v", operation, err)
 	}
 	server.identities = fakeIdentities{}
 	operation, _, err = server.submitAgentOperation(t.Context(), "unmatched-client", validSubmission("policy-denial"))
-	if err != nil || operation.State != agentv1.StateDenied || operation.Error == nil || operation.Error.Code != "policy_denied" {
+	if err != nil || operation.State != agentv1.StateDenied || operation.Error == nil || operation.Error.Code != "operation_policy_denied" {
 		t.Fatalf("policy denial = %#v, %v", operation, err)
 	}
 }
 
-func TestAdvancePendingOperationAndInvalidApproval(t *testing.T) {
+func TestInvalidStoredSudoApproval(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()
-	request := validSubmission("advance-pending")
-	operation, _, err := server.operations.Submit(agentops.Submit{Broker: "sudo-broker", ClientID: "bob", IdempotencyKey: request.IdempotencyKey,
-		Operation: request.Operation, Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
-		Presentation: agentv1.Presentation{Title: "advance"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server.advanceOperation(t.Context(), operation)
-	pending, _ := server.operations.GetByID(operation.ID)
-	if pending.State != agentv1.StatePending || pending.ApprovalID == "" {
-		t.Fatalf("advanced operation = %#v", pending)
-	}
+	request := validSubmission("invalid-approval")
 	invalid, _, err := server.operations.Submit(agentops.Submit{Broker: "sudo-broker", ClientID: "bob", IdempotencyKey: "invalid-approval",
 		Operation: request.Operation, Target: request.Target, Arguments: request.Arguments, Reason: request.Reason,
 		Presentation: agentv1.Presentation{Title: "invalid"}})
@@ -255,23 +247,10 @@ func TestAdvancePendingOperationAndInvalidApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.executeOperation(t.Context(), invalid)
+	server.operationRuntime.Execute(t.Context(), invalid)
 	failed, _ := server.operations.GetByID(invalid.ID)
-	if failed.State != agentv1.StateFailed || failed.Error == nil || failed.Error.Code != "approval_unavailable" {
+	if failed.State != agentv1.StateFailed || failed.Error == nil || failed.Error.Code != "invalid_stored_operation" {
 		t.Fatalf("invalid approval operation = %#v", failed)
-	}
-	malformedRequest := validSubmission("malformed-stored")
-	malformedRequest.Target = json.RawMessage(`{"kind":"repo","name":"root"}`)
-	malformed, _, err := server.operations.Submit(agentops.Submit{Broker: "sudo-broker", ClientID: "bob", IdempotencyKey: malformedRequest.IdempotencyKey,
-		Operation: malformedRequest.Operation, Target: malformedRequest.Target, Arguments: malformedRequest.Arguments, Reason: malformedRequest.Reason,
-		Presentation: agentv1.Presentation{Title: "malformed"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server.advanceOperation(t.Context(), malformed)
-	malformed, _ = server.operations.GetByID(malformed.ID)
-	if malformed.State != agentv1.StateFailed || malformed.Error == nil || malformed.Error.Code != "invalid_stored_operation" {
-		t.Fatalf("malformed stored operation = %#v", malformed)
 	}
 }
 
@@ -294,13 +273,11 @@ func TestSudoExecutionSettlementBranches(t *testing.T) {
 			defer closeServer()
 			operation, grant := approvedOperation(t, server, "settle-"+strings.ReplaceAll(test.name, " ", "-"))
 			if test.preDispatch {
-				server.helper = &executorclient.Client{SocketPath: "/missing", Dial: func(context.Context, string, string) (net.Conn, error) {
-					return nil, errors.New("offline")
-				}}
+				helper.status = "dial-error"
 			} else {
 				helper.status = test.status
 			}
-			server.executeOperation(t.Context(), operation)
+			server.operationRuntime.Execute(t.Context(), operation)
 			failed, _ := server.operations.GetByID(operation.ID)
 			stored, _ := server.grants.Get(grant.ID)
 			if failed.State != agentv1.StateFailed || failed.Error == nil || failed.Error.Code != test.wantCode || stored.ReservationRetained != test.retained {
@@ -322,7 +299,8 @@ func TestSudoApprovalTransitionsAndRecovery(t *testing.T) {
 		ExpectedRevision: grant.Revision, IdempotencyKey: "deny-operation"}); err != nil {
 		t.Fatal(err)
 	}
-	if denied := server.syncOperationApproval(operation); denied.State != agentv1.StateDenied {
+	server.operationRuntime.Advance(t.Context(), operation)
+	if denied, _ := server.operations.GetByID(operation.ID); denied.State != agentv1.StateDenied {
 		t.Fatalf("denied operation = %#v", denied)
 	}
 	for _, test := range []struct {
@@ -357,7 +335,8 @@ func TestSudoApprovalTransitionsAndRecovery(t *testing.T) {
 			if closeErr := test.close(pendingGrant); closeErr != nil {
 				t.Fatal(closeErr)
 			}
-			if closed := server.syncOperationApproval(pending); closed.State != test.status {
+			server.operationRuntime.Advance(t.Context(), pending)
+			if closed, _ := server.operations.GetByID(pending.ID); closed.State != test.status {
 				t.Fatalf("closed operation = %#v", closed)
 			}
 		})
@@ -375,9 +354,9 @@ func TestSudoApprovalTransitionsAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.recoverOperations(t.Context())
+	server.operationRuntime.Recover(t.Context())
 	recovered, _ := server.operations.GetByID(executing.ID)
-	if recovered.State != agentv1.StateFailed || recovered.Error == nil || recovered.Error.Code != "execution_interrupted" {
+	if recovered.State != agentv1.StateFailed || recovered.Error == nil || recovered.Error.Code != "invalid_stored_operation" {
 		t.Fatalf("recovered operation = %#v", recovered)
 	}
 	if server.OperatorHandler() == nil {
@@ -390,6 +369,7 @@ func TestSudoTelegramNotificationIsIdempotent(t *testing.T) {
 	defer closeServer()
 	memory := &notify.Memory{}
 	server.notifier = memory
+	resetOperationRuntime(t, server)
 	first, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("notified"))
 	if err != nil || first.ApprovalID == "" || len(memory.Messages) != 1 {
 		t.Fatalf("notified operation = %#v, messages = %d, %v", first, len(memory.Messages), err)
@@ -404,6 +384,7 @@ func TestSudoNotificationFallbackAndPolicyBounds(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()
 	server.notifier = errorNotifier{}
+	resetOperationRuntime(t, server)
 	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("operator-fallback"))
 	if err != nil || operation.State != agentv1.StatePending || operation.ApprovalID == "" {
 		t.Fatalf("operator fallback = %#v, %v", operation, err)
@@ -438,6 +419,34 @@ func TestServerStartPollsDecisions(t *testing.T) {
 	cancel()
 }
 
+func TestServerCloseStopsPollerWithLiveStartContext(t *testing.T) {
+	server, _, closeServer := testServer(t)
+	defer closeServer()
+	poller := &fakePoller{called: make(chan struct{}, 1), stopped: make(chan struct{})}
+	server.poller = poller
+	server.Start(context.Background())
+	select {
+	case <-poller.called:
+	case <-time.After(time.Second):
+		t.Fatal("decision poller did not start")
+	}
+	done := make(chan error, 1)
+	go func() { done <- server.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not join the decision poller")
+	}
+	select {
+	case <-poller.stopped:
+	default:
+		t.Fatal("decision poller remained active after Close")
+	}
+}
+
 func approvedOperation(t *testing.T, server *Server, key string) (agentv1.Operation, grants.Grant) {
 	t.Helper()
 	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission(key))
@@ -452,7 +461,10 @@ func approvedOperation(t *testing.T, server *Server, key string) (agentv1.Operat
 		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-" + key}); err != nil {
 		t.Fatal(err)
 	}
-	operation = server.syncOperationApproval(operation)
+	operation, err = server.operations.Transition(operation.ID, agentv1.StateApproved)
+	if err != nil {
+		t.Fatal(err)
+	}
 	operation, err = server.operations.Transition(operation.ID, agentv1.StateExecuting)
 	if err != nil {
 		t.Fatal(err)
@@ -464,6 +476,15 @@ func validSubmission(key string) agentv1.SubmitRequest {
 	return agentv1.SubmitRequest{IdempotencyKey: key, Operation: sudopolicy.OperationExecCommand,
 		Target:    json.RawMessage(`{"kind":"user","name":"root"}`),
 		Arguments: json.RawMessage(`{"command_id":"scale","arguments":{"replicas":2}}`), Reason: "scale release"}
+}
+
+func resetOperationRuntime(t *testing.T, server *Server) {
+	t.Helper()
+	runtime, err := server.newOperationRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime = runtime
 }
 
 func testServer(t *testing.T) (*Server, *fakeHelper, func()) {
@@ -497,7 +518,7 @@ func newTestServer(database *state.Database, helper *fakeHelper, directory strin
 	}
 	client := &executorclient.Client{SocketPath: "/fake/helper.sock", Dial: helper.dial}
 	return New(Options{Policy: brokerPolicy, Catalog: snapshot, Database: database, Identities: fakeIdentities{}, Helper: client,
-		ClientSecrets: map[string]string{"bob": testClientSecret}, OperatorSecrets: map[string]string{"operator": testOperatorSecret},
+		ClientSecrets: map[string]string{"bob": testClientSecret, "unmatched-client": strings.Repeat("u", 32)}, OperatorSecrets: map[string]string{"operator": testOperatorSecret},
 		Audit: audit.New(&bytes.Buffer{}), Now: time.Now, OperatorConfigured: true})
 }
 
@@ -520,6 +541,12 @@ type fakeHelper struct {
 }
 
 func (f *fakeHelper) dial(_ context.Context, _, _ string) (net.Conn, error) {
+	f.mu.Lock()
+	if f.status == "dial-error" {
+		f.mu.Unlock()
+		return nil, errors.New("offline")
+	}
+	f.mu.Unlock()
 	client, server := net.Pipe()
 	go func() {
 		defer func() { _ = server.Close() }()
@@ -564,9 +591,15 @@ func (errorNotifier) SendApproval(context.Context, notify.ApprovalMessage) (noti
 }
 func (errorNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
 
-type fakePoller struct{ called chan struct{} }
+type fakePoller struct {
+	called  chan struct{}
+	stopped chan struct{}
+}
 
 func (p *fakePoller) Poll(ctx context.Context, _ func(context.Context, notify.Decision) notify.DecisionResult) {
 	p.called <- struct{}{}
 	<-ctx.Done()
+	if p.stopped != nil {
+		close(p.stopped)
+	}
 }

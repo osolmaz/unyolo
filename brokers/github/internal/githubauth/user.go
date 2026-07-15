@@ -45,6 +45,55 @@ type UserEnrollment struct {
 
 type storedUserCredential = UserEnrollment
 
+// StoredUserCredentialStatus is secret-safe metadata for one encrypted user
+// credential. It contains no login or credential value.
+type StoredUserCredentialStatus struct {
+	UserID           int64
+	UpdatedAt        time.Time
+	AccessExpiresAt  time.Time
+	RefreshExpiresAt time.Time
+}
+
+// InspectStoredUserCredentials opens the existing user namespace read-only and
+// returns only lifecycle metadata.
+func InspectStoredUserCredentials(stateDir string) ([]StoredUserCredentialStatus, error) {
+	store, err := credentialstore.OpenNamespaceExisting(stateDir, userCredentialNamespace)
+	if err != nil {
+		return nil, err
+	}
+	metadata, err := store.ListMetadata(userCredentialKind)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]StoredUserCredentialStatus, 0, len(metadata))
+	for _, item := range metadata {
+		status, decodeErr := storedUserStatus(store, item)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		result = append(result, status)
+	}
+	return result, nil
+}
+
+func storedUserStatus(store *credentialstore.Store, metadata credentialstore.Metadata) (StoredUserCredentialStatus, error) {
+	encoded, _, err := store.Get(metadata.Slot, userCredentialKind)
+	if err != nil {
+		return StoredUserCredentialStatus{}, errors.New("GitHub user credential metadata is unavailable")
+	}
+	defer zero(encoded)
+	var value storedUserCredential
+	if strictjson.Decode(encoded, &value, true) != nil || metadata.Slot != userSlot(value.UserID) ||
+		value.UserID <= 0 || value.AccessExpiresAt.IsZero() || !value.RefreshExpiresAt.After(value.AccessExpiresAt) {
+		zeroStored(&value)
+		return StoredUserCredentialStatus{}, errors.New("GitHub user credential metadata is invalid")
+	}
+	status := StoredUserCredentialStatus{UserID: value.UserID, UpdatedAt: metadata.UpdatedAt.UTC(),
+		AccessExpiresAt: value.AccessExpiresAt.UTC(), RefreshExpiresAt: value.RefreshExpiresAt.UTC()}
+	zeroStored(&value)
+	return status, nil
+}
+
 type refreshPayload struct {
 	AccessToken           string `json:"access_token"`
 	ExpiresIn             int64  `json:"expires_in"`
@@ -87,38 +136,57 @@ func (p *userProvider) enroll(ctx context.Context, enrollment UserEnrollment, ro
 		return err
 	}
 	generation := p.userGeneration(enrollment.UserID)
-	exists := p.store.Exists(userSlot(enrollment.UserID))
-	if exists != rotate {
-		if rotate {
-			return errors.New("GitHub user credential is not enrolled")
-		}
-		return errors.New("GitHub user credential is already enrolled")
+	if err := p.validateEnrollmentMode(enrollment.UserID, rotate); err != nil {
+		return err
 	}
 	if err := p.verifyUser(ctx, enrollment); err != nil {
 		return err
 	}
-	var old storedUserCredential
-	if rotate {
-		loaded, err := p.load(enrollment.UserID)
-		if err != nil {
-			return err
-		}
-		old = loaded
+	old, err := p.rotationRecord(enrollment.UserID, rotate)
+	if err != nil {
+		return err
 	}
 	if err := p.storeRecordIfCurrent(enrollment, generation); err != nil {
 		return err
 	}
+	return p.finalizeEnrollmentRotation(ctx, enrollment, old, generation, rotate)
+}
+
+func (p *userProvider) validateEnrollmentMode(userID int64, rotate bool) error {
+	exists := p.store.Exists(userSlot(userID))
+	if exists == rotate {
+		return nil
+	}
 	if rotate {
-		defer zeroStored(&old)
-		if err := p.revokeToken(ctx, old.AccessToken); err != nil {
-			// Keep rotation atomic from the operator's perspective: restore the
-			// still-valid old record and revoke the replacement best-effort.
-			_ = p.storeRecordIfCurrent(old, generation)
-			_ = p.revokeToken(ctx, enrollment.AccessToken)
-			return err
-		}
+		return errors.New("GitHub user credential is not enrolled")
+	}
+	return errors.New("GitHub user credential is already enrolled")
+}
+
+func (p *userProvider) rotationRecord(userID int64, rotate bool) (storedUserCredential, error) {
+	if !rotate {
+		return storedUserCredential{}, nil
+	}
+	return p.load(userID)
+}
+
+func (p *userProvider) finalizeEnrollmentRotation(ctx context.Context, enrollment UserEnrollment, old storedUserCredential, generation uint64, rotate bool) error {
+	if !rotate {
+		return nil
+	}
+	defer zeroStored(&old)
+	if err := p.revokeToken(ctx, old.AccessToken); err != nil {
+		return p.rollbackEnrollmentRotation(ctx, old, enrollment, generation, err)
 	}
 	return nil
+}
+
+func (p *userProvider) rollbackEnrollmentRotation(ctx context.Context, old, enrollment UserEnrollment, generation uint64, err error) error {
+	// Keep rotation atomic from the operator's perspective: restore the
+	// still-valid old record and revoke the replacement best-effort.
+	_ = p.storeRecordIfCurrent(old, generation)
+	_ = p.revokeToken(ctx, enrollment.AccessToken)
+	return err
 }
 
 func (p *userProvider) credential(ctx context.Context, userID int64) (*Credential, error) {
@@ -128,22 +196,12 @@ func (p *userProvider) credential(ctx context.Context, userID int64) (*Credentia
 	unlock := p.lockUser(userID)
 	defer unlock()
 	generation := p.userGeneration(userID)
-	record, err := p.load(userID)
+	record, cached, err := p.currentUserRecord(ctx, userID, generation)
 	if err != nil {
 		return nil, err
 	}
-	now := p.now().UTC()
-	if record.AccessExpiresAt.After(now.Add(p.refreshBefore)) {
-		if credential := p.activeCredential(userID, record.AccessExpiresAt); credential != nil {
-			zeroStored(&record)
-			return credential, nil
-		}
-	}
-	if !record.AccessExpiresAt.After(now.Add(p.refreshBefore)) {
-		record, err = p.refreshAndStore(ctx, record, generation)
-		if err != nil {
-			return nil, err
-		}
+	if cached != nil {
+		return cached, nil
 	}
 	defer zeroStored(&record)
 	credential := &Credential{metadata: Metadata{Kind: KindUser, UserID: userID, APIHost: p.apiURL.Host, ExpiresAt: record.AccessExpiresAt.UTC()},
@@ -153,6 +211,27 @@ func (p *userProvider) credential(ctx context.Context, userID int64) (*Credentia
 		return nil, err
 	}
 	return credential, nil
+}
+
+func (p *userProvider) currentUserRecord(ctx context.Context, userID int64, generation uint64) (storedUserCredential, *Credential, error) {
+	record, err := p.load(userID)
+	if err != nil {
+		return storedUserCredential{}, nil, err
+	}
+	now := p.now().UTC()
+	if record.AccessExpiresAt.After(now.Add(p.refreshBefore)) {
+		if credential := p.activeCredential(userID, record.AccessExpiresAt); credential != nil {
+			zeroStored(&record)
+			return storedUserCredential{}, credential, nil
+		}
+	}
+	if !record.AccessExpiresAt.After(now.Add(p.refreshBefore)) {
+		record, err = p.refreshAndStore(ctx, record, generation)
+		if err != nil {
+			return storedUserCredential{}, nil, err
+		}
+	}
+	return record, nil, nil
 }
 
 func (p *userProvider) refreshAndStore(ctx context.Context, record storedUserCredential, generation uint64) (storedUserCredential, error) {
@@ -184,29 +263,42 @@ func (p *userProvider) refresh(ctx context.Context, old storedUserCredential) (s
 }
 
 func (p *userProvider) requestRefresh(ctx context.Context, refreshToken []byte) (refreshPayload, error) {
-	form := url.Values{
-		"client_id": {p.clientID}, "client_secret": {string(p.clientSecret)}, "grant_type": {"refresh_token"}, "refresh_token": {string(refreshToken)},
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.oauthURL.String(), strings.NewReader(form.Encode()))
+	request, err := p.newRefreshRequest(ctx, refreshToken)
 	if err != nil {
-		return refreshPayload{}, errors.New("create GitHub user credential refresh request")
+		return refreshPayload{}, err
 	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := p.client.Do(request)
 	if err != nil {
 		return refreshPayload{}, APIError{Code: "unavailable"}
 	}
 	defer func() { _ = response.Body.Close() }()
+	return decodeRefreshResponse(response)
+}
+
+func (p *userProvider) newRefreshRequest(ctx context.Context, refreshToken []byte) (*http.Request, error) {
+	form := url.Values{
+		"client_id": {p.clientID}, "client_secret": {string(p.clientSecret)}, "grant_type": {"refresh_token"}, "refresh_token": {string(refreshToken)},
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.oauthURL.String(), strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, errors.New("create GitHub user credential refresh request")
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return request, nil
+}
+
+func decodeRefreshResponse(response *http.Response) (refreshPayload, error) {
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxOAuthBodyBytes+1))
 	if err != nil || len(data) > maxOAuthBodyBytes || response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return refreshPayload{}, APIError{Code: statusCodeName(response.StatusCode), StatusCode: response.StatusCode}
 	}
+	return decodeRefreshPayload(data)
+}
+
+func decodeRefreshPayload(data []byte) (refreshPayload, error) {
 	var payload refreshPayload
-	if err := strictjson.Decode(data, &payload, false); err != nil {
-		return refreshPayload{}, errors.New("GitHub user credential refresh response is invalid")
-	}
-	if !validRefreshPayload(payload) {
+	if err := strictjson.Decode(data, &payload, false); err != nil || !validRefreshPayload(payload) {
 		return refreshPayload{}, errors.New("GitHub user credential refresh response is invalid")
 	}
 	return payload, nil

@@ -180,6 +180,10 @@ func (c *Client) ListSandboxesByOperation(ctx context.Context, namespace, operat
 	if err := c.call(ctx, callSpec{method: http.MethodGet, path: "/api/jobs/" + url.PathEscape(namespace), query: query, out: &jobs}); err != nil {
 		return nil, err
 	}
+	return sandboxStatesForOperation(jobs, namespace, operationID)
+}
+
+func sandboxStatesForOperation(jobs []sandboxJobWire, namespace, operationID string) ([]SandboxState, error) {
 	states := make([]SandboxState, 0, len(jobs))
 	for _, job := range jobs {
 		state, err := sandboxStateFromJob(job, namespace, "")
@@ -215,27 +219,49 @@ func (c *Client) inspectSandboxJob(ctx context.Context, namespace, jobID string)
 	return job, nil
 }
 
-//nolint:cyclop // Sandbox job bounds are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) sandboxJobBody(image, flavor string, idle *int, environment, secrets map[string]string, volumes []SandboxVolume, labels map[string]string, capacity, maxHosts int) (sandboxJobBody, error) {
-	if !validSandboxImage(image) || !jobHardware[flavor] || validateSandboxEnvironment(environment, false) != nil ||
-		validateSandboxEnvironment(secrets, true) != nil || len(volumes) > 32 {
-		return sandboxJobBody{}, errors.New("hubclient: sandbox job configuration is invalid")
-	}
-	for _, volume := range volumes {
-		if err := volume.validate(); err != nil {
-			return sandboxJobBody{}, err
-		}
+	if err := validateSandboxJobConfig(image, flavor, environment, secrets, volumes); err != nil {
+		return sandboxJobBody{}, err
 	}
 	nonce, err := randomHex(16)
 	if err != nil {
 		return sandboxJobBody{}, errors.New("hubclient: sandbox nonce generation failed")
 	}
+	env, secretValues, err := c.sandboxJobEnvironment(environment, secrets, idle, capacity, maxHosts, nonce)
+	if err != nil {
+		return sandboxJobBody{}, err
+	}
+	return sandboxJobBodyForImage(image, flavor, env, secretValues, labels, nonce, volumes), nil
+}
+
+func validateSandboxJobConfig(image, flavor string, environment, secrets map[string]string, volumes []SandboxVolume) error {
+	if !validSandboxJobBasics(image, flavor, volumes) || validateSandboxEnvironment(environment, false) != nil ||
+		validateSandboxEnvironment(secrets, true) != nil {
+		return errors.New("hubclient: sandbox job configuration is invalid")
+	}
+	return validateSandboxVolumes(volumes)
+}
+
+func validSandboxJobBasics(image, flavor string, volumes []SandboxVolume) bool {
+	return validSandboxImage(image) && jobHardware[flavor] && len(volumes) <= 32
+}
+
+func validateSandboxVolumes(volumes []SandboxVolume) error {
+	for _, volume := range volumes {
+		if err := volume.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Client) sandboxJobEnvironment(environment, secrets map[string]string, idle *int, capacity, maxHosts int, nonce string) (map[string]string, map[string]string, error) {
 	sandboxToken := c.deriveSandboxToken(nonce)
 	env := cloneStrings(environment)
 	secretValues := cloneStrings(secrets)
 	for _, value := range secretValues {
 		if value == c.token {
-			return sandboxJobBody{}, errors.New("hubclient: broker credential cannot be forwarded to a sandbox")
+			return nil, nil, errors.New("hubclient: broker credential cannot be forwarded to a sandbox")
 		}
 	}
 	env["SBX_PORT"] = fmt.Sprint(SandboxServerPort)
@@ -251,6 +277,10 @@ func (c *Client) sandboxJobBody(image, flavor string, idle *int, environment, se
 		env["SBX_MAX_HOSTS"] = fmt.Sprint(maxHosts)
 	}
 	secretValues["SBX_TOKEN"] = sandboxToken
+	return env, secretValues, nil
+}
+
+func sandboxJobBodyForImage(image, flavor string, env, secretValues, labels map[string]string, nonce string, volumes []SandboxVolume) sandboxJobBody {
 	labels = cloneStrings(labels)
 	labels[sandboxNonceLabel] = nonce
 	serverVolume := SandboxVolume{Type: "bucket", Source: "huggingface/sbx-server", MountPath: sandboxMountPath}
@@ -263,11 +293,11 @@ func (c *Client) sandboxJobBody(image, flavor string, idle *int, environment, se
 	for _, prefix := range []string{"https://huggingface.co/spaces/", "https://hf.co/spaces/", "huggingface.co/spaces/", "hf.co/spaces/"} {
 		if strings.HasPrefix(image, prefix) {
 			body.SpaceID = strings.TrimPrefix(image, prefix)
-			return body, nil
+			return body
 		}
 	}
 	body.DockerImage = image
-	return body, nil
+	return body
 }
 
 func validateSandboxCreateSpec(spec SandboxCreateSpec) error {
@@ -282,11 +312,17 @@ func validateSandboxPoolSpec(spec SandboxPoolSpec) error {
 	if err := spec.Ref.Validate(); err != nil {
 		return err
 	}
-	if !sandboxIDPattern.MatchString(spec.OperationID) || spec.SandboxesPerHost < 1 || spec.SandboxesPerHost > 500 ||
-		spec.MaxHosts < 0 || spec.MaxHosts > 32 || !validIdleTimeout(spec.IdleTimeoutSeconds) {
+	if !validSandboxPoolCapacity(spec) || !sandboxIDPattern.MatchString(spec.OperationID) || !validIdleTimeout(spec.IdleTimeoutSeconds) {
 		return errors.New("hubclient: sandbox pool specification is invalid")
 	}
 	return nil
+}
+
+func validSandboxPoolCapacity(spec SandboxPoolSpec) bool {
+	return spec.SandboxesPerHost >= 1 &&
+		spec.SandboxesPerHost <= 500 &&
+		spec.MaxHosts >= 0 &&
+		spec.MaxHosts <= 32
 }
 
 func validIdleTimeout(value *int) bool {
@@ -306,7 +342,7 @@ func validateSandboxEnvironment(values map[string]string, secret bool) error {
 		return errors.New("hubclient: sandbox environment is too large")
 	}
 	for key, value := range values {
-		if !environmentKeyPattern.MatchString(key) || strings.HasPrefix(key, "SBX_") || len(value) > 64*1024 || strings.ContainsRune(value, 0) {
+		if !validSandboxEnvironmentEntry(key, value) {
 			return errors.New("hubclient: sandbox environment is invalid")
 		}
 		if !secret && key == "HF_TOKEN" {
@@ -316,39 +352,76 @@ func validateSandboxEnvironment(values map[string]string, secret bool) error {
 	return nil
 }
 
-//nolint:cyclop // Provider-state decoding is explicit and tracked by the exact HF CRAP baseline.
+func validSandboxEnvironmentEntry(key, value string) bool {
+	return environmentKeyPattern.MatchString(key) &&
+		!strings.HasPrefix(key, "SBX_") &&
+		len(value) <= 64*1024 &&
+		!strings.ContainsRune(value, 0)
+}
+
 func sandboxStateFromJob(job sandboxJobWire, namespace, localID string) (SandboxState, error) {
 	mode := job.Labels[sandboxModeLabel]
 	ref := SandboxRef{Namespace: namespace, JobID: job.ID, LocalID: localID}
-	if ref.Validate() != nil || job.Owner.Name != namespace || job.Labels[sandboxLabel] != "1" ||
-		(mode != modeDedicated && mode != modePool) || job.Labels[sandboxNonceLabel] == "" ||
-		localID != "" && mode != modePool || !validSandboxImage(firstNonempty(job.DockerImage, job.SpaceID)) ||
-		!jobHardware[job.Flavor] || !validSandboxStage(job.Status.Stage) || mode == modePool && !ValidNamespaceSegment(job.Labels[sandboxPoolLabel]) {
+	if !validSandboxJobState(job, ref, namespace, localID, mode) {
 		return SandboxState{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
 	}
-	image := job.DockerImage
-	if image == "" {
-		image = job.SpaceID
-	}
-	environment := make(map[string]string)
-	for key, value := range job.Environment {
-		if text, ok := value.(string); ok && !strings.HasPrefix(key, "SBX_") {
-			environment[key] = text
-		}
-	}
-	capacity, capacityOK := optionalEnvironmentInt(job.Environment, "SBX_CAPACITY", 1, 500)
-	maxHosts, maxHostsOK := optionalEnvironmentInt(job.Environment, "SBX_MAX_HOSTS", 1, 32)
-	idleValue, idleOK := optionalEnvironmentInt(job.Environment, "SBX_IDLE_TIMEOUT", 30, SandboxMaxLifetimeSecs)
-	if mode == modePool && (capacity == 0 || !capacityOK || !maxHostsOK || !idleOK) {
+	capacity, maxHosts, idleValue, err := sandboxStateCapacity(job.Environment, mode)
+	if err != nil {
 		return SandboxState{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
 	}
 	var idleTimeout *int
 	if _, found := job.Environment["SBX_IDLE_TIMEOUT"]; found {
 		idleTimeout = &idleValue
 	}
-	return SandboxState{Ref: SandboxRef{Namespace: namespace, JobID: job.ID, LocalID: localID}, Image: image,
-		Flavor: job.Flavor, Stage: job.Status.Stage, Mode: mode, Pool: job.Labels[sandboxPoolLabel], Environment: environment,
+	return SandboxState{Ref: SandboxRef{Namespace: namespace, JobID: job.ID, LocalID: localID}, Image: firstNonempty(job.DockerImage, job.SpaceID),
+		Flavor: job.Flavor, Stage: job.Status.Stage, Mode: mode, Pool: job.Labels[sandboxPoolLabel], Environment: sandboxUserEnvironment(job.Environment),
 		Capacity: capacity, MaxHosts: maxHosts, IdleTimeoutSeconds: idleTimeout}, nil
+}
+
+func validSandboxJobState(job sandboxJobWire, ref SandboxRef, namespace, localID, mode string) bool {
+	return validSandboxJobIdentity(job, ref, namespace) &&
+		validSandboxJobMode(job, localID, mode) &&
+		validSandboxJobRuntime(job, mode)
+}
+
+func validSandboxJobIdentity(job sandboxJobWire, ref SandboxRef, namespace string) bool {
+	return ref.Validate() == nil &&
+		job.Owner.Name == namespace &&
+		job.Labels[sandboxLabel] == "1"
+}
+
+func validSandboxJobMode(job sandboxJobWire, localID, mode string) bool {
+	return (mode == modeDedicated || mode == modePool) &&
+		job.Labels[sandboxNonceLabel] != "" &&
+		(localID == "" || mode == modePool) &&
+		(mode != modePool || ValidNamespaceSegment(job.Labels[sandboxPoolLabel]))
+}
+
+func validSandboxJobRuntime(job sandboxJobWire, mode string) bool {
+	return validSandboxImage(firstNonempty(job.DockerImage, job.SpaceID)) &&
+		jobHardware[job.Flavor] &&
+		validSandboxStage(job.Status.Stage) &&
+		(mode != modePool || ValidNamespaceSegment(job.Labels[sandboxPoolLabel]))
+}
+
+func sandboxUserEnvironment(environment map[string]any) map[string]string {
+	result := make(map[string]string)
+	for key, value := range environment {
+		if text, ok := value.(string); ok && !strings.HasPrefix(key, "SBX_") {
+			result[key] = text
+		}
+	}
+	return result
+}
+
+func sandboxStateCapacity(environment map[string]any, mode string) (int, int, int, error) {
+	capacity, capacityOK := optionalEnvironmentInt(environment, "SBX_CAPACITY", 1, 500)
+	maxHosts, maxHostsOK := optionalEnvironmentInt(environment, "SBX_MAX_HOSTS", 1, 32)
+	idleValue, idleOK := optionalEnvironmentInt(environment, "SBX_IDLE_TIMEOUT", 30, SandboxMaxLifetimeSecs)
+	if mode == modePool && (capacity == 0 || !capacityOK || !maxHostsOK || !idleOK) {
+		return 0, 0, 0, errors.New("invalid sandbox capacity")
+	}
+	return capacity, maxHosts, idleValue, nil
 }
 
 func firstNonempty(values ...string) string {

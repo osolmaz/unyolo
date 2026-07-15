@@ -63,38 +63,49 @@ func newRefsAdapter(client refsClient) func(opcatalog.Descriptor) Adapter {
 
 func (a *refsAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
-//nolint:cyclop // Ref-operation decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *refsAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
 	var target refTarget
 	if err := decodeClosed(targetRaw, &target, maxTargetBytes); err != nil || !validRefTarget(target) {
 		return Input{}, errors.New("repository ref target is invalid")
 	}
 	canonicalTarget, _ := canonical(target)
-	var arguments any
-	switch a.descriptor.Name {
-	case "repo.branch.create":
-		var value branchCreateArguments
-		if err := decodeClosed(argumentsRaw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidGitRefComponent(value.StartingPoint) {
-			return Input{}, errors.New("branch starting point is invalid")
-		}
-		arguments = value
-	case "repo.tag.create":
-		var value tagCreateArguments
-		if err := decodeClosed(argumentsRaw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidGitRefComponent(value.Revision) || len(value.Message) > 1000 {
-			return Input{}, errors.New("tag creation arguments are invalid")
-		}
-		arguments = value
-	case "repo.branch.delete", "repo.tag.delete":
-		var value emptyArguments
-		if err := decodeClosed(argumentsRaw, &value, maxArgumentsBytes); err != nil {
-			return Input{}, errors.New("ref deletion arguments must be empty")
-		}
-		arguments = value
-	default:
+	decode, found := refsArgumentDecoders[a.descriptor.Name]
+	if !found {
 		return Input{}, errors.New("repository ref operation is not implemented")
+	}
+	arguments, err := decode(argumentsRaw)
+	if err != nil {
+		return Input{}, err
 	}
 	canonicalArguments, _ := canonical(arguments)
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
+}
+
+var refsArgumentDecoders = map[string]func(json.RawMessage) (any, error){
+	"repo.branch.create": decodeBranchCreateArguments,
+	"repo.tag.create":    decodeTagCreateArguments,
+	"repo.branch.delete": decodeEmptyRefArguments,
+	"repo.tag.delete":    decodeEmptyRefArguments,
+}
+
+func decodeBranchCreateArguments(raw json.RawMessage) (any, error) {
+	var value branchCreateArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidGitRefComponent(value.StartingPoint) {
+		return nil, errors.New("branch starting point is invalid")
+	}
+	return value, nil
+}
+
+func decodeTagCreateArguments(raw json.RawMessage) (any, error) {
+	var value tagCreateArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidGitRefComponent(value.Revision) || len(value.Message) > 1000 {
+		return nil, errors.New("tag creation arguments are invalid")
+	}
+	return value, nil
+}
+
+func decodeEmptyRefArguments(raw json.RawMessage) (any, error) {
+	return decodeEmptyArguments(raw, "ref deletion arguments must be empty")
 }
 
 func (a *refsAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
@@ -150,17 +161,24 @@ func (a *refsAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 		return Outcome{}, err
 	}
 	refs, err := a.client.ListRefs(ctx, target.repoRef())
-	if err != nil || refsDigest(refs) != preconditions.ObservedDigest {
-		if err != nil {
-			return Outcome{}, err
-		}
-		return Outcome{}, errors.New("operation_precondition_failed")
+	if err := checkRefsObservation(refs, err, preconditions.ObservedDigest); err != nil {
+		return Outcome{}, err
 	}
 	err = a.executeMutation(ctx, target, preconditions, plan.Arguments)
 	if err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Result: json.RawMessage(`{"updated":true}`)}, nil
+}
+
+func checkRefsObservation(refs hubclient.Refs, readErr error, expectedDigest string) error {
+	if readErr != nil {
+		return readErr
+	}
+	if refsDigest(refs) != expectedDigest {
+		return errors.New("operation_precondition_failed")
+	}
+	return nil
 }
 
 func (a *refsAdapter) executeMutation(ctx context.Context, target refTarget, preconditions refsPreconditions, raw json.RawMessage) error {

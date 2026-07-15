@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
+	"golang.org/x/sys/unix"
 )
 
 func TestOutputBudgetCapsCombinedStreams(t *testing.T) {
@@ -78,5 +79,57 @@ func TestRunInternalChildIsNotPublicPrivilegePath(t *testing.T) {
 		if !handled || err == nil {
 			t.Fatalf("unprivileged child = %v, %v", handled, err)
 		}
+	}
+}
+
+func TestInternalPlanDescriptorAndReadValidation(t *testing.T) {
+	t.Parallel()
+	if fd, handled, err := internalPlanDescriptor([]string{"--internal-exec", "3"}); fd != 3 || !handled || err != nil {
+		t.Fatalf("descriptor = %d, %v, %v", fd, handled, err)
+	}
+	for _, args := range [][]string{
+		{"--internal-exec"},
+		{"--internal-exec", "2"},
+		{"--internal-exec", "65"},
+		{"--internal-exec", "x"},
+		{"prefix", "--internal-exec", "3", "suffix"},
+	} {
+		if _, handled, err := internalPlanDescriptor(args); !handled || err == nil {
+			t.Fatalf("invalid descriptor args %v = handled %v err %v", args, handled, err)
+		}
+	}
+	if _, handled, err := internalPlanDescriptor([]string{"serve"}); handled || err != nil {
+		t.Fatalf("public args = handled %v err %v", handled, err)
+	}
+
+	readPlan, writePlan, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := plan.EncodeCanonical(testChildPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writePlan.Write(canonical); err != nil {
+		t.Fatal(err)
+	}
+	_ = writePlan.Close()
+	planFD, err := unix.Dup(int(readPlan.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = readPlan.Close()
+	decoded, err := readInternalPlan(planFD)
+	if err != nil || decoded.RequestID != "request" {
+		t.Fatalf("readInternalPlan() = %+v, %v", decoded, err)
+	}
+}
+
+func testChildPlan() plan.Plan {
+	return plan.Plan{
+		Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", CommandID: "true",
+		TargetUser: "current", TargetUID: uint32(os.Getuid()), TargetGID: uint32(os.Getgid()), Executable: "/usr/bin/true", // #nosec G115 -- ids are non-negative.
+		WorkingDirectory: "/", Environment: []string{"LANG=C", "LC_ALL=C"}, TimeoutSeconds: 5, MaxOutputBytes: 100,
+		CatalogDigest: strings.Repeat("a", 64), RequestedDurationSeconds: 60, RequestedMaxUses: 1, CreatedAt: time.Now().UTC(),
 	}
 }

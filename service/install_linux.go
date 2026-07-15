@@ -13,74 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
-
-const (
-	maxManagedFileBytes      = 16 * 1024 * 1024
-	defaultReadinessTimeout  = 15 * time.Second
-	defaultReadinessInterval = 100 * time.Millisecond
-)
-
-var errServiceReadinessFailed = errors.New("service readiness check failed before retiring managed files")
-
-// ManagedFileArea selects the trusted root beneath which a setup file lives.
-type ManagedFileArea string
-
-const (
-	ManagedFileConfig ManagedFileArea = "config"
-	ManagedFileState  ManagedFileArea = "state"
-)
-
-// ManagedFileOwner selects the ownership class for a setup file.
-type ManagedFileOwner string
-
-const (
-	ManagedFileOwnerRoot    ManagedFileOwner = "root"
-	ManagedFileOwnerService ManagedFileOwner = "service"
-)
-
-// ManagedFile is one opaque provider-owned setup payload.
-type ManagedFile struct {
-	Area  ManagedFileArea
-	Name  string
-	Data  []byte
-	Mode  os.FileMode
-	Owner ManagedFileOwner
-}
-
-// ManagedFileRef identifies one provider-owned file that should no longer
-// exist after a successful configuration cutover.
-type ManagedFileRef struct {
-	Area ManagedFileArea
-	Name string
-}
-
-// ReadinessCheck confirms that a restarted broker initialized with its new
-// configuration before retired credentials are deleted.
-type ReadinessCheck func(context.Context) error
-
-// SystemdInstallPlan describes one complete broker systemd installation.
-type SystemdInstallPlan struct {
-	User           string
-	Group          string
-	ConfigDir      string
-	StateDir       string
-	SharedStateDir string
-	SystemdDir     string
-	UnitName       string
-	Files          []ManagedFile
-	RemoveFiles    []ManagedFileRef
-	ReadyCheck     ReadinessCheck
-	ReadyTimeout   time.Duration
-	ReadyInterval  time.Duration
-	Unit           SystemdUnit
-	NoStart        bool
-	AllowNonRoot   bool
-	Runner         CommandRunner
-}
 
 // InstallSystemd installs one broker service from a validated typed plan.
 func InstallSystemd(ctx context.Context, plan SystemdInstallPlan) error {
@@ -92,6 +27,9 @@ func InstallSystemd(ctx context.Context, plan SystemdInstallPlan) error {
 	}
 	runner := installCommandRunner(plan)
 	if err := ensureSystemAccount(ctx, runner, plan); err != nil {
+		return err
+	}
+	if err := ensureAccessGroups(ctx, runner, plan); err != nil {
 		return err
 	}
 	serviceUID, serviceGID, err := systemIdentityIDs(plan.User, plan.Group)
@@ -124,32 +62,63 @@ func installSystemdForIdentity(ctx context.Context, runner CommandRunner, plan S
 		return err
 	}
 	defer roots.close()
-	steps := []func() error{
-		func() error { return writeManagedFiles(roots, plan, serviceUID, serviceGID) },
-		func() error { return writeSystemdUnit(roots.systemd, plan) },
+	snapshot, err := captureSystemdInstall(roots, plan)
+	if err != nil {
+		return err
 	}
-	for _, step := range steps {
-		if err := step(); err != nil {
-			return err
+	defer snapshot.clear()
+	return applySystemdInstall(ctx, runner, roots, plan, serviceUID, serviceGID, snapshot)
+}
+
+func applySystemdInstall(ctx context.Context, runner CommandRunner, roots installRoots, plan SystemdInstallPlan,
+	serviceUID, serviceGID uint64, snapshot *systemdInstallSnapshot) error {
+	return (installTransaction{
+		write: func() error { return writeSystemdInstall(roots, plan, serviceUID, serviceGID) }, restore: snapshot.restore,
+		start: func() error { return startInstalledSystemdUnit(ctx, runner, plan) }, rollback: func() error { return snapshot.rollback(ctx, runner, plan) },
+		ready: func() error { return waitForSystemdReady(ctx, plan) }, noStart: plan.NoStart,
+		retire: func() error { return retireSystemdCredentials(roots, plan, snapshot) },
+	}).apply()
+}
+
+func retireSystemdCredentials(roots installRoots, plan SystemdInstallPlan, snapshot *systemdInstallSnapshot) error {
+	removed, err := captureSystemdCredentialRemovals(roots, plan.RemoveFiles)
+	if err != nil {
+		return err
+	}
+	if err := removeManagedFiles(roots, plan.RemoveFiles); err != nil {
+		return err
+	}
+	return recordSnapshotCredentialChanges(plan.Lifecycle, plan.Files, snapshot.files, func(file installFileSnapshot) previousManagedCredential {
+		return previousManagedCredential{existed: file.restorable, data: file.data}
+	}, removed)
+}
+
+func captureSystemdCredentialRemovals(roots installRoots, files []ManagedFileRef) (map[string]string, error) {
+	return captureCredentialRemovals(files, func(file ManagedFileRef) (bool, []byte, error) {
+		snapshot, _, err := captureInstallFile(installTarget{root: managedFileRoot(roots, file.Area), name: file.Name})
+		if err != nil {
+			return false, nil, err
 		}
-	}
-	if err := startInstalledSystemdUnit(ctx, runner, plan); err != nil {
+		return snapshot.restorable, snapshot.data, nil
+	})
+}
+
+func writeSystemdInstall(roots installRoots, plan SystemdInstallPlan, serviceUID, serviceGID uint64) error {
+	if err := writeManagedFiles(roots, plan, serviceUID, serviceGID); err != nil {
 		return err
 	}
-	if plan.NoStart {
-		return nil
-	}
-	if err := waitForSystemdReady(ctx, plan); err != nil {
-		return err
-	}
-	return removeManagedFiles(roots, plan.RemoveFiles)
+	return writeSystemdUnits(roots.systemd, plan)
 }
 
 func startInstalledSystemdUnit(ctx context.Context, runner CommandRunner, plan SystemdInstallPlan) error {
 	if plan.NoStart {
 		return nil
 	}
-	return activateSystemdUnit(ctx, runner, plan.UnitName)
+	units := plan.ActivationUnits
+	if len(units) == 0 {
+		units = []string{plan.UnitName}
+	}
+	return activateSystemdUnits(ctx, runner, units)
 }
 
 // Validate validates a systemd install plan without mutating the host.
@@ -170,6 +139,9 @@ func validateInstallFields(plan SystemdInstallPlan) error {
 	if err := validatex.AccountNames(map[string]string{"user": plan.User, "group": plan.Group}); err != nil {
 		return err
 	}
+	if err := validateAccessGroups(plan); err != nil {
+		return err
+	}
 	if !validUnitName(plan.UnitName) {
 		return fmt.Errorf("systemd unit name %q must be a literal .service basename", plan.UnitName)
 	}
@@ -179,14 +151,29 @@ func validateInstallFields(plan SystemdInstallPlan) error {
 	return validateReadinessSettings(plan)
 }
 
+func validateAccessGroups(plan SystemdInstallPlan) error {
+	values := make(map[string]string, len(plan.AdditionalGroups))
+	seen := map[string]struct{}{plan.Group: {}}
+	for index, group := range plan.AdditionalGroups {
+		values[fmt.Sprintf("additional group %d", index+1)] = group
+		if _, exists := seen[group]; exists {
+			return fmt.Errorf("duplicate system group %q", group)
+		}
+		seen[group] = struct{}{}
+	}
+	for group, members := range plan.GroupMembers {
+		if _, exists := seen[group]; !exists {
+			return fmt.Errorf("member group %q is not managed by this install plan", group)
+		}
+		for index, member := range members {
+			values[fmt.Sprintf("%s member %d", group, index+1)] = member
+		}
+	}
+	return validatex.AccountNames(values)
+}
+
 func validateReadinessSettings(plan SystemdInstallPlan) error {
-	if plan.ReadyTimeout < 0 || plan.ReadyInterval < 0 {
-		return errors.New("readiness timeout and interval must not be negative")
-	}
-	if len(plan.RemoveFiles) > 0 && !plan.NoStart && plan.ReadyCheck == nil {
-		return errors.New("managed file retirement requires a readiness check")
-	}
-	return nil
+	return validateInstallReadiness(plan.ReadyTimeout, plan.ReadyInterval, len(plan.RemoveFiles), plan.NoStart, plan.ReadyCheck)
 }
 
 func validUnitName(name string) bool {
@@ -281,11 +268,61 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 	}
 	preview := plan.Unit
 	preview.PathValidation = PathValidationPreview
-	_, err := RenderSystemd(preview)
-	return err
+	if _, err := RenderSystemd(preview); err != nil {
+		return err
+	}
+	return validateSocketInstallUnits(plan)
+}
+
+func validateSocketInstallUnits(plan SystemdInstallPlan) error {
+	seen := map[string]struct{}{plan.UnitName: {}}
+	for _, socket := range plan.SocketUnits {
+		if err := validateSocketInstallUnit(plan.UnitName, socket, seen); err != nil {
+			return err
+		}
+	}
+	for _, name := range plan.ActivationUnits {
+		if _, exists := seen[name]; !exists {
+			return fmt.Errorf("activation unit %q is not managed by this plan", name)
+		}
+	}
+	return nil
+}
+
+func validateSocketInstallUnit(serviceName string, socket SystemdSocketInstall, seen map[string]struct{}) error {
+	if !validSocketUnitName(socket.UnitName) {
+		return fmt.Errorf("systemd socket unit name %q must be a literal .socket basename", socket.UnitName)
+	}
+	if _, exists := seen[socket.UnitName]; exists {
+		return fmt.Errorf("duplicate systemd unit name %q", socket.UnitName)
+	}
+	seen[socket.UnitName] = struct{}{}
+	if socket.Unit.Service != serviceName {
+		return fmt.Errorf("systemd socket unit %q targets an unmanaged service", socket.UnitName)
+	}
+	if _, err := RenderSystemdSocket(socket.Unit); err != nil {
+		return fmt.Errorf("render %s: %w", socket.UnitName, err)
+	}
+	return nil
+}
+
+func validSocketUnitName(name string) bool {
+	return strings.HasSuffix(name, ".socket") && filepath.Base(name) == name && validUnitNameCharacters(name)
+}
+
+func validUnitNameCharacters(name string) bool {
+	for _, char := range name {
+		if !isUnitNameCharacter(char) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateManagedFiles(plan SystemdInstallPlan) error {
+	if err := validateCredentialClasses(plan.Files, plan.RemoveFiles); err != nil {
+		return err
+	}
 	seen := make(map[string]struct{}, len(plan.Files)+len(plan.RemoveFiles))
 	environmentManaged, err := validateManagedFileWrites(plan, seen)
 	if err != nil {
@@ -355,8 +392,8 @@ func validateManagedFilePlacement(file ManagedFile) error {
 	if err := validateManagedFileArea(file.Area, file.Name); err != nil {
 		return err
 	}
-	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
-		return fmt.Errorf("managed file %q has invalid owner %q", file.Name, file.Owner)
+	if err := validateManagedFileOwner(file); err != nil {
+		return err
 	}
 	return nil
 }
@@ -369,108 +406,6 @@ func validateManagedFileRef(file ManagedFileRef) error {
 		return fmt.Errorf("retired managed file %q must be in the config area", file.Name)
 	}
 	return nil
-}
-
-func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
-	if plan.ReadyCheck == nil {
-		if len(plan.RemoveFiles) > 0 {
-			return errors.New("managed file retirement requires a readiness check")
-		}
-		return nil
-	}
-	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
-	defer cancel()
-	return pollSystemdReadiness(readyContext, plan.ReadyCheck, durationOr(plan.ReadyInterval, defaultReadinessInterval))
-}
-
-func pollSystemdReadiness(ctx context.Context, check ReadinessCheck, interval time.Duration) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		if ctx.Err() != nil {
-			return errServiceReadinessFailed
-		}
-		if err := check(ctx); err == nil {
-			if ctx.Err() != nil {
-				return errServiceReadinessFailed
-			}
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return errServiceReadinessFailed
-		case <-ticker.C:
-		}
-	}
-}
-
-func durationOr(value, fallback time.Duration) time.Duration {
-	if value == 0 {
-		return fallback
-	}
-	return value
-}
-
-func validateManagedFileArea(area ManagedFileArea, name string) error {
-	if area != ManagedFileConfig && area != ManagedFileState {
-		return fmt.Errorf("managed file %q has invalid area %q", name, area)
-	}
-	return nil
-}
-
-func validateManagedFilePayload(file ManagedFile) error {
-	if len(file.Data) > maxManagedFileBytes {
-		return fmt.Errorf("managed file %q exceeds %d bytes", file.Name, maxManagedFileBytes)
-	}
-	return nil
-}
-
-func validateManagedFilePermissions(plan SystemdInstallPlan, file ManagedFile) error {
-	if file.Mode == 0 || file.Mode&^os.ModePerm != 0 || file.Mode.Perm()&0o022 != 0 {
-		return fmt.Errorf("managed file %q has unsafe mode", file.Name)
-	}
-	if !managedFileReadableByService(plan, file) {
-		return fmt.Errorf("managed file %q is not readable by the service", file.Name)
-	}
-	return nil
-}
-
-func validManagedFileName(name string) bool {
-	if name == "" || name == "." || filepath.Base(name) != name || validatex.HasParentTraversal(name) {
-		return false
-	}
-	for _, char := range name {
-		if !isManagedFileNameCharacter(char) {
-			return false
-		}
-	}
-	return true
-}
-
-func isManagedFileNameCharacter(char rune) bool {
-	return char != '/' && isSystemdPathCharacter(char)
-}
-
-func managedFileReadableByService(plan SystemdInstallPlan, file ManagedFile) bool {
-	if file.Owner == ManagedFileOwnerService || plan.User == "root" {
-		return file.Mode.Perm()&0o400 != 0
-	}
-	return file.Mode.Perm()&0o044 != 0
-}
-
-func managedFilePath(plan SystemdInstallPlan, file ManagedFile) string {
-	return managedFileRefPath(plan, ManagedFileRef{Area: file.Area, Name: file.Name})
-}
-
-func managedFileRefPath(plan SystemdInstallPlan, file ManagedFileRef) string {
-	if file.Area == ManagedFileState {
-		return filepath.Join(plan.StateDir, file.Name)
-	}
-	return filepath.Join(plan.ConfigDir, file.Name)
-}
-
-func managedFileKey(area ManagedFileArea, name string) string {
-	return string(area) + "/" + name
 }
 
 type execCommandRunner struct{}
@@ -490,6 +425,39 @@ func ensureSystemAccount(ctx context.Context, runner CommandRunner, plan Systemd
 	}
 	if err := runner.Run(ctx, "useradd", "--system", "--gid", plan.Group, "--home-dir", plan.StateDir, "--shell", "/usr/sbin/nologin", plan.User); err != nil {
 		return fmt.Errorf("create service user %q: %w", plan.User, err)
+	}
+	return nil
+}
+
+func ensureAccessGroups(ctx context.Context, runner CommandRunner, plan SystemdInstallPlan) error {
+	for _, group := range plan.AdditionalGroups {
+		if err := ensureAccessGroup(ctx, runner, group, plan.GroupMembers[group]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureAccessGroup(ctx context.Context, runner CommandRunner, group string, members []string) error {
+	if runner.Run(ctx, "getent", "group", group) != nil {
+		if err := runner.Run(ctx, "groupadd", "--system", group); err != nil {
+			return fmt.Errorf("create access group %q: %w", group, err)
+		}
+	}
+	for _, member := range members {
+		if err := addAccessGroupMember(ctx, runner, group, member); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addAccessGroupMember(ctx context.Context, runner CommandRunner, group, member string) error {
+	if runner.Run(ctx, "id", "-u", member) != nil {
+		return fmt.Errorf("access group member %q does not exist", member)
+	}
+	if err := runner.Run(ctx, "usermod", "--append", "--groups", group, member); err != nil {
+		return fmt.Errorf("add %q to access group %q: %w", member, group, err)
 	}
 	return nil
 }
@@ -773,7 +741,7 @@ func managedFileRoot(roots installRoots, area ManagedFileArea) *os.Root {
 	return roots.config
 }
 
-func writeSystemdUnit(root *os.Root, plan SystemdInstallPlan) error {
+func writeSystemdUnits(root *os.Root, plan SystemdInstallPlan) error {
 	unit := plan.Unit
 	if plan.AllowNonRoot {
 		unit.PathValidation = PathValidationPreview
@@ -785,7 +753,19 @@ func writeSystemdUnit(root *os.Root, plan SystemdInstallPlan) error {
 		return err
 	}
 	uid, gid := installRootIDs(plan)
-	return writeAtomicInstallFile(root, plan.UnitName, []byte(body), 0o644, uid, gid, plan.AllowNonRoot)
+	if err := writeAtomicInstallFile(root, plan.UnitName, []byte(body), 0o644, uid, gid, plan.AllowNonRoot); err != nil {
+		return err
+	}
+	for _, socket := range plan.SocketUnits {
+		body, renderErr := RenderSystemdSocket(socket.Unit)
+		if renderErr != nil {
+			return renderErr
+		}
+		if err := writeAtomicInstallFile(root, socket.UnitName, []byte(body), 0o644, uid, gid, plan.AllowNonRoot); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeAtomicInstallFile(root *os.Root, name string, data []byte, mode os.FileMode, uid uint64, gid uint64, preview bool) error {
@@ -851,15 +831,17 @@ func syncInstallRoot(root *os.Root) error {
 	return handle.Close()
 }
 
-func activateSystemdUnit(ctx context.Context, runner CommandRunner, unitName string) error {
+func activateSystemdUnits(ctx context.Context, runner CommandRunner, unitNames []string) error {
 	if err := runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("systemctl daemon-reload: %w", err)
 	}
-	if err := runner.Run(ctx, "systemctl", "enable", unitName); err != nil {
-		return fmt.Errorf("systemctl enable %s: %w", unitName, err)
-	}
-	if err := runner.Run(ctx, "systemctl", "restart", unitName); err != nil {
-		return fmt.Errorf("systemctl restart %s: %w", unitName, err)
+	for _, unitName := range unitNames {
+		if err := runner.Run(ctx, "systemctl", "enable", unitName); err != nil {
+			return fmt.Errorf("systemctl enable %s: %w", unitName, err)
+		}
+		if err := runner.Run(ctx, "systemctl", "restart", unitName); err != nil {
+			return fmt.Errorf("systemctl restart %s: %w", unitName, err)
+		}
 	}
 	return nil
 }

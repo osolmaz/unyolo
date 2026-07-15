@@ -54,16 +54,29 @@ type SandboxVolume struct {
 	Path      string `json:"path,omitempty"`
 }
 
-//nolint:cyclop // Volume constraints are explicit and tracked by the exact HF CRAP baseline.
 func (v SandboxVolume) validate() error {
 	parts := strings.Split(v.Source, "/")
-	if (v.Type != "bucket" && v.Type != "model" && v.Type != "dataset" && v.Type != "space") ||
-		len(parts) != 2 || !ValidNamespaceSegment(parts[0]) || !ValidNamespaceSegment(parts[1]) ||
-		!validSandboxPath(v.MountPath) || !strings.HasPrefix(v.MountPath, "/") ||
-		len(v.Revision) > 200 || len(v.Path) > 1024 || strings.ContainsRune(v.Path, 0) {
+	if !validSandboxVolumeType(v.Type) || !validSandboxVolumeSource(parts) ||
+		!validSandboxVolumeMount(v.MountPath) || !validSandboxVolumeSubpath(v.Revision, v.Path) {
 		return errors.New("hubclient: sandbox volume is invalid")
 	}
 	return nil
+}
+
+func validSandboxVolumeType(value string) bool {
+	return value == "bucket" || value == "model" || value == "dataset" || value == "space"
+}
+
+func validSandboxVolumeSource(parts []string) bool {
+	return len(parts) == 2 && ValidNamespaceSegment(parts[0]) && ValidNamespaceSegment(parts[1])
+}
+
+func validSandboxVolumeMount(value string) bool {
+	return validSandboxPath(value) && strings.HasPrefix(value, "/")
+}
+
+func validSandboxVolumeSubpath(revision, path string) bool {
+	return len(revision) <= 200 && len(path) <= 1024 && !strings.ContainsRune(path, 0)
 }
 
 func ValidateSandboxVolume(volume SandboxVolume) error { return volume.validate() }

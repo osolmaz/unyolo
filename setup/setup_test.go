@@ -16,7 +16,7 @@ func TestParseAndConfigureClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts, help, err := ParseClient(&bytes.Buffer{}, []string{
-		"--client", "bob", "--url", "http://127.0.0.1:8080", "--secret-file", secretFile, "--home-dir", home,
+		"--client", "bob", "--endpoint", "unix:///run/brokerkit/test/agent.sock", "--secret-file", secretFile, "--home-dir", home,
 	}, ClientDefaults{BrokerName: "test-broker", EnvPrefix: "TEST_BROKER", ClientName: "agent"})
 	if err != nil || help {
 		t.Fatalf("ParseClient() opts=%+v help=%v err=%v", opts, help, err)
@@ -46,10 +46,10 @@ func TestParseClientHelpAndValidation(t *testing.T) {
 	}
 	invalid := [][]string{
 		{"extra"},
-		{"--url", "http://127.0.0.1", "--secret-file", "/tmp/s", "--home-dir", "/tmp", "--client", ""},
+		{"--endpoint", "unix:///run/brokerkit/test/agent.sock", "--secret-file", "/tmp/s", "--home-dir", "/tmp", "--client", ""},
 		{"--client", "bob", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
-		{"--client", "bob", "--url", "https://user:credential@broker.example", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
-		{"--client", "bob", "--url", "http://127.0.0.1", "--home-dir", "/tmp"},
+		{"--client", "bob", "--endpoint", "activation://agent", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
+		{"--client", "bob", "--endpoint", "unix:///run/brokerkit/test/agent.sock", "--home-dir", "/tmp"},
 	}
 	for _, args := range invalid {
 		if _, _, err := ParseClient(&bytes.Buffer{}, args, ClientDefaults{BrokerName: "test-broker", EnvPrefix: "TEST", ClientName: "bob"}); err == nil {
@@ -65,7 +65,7 @@ func TestConfigureClientRejectsWeakSecret(t *testing.T) {
 	}
 	_, err := ConfigureClient(&bytes.Buffer{}, ClientOptions{
 		BrokerName: "test-broker", EnvPrefix: "TEST", ClientName: "bob",
-		URL: "http://127.0.0.1", SecretFile: secretFile, HomeDir: t.TempDir(),
+		Endpoint: "unix:///run/brokerkit/test/agent.sock", SecretFile: secretFile, HomeDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("ConfigureClient(weak secret) error = nil")
@@ -129,14 +129,15 @@ func assertInvalidSecretSources(t *testing.T) {
 
 func TestSystemdOptions(t *testing.T) {
 	opts := DefaultSystemdOptions(SystemdDefaults{
-		BrokerName: "test-broker", User: "test-broker", Group: "test-broker", ClientName: "bob", BindAddr: "127.0.0.1", Port: 8080,
+		BrokerName: "test-broker", User: "test-broker", Group: "test-broker", ClientName: "agent-a", Endpoint: "activation://agent",
 	})
+	opts.AgentUser, opts.OperatorUser = "agent-user", "operator-user"
 	opts.BinaryPath = "/usr/local/bin/test-broker"
 	if err := opts.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if opts.ListenAddress() != "127.0.0.1:8080" {
-		t.Fatalf("ListenAddress() = %q", opts.ListenAddress())
+	if opts.Endpoint != "activation://agent" {
+		t.Fatalf("Endpoint = %q", opts.Endpoint)
 	}
 	for _, client := range []string{"ci@host", "123"} {
 		valid := opts
@@ -149,8 +150,9 @@ func TestSystemdOptions(t *testing.T) {
 		func(value *SystemdOptions) { value.User = "bad=name" },
 		func(value *SystemdOptions) { value.ClientName = "bad=name" },
 		func(value *SystemdOptions) { value.ConfigDir = "relative" },
-		func(value *SystemdOptions) { value.BindAddr = "all" },
-		func(value *SystemdOptions) { value.Port = 0 },
+		func(value *SystemdOptions) { value.Endpoint = "tcp://0.0.0.0:1" },
+		func(value *SystemdOptions) { value.Endpoint = "fd://3" },
+		func(value *SystemdOptions) { value.OperatorAccessGroup = value.AgentAccessGroup },
 	} {
 		invalid := opts
 		mutate(&invalid)
@@ -161,7 +163,8 @@ func TestSystemdOptions(t *testing.T) {
 }
 
 func TestFinalizeSystemdRejectsInvalidBinary(t *testing.T) {
-	opts := DefaultSystemdOptions(SystemdDefaults{BrokerName: "test", User: "test", Group: "test", ClientName: "bob", BindAddr: "127.0.0.1", Port: 1})
+	opts := DefaultSystemdOptions(SystemdDefaults{BrokerName: "test", User: "test", Group: "test", ClientName: "agent-a", Endpoint: "activation://agent"})
+	opts.AgentUser, opts.OperatorUser = "agent-user", "operator-user"
 	for _, path := range []string{"relative", filepath.Join(t.TempDir(), "missing"), t.TempDir()} {
 		opts.BinaryPath = path
 		if _, err := FinalizeSystemd(opts); err == nil {
@@ -187,8 +190,9 @@ func TestValidateTrustedExecutable(t *testing.T) {
 		t.Fatalf("validateTrustedExecutable(system binary): %v", err)
 	}
 	opts := DefaultSystemdOptions(SystemdDefaults{
-		BrokerName: "test", User: "test", Group: "test", ClientName: "bob", BindAddr: "127.0.0.1", Port: 1,
+		BrokerName: "test", User: "test", Group: "test", ClientName: "agent-a", Endpoint: "activation://agent",
 	})
+	opts.AgentUser, opts.OperatorUser = "agent-user", "operator-user"
 	opts.BinaryPath = resolved
 	if _, err := FinalizeSystemd(opts); err != nil {
 		t.Fatalf("FinalizeSystemd(system binary): %v", err)

@@ -64,7 +64,6 @@ func authenticatedUserMatches(target map[string]any, id int64, login string) boo
 	return targetID == 0 || targetID == id
 }
 
-//nolint:cyclop // Credential-domain selection remains explicit at the provider trust boundary.
 func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descriptor, target map[string]any, userID int64) (Metadata, error) {
 	if m == nil {
 		return Metadata{}, errors.New("GitHub credential provider is unavailable")
@@ -74,59 +73,88 @@ func (m *Manager) SelectMetadata(ctx context.Context, descriptor opcatalog.Descr
 	}
 	switch descriptor.CredentialKind {
 	case string(KindAppJWT):
-		if m.app == nil {
-			return Metadata{}, errors.New("GitHub App credential is unavailable")
-		}
-		return Metadata{Kind: KindAppJWT, APIHost: m.apiURL.Host}, nil
+		return m.selectAppMetadata()
 	case string(KindInstallation):
-		if owner, repo, ok := targetregistry.RepositoryIdentity(target); ok {
-			return m.ResolveRepository(ctx, descriptor.Name, owner, repo)
-		}
-		installationID := installationTargetID(target)
-		if installationID <= 0 {
-			account := installationAccount(target)
-			if account != "" {
-				metadata, err := m.InstallationForAccount(ctx, account)
-				if err != nil {
-					return Metadata{}, err
-				}
-				installationID = metadata.InstallationID
-			}
-		}
-		if installationID <= 0 {
-			return Metadata{}, errors.New("GitHub installation selector is incomplete")
-		}
-		return Metadata{
-			Kind:                  KindInstallation,
-			InstallationID:        installationID,
-			RepositoryIDs:         repositoryIDs(target),
-			Permissions:           clonePermissions(descriptor.RequiredGitHubPermissions),
-			AllowEmptyPermissions: descriptor.AllowEmptyInstallationPermissions,
-			APIHost:               m.apiURL.Host,
-		}, nil
+		return m.selectInstallationMetadata(ctx, descriptor, target)
 	case string(KindUser):
-		if userID <= 0 {
-			userID = int64Field(target, "user_id")
-		}
-		if userID <= 0 && strings.EqualFold(targetregistry.String(target, "kind"), "user") {
-			userID = int64Field(target, "id")
-		}
-		if userID <= 0 {
-			return Metadata{}, errors.New("GitHub user selector is incomplete")
-		}
-		credential, err := m.UserCredential(ctx, userID)
-		if err != nil {
-			return Metadata{}, err
-		}
-		return credential.Metadata(), nil
+		return m.selectUserMetadata(ctx, target, userID)
 	case string(KindDevelopmentToken):
-		if m.development == nil {
-			return Metadata{}, errors.New("GitHub development credential is unavailable")
-		}
-		return m.development.Metadata(), nil
+		return m.selectDevelopmentMetadata()
 	default:
 		return Metadata{}, fmt.Errorf("GitHub credential kind %q is unsupported", descriptor.CredentialKind)
 	}
+}
+
+func (m *Manager) selectAppMetadata() (Metadata, error) {
+	if m.app == nil {
+		return Metadata{}, errors.New("GitHub App credential is unavailable")
+	}
+	return Metadata{Kind: KindAppJWT, APIHost: m.apiURL.Host}, nil
+}
+
+func (m *Manager) selectInstallationMetadata(ctx context.Context, descriptor opcatalog.Descriptor, target map[string]any) (Metadata, error) {
+	if owner, repo, ok := targetregistry.RepositoryIdentity(target); ok {
+		return m.ResolveRepository(ctx, descriptor.Name, owner, repo)
+	}
+	installationID, err := m.selectedInstallationID(ctx, target)
+	if err != nil {
+		return Metadata{}, err
+	}
+	return Metadata{
+		Kind:                  KindInstallation,
+		InstallationID:        installationID,
+		RepositoryIDs:         repositoryIDs(target),
+		Permissions:           clonePermissions(descriptor.RequiredGitHubPermissions),
+		AllowEmptyPermissions: descriptor.AllowEmptyInstallationPermissions,
+		APIHost:               m.apiURL.Host,
+	}, nil
+}
+
+func (m *Manager) selectedInstallationID(ctx context.Context, target map[string]any) (int64, error) {
+	if installationID := installationTargetID(target); installationID > 0 {
+		return installationID, nil
+	}
+	account := installationAccount(target)
+	if account == "" {
+		return 0, errors.New("GitHub installation selector is incomplete")
+	}
+	metadata, err := m.InstallationForAccount(ctx, account)
+	if err != nil {
+		return 0, err
+	}
+	return metadata.InstallationID, nil
+}
+
+func (m *Manager) selectUserMetadata(ctx context.Context, target map[string]any, userID int64) (Metadata, error) {
+	userID = selectedUserID(target, userID)
+	if userID <= 0 {
+		return Metadata{}, errors.New("GitHub user selector is incomplete")
+	}
+	credential, err := m.UserCredential(ctx, userID)
+	if err != nil {
+		return Metadata{}, err
+	}
+	return credential.Metadata(), nil
+}
+
+func selectedUserID(target map[string]any, userID int64) int64 {
+	if userID > 0 {
+		return userID
+	}
+	if targetID := int64Field(target, "user_id"); targetID > 0 {
+		return targetID
+	}
+	if strings.EqualFold(targetregistry.String(target, "kind"), "user") {
+		return int64Field(target, "id")
+	}
+	return 0
+}
+
+func (m *Manager) selectDevelopmentMetadata() (Metadata, error) {
+	if m.development == nil {
+		return Metadata{}, errors.New("GitHub development credential is unavailable")
+	}
+	return m.development.Metadata(), nil
 }
 
 func installationAccount(target map[string]any) string {
@@ -198,23 +226,15 @@ func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding op
 	if m == nil {
 		return nil, errors.New("GitHub credential provider is unavailable")
 	}
-	path, err := restPath(binding, target, arguments)
+	request, err := m.newRESTRequest(ctx, binding, target, arguments)
 	if err != nil {
 		return nil, err
 	}
-	query, err := restQuery(binding, arguments)
-	if err != nil {
-		return nil, err
-	}
-	body, err := restRequestBody(arguments, binding.RequestBytesLimit)
-	if err != nil {
-		return nil, err
-	}
-	unescapedPath, err := url.PathUnescape(path)
-	if err != nil {
-		return nil, errors.New("GitHub API path is invalid")
-	}
-	requestURL, err := m.bindingURL(binding, unescapedPath, path, query)
+	return m.doAPI(ctx, selector, request)
+}
+
+func (m *Manager) newRESTRequest(ctx context.Context, binding opbinding.Binding, target, arguments map[string]any) (*http.Request, error) {
+	requestURL, body, err := m.restRequestURLAndBody(binding, target, arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -226,11 +246,33 @@ func (m *Manager) executeREST(ctx context.Context, selector Metadata, binding op
 	if len(body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := m.doAPI(ctx, selector, request)
+	return request, nil
+}
+
+func (m *Manager) restRequestURLAndBody(binding opbinding.Binding, target, arguments map[string]any) (string, []byte, error) {
+	path, query, err := restPathAndQuery(binding, target, arguments)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return response, nil
+	body, err := restRequestBody(arguments, binding.RequestBytesLimit)
+	if err != nil {
+		return "", nil, err
+	}
+	unescapedPath, err := url.PathUnescape(path)
+	if err != nil {
+		return "", nil, errors.New("GitHub API path is invalid")
+	}
+	requestURL, err := m.bindingURL(binding, unescapedPath, path, query)
+	return requestURL, body, err
+}
+
+func restPathAndQuery(binding opbinding.Binding, target, arguments map[string]any) (string, url.Values, error) {
+	path, err := restPath(binding, target, arguments)
+	if err != nil {
+		return "", nil, err
+	}
+	query, err := restQuery(binding, arguments)
+	return path, query, err
 }
 
 func restRequestBody(arguments map[string]any, limit int64) ([]byte, error) {
@@ -279,31 +321,12 @@ func (m *Manager) ExecuteGraphQL(ctx context.Context, selector Metadata, documen
 	return decodeGraphQLResponse(response, document)
 }
 
-//nolint:cyclop // Upload bounds and immutable binding projection remain explicit at the stream boundary.
 func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any,
 	source io.Reader, size int64, mediaType string) (ExecutionResult, error) {
-	if m == nil || source == nil || size <= 0 || size > binding.RequestBytesLimit || strings.TrimSpace(mediaType) == "" {
-		return ExecutionResult{}, errors.New("GitHub stream upload is invalid")
-	}
-	path, err := restPath(binding, target, arguments)
+	request, err := m.newRESTUploadRequest(ctx, binding, target, arguments, source, size, mediaType)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
-	query, err := restQuery(binding, arguments)
-	if err != nil {
-		return ExecutionResult{}, err
-	}
-	requestURL, err := m.bindingRESTURL(binding, path, query)
-	if err != nil {
-		return ExecutionResult{}, err
-	}
-	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL, source)
-	if err != nil {
-		return ExecutionResult{}, errors.New("create GitHub stream upload request")
-	}
-	request.ContentLength = size
-	request.Header.Set("Accept", binding.MediaType)
-	request.Header.Set("Content-Type", mediaType)
 	//nolint:bodyclose // decodeRESTResponse consumes and closes the returned body on every path.
 	response, err := m.doAPIStream(ctx, selector, request)
 	if err != nil {
@@ -312,15 +335,56 @@ func (m *Manager) ExecuteRESTUpload(ctx context.Context, selector Metadata, bind
 	return decodeRESTResponse(response, binding)
 }
 
-func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (*http.Response, error) {
-	if m == nil || binding.StreamDirection != "download" {
-		return nil, errors.New("GitHub stream download is invalid")
+func (m *Manager) newRESTUploadRequest(ctx context.Context, binding opbinding.Binding, target, arguments map[string]any, source io.Reader, size int64, mediaType string) (*http.Request, error) {
+	if err := validateRESTUpload(m, binding, source, size, mediaType); err != nil {
+		return nil, err
 	}
 	path, err := restPath(binding, target, arguments)
 	if err != nil {
 		return nil, err
 	}
 	query, err := restQuery(binding, arguments)
+	if err != nil {
+		return nil, err
+	}
+	requestURL, err := m.bindingRESTURL(binding, path, query)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, binding.Method, requestURL, source)
+	if err != nil {
+		return nil, errors.New("create GitHub stream upload request")
+	}
+	request.ContentLength = size
+	request.Header.Set("Accept", binding.MediaType)
+	request.Header.Set("Content-Type", mediaType)
+	return request, nil
+}
+
+func validateRESTUpload(m *Manager, binding opbinding.Binding, source io.Reader, size int64, mediaType string) error {
+	if m == nil || source == nil || size <= 0 || size > binding.RequestBytesLimit || strings.TrimSpace(mediaType) == "" {
+		return errors.New("GitHub stream upload is invalid")
+	}
+	return nil
+}
+
+func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, binding opbinding.Binding, target, arguments map[string]any) (*http.Response, error) {
+	request, err := m.newRESTDownloadRequest(ctx, binding, target, arguments)
+	if err != nil {
+		return nil, err
+	}
+	response, err := m.doAPIStreamRequest(ctx, selector, request)
+	if err != nil {
+		return nil, err
+	}
+	return m.followDownloadRedirects(ctx, request.URL, response)
+}
+
+func (m *Manager) newRESTDownloadRequest(ctx context.Context, binding opbinding.Binding, target, arguments map[string]any) (*http.Request, error) {
+	if m == nil || binding.StreamDirection != "download" {
+		return nil, errors.New("GitHub stream download is invalid")
+	}
+	path, query, err := restPathAndQuery(binding, target, arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -333,11 +397,7 @@ func (m *Manager) ExecuteRESTDownload(ctx context.Context, selector Metadata, bi
 		return nil, errors.New("create GitHub stream download request")
 	}
 	request.Header.Set("Accept", "application/octet-stream")
-	response, err := m.doAPIStreamRequest(ctx, selector, request)
-	if err != nil {
-		return nil, err
-	}
-	return m.followDownloadRedirects(ctx, request.URL, response)
+	return request, nil
 }
 
 func (m *Manager) doAPIRequest(ctx context.Context, selector Metadata, request *http.Request) (*http.Response, error) {
@@ -372,22 +432,13 @@ func (m *Manager) doAPIRequestWithTimeout(ctx context.Context, selector Metadata
 
 func (m *Manager) followDownloadRedirects(ctx context.Context, origin *url.URL, response *http.Response) (*http.Response, error) {
 	for redirects := 0; response.StatusCode >= 300 && response.StatusCode < 400; redirects++ {
-		if redirects >= 3 {
-			_ = response.Body.Close()
-			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
-		}
-		location, err := response.Location()
-		_ = response.Body.Close()
-		if err != nil || !allowedDownloadURL(origin, location) {
-			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
-		}
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, location.String(), http.NoBody)
+		location, err := nextDownloadLocation(origin, response, redirects)
 		if err != nil {
-			return nil, APIError{Code: "redirect_not_allowed", StatusCode: response.StatusCode}
+			return nil, err
 		}
-		response, err = m.streamClient().Do(request)
+		response, err = m.followDownloadRedirect(ctx, location, response.StatusCode)
 		if err != nil {
-			return nil, APIError{Code: "unavailable"}
+			return nil, err
 		}
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
@@ -397,13 +448,45 @@ func (m *Manager) followDownloadRedirects(ctx context.Context, origin *url.URL, 
 	return response, nil
 }
 
+func nextDownloadLocation(origin *url.URL, response *http.Response, redirects int) (*url.URL, error) {
+	status := response.StatusCode
+	if redirects >= 3 {
+		_ = response.Body.Close()
+		return nil, APIError{Code: "redirect_not_allowed", StatusCode: status}
+	}
+	location, err := response.Location()
+	_ = response.Body.Close()
+	if err != nil || !allowedDownloadURL(origin, location) {
+		return nil, APIError{Code: "redirect_not_allowed", StatusCode: status}
+	}
+	return location, nil
+}
+
+func (m *Manager) followDownloadRedirect(ctx context.Context, location *url.URL, status int) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, location.String(), http.NoBody)
+	if err != nil {
+		return nil, APIError{Code: "redirect_not_allowed", StatusCode: status}
+	}
+	response, err := m.streamClient().Do(request)
+	if err != nil {
+		return nil, APIError{Code: "unavailable"}
+	}
+	return response, nil
+}
+
 func allowedDownloadURL(origin, target *url.URL) bool {
-	if target == nil || target.User != nil || target.Hostname() == "" {
-		return false
-	}
-	if target.Scheme != "https" && (target.Scheme != origin.Scheme || !strings.EqualFold(target.Host, origin.Host)) {
-		return false
-	}
+	return validRedirectTarget(target) && allowedRedirectScheme(origin, target) && allowedRedirectHost(origin, target)
+}
+
+func validRedirectTarget(target *url.URL) bool {
+	return target != nil && target.User == nil && target.Hostname() != ""
+}
+
+func allowedRedirectScheme(origin, target *url.URL) bool {
+	return target.Scheme == "https" || target.Scheme == origin.Scheme && strings.EqualFold(target.Host, origin.Host)
+}
+
+func allowedRedirectHost(origin, target *url.URL) bool {
 	host := strings.ToLower(target.Hostname())
 	return strings.EqualFold(target.Host, origin.Host) || strings.HasSuffix(host, ".githubusercontent.com") ||
 		strings.HasSuffix(host, ".github.com") || strings.HasSuffix(host, ".blob.core.windows.net")
@@ -776,81 +859,5 @@ func integerValue(value any) (int64, bool) {
 		return number, err == nil
 	default:
 		return 0, false
-	}
-}
-
-func projectJSON(value any, projection []string) (any, bool) {
-	if len(projection) == 0 {
-		return value, true
-	}
-	nameProjection := true
-	allowed := make(map[string]bool, len(projection))
-	for _, entry := range projection {
-		allowed[entry] = true
-		if strings.Contains(entry, ".") {
-			nameProjection = false
-		}
-	}
-	if nameProjection {
-		return projectByName(value, allowed)
-	}
-	return projectByPath(value, allowed, "")
-}
-
-func projectByName(value any, allowed map[string]bool) (any, bool) {
-	switch typed := value.(type) {
-	case map[string]any:
-		result := map[string]any{}
-		for key, child := range typed {
-			if allowed[key] {
-				result[key] = child
-				continue
-			}
-			if projected, keep := projectByName(child, allowed); keep {
-				result[key] = projected
-			}
-		}
-		return result, len(result) > 0
-	case []any:
-		result := make([]any, 0, len(typed))
-		for _, child := range typed {
-			if projected, keep := projectByName(child, allowed); keep {
-				result = append(result, projected)
-			}
-		}
-		return result, len(result) > 0
-	default:
-		return nil, false
-	}
-}
-
-func projectByPath(value any, allowed map[string]bool, prefix string) (any, bool) {
-	switch typed := value.(type) {
-	case map[string]any:
-		result := map[string]any{}
-		for key, child := range typed {
-			path := key
-			if prefix != "" {
-				path = prefix + "." + key
-			}
-			if allowed[path] {
-				result[key] = child
-				continue
-			}
-			if projected, keep := projectByPath(child, allowed, path); keep {
-				result[key] = projected
-			}
-		}
-		return result, len(result) > 0
-	case []any:
-		result := make([]any, 0, len(typed))
-		for _, child := range typed {
-			if projected, keep := projectByPath(child, allowed, prefix); keep {
-				result = append(result, projected)
-			}
-		}
-		return result, len(result) > 0
-	default:
-		return nil, allowed[prefix]
 	}
 }

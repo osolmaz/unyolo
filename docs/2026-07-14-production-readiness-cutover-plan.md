@@ -2,7 +2,27 @@
 
 Date: 2026-07-14
 
-Status: ready to implement
+Status: complete
+
+## Implementation Result
+
+Completed on 2026-07-15. The coordinated cutover delivered the endpoint and
+policy-preset plans plus the remaining production hardening in this record.
+
+- Runtime configuration now requires explicit endpoints, identities, trusted
+  production paths, 32-byte credentials, and explicit audit wiring.
+- Shared packages own HTTP profiles, operation lifecycles, bounded admission,
+  state maintenance, credential lifecycle, observability, service setup, and
+  cancellable background work.
+- Linux systemd and macOS launchd paths, immutable installers and workflows,
+  GitHub upstream drift checks, and provider-owned comprehensive operation
+  catalogs are covered by CI fixtures.
+- Current-format SQLite state supports check, backup, restore, and redacted
+  export. Credential replacement, revocation, dependency diagnostics, failure
+  drills, and bounded metrics are exercised by direct tests.
+- Provider-local duplicate mechanics, fixed ports, personal defaults, stale
+  compatibility fields, quality baselines, and direct CRAP/DRY exceptions were
+  removed. Root and broker-local Slophammer gates enforce the resulting shape.
 
 ## Objective
 
@@ -255,9 +275,9 @@ endpoint is never included in the agent Service or ingress.
 
 ### Agent lifecycle deduplication
 
-HF already uses the shared `operationruntime` contract. GH and sudo retain
-provider-local orchestration behind a temporary architecture-check allowlist.
-Move their remaining lifecycle mechanics into shared packages:
+HF, GH, and sudo use the shared `operationruntime` contract. The architecture
+gate rejects provider-local lifecycle state transitions and has no temporary
+provider allowlist. The shared runtime owns:
 
 - submit and idempotent replay;
 - policy classification and grant binding;
@@ -271,9 +291,9 @@ Move their remaining lifecycle mechanics into shared packages:
 - audit event sequencing.
 
 Providers retain only target/argument decoding, provider preconditions,
-credential selection, execution, reconciliation, and presentation. Delete the
-temporary allowlist and provider-local lifecycle implementations in the same
-slice.
+credential selection, execution, reconciliation, and presentation. Sudo's
+provider adapter additionally binds the exact reserved grant revision into its
+privileged-helper protocol immediately before dispatch.
 
 ### Provider-neutral policy presets
 
@@ -305,10 +325,9 @@ while a clean installation receives the complete current preset.
 
 ### Current-format SQLite operations
 
-The shared state package currently provides an integrity query but not the
-backup, restore, and redacted export promised by the completed SQLite cutover
-record. Implement those operations once in BrokerKit and expose them through
-provider-neutral broker commands.
+The shared state package provides exact-format check, backup, restore, and
+redacted export through the same `state` command on all brokers. The completed
+implementation follows these constraints:
 
 - `state check` runs bounded quick and full integrity checks and reports only
   operational metadata.
@@ -361,6 +380,28 @@ decisions so overload cannot prevent recovery. Metrics labels and in-memory
 accounting are bounded by configured client identities, never caller-supplied
 operation arguments.
 
+Implemented on the production-readiness branch: Agent V1 submissions use one
+shared controller backed by SQLite occupancy counts and short-lived in-memory
+reservations. HF, GH, and sudo use the same conservative defaults and strict
+shared configuration format with exact per-client overrides; authenticated
+idempotent replays bypass accounting, concurrent submissions cannot race past
+capacity, and refusals return stable `429` codes with `Retry-After`. Cancellation,
+operator decisions, health, and readiness bypass submission admission. Explicit
+overload recovery-capacity drills remain.
+
+Stream and sealed-payload stores now enforce both global and per-client
+file/byte caps after expiry cleanup. Their idempotency lookup runs before
+quota accounting, so exact upload replays remain available at capacity. The
+remaining admission work is configuration overrides and explicit recovery
+capacity tests.
+
+The shared grant store also caps pending approvals per client and globally, so
+direct grant APIs cannot bypass Agent V1 admission. Exact grant replays are
+resolved before capacity checks. SQLite notification delivery stops automatic
+retry after five ambiguous attempts while the durable request remains available
+to the operator inbox. Direct Slophammer analysis for the shared grants package
+now passes at the repository maximum score of 8.
+
 ### Credential replacement and revocation
 
 Define one shared credential lifecycle for broker client secrets, operator
@@ -387,6 +428,21 @@ dual-secret compatibility is not. Test interrupted staging, failed readiness,
 stale clients, immediate old-secret rejection, provider revocation failure, and
 Telegram replacement.
 
+Implemented on the production-readiness branch: the shared systemd and launchd
+installers snapshot the bounded managed-file set before an exact replacement.
+Write, activation, and readiness failures restore the previous credentials and
+service definition, then reactivate the previous installation when one
+existed. Successful readiness retires obsolete files, and rollback copies are
+cleared before setup exits. Broker and client readers still accept only one
+current secret. Native setup now audits created, rotated, and retired material
+with non-secret identifiers. Doctor reports source, installed age, expiry
+state, rotation need, and revocation mode without reading protected values.
+GitHub user OAuth and discarded installation credentials use supported
+upstream revocation APIs with audited failures; static GitHub App material,
+Hugging Face user tokens, and Telegram bot tokens expose explicit manual
+upstream retirement because no suitably scoped supported API is available to
+the broker.
+
 ### Observability contract
 
 Audit is evidence of security decisions, not a substitute for operational
@@ -409,6 +465,21 @@ endpoint. Labels must not include reasons, repository names, target users,
 paths, command arguments, URLs, tokens, free-form upstream errors, or unbounded
 caller input. Logging, metrics, audit, and API error redaction share tested
 helpers rather than separate deny lists.
+
+Implemented on the production-readiness branch: each control plane creates an
+isolated Prometheus registry and exposes it only through the authenticated
+operator listener. Shared admission, operation lifecycle, decision, and
+notification code records bounded outcome counters and execution latency. The
+only identity label is the setup-controlled broker name; all other labels use
+closed enums and unknown values collapse to `other`. Scrapes also report a
+bounded database-health probe and durable queue-depth gauges for approvals,
+operations, execution, and notification delivery. The shared runtime also
+reports last-observed provider and notification health, dependency outcomes by
+closed error category, notification retries, active workers, and configured
+worker capacity. The same boundary emits JSON diagnostics with stable events,
+opaque correlation IDs, provider, catalog risk class, closed outcome, and
+closed error category; it never logs targets, reasons, operation names, URLs,
+commands, credentials, or raw errors.
 
 ### Failure drills
 
@@ -433,6 +504,14 @@ Every drill asserts the final durable state, external-side-effect count,
 notification state, audit sequence, readiness result, and restart behavior. No
 failure may broaden policy, switch transport, regenerate credentials silently,
 discard an ambiguous operation, or report success without durable evidence.
+
+Implemented on the production-readiness branch: the maintained drill matrix is
+documented in `docs/FAILURE_DRILLS.md`. Shared tests cover SQLite corruption and
+failed writes, clock movement, Telegram retry and duplicate callbacks,
+ambiguous provider completion, crash recovery, listener/setup rollback,
+live-context shutdown, and overload while cancellation and approval remain
+available. Clean-host disk exhaustion and service-manager restart drills remain
+part of final CI qualification.
 
 ## Quality Debt Elimination
 
@@ -500,6 +579,23 @@ Go, Node, pnpm, npm, generators, linters, vulnerability scanners, and release
 tools. Remove `npm@latest` from the release path. Use the same supported Node
 major in CI, package tests, and release unless a declared matrix proves more
 than one major. Add package `engines` metadata matching that matrix.
+
+Implemented on the production-readiness branch: every workflow action is pinned
+to a full commit SHA, Go and pnpm remain exact, CI and npm publication use exact
+Node 24.18.0, package engines require that Node 24 line, and the release uses
+Node's bundled npm 11.16.0 instead of installing `npm@latest`. The architecture
+gate rejects mutable action refs, major-only Node selectors, and `npm@latest`.
+The canonical installer now defaults to `$HOME/.local/bin`, never invokes
+`sudo`, and fails with explicit privileged-shell guidance for an unwritable
+operator-selected destination. Broker wrappers no longer fetch `main`: they
+resolve the selected component release tag through GitHub's ref API, peel an
+annotated tag when necessary, require an exact 40-character commit SHA, and
+fetch the canonical installer from that commit. The installer uses a pinned,
+checksum-verified GitHub CLI to validate archive and checksum attestations
+against the BrokerKit release workflow and selected tag. The release workflow
+then re-downloads the published assets through the same verify-only path, so
+publication is not successful until digest, provenance, archive shape, and
+source identity all pass.
 
 Build release artifacts from a clean checkout, verify generated artifacts and
 module integrity, produce SBOMs and provenance, smoke-test the packed artifacts,

@@ -304,36 +304,70 @@ func validateRaw(raw json.RawMessage, validator *jsonschema.Schema) error {
 }
 
 func load() ([]Binding, error) {
-	var document struct {
-		Paths      map[string]map[string]json.RawMessage `json:"paths"`
-		Components map[string]any                        `json:"components"`
+	document, err := loadOpenAPIDocument()
+	if err != nil {
+		return nil, err
 	}
+	sources, err := loadRouteSources()
+	if err != nil {
+		return nil, err
+	}
+	values, err := bindingsFromSources(document.Paths, document.Components, sources)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(values, func(left, right Binding) int { return strings.Compare(left.Operation, right.Operation) })
+	return values, nil
+}
+
+type openAPIDocument struct {
+	Paths      map[string]map[string]json.RawMessage `json:"paths"`
+	Components map[string]any                        `json:"components"`
+}
+
+func loadOpenAPIDocument() (openAPIDocument, error) {
+	var document openAPIDocument
 	if err := json.Unmarshal(openAPIRaw, &document); err != nil {
-		return nil, fmt.Errorf("decode pinned HF OpenAPI: %w", err)
+		return openAPIDocument{}, fmt.Errorf("decode pinned HF OpenAPI: %w", err)
 	}
+	return document, nil
+}
+
+func loadRouteSources() ([]routeSource, error) {
+	sources, err := decodeRouteSources(routesRaw, "HF route bindings")
+	if err != nil {
+		return nil, err
+	}
+	for _, input := range []struct {
+		raw  []byte
+		name string
+	}{
+		{manualRoutesRaw, "manual HF route bindings"},
+		{endpointRoutesRaw, "endpoint route bindings"},
+		{uvRoutesRaw, "UV Job route bindings"},
+	} {
+		next, err := decodeRouteSources(input.raw, input.name)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, next...)
+	}
+	return sources, nil
+}
+
+func decodeRouteSources(raw []byte, name string) ([]routeSource, error) {
 	var sources []routeSource
-	if err := strictjson.Decode(routesRaw, &sources, true); err != nil {
-		return nil, fmt.Errorf("decode HF route bindings: %w", err)
+	if err := strictjson.Decode(raw, &sources, true); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", name, err)
 	}
-	var manual []routeSource
-	if err := strictjson.Decode(manualRoutesRaw, &manual, true); err != nil {
-		return nil, fmt.Errorf("decode manual HF route bindings: %w", err)
-	}
-	sources = append(sources, manual...)
-	var endpoints []routeSource
-	if err := strictjson.Decode(endpointRoutesRaw, &endpoints, true); err != nil {
-		return nil, fmt.Errorf("decode endpoint route bindings: %w", err)
-	}
-	sources = append(sources, endpoints...)
-	var uv []routeSource
-	if err := strictjson.Decode(uvRoutesRaw, &uv, true); err != nil {
-		return nil, fmt.Errorf("decode UV Job route bindings: %w", err)
-	}
-	sources = append(sources, uv...)
+	return sources, nil
+}
+
+func bindingsFromSources(paths map[string]map[string]json.RawMessage, components map[string]any, sources []routeSource) ([]Binding, error) {
 	values := make([]Binding, 0, len(sources))
 	seen := make(map[string]bool, len(sources))
 	for _, source := range sources {
-		binding, err := bindingFromSource(document.Paths, document.Components, source)
+		binding, err := bindingFromSource(paths, components, source)
 		if err != nil {
 			return nil, fmt.Errorf("binding %q: %w", source.Operation, err)
 		}
@@ -343,7 +377,6 @@ func load() ([]Binding, error) {
 		seen[binding.Operation] = true
 		values = append(values, binding)
 	}
-	slices.SortFunc(values, func(left, right Binding) int { return strings.Compare(left.Operation, right.Operation) })
 	return values, nil
 }
 
@@ -528,33 +561,56 @@ func schemaForParameters(parameters []parameter, location string, fixed map[stri
 	return schema
 }
 
-//nolint:cyclop // Projection rules are explicit and tracked by the exact HF CRAP baseline.
 func schemaForArguments(operation operationDocument, fixed map[string]any, projection string) (map[string]any, error) {
-	schema := map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}
-	if operation.RequestBody != nil {
-		media, found := operation.RequestBody.Content["application/json"]
-		if !found {
-			return nil, errors.New("operation request body is not JSON and needs a dedicated adapter")
-		}
-		if media.Schema != nil {
-			schema = cloneMap(media.Schema)
-		}
+	schema, err := requestBodySchema(operation)
+	if err != nil {
+		return nil, err
 	}
 	if schema["type"] == nil {
-		schema["type"] = "object"
-		schema["unevaluatedProperties"] = false
-		return schema, nil
+		return typelessObjectSchema(schema), nil
 	}
 	if schema["type"] != "object" {
-		if projection == "" {
-			return nil, errors.New("operation request body is not an object")
-		}
-		schema = map[string]any{
-			"type": "object", "properties": map[string]any{projection: schema},
-			"required": []any{projection}, "additionalProperties": false,
-		}
+		return projectedBodySchema(schema, projection)
 	}
 	schema["additionalProperties"] = false
+	removeFixedBodyFields(schema, fixed)
+	return schema, nil
+}
+
+func requestBodySchema(operation operationDocument) (map[string]any, error) {
+	schema := map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}
+	if operation.RequestBody == nil {
+		return schema, nil
+	}
+	media, found := operation.RequestBody.Content["application/json"]
+	if !found {
+		return nil, errors.New("operation request body is not JSON and needs a dedicated adapter")
+	}
+	if media.Schema != nil {
+		return cloneMap(media.Schema), nil
+	}
+	return schema, nil
+}
+
+func typelessObjectSchema(schema map[string]any) map[string]any {
+	schema["type"] = "object"
+	schema["unevaluatedProperties"] = false
+	return schema
+}
+
+func projectedBodySchema(schema map[string]any, projection string) (map[string]any, error) {
+	if projection == "" {
+		return nil, errors.New("operation request body is not an object")
+	}
+	return map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{projection: schema},
+		"required":             []any{projection},
+		"additionalProperties": false,
+	}, nil
+}
+
+func removeFixedBodyFields(schema map[string]any, fixed map[string]any) {
 	properties, _ := schema["properties"].(map[string]any)
 	if properties == nil {
 		properties = map[string]any{}
@@ -573,7 +629,6 @@ func schemaForArguments(operation operationDocument, fixed map[string]any, proje
 		}
 		schema["required"] = filtered
 	}
-	return schema, nil
 }
 
 func compileSchema(name string, schema, components map[string]any) (json.RawMessage, *jsonschema.Schema, error) {

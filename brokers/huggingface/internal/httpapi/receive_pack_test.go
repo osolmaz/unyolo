@@ -280,6 +280,7 @@ func TestDenyRuleOverridesActiveGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -537,6 +538,7 @@ func TestReceivePackDiscoveryAllowsRefScopedPushPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -585,6 +587,7 @@ func TestReceivePackDiscoveryIgnoresRefScopedDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -633,6 +636,7 @@ func TestReceivePackDiscoveryChecksAllOperationDecisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -682,6 +686,7 @@ func TestReceivePackDiscoveryChecksLaterActiveGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -747,6 +752,7 @@ func TestReceivePackDiscoveryRequiresAllowOrActiveGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -827,6 +833,7 @@ func TestReceivePackDiscoveryDeniedPolicyBeatsActiveGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -889,6 +896,7 @@ func TestReceivePackDeniedBeforeReadingLargePack(t *testing.T) {
 				t.Fatal(err)
 			}
 			handler, err := New(Options{
+				Audit: testAuditRecorder(),
 				Config: config.Config{
 					HFToken:      testToken,
 					Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -927,6 +935,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -1006,6 +1015,7 @@ func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
@@ -1080,6 +1090,7 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},

@@ -140,7 +140,7 @@ func TestMCPTypedToolSubmission(t *testing.T) {
 	}))
 	defer server.Close()
 	env := map[string]string{
-		"GH_BROKER_URL":                    server.URL,
+		"GH_BROKER_AGENT_ENDPOINT":         ghTestEndpoint(server.URL),
 		"GH_BROKER_SHARED_SECRET":          operationTestSecret,
 		"GH_BROKER_MCP_EXACT_OPERATIONS":   "repo.metadata.read",
 		"GH_BROKER_MCP_CLIENT_OPERATIONS":  "repo.metadata.read",
@@ -185,7 +185,7 @@ func TestMCPRequestConflictAndRecoveryTools(t *testing.T) {
 	}))
 	defer server.Close()
 	env := map[string]string{
-		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_AGENT_ENDPOINT": ghTestEndpoint(server.URL), "GH_BROKER_SHARED_SECRET": operationTestSecret,
 		"GH_BROKER_MCP_EXACT_OPERATIONS": "repo.metadata.read", "GH_BROKER_MCP_CLIENT_OPERATIONS": "repo.metadata.read",
 		"GH_BROKER_MCP_POLICY_OPERATIONS": "repo.metadata.read", "GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read",
 	}
@@ -253,7 +253,7 @@ func TestMCPSealedToolUsesOneTimePayloadBoundary(t *testing.T) {
 	}))
 	defer server.Close()
 	env := map[string]string{
-		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_AGENT_ENDPOINT": ghTestEndpoint(server.URL), "GH_BROKER_SHARED_SECRET": operationTestSecret,
 		"GH_BROKER_MCP_EXACT_OPERATIONS": operation, "GH_BROKER_MCP_CLIENT_OPERATIONS": operation,
 		"GH_BROKER_MCP_POLICY_OPERATIONS": operation, "GH_BROKER_MCP_RUNTIME_OPERATIONS": operation,
 	}
@@ -283,7 +283,7 @@ func TestMCPOptionalSealedInputDoesNotCreatePayload(t *testing.T) {
 	}))
 	defer server.Close()
 	env := map[string]string{
-		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_AGENT_ENDPOINT": ghTestEndpoint(server.URL), "GH_BROKER_SHARED_SECRET": operationTestSecret,
 		"GH_BROKER_MCP_EXACT_OPERATIONS": operation, "GH_BROKER_MCP_CLIENT_OPERATIONS": operation,
 		"GH_BROKER_MCP_POLICY_OPERATIONS": operation, "GH_BROKER_MCP_RUNTIME_OPERATIONS": operation,
 	}
@@ -313,7 +313,7 @@ func TestMCPCredentialOutputUsesNamedSlot(t *testing.T) {
 	}))
 	defer server.Close()
 	env := map[string]string{
-		"GH_BROKER_URL": server.URL, "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_AGENT_ENDPOINT": ghTestEndpoint(server.URL), "GH_BROKER_SHARED_SECRET": operationTestSecret,
 		"GH_BROKER_MCP_EXACT_OPERATIONS": operation, "GH_BROKER_MCP_CLIENT_OPERATIONS": operation,
 		"GH_BROKER_MCP_POLICY_OPERATIONS": operation, "GH_BROKER_MCP_RUNTIME_OPERATIONS": operation,
 	}

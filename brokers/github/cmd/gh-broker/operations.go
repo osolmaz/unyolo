@@ -37,6 +37,21 @@ import (
 const operationWaitDefault = 15 * time.Minute
 const maxStreamDownloadBytes int64 = 256 << 20
 
+type catalogSubmitOptions struct {
+	targetText      string
+	argumentsText   string
+	sealedFile      string
+	credentialSlot  string
+	streamFile      string
+	streamMediaType string
+	reason          string
+	key             string
+	wait            bool
+	waitTimeout     time.Duration
+}
+
+type operationInputValidator func(opcatalog.Descriptor, json.RawMessage, json.RawMessage, string, string, string, string) error
+
 func runOperations(stdout io.Writer, args []string) error {
 	if len(args) == 0 {
 		return exitError{code: 64, message: "usage: gh-broker operations <list|describe>"}
@@ -58,7 +73,6 @@ func runOperations(stdout io.Writer, args []string) error {
 	}
 }
 
-//nolint:cyclop // Small CLI filter branches remain explicit and deterministic.
 func listOperations(stdout io.Writer, args []string) error {
 	flags := flag.NewFlagSet("operations list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -70,17 +84,25 @@ func listOperations(stdout io.Writer, args []string) error {
 	}
 	result := []opcatalog.Descriptor{}
 	for _, descriptor := range opcatalog.MustAll() {
-		if *family != "" && !strings.HasPrefix(descriptor.Name, strings.TrimSuffix(*family, ".*")+".") {
-			continue
-		}
-		if *risk != "" && string(descriptor.Risk) != *risk {
-			continue
-		}
-		result = append(result, descriptor)
+		result = appendMatchingOperation(result, descriptor, *family, *risk)
 	}
 	if *jsonOutput {
 		return writeJSONOutput(stdout, result)
 	}
+	return writeOperationList(stdout, result)
+}
+
+func appendMatchingOperation(result []opcatalog.Descriptor, descriptor opcatalog.Descriptor, family, risk string) []opcatalog.Descriptor {
+	if family != "" && !strings.HasPrefix(descriptor.Name, strings.TrimSuffix(family, ".*")+".") {
+		return result
+	}
+	if risk != "" && string(descriptor.Risk) != risk {
+		return result
+	}
+	return append(result, descriptor)
+}
+
+func writeOperationList(stdout io.Writer, result []opcatalog.Descriptor) error {
 	for _, descriptor := range result {
 		if _, err := fmt.Fprintf(stdout, "%s\t%s\t%s\n", descriptor.Name, descriptor.Risk, descriptor.Summary); err != nil {
 			return err
@@ -93,20 +115,25 @@ func runOperation(ctx context.Context, stdout io.Writer, args []string) error {
 	if len(args) == 0 {
 		return exitError{code: 64, message: "usage: gh-broker operation <submit|get|wait|cancel>"}
 	}
-	if args[0] == "submit" {
-		if len(args) < 2 {
-			return exitError{code: 64, message: "operation name is required"}
-		}
-		descriptor, found := opcatalog.ByName(args[1])
-		if !found || !descriptor.AgentFacing {
-			return exitError{code: 64, message: "unknown agent-facing GitHub operation"}
-		}
-		return submitCatalogOperation(ctx, stdout, descriptor, args[2:])
-	}
-	if args[0] == "get" || args[0] == "wait" || args[0] == "cancel" {
+	switch args[0] {
+	case "submit":
+		return runOperationSubmit(ctx, stdout, args[1:])
+	case "get", "wait", "cancel":
 		return runOperationLifecycle(ctx, stdout, args[0], args[1:])
+	default:
+		return exitError{code: 64, message: "usage: gh-broker operation <submit|get|wait|cancel>"}
 	}
-	return exitError{code: 64, message: "usage: gh-broker operation <submit|get|wait|cancel>"}
+}
+
+func runOperationSubmit(ctx context.Context, stdout io.Writer, args []string) error {
+	if len(args) < 1 {
+		return exitError{code: 64, message: "operation name is required"}
+	}
+	descriptor, found := opcatalog.ByName(args[0])
+	if !found || !descriptor.AgentFacing {
+		return exitError{code: 64, message: "unknown agent-facing GitHub operation"}
+	}
+	return submitCatalogOperation(ctx, stdout, descriptor, args[1:])
 }
 
 func runGeneratedCLI(ctx context.Context, stdout io.Writer, args []string) (bool, error) {
@@ -121,46 +148,17 @@ func runGeneratedCLI(ctx context.Context, stdout io.Writer, args []string) (bool
 	return true, submitCatalogOperation(ctx, stdout, providerDescriptor, args[consumed:])
 }
 
-//nolint:cyclop // Submission validation keeps every caller-controlled input check visible.
 func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor opcatalog.Descriptor, args []string) error {
-	flags := flag.NewFlagSet(descriptor.Name, flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	targetText := flags.String("target-json", "", "closed target JSON")
-	argumentsText := flags.String("arguments-json", "{}", "closed argument JSON")
-	sealedFile := flags.String("sealed-file", "", "sealed argument JSON file")
-	credentialSlot := flags.String("credential-slot", "", "encrypted credential destination slot")
-	streamFile := flags.String("stream-file", "", "bounded binary upload file")
-	streamMediaType := flags.String("stream-media-type", "", "binary upload media type")
-	reason := flags.String("reason", "Run "+descriptor.Name+" through GH Broker", "approval reason")
-	key := flags.String("request-id", "", "stable retry key")
-	wait := flags.Bool("wait", false, "wait for terminal state")
-	waitTimeout := flags.Duration("wait-timeout", operationWaitDefault, "maximum wait")
-	if flags.Parse(args) != nil || flags.NArg() != 0 || *targetText == "" {
-		return exitError{code: 64, message: "closed --target-json and valid operation flags are required"}
+	opts, err := parseCatalogSubmitOptions(descriptor, args)
+	if err != nil {
+		return err
 	}
-	target, arguments := json.RawMessage(*targetText), json.RawMessage(*argumentsText)
-	if err := validateOperationInput(descriptor, target, arguments, *sealedFile, *credentialSlot, *streamFile, *streamMediaType); err != nil {
-		return exitError{code: 64, message: err.Error()}
-	}
-	if strings.TrimSpace(*reason) == "" || len(*reason) > 2000 {
-		return exitError{code: 64, message: "reason is required"}
-	}
-	if *key == "" {
-		generated, err := operationRequestID()
-		if err != nil {
-			return err
-		}
-		*key = generated
-	}
-	if !agentv1.ValidIdempotencyKey(strings.TrimSpace(*key)) {
-		return exitError{code: 64, message: "request-id is invalid"}
-	}
-	*key = strings.TrimSpace(*key)
 	connection, err := loadOperationConnection(os.Getenv)
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	arguments, err = prepareCLIArguments(ctx, connection, descriptor, *key, arguments, *sealedFile, *credentialSlot, *streamFile, *streamMediaType)
+	target, arguments := json.RawMessage(opts.targetText), json.RawMessage(opts.argumentsText)
+	arguments, err = prepareCLIArguments(ctx, connection, descriptor, opts.key, arguments, opts.sealedFile, opts.credentialSlot, opts.streamFile, opts.streamMediaType)
 	if err != nil {
 		return err
 	}
@@ -168,19 +166,75 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	if err != nil {
 		return err
 	}
-	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: *key, Operation: descriptor.Name, Target: target, Arguments: arguments, Reason: *reason})
+	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: opts.key, Operation: descriptor.Name, Target: target, Arguments: arguments, Reason: opts.reason})
 	if err != nil {
 		return err
 	}
-	if *wait && !operation.State.Terminal() {
-		waitCtx, cancel := context.WithTimeout(ctx, *waitTimeout)
-		defer cancel()
-		operation, err = client.Wait(waitCtx, operation)
-		if err != nil && waitCtx.Err() == nil {
-			return err
-		}
+	operation, err = waitForSubmittedOperation(ctx, client, operation, opts)
+	if err != nil {
+		return err
 	}
 	return writeJSONOutput(stdout, operation)
+}
+
+func parseCatalogSubmitOptions(descriptor opcatalog.Descriptor, args []string) (catalogSubmitOptions, error) {
+	opts := catalogSubmitOptions{argumentsText: "{}", reason: "Run " + descriptor.Name + " through GH Broker", waitTimeout: operationWaitDefault}
+	flags := flag.NewFlagSet(descriptor.Name, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&opts.targetText, "target-json", "", "closed target JSON")
+	flags.StringVar(&opts.argumentsText, "arguments-json", opts.argumentsText, "closed argument JSON")
+	flags.StringVar(&opts.sealedFile, "sealed-file", "", "sealed argument JSON file")
+	flags.StringVar(&opts.credentialSlot, "credential-slot", "", "encrypted credential destination slot")
+	flags.StringVar(&opts.streamFile, "stream-file", "", "bounded binary upload file")
+	flags.StringVar(&opts.streamMediaType, "stream-media-type", "", "binary upload media type")
+	flags.StringVar(&opts.reason, "reason", opts.reason, "approval reason")
+	flags.StringVar(&opts.key, "request-id", "", "stable retry key")
+	flags.BoolVar(&opts.wait, "wait", false, "wait for terminal state")
+	flags.DurationVar(&opts.waitTimeout, "wait-timeout", opts.waitTimeout, "maximum wait")
+	if flags.Parse(args) != nil || flags.NArg() != 0 || opts.targetText == "" {
+		return catalogSubmitOptions{}, exitError{code: 64, message: "closed --target-json and valid operation flags are required"}
+	}
+	return validateCatalogSubmitOptions(descriptor, opts)
+}
+
+func validateCatalogSubmitOptions(descriptor opcatalog.Descriptor, opts catalogSubmitOptions) (catalogSubmitOptions, error) {
+	target, arguments := json.RawMessage(opts.targetText), json.RawMessage(opts.argumentsText)
+	if err := validateOperationInput(descriptor, target, arguments, opts.sealedFile, opts.credentialSlot, opts.streamFile, opts.streamMediaType); err != nil {
+		return catalogSubmitOptions{}, exitError{code: 64, message: err.Error()}
+	}
+	if strings.TrimSpace(opts.reason) == "" || len(opts.reason) > 2000 {
+		return catalogSubmitOptions{}, exitError{code: 64, message: "reason is required"}
+	}
+	key, err := normalizedOperationRequestID(opts.key)
+	if err != nil {
+		return catalogSubmitOptions{}, err
+	}
+	opts.key = key
+	return opts, nil
+}
+
+func normalizedOperationRequestID(key string) (string, error) {
+	if key == "" {
+		return operationRequestID()
+	}
+	key = strings.TrimSpace(key)
+	if !agentv1.ValidIdempotencyKey(key) {
+		return "", exitError{code: 64, message: "request-id is invalid"}
+	}
+	return key, nil
+}
+
+func waitForSubmittedOperation(ctx context.Context, client *agentclient.Client, operation agentv1.Operation, opts catalogSubmitOptions) (agentv1.Operation, error) {
+	if !opts.wait || operation.State.Terminal() {
+		return operation, nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
+	defer cancel()
+	waited, err := client.Wait(waitCtx, operation)
+	if err != nil && waitCtx.Err() == nil {
+		return operation, err
+	}
+	return waited, nil
 }
 
 func prepareCLIArguments(ctx context.Context, connection operationConnection, descriptor opcatalog.Descriptor, key string, arguments json.RawMessage,
@@ -224,84 +278,123 @@ func runOperationLifecycle(ctx context.Context, stdout io.Writer, action string,
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	var operation agentv1.Operation
-	if action == "cancel" {
-		operation, err = client.Cancel(ctx, flags.Arg(0))
-	} else {
-		operation, err = client.Get(ctx, flags.Arg(0))
-	}
-	if err == nil && action == "wait" && !operation.State.Terminal() {
-		waitCtx, cancel := context.WithTimeout(ctx, *timeout)
-		defer cancel()
-		operation, err = client.Wait(waitCtx, operation)
-	}
+	operation, err := executeOperationLifecycle(ctx, client, action, flags.Arg(0), *timeout)
 	if err != nil {
 		return err
 	}
 	return writeJSONOutput(stdout, operation)
 }
 
+func executeOperationLifecycle(ctx context.Context, client *agentclient.Client, action, id string, timeout time.Duration) (agentv1.Operation, error) {
+	if action == "cancel" {
+		return client.Cancel(ctx, id)
+	}
+	operation, err := client.Get(ctx, id)
+	if err != nil || action != "wait" || operation.State.Terminal() {
+		return operation, err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return client.Wait(waitCtx, operation)
+}
+
 func runStream(ctx context.Context, stdout io.Writer, args []string) error {
-	flags := flag.NewFlagSet("stream download", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	output := flags.String("output", "", "destination file")
-	if len(args) < 2 || args[0] != "download" || flags.Parse(args[2:]) != nil || flags.NArg() != 0 || *output == "" {
-		return exitError{code: 64, message: "usage: gh-broker stream download <id> --output <path>"}
+	id, output, err := parseStreamDownloadArgs(args)
+	if err != nil {
+		return err
 	}
 	connection, err := loadOperationConnection(os.Getenv)
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if err := connection.downloadStream(ctx, args[1], *output); err != nil {
+	if err := connection.downloadStream(ctx, id, output); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(stdout, *output)
+	_, err = fmt.Fprintln(stdout, output)
 	return err
 }
 
-//nolint:cyclop // Download integrity and atomic replacement checks remain explicit at the file boundary.
+func parseStreamDownloadArgs(args []string) (string, string, error) {
+	flags := flag.NewFlagSet("stream download", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	output := flags.String("output", "", "destination file")
+	if len(args) < 2 || args[0] != "download" || flags.Parse(args[2:]) != nil || flags.NArg() != 0 || *output == "" {
+		return "", "", exitError{code: 64, message: "usage: gh-broker stream download <id> --output <path>"}
+	}
+	return args[1], *output, nil
+}
+
 func (connection operationConnection) downloadStream(ctx context.Context, id, output string) error {
-	base, err := clienthttp.ParseBaseURL(connection.baseURL)
+	response, err := connection.openStreamDownload(ctx, id)
 	if err != nil {
 		return err
 	}
-	// #nosec G704 -- ParseBaseURL accepted an explicit HTTP(S) broker origin and the path is fixed.
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base.String(), "/")+"/api/agent/v1/streams/"+url.PathEscape(id), http.NoBody)
-	if err != nil {
-		return errors.New("create stream download request")
-	}
-	request.Header.Set("Authorization", "Bearer "+connection.secret)
-	// #nosec G704 -- the validated broker origin is intentional; Secure disables credential-forwarding redirects.
-	response, err := clienthttp.Secure(&http.Client{Timeout: 10 * time.Minute}).Do(request)
-	if err != nil {
-		return errors.New("download stream")
-	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK || response.ContentLength <= 0 || response.ContentLength > maxStreamDownloadBytes {
+	if !validStreamDownloadResponse(response) {
 		return errors.New("broker rejected stream download")
 	}
-	directory := filepath.Dir(output)
-	file, err := os.CreateTemp(directory, ".gh-broker-stream-*")
+	temporary, err := writeStreamDownloadTemp(response, output)
 	if err != nil {
-		return errors.New("create stream output")
+		return err
 	}
-	temporary := file.Name()
+	// #nosec G703 -- temporary is returned by CreateTemp in the output directory.
 	defer func() { _ = os.Remove(temporary) }()
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return errors.New("secure stream output")
-	}
-	hash := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, maxStreamDownloadBytes+1))
-	closeErr := file.Close()
-	if copyErr != nil || closeErr != nil || written != response.ContentLength || written > maxStreamDownloadBytes ||
-		hex.EncodeToString(hash.Sum(nil)) != response.Header.Get("X-Broker-Content-SHA256") {
-		return errors.New("stream download failed integrity validation")
-	}
+	// #nosec G703 -- both paths are the validated output and its sibling CreateTemp result.
 	if err := os.Rename(temporary, output); err != nil {
 		return errors.New("replace stream output")
 	}
 	return nil
+}
+
+func (connection operationConnection) openStreamDownload(ctx context.Context, id string) (*http.Response, error) {
+	base, err := url.Parse(connection.baseURL)
+	if err != nil {
+		return nil, err
+	}
+	// #nosec G704 -- ParseBaseURL accepted an explicit HTTP(S) broker origin and the path is fixed.
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base.String(), "/")+"/api/agent/v1/streams/"+url.PathEscape(id), http.NoBody)
+	if err != nil {
+		return nil, errors.New("create stream download request")
+	}
+	request.Header.Set("Authorization", "Bearer "+connection.secret)
+	// #nosec G704 -- the validated broker origin is intentional; Secure disables credential-forwarding redirects.
+	response, err := connection.streamClient(10 * time.Minute).Do(request)
+	if err != nil {
+		return nil, errors.New("download stream")
+	}
+	return response, nil
+}
+
+func validStreamDownloadResponse(response *http.Response) bool {
+	return response.StatusCode == http.StatusOK && response.ContentLength > 0 && response.ContentLength <= maxStreamDownloadBytes
+}
+
+func writeStreamDownloadTemp(response *http.Response, output string) (string, error) {
+	file, err := os.CreateTemp(filepath.Dir(output), ".gh-broker-stream-*")
+	if err != nil {
+		return "", errors.New("create stream output")
+	}
+	temporary := file.Name()
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		// #nosec G703 -- temporary is the name returned by CreateTemp above.
+		_ = os.Remove(temporary)
+		return "", errors.New("secure stream output")
+	}
+	hash := sha256.New()
+	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, maxStreamDownloadBytes+1))
+	closeErr := file.Close()
+	if !validStreamDownloadBody(response, hash.Sum(nil), written, copyErr, closeErr) {
+		// #nosec G703 -- temporary is the name returned by CreateTemp above.
+		_ = os.Remove(temporary)
+		return "", errors.New("stream download failed integrity validation")
+	}
+	return temporary, nil
+}
+
+func validStreamDownloadBody(response *http.Response, digest []byte, written int64, copyErr, closeErr error) bool {
+	return copyErr == nil && closeErr == nil && written == response.ContentLength && written <= maxStreamDownloadBytes &&
+		hex.EncodeToString(digest) == response.Header.Get("X-Broker-Content-SHA256")
 }
 
 func loadOperationClient(getenv func(string) string) (*agentclient.Client, error) {
@@ -313,12 +406,14 @@ func loadOperationClient(getenv func(string) string) (*agentclient.Client, error
 }
 
 type operationConnection struct {
-	baseURL string
-	secret  string
+	endpoint string
+	baseURL  string
+	secret   string
+	http     *http.Client
 }
 
 func loadOperationConnection(getenv func(string) string) (operationConnection, error) {
-	baseURL := strings.TrimSpace(getenv("GH_BROKER_URL"))
+	endpointURI := strings.TrimSpace(getenv("GH_BROKER_AGENT_ENDPOINT"))
 	secret := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET"))
 	if secret == "" {
 		path := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET_FILE"))
@@ -330,40 +425,88 @@ func loadOperationConnection(getenv func(string) string) (operationConnection, e
 			secret = strings.TrimSpace(string(data))
 		}
 	}
-	if baseURL == "" || secret == "" {
-		return operationConnection{}, errors.New("GH Broker client URL and credential are not configured")
+	if endpointURI == "" || secret == "" {
+		return operationConnection{}, errors.New("GH Broker client endpoint and credential are not configured")
 	}
-	return operationConnection{baseURL: baseURL, secret: secret}, nil
+	baseURL, httpClient, err := clienthttp.ForEndpoint(endpointURI, nil)
+	if err != nil {
+		return operationConnection{}, err
+	}
+	return operationConnection{endpoint: endpointURI, baseURL: baseURL, secret: secret, http: httpClient}, nil
 }
 
 func (connection operationConnection) client() (*agentclient.Client, error) {
-	return agentclient.New(agentclient.Options{BaseURL: connection.baseURL, Credential: connection.secret})
+	return agentclient.New(agentclient.Options{Endpoint: connection.endpoint, Credential: connection.secret})
 }
 
-//nolint:cyclop // Mutually exclusive sealed, credential, and stream input forms fail closed in one boundary.
-func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
-	if streamDirectionForOperation(descriptor.Name) == "upload" {
-		if streamFile == "" || strings.TrimSpace(streamMediaType) == "" || sealedFile != "" || credentialSlot != "" {
-			return errors.New("stream upload operation requires --stream-file and --stream-media-type")
-		}
-		return schemaregistry.ValidateStreamPublic(descriptor.Name, target, public)
+func (connection operationConnection) streamClient(timeout time.Duration) *http.Client {
+	if connection.http == nil {
+		client := clienthttp.Secure(nil)
+		client.Timeout = timeout
+		return client
 	}
+	client := *connection.http
+	client.Timeout = timeout
+	return &client
+}
+
+func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
+	validator := validatorForOperationInput(descriptor)
+	return validator(descriptor, target, public, sealedFile, credentialSlot, streamFile, streamMediaType)
+}
+
+func validatorForOperationInput(descriptor opcatalog.Descriptor) operationInputValidator {
+	if streamDirectionForOperation(descriptor.Name) == "upload" {
+		return validateStreamOperationInput
+	}
+	if descriptor.CredentialOutputKind != nil {
+		return validateCredentialOperationInput
+	}
+	if descriptor.Sealed {
+		return validateSealedOperationInputWrapper
+	}
+	return validatePlainOperationInput
+}
+
+func validateNonStreamFlags(streamFile, streamMediaType string) error {
 	if streamFile != "" || streamMediaType != "" {
 		return errors.New("operation does not accept a stream upload")
 	}
-	if descriptor.CredentialOutputKind != nil {
-		if sealedFile != "" || !credentialstore.ValidSlot(credentialSlot) {
-			return errors.New("credential output operation requires --credential-slot and does not accept --sealed-file")
-		}
-		return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
+	return nil
+}
+
+func validateCredentialOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
+	if err := validateNonStreamFlags(streamFile, streamMediaType); err != nil {
+		return err
 	}
-	if descriptor.Sealed {
-		return validateSealedOperationInput(descriptor, target, public, sealedFile, credentialSlot)
+	if sealedFile != "" || !credentialstore.ValidSlot(credentialSlot) {
+		return errors.New("credential output operation requires --credential-slot and does not accept --sealed-file")
+	}
+	return schemaregistry.ValidatePublicSubmission(descriptor.Name, target, public)
+}
+
+func validateSealedOperationInputWrapper(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
+	if err := validateNonStreamFlags(streamFile, streamMediaType); err != nil {
+		return err
+	}
+	return validateSealedOperationInput(descriptor, target, public, sealedFile, credentialSlot)
+}
+
+func validatePlainOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
+	if err := validateNonStreamFlags(streamFile, streamMediaType); err != nil {
+		return err
 	}
 	if sealedFile != "" || credentialSlot != "" {
 		return errors.New("operation does not accept --sealed-file")
 	}
 	return schemaregistry.ValidateSubmission(descriptor.Name, target, public)
+}
+
+func validateStreamOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
+	if streamFile == "" || strings.TrimSpace(streamMediaType) == "" || sealedFile != "" || credentialSlot != "" {
+		return errors.New("stream upload operation requires --stream-file and --stream-media-type")
+	}
+	return schemaregistry.ValidateStreamPublic(descriptor.Name, target, public)
 }
 
 func validateSealedOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot string) error {
@@ -411,74 +554,106 @@ func (connection operationConnection) wrapSealedArguments(ctx context.Context, o
 }
 
 func (connection operationConnection) uploadSealedPayload(ctx context.Context, operation, requestKey string, payload []byte) (sealedstore.Reference, error) {
-	base, err := clienthttp.ParseBaseURL(connection.baseURL)
-	if err != nil {
-		return sealedstore.Reference{}, err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+"/api/agent/v1/sealed-payloads", bytes.NewReader(payload))
+	request, err := connection.newUploadRequest(ctx, "/api/agent/v1/sealed-payloads", operation, requestKey, bytes.NewReader(payload), int64(len(payload)), "application/octet-stream")
 	if err != nil {
 		return sealedstore.Reference{}, errors.New("create sealed payload request")
 	}
-	request.Header.Set("Authorization", "Bearer "+connection.secret)
-	request.Header.Set("Content-Type", "application/octet-stream")
-	request.Header.Set("X-Broker-Operation", operation)
-	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := clienthttp.Secure(&http.Client{Timeout: 30 * time.Second}).Do(request)
+	response, err := connection.streamClient(30 * time.Second).Do(request)
 	if err != nil {
 		return sealedstore.Reference{}, errors.New("upload sealed payload")
 	}
 	defer func() { _ = response.Body.Close() }()
-	data, readErr := httpx.ReadLimited(response.Body, 1<<20)
-	if readErr != nil || response.StatusCode != http.StatusCreated {
-		return sealedstore.Reference{}, errors.New("broker rejected sealed payload")
-	}
 	var reference sealedstore.Reference
-	if strictjson.Decode(data, &reference, true) != nil || reference.ID == "" || reference.Purpose != operation || reference.RequestKey != requestKey {
+	if err := decodeCreatedReference(response, &reference, "broker rejected sealed payload"); err != nil {
+		return sealedstore.Reference{}, err
+	}
+	if reference.ID == "" || reference.Purpose != operation || reference.RequestKey != requestKey {
 		return sealedstore.Reference{}, errors.New("broker returned an invalid sealed payload reference")
 	}
 	return reference, nil
 }
 
-//nolint:cyclop // Upload file, size, response, and reference integrity checks stay together at the boundary.
 func (connection operationConnection) uploadStream(ctx context.Context, operation, requestKey, path, mediaType string) (streamstore.Reference, error) {
-	bindings := opbinding.ByOperation(operation)
-	if len(bindings) != 1 || bindings[0].StreamDirection != "upload" {
-		return streamstore.Reference{}, errors.New("GitHub stream upload operation is invalid")
-	}
-	file, err := os.Open(path) // #nosec G304 -- explicit caller-selected upload file.
-	if err != nil {
-		return streamstore.Reference{}, errors.New("stream upload file could not be read")
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > bindings[0].RequestBytesLimit {
-		return streamstore.Reference{}, errors.New("stream upload file exceeds its bounded size")
-	}
-	base, err := clienthttp.ParseBaseURL(connection.baseURL)
+	file, size, err := openStreamUploadFile(operation, path)
 	if err != nil {
 		return streamstore.Reference{}, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+"/api/agent/v1/streams", file)
+	defer func() { _ = file.Close() }()
+	request, err := connection.newUploadRequest(ctx, "/api/agent/v1/streams", operation, requestKey, file, size, mediaType)
 	if err != nil {
 		return streamstore.Reference{}, errors.New("create stream upload request")
 	}
-	request.ContentLength = info.Size()
-	request.Header.Set("Authorization", "Bearer "+connection.secret)
-	request.Header.Set("Content-Type", mediaType)
-	request.Header.Set("X-Broker-Operation", operation)
-	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := clienthttp.Secure(&http.Client{Timeout: 10 * time.Minute}).Do(request)
+	response, err := connection.streamClient(10 * time.Minute).Do(request)
 	if err != nil {
 		return streamstore.Reference{}, errors.New("upload stream")
 	}
 	defer func() { _ = response.Body.Close() }()
-	data, readErr := httpx.ReadLimited(response.Body, 1<<20)
 	var reference streamstore.Reference
-	if readErr != nil || response.StatusCode != http.StatusCreated || strictjson.Decode(data, &reference, true) != nil ||
-		reference.Owner == "" || reference.Purpose != operation || reference.RequestKey != requestKey {
+	if err := decodeCreatedReference(response, &reference, "broker rejected stream upload"); err != nil {
+		return streamstore.Reference{}, err
+	}
+	if !validStreamUploadReference(reference, operation, requestKey) {
 		return streamstore.Reference{}, errors.New("broker rejected stream upload")
 	}
 	return reference, nil
+}
+
+func openStreamUploadFile(operation, path string) (*os.File, int64, error) {
+	limit, err := streamUploadLimit(operation)
+	if err != nil {
+		return nil, 0, err
+	}
+	file, err := os.Open(path) // #nosec G304 -- explicit caller-selected upload file.
+	if err != nil {
+		return nil, 0, errors.New("stream upload file could not be read")
+	}
+	info, err := file.Stat()
+	if err != nil || !validStreamUploadFile(info, limit) {
+		_ = file.Close()
+		return nil, 0, errors.New("stream upload file exceeds its bounded size")
+	}
+	return file, info.Size(), nil
+}
+
+func streamUploadLimit(operation string) (int64, error) {
+	bindings := opbinding.ByOperation(operation)
+	if len(bindings) != 1 || bindings[0].StreamDirection != "upload" {
+		return 0, errors.New("GitHub stream upload operation is invalid")
+	}
+	return bindings[0].RequestBytesLimit, nil
+}
+
+func validStreamUploadFile(info os.FileInfo, limit int64) bool {
+	return info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= limit
+}
+
+func validStreamUploadReference(reference streamstore.Reference, operation, requestKey string) bool {
+	return reference.Owner != "" && reference.Purpose == operation && reference.RequestKey == requestKey
+}
+
+func (connection operationConnection) newUploadRequest(ctx context.Context, path, operation, requestKey string, body io.Reader, size int64, mediaType string) (*http.Request, error) {
+	base, err := url.Parse(connection.baseURL)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+path, body)
+	if err != nil {
+		return nil, err
+	}
+	request.ContentLength = size
+	request.Header.Set("Authorization", "Bearer "+connection.secret)
+	request.Header.Set("Content-Type", mediaType)
+	request.Header.Set("X-Broker-Operation", operation)
+	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
+	return request, nil
+}
+
+func decodeCreatedReference[T any](response *http.Response, reference *T, rejectMessage string) error {
+	data, readErr := httpx.ReadLimited(response.Body, 1<<20)
+	if readErr != nil || response.StatusCode != http.StatusCreated || strictjson.Decode(data, reference, true) != nil {
+		return errors.New(rejectMessage)
+	}
+	return nil
 }
 
 func operationRequestID() (string, error) {

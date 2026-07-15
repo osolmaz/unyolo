@@ -131,6 +131,8 @@ func TestSubmitStrictBoundaryAndErrors(t *testing.T) {
 			return agentv1.Operation{}, false, &Error{Status: http.StatusBadRequest, Code: "unsupported_operation", Message: "Unsupported"}
 		case "failure":
 			return agentv1.Operation{}, false, errors.New("database secret")
+		case "limited":
+			return agentv1.Operation{}, false, &Error{Status: http.StatusTooManyRequests, Code: "client_operation_limit", Message: "Operation admission limit reached", RetryAfterSeconds: 7}
 		default:
 			return validOperation("op/one", agentv1.StatePending), true, nil
 		}
@@ -163,15 +165,18 @@ func TestSubmitStrictBoundaryAndErrors(t *testing.T) {
 		t.Fatalf("oversized submit = %d", response.StatusCode)
 	}
 
-	for key, want := range map[string]int{"conflict": http.StatusConflict, "provider": http.StatusBadRequest, "failure": http.StatusInternalServerError} {
+	for key, want := range map[string]int{"conflict": http.StatusConflict, "provider": http.StatusBadRequest, "failure": http.StatusInternalServerError, "limited": http.StatusTooManyRequests} {
 		body := strings.Replace(valid, `"one"`, `"`+key+`"`, 1)
 		response, text := request(t, server, http.MethodPost, operationsPath, "Bearer good", strings.NewReader(body))
 		if response.StatusCode != want || strings.Contains(text, "database secret") {
 			t.Fatalf("%s = %d %s", key, response.StatusCode, text)
 		}
+		if key == "limited" && response.Header.Get("Retry-After") != "7" {
+			t.Fatalf("limited Retry-After = %q", response.Header.Get("Retry-After"))
+		}
 	}
-	if calls != 4 {
-		t.Fatalf("submit calls = %d, want 4", calls)
+	if calls != 5 {
+		t.Fatalf("submit calls = %d, want 5", calls)
 	}
 }
 

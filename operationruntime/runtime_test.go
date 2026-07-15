@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
+	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/authorization"
@@ -31,6 +34,40 @@ type runtimePlan struct {
 	Authorization policy.Request  `json:"authorization"`
 }
 
+type runtimeObserver struct {
+	submissions   []string
+	executions    []string
+	notifications []string
+}
+
+type runtimeDiagnostics struct {
+	limit         int
+	started       int
+	finished      []string
+	notifications []string
+	retries       int
+}
+
+func (d *runtimeDiagnostics) WorkerConfigured(limit int)          { d.limit = limit }
+func (d *runtimeDiagnostics) OperationStarted(_, _ string, _ int) { d.started++ }
+func (d *runtimeDiagnostics) OperationFinished(_, _, result, code string, _ time.Duration) {
+	d.finished = append(d.finished, result+":"+code)
+}
+func (d *runtimeDiagnostics) NotificationAttempt(_, result, code string) {
+	d.notifications = append(d.notifications, result+":"+code)
+}
+func (d *runtimeDiagnostics) Retry(_, _ string) { d.retries++ }
+
+func (o *runtimeObserver) OperationSubmitted(result string) {
+	o.submissions = append(o.submissions, result)
+}
+func (o *runtimeObserver) OperationExecuted(result string, _ time.Duration) {
+	o.executions = append(o.executions, result)
+}
+func (o *runtimeObserver) NotificationDelivered(result string) {
+	o.notifications = append(o.notifications, result)
+}
+
 type runtimeAdapter struct {
 	descriptor        capability.Descriptor
 	executeErr        error
@@ -46,6 +83,8 @@ type runtimeAdapter struct {
 	executeRelease    <-chan struct{}
 	executeActive     atomic.Int32
 	maxExecuteActive  atomic.Int32
+	requiresApproval  bool
+	boundGrant        grants.Grant
 }
 
 func (a *runtimeAdapter) Descriptor() capability.Descriptor { return a.descriptor }
@@ -63,6 +102,11 @@ func (a *runtimeAdapter) Resolve(_ context.Context, input runtimeInput) (runtime
 }
 func (a *runtimeAdapter) ValidateClient(runtimeInput, string, string) error { return a.clientErr }
 func (a *runtimeAdapter) Authorize(plan runtimePlan) policy.Request         { return plan.Authorization }
+func (a *runtimeAdapter) RequiresApproval() bool                            { return a.requiresApproval }
+func (a *runtimeAdapter) BindReservation(plan runtimePlan, grant grants.Grant) (runtimePlan, error) {
+	a.boundGrant = grant
+	return plan, nil
+}
 func (a *runtimeAdapter) Present(runtimePlan) agentv1.Presentation {
 	return agentv1.Presentation{Title: "Create demo"}
 }
@@ -98,6 +142,8 @@ func (a *runtimeAdapter) Cleanup(runtimePlan) error {
 func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
 	defer closeRuntime()
+	observer := &runtimeObserver{}
+	runtime.options.Observer = observer
 	request := agentv1.SubmitRequest{IdempotencyKey: "request-1", Operation: "repo.create",
 		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{"private":true}`), Reason: "create demo"}
 	operation, created, err := runtime.Submit(t.Context(), "agent", request)
@@ -113,11 +159,91 @@ func TestRuntimeDirectLifecycleAndIdempotentReplay(t *testing.T) {
 	if err != nil || completed.State != agentv1.StateSucceeded || string(completed.Result) != `{"created":true}` || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 201 {
 		t.Fatalf("completed = %+v cleanup=%d status=%d err=%v", completed, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
 	}
+	if !slices.Equal(observer.submissions, []string{"created", "replayed"}) || !slices.Equal(observer.executions, []string{"succeeded"}) {
+		t.Fatalf("runtime observations = %+v", observer)
+	}
+}
+
+func TestRuntimeAdmissionDoesNotChargeIdempotentReplay(t *testing.T) {
+	runtime, _, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
+	defer closeRuntime()
+	limits := admission.DefaultLimits()
+	limits.RequestsPerWindow = 1
+	controller, err := admission.New([]string{"agent"}, limits, operations.AdmissionUsage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.options.Admission = controller
+	request := agentv1.SubmitRequest{IdempotencyKey: "admitted-1", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"}
+	first, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || !created {
+		t.Fatalf("first submit = %+v, %v, %v", first, created, err)
+	}
+	replay, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || created || replay.ID != first.ID {
+		t.Fatalf("replay = %+v, %v, %v", replay, created, err)
+	}
+	request.IdempotencyKey = "admitted-2"
+	_, _, err = runtime.Submit(t.Context(), "agent", request)
+	var apiErr *agentapi.Error
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 || apiErr.Code != "submission_rate_limited" || apiErr.RetryAfterSeconds < 1 {
+		t.Fatalf("limited submit = %#v", err)
+	}
+}
+
+func TestRuntimeOverloadLeavesCancellationAndApprovalAvailable(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	limits := admission.Limits{RequestsPerWindow: 10, Window: time.Minute, ClientActive: 1, ClientPending: 1, GlobalActive: 1, GlobalExecuting: 1}
+	controller, err := admission.New([]string{"agent"}, limits, operations.AdmissionUsage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.options.Admission = controller
+	request := agentv1.SubmitRequest{IdempotencyKey: "overload-one", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "exercise recovery capacity"}
+	first, _, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || first.State != agentv1.StatePending {
+		t.Fatalf("first submission = %+v, %v", first, err)
+	}
+	request.IdempotencyKey = "overload-refused"
+	if _, _, err := runtime.Submit(t.Context(), "agent", request); admissionAPIErrorCode(err) != "client_operation_limit" {
+		t.Fatalf("saturated submission = %v", err)
+	}
+	canceled, err := runtime.Cancel(t.Context(), "agent", first.ID)
+	if err != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("overload cancellation = %+v, %v", canceled, err)
+	}
+	request.IdempotencyKey = "overload-approved"
+	second, _, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || second.State != agentv1.StatePending {
+		t.Fatalf("post-cancel submission = %+v, %v", second, err)
+	}
+	if _, err := grantStore.Approve(second.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatalf("operator approval at capacity: %v", err)
+	}
+	runtime.Advance(t.Context(), second)
+	completed, err := operations.Get("agent", second.ID)
+	if err != nil || completed.State != agentv1.StateSucceeded {
+		t.Fatalf("approved operation = %+v, %v", completed, err)
+	}
+}
+
+func admissionAPIErrorCode(err error) string {
+	var apiErr *agentapi.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code
+	}
+	return ""
 }
 
 func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, &PossiblePartialError{Err: errors.New("connection lost")}, directDecision, nil, false)
 	defer closeRuntime()
+	diagnostics := &runtimeDiagnostics{}
+	runtime.options.Diagnostics = diagnostics
 	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "request-2", Operation: "repo.create",
 		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
 	if err != nil {
@@ -127,6 +253,9 @@ func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 	completed, err := operations.Get("agent", operation.ID)
 	if err != nil || completed.State != agentv1.StateSucceeded || !adapter.reconciled || adapter.cleanupCount.Load() != 1 || adapter.recordedStatus.Load() != 204 {
 		t.Fatalf("completed = %+v, reconciled=%v cleanup=%d status=%d err=%v", completed, adapter.reconciled, adapter.cleanupCount.Load(), adapter.recordedStatus.Load(), err)
+	}
+	if diagnostics.started != 1 || !slices.Equal(diagnostics.finished, []string{"reconciled:"}) {
+		t.Fatalf("diagnostics = %+v", diagnostics)
 	}
 }
 
@@ -147,7 +276,7 @@ func (*captureNotifier) UpdateStatus(context.Context, notify.MessageRef, string)
 
 func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	notifier := &captureNotifier{}
-	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
 	defer closeRuntime()
 	request := agentv1.SubmitRequest{IdempotencyKey: "pending-1", Operation: "repo.create",
 		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"}
@@ -163,6 +292,9 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	if err != nil || completed.State != agentv1.StateSucceeded {
 		t.Fatalf("approved operation = %+v, %v", completed, err)
 	}
+	if adapter.boundGrant.ID != operation.ApprovalID || adapter.boundGrant.ReservationRevision < 1 {
+		t.Fatalf("reserved grant was not bound before execution: %+v", adapter.boundGrant)
+	}
 
 	request.IdempotencyKey = "pending-2"
 	operation, _, err = runtime.Submit(t.Context(), "agent", request)
@@ -172,6 +304,42 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	canceled, err := runtime.Cancel(t.Context(), "agent", operation.ID)
 	if err != nil || canceled.State != agentv1.StateCanceled {
 		t.Fatalf("canceled = %+v, %v", canceled, err)
+	}
+}
+
+func TestRuntimeReleasesApprovalWhenExecutionDidNotStart(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, errors.New("not dispatched"), requestDecision, notifier, true)
+	defer closeRuntime()
+	runtime.options.ExecutionFailure = func(error, error) Failure {
+		return Failure{Code: "provider_unavailable", Message: "Provider was unavailable", ReleaseApproval: true}
+	}
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "release-approval",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.AdvanceAll(t.Context())
+	stored, _ := operations.Get("agent", operation.ID)
+	grant, _ := grantStore.Get(operation.ApprovalID)
+	if stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "provider_unavailable" ||
+		grant.UsedCount != 0 || grant.ReservedCount != 0 || grant.ReservationRetained {
+		t.Fatalf("operation = %+v, grant = %+v", stored, grant)
+	}
+}
+
+func TestRuntimeApprovalRequiredAdapterIgnoresDirectAllow(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, _, _, closeRuntime := newRuntime(t, nil, allowThenRequestDecision, notifier, true)
+	defer closeRuntime()
+	adapter.requiresApproval = true
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "approval-required",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil || operation.State != agentv1.StatePending || operation.ApprovalID == "" || notifier.message.GrantID != operation.ApprovalID {
+		t.Fatalf("approval-required submit = %+v, %v; notification=%+v", operation, err, notifier.message)
 	}
 }
 
@@ -401,6 +569,8 @@ func TestRuntimeNotificationFailurePolicies(t *testing.T) {
 			notifier := &captureNotifier{err: errors.New("offline")}
 			runtime, _, operations, _, closeRuntime := newRuntime(t, nil, requestDecision, notifier, operatorConfigured)
 			defer closeRuntime()
+			diagnostics := &runtimeDiagnostics{}
+			runtime.options.Diagnostics = diagnostics
 			operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "notify", Operation: "repo.create",
 				Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
 			if err != nil {
@@ -416,6 +586,9 @@ func TestRuntimeNotificationFailurePolicies(t *testing.T) {
 			}
 			if stored.State != want {
 				t.Fatalf("stored = %+v, want %s", stored, want)
+			}
+			if !slices.Equal(diagnostics.notifications, []string{"failed:notification_unavailable"}) {
+				t.Fatalf("notification diagnostics = %+v", diagnostics)
 			}
 		})
 	}
@@ -755,6 +928,37 @@ func TestRuntimeRestartRequiresReservedValidAuthority(t *testing.T) {
 	}
 }
 
+func TestRuntimeRestartRetainsUnprovenReservedAuthority(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	adapter.reconcileUnproven = true
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-unproven",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.ReserveUse(operation.ApprovalID); err != nil {
+		t.Fatal(err)
+	}
+	operation, err = operations.Transition(operation.ID, agentv1.StateApproved)
+	if err == nil {
+		operation, err = operations.Transition(operation.ID, agentv1.StateExecuting)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReconcileInterrupted(t.Context(), operation)
+	stored, _ := operations.Get("agent", operation.ID)
+	grant, _ := grantStore.Get(operation.ApprovalID)
+	if stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "upstream_result_unknown" || !grant.ReservationRetained {
+		t.Fatalf("recovered operation = %+v, grant = %+v", stored, grant)
+	}
+}
+
 func directDecision(policy.Request, policy.DecisionOptions) policy.Decision {
 	return policy.Decision{Effect: policy.EffectAllow, Allowed: true, MatchedAllowRuleIDs: []string{"allow"}}
 }
@@ -764,6 +968,13 @@ func requestDecision(policy.Request, policy.DecisionOptions) policy.Decision {
 		Mode: string(policy.GrantModeExecution), DefaultMinutes: 1, MaxMinutes: 2, RequestTTLMinutes: 1,
 		DefaultMaxUses: 1, MaxUses: 1,
 	}}
+}
+
+func allowThenRequestDecision(_ policy.Request, options policy.DecisionOptions) policy.Decision {
+	if options.ForGrantRequest {
+		return requestDecision(policy.Request{}, options)
+	}
+	return directDecision(policy.Request{}, options)
 }
 
 func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, policy.DecisionOptions) policy.Decision,

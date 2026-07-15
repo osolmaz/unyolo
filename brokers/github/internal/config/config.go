@@ -3,29 +3,31 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
+	"github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/endpoint"
 )
 
-const minimumSharedSecretBytes = 32
+const minimumSharedSecretBytes = auth.MinimumSecretBytes
 
 type Config struct {
 	Environment               string
-	BindAddr                  string
-	Port                      string
+	Development               bool
+	AgentEndpoint             endpoint.Endpoint
 	ClientID                  string
 	SharedSecret              string
 	SecretsFile               string
 	OperatorID                string
 	OperatorSecret            string
 	OperatorSecretsFile       string
-	OperatorBindAddr          string
-	OperatorPort              string
+	OperatorEndpoint          *endpoint.Endpoint
 	GitHubToken               string
 	GitHubTokenFile           string
 	GitHubUserID              int64
@@ -49,55 +51,22 @@ type Config struct {
 	GitHubHTTPTimeout         time.Duration
 	GitHubStreamTimeout       time.Duration
 	MaxReceivePackBytes       int64
-	ReadHeaderTimeout         time.Duration
-	ReadTimeout               time.Duration
-	WriteTimeout              time.Duration
-	IdleTimeout               time.Duration
+	Admission                 admission.Config
 }
 
 func Load() (Config, error) {
-	return LoadFromLookup(os.Getenv)
+	return LoadFromLookup(os.LookupEnv)
 }
 
 // LoadFromLookup loads configuration from an injected environment lookup.
-func LoadFromLookup(getenv func(string) string) (Config, error) {
-	cfg := Config{
-		Environment:               getEnvFrom(getenv, "local", "GH_BROKER_ENVIRONMENT"),
-		BindAddr:                  getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_BIND_ADDR"),
-		Port:                      getEnvFrom(getenv, "8080", "GH_BROKER_PORT"),
-		ClientID:                  getEnvFrom(getenv, "bob", "GH_BROKER_CLIENT_ID"),
-		SharedSecret:              getEnvFrom(getenv, "", "GH_BROKER_SHARED_SECRET"),
-		SecretsFile:               getEnvFrom(getenv, "", "GH_BROKER_SECRETS_FILE"),
-		OperatorID:                getEnvFrom(getenv, "onur", "GH_BROKER_OPERATOR_ID"),
-		OperatorSecret:            getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SHARED_SECRET"),
-		OperatorSecretsFile:       getEnvFrom(getenv, "", "GH_BROKER_OPERATOR_SECRETS_FILE"),
-		OperatorBindAddr:          getEnvFrom(getenv, "127.0.0.1", "GH_BROKER_OPERATOR_BIND_ADDR"),
-		OperatorPort:              getEnvFrom(getenv, "8082", "GH_BROKER_OPERATOR_PORT"),
-		GitHubToken:               getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN"),
-		GitHubTokenFile:           getEnvFrom(getenv, "", "GH_BROKER_GITHUB_TOKEN_FILE"),
-		GitHubUserID:              int64EnvFrom(getenv, 0, "GH_BROKER_GITHUB_USER_ID"),
-		GitHubAppID:               getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID"),
-		GitHubAppIDFile:           getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_ID_FILE"),
-		GitHubAppPrivateKeyFile:   getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"),
-		GitHubAppClientID:         getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_ID"),
-		GitHubAppClientIDFile:     getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_ID_FILE"),
-		GitHubAppClientSecret:     getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_SECRET"),
-		GitHubAppClientSecretFile: getEnvFrom(getenv, "", "GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE"),
-		GitHubWebhookSecret:       getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET"),
-		GitHubWebhookSecretFile:   getEnvFrom(getenv, "", "GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"),
-		GitHubAPIBaseURL:          getEnvFrom(getenv, "https://api.github.com/", "GH_BROKER_GITHUB_API_URL"),
-		GitHubWebBaseURL:          getEnvFrom(getenv, "https://github.com/", "GH_BROKER_GITHUB_WEB_URL"),
-		ScopeFile:                 getEnvFrom(getenv, "scope.json", "GH_BROKER_SCOPE_FILE"),
-		StateDir:                  getEnvFrom(getenv, "./state", "GH_BROKER_STATE_DIR"),
-		TelegramBotTokenFile:      getEnvFrom(getenv, "", "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"),
-		TelegramChatID:            telegramChatIDEnvFrom(getenv, "GH_BROKER_TELEGRAM_CHAT_ID"),
-		GitHubHTTPTimeout:         durationEnvFrom(getenv, 30*time.Second, "GH_BROKER_GITHUB_HTTP_TIMEOUT"),
-		GitHubStreamTimeout:       durationEnvFrom(getenv, 10*time.Minute, "GH_BROKER_GITHUB_STREAM_TIMEOUT"),
-		MaxReceivePackBytes:       int64EnvFrom(getenv, 25*1024*1024, "GH_BROKER_MAX_RECEIVE_PACK_BYTES"),
-		ReadHeaderTimeout:         durationEnvFrom(getenv, 5*time.Second, "GH_BROKER_READ_HEADER_TIMEOUT"),
-		ReadTimeout:               durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_READ_TIMEOUT"),
-		WriteTimeout:              durationEnvFrom(getenv, 15*time.Second, "GH_BROKER_WRITE_TIMEOUT"),
-		IdleTimeout:               durationEnvFrom(getenv, 60*time.Second, "GH_BROKER_IDLE_TIMEOUT"),
+func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
+	env := environment{lookup: lookup}
+	cfg, development, networkExposure, err := loadBaseConfig(env)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := loadOperatorEndpoint(env, &cfg, development, networkExposure); err != nil {
+		return Config{}, err
 	}
 	if err := cfg.loadCredentialFiles(); err != nil {
 		return Config{}, err
@@ -105,7 +74,173 @@ func LoadFromLookup(getenv func(string) string) (Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
+	if err := loadAdmissionConfig(env, &cfg); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+func loadBaseConfig(env environment) (Config, bool, bool, error) {
+	development, err := env.boolean("GH_BROKER_DEVELOPMENT", false)
+	if err != nil {
+		return Config{}, false, false, err
+	}
+	networkExposure, err := env.networkExposure("GH_BROKER_NETWORK_EXPOSURE")
+	if err != nil {
+		return Config{}, false, false, err
+	}
+	agentEndpoint, err := loadEndpoint(env, "GH_BROKER_AGENT_ENDPOINT", development, networkExposure)
+	if err != nil {
+		return Config{}, false, false, err
+	}
+	cfg := Config{
+		Environment:               map[bool]string{false: "production", true: "development"}[development],
+		Development:               development,
+		AgentEndpoint:             agentEndpoint,
+		ClientID:                  env.value("GH_BROKER_CLIENT_ID", ""),
+		SharedSecret:              env.value("GH_BROKER_SHARED_SECRET", ""),
+		SecretsFile:               env.value("GH_BROKER_SECRETS_FILE", ""),
+		OperatorID:                env.value("GH_BROKER_OPERATOR_ID", ""),
+		OperatorSecret:            env.value("GH_BROKER_OPERATOR_SHARED_SECRET", ""),
+		OperatorSecretsFile:       env.value("GH_BROKER_OPERATOR_SECRETS_FILE", ""),
+		GitHubToken:               env.value("GH_BROKER_GITHUB_TOKEN", ""),
+		GitHubTokenFile:           env.value("GH_BROKER_GITHUB_TOKEN_FILE", ""),
+		GitHubAppID:               env.value("GH_BROKER_GITHUB_APP_ID", ""),
+		GitHubAppIDFile:           env.value("GH_BROKER_GITHUB_APP_ID_FILE", ""),
+		GitHubAppPrivateKeyFile:   env.value("GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE", ""),
+		GitHubAppClientID:         env.value("GH_BROKER_GITHUB_APP_CLIENT_ID", ""),
+		GitHubAppClientIDFile:     env.value("GH_BROKER_GITHUB_APP_CLIENT_ID_FILE", ""),
+		GitHubAppClientSecret:     env.value("GH_BROKER_GITHUB_APP_CLIENT_SECRET", ""),
+		GitHubAppClientSecretFile: env.value("GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE", ""),
+		GitHubWebhookSecret:       env.value("GH_BROKER_GITHUB_WEBHOOK_SECRET", ""),
+		GitHubWebhookSecretFile:   env.value("GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE", ""),
+		GitHubAPIBaseURL:          env.value("GH_BROKER_GITHUB_API_URL", "https://api.github.com/"),
+		GitHubWebBaseURL:          env.value("GH_BROKER_GITHUB_WEB_URL", "https://github.com/"),
+		ScopeFile:                 env.value("GH_BROKER_SCOPE_FILE", ""),
+		StateDir:                  env.value("GH_BROKER_STATE_DIR", ""),
+		TelegramBotTokenFile:      env.value("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", ""),
+	}
+	if err := loadNumericEnvironment(env, &cfg); err != nil {
+		return Config{}, false, false, err
+	}
+	return cfg, development, networkExposure, nil
+}
+
+func loadOperatorEndpoint(env environment, cfg *Config, development, networkExposure bool) error {
+	if cfg.OperatorSecret != "" || cfg.OperatorSecretsFile != "" {
+		operatorEndpoint, endpointErr := loadEndpoint(env, "GH_BROKER_OPERATOR_ENDPOINT", development, networkExposure)
+		if endpointErr != nil {
+			return endpointErr
+		}
+		cfg.OperatorEndpoint = &operatorEndpoint
+	}
+	return nil
+}
+
+func loadAdmissionConfig(env environment, cfg *Config) error {
+	admissionPath := env.value("GH_BROKER_ADMISSION_CONFIG", "")
+	loaded, err := admission.LoadFile(admissionPath, []string{cfg.ClientID})
+	if err != nil {
+		return fmt.Errorf("GH_BROKER_ADMISSION_CONFIG: %w", err)
+	}
+	cfg.Admission = loaded
+	return nil
+}
+
+type environment struct{ lookup func(string) (string, bool) }
+
+func (e environment) value(name, fallback string) string {
+	if value, ok := e.lookup(name); ok {
+		return value
+	}
+	return fallback
+}
+
+func (e environment) boolean(name string, fallback bool) (bool, error) {
+	value, ok := e.lookup(name)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "true" {
+		return true, nil
+	}
+	if value == "false" {
+		return false, nil
+	}
+	return false, fmt.Errorf("%s must be true or false", name)
+}
+
+func (e environment) networkExposure(name string) (bool, error) {
+	value, ok := e.lookup(name)
+	if !ok || value == "" {
+		return false, nil
+	}
+	if value == "allow" {
+		return true, nil
+	}
+	return false, fmt.Errorf("%s must be allow when set", name)
+}
+
+func loadEndpoint(env environment, name string, development, network bool) (endpoint.Endpoint, error) {
+	value := env.value(name, "")
+	if value == "" {
+		return endpoint.Endpoint{}, fmt.Errorf("%s is required", name)
+	}
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: network})
+	if err != nil {
+		return endpoint.Endpoint{}, fmt.Errorf("%s: %w", name, err)
+	}
+	return parsed, nil
+}
+
+func loadNumericEnvironment(env environment, cfg *Config) error {
+	var err error
+	if cfg.GitHubUserID, err = env.positiveInt("GH_BROKER_GITHUB_USER_ID", 0, true); err != nil {
+		return err
+	}
+	if cfg.TelegramChatID, err = env.nonzeroInt("GH_BROKER_TELEGRAM_CHAT_ID", 0); err != nil {
+		return err
+	}
+	if cfg.GitHubHTTPTimeout, err = env.duration("GH_BROKER_GITHUB_HTTP_TIMEOUT", 30*time.Second, false); err != nil {
+		return err
+	}
+	if cfg.GitHubStreamTimeout, err = env.duration("GH_BROKER_GITHUB_STREAM_TIMEOUT", 10*time.Minute, true); err != nil {
+		return err
+	}
+	cfg.MaxReceivePackBytes, err = env.positiveInt("GH_BROKER_MAX_RECEIVE_PACK_BYTES", 25*1024*1024, false)
+	return err
+}
+
+func (e environment) positiveInt(name string, fallback int64, allowZero bool) (int64, error) {
+	value, ok := e.lookup(name)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed < 0 || parsed == 0 && !allowZero {
+		return 0, fmt.Errorf("%s must be a positive integer", name)
+	}
+	return parsed, nil
+}
+
+func (e environment) nonzeroInt(name string, fallback int64) (int64, error) {
+	value, ok := e.lookup(name)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed == 0 {
+		return 0, fmt.Errorf("%s must be a non-zero integer", name)
+	}
+	return parsed, nil
+}
+
+func (e environment) duration(name string, fallback time.Duration, allowZero bool) (time.Duration, error) {
+	seconds, err := e.positiveInt(name, int64(fallback/time.Second), allowZero)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 func (c *Config) loadCredentialFiles() error {
@@ -200,19 +335,30 @@ func loadNamedSecret(target *string, path string, identity string, label string)
 
 func (c Config) Validate() error {
 	return firstError(
-		required(c.Port, "GH_BROKER_PORT is required"),
-		required(c.BindAddr, "GH_BROKER_BIND_ADDR is required"),
+		initializedEndpoint(c.AgentEndpoint, "GH_BROKER_AGENT_ENDPOINT is required"),
 		required(c.ClientID, "GH_BROKER_CLIENT_ID is required"),
 		minimumBytes(c.SharedSecret, minimumSharedSecretBytes, "GH_BROKER_SHARED_SECRET"),
 		operatorConfig(c),
 		githubCredential(c),
 		required(c.ScopeFile, "GH_BROKER_SCOPE_FILE is required"),
 		required(c.StateDir, "GH_BROKER_STATE_DIR is required"),
+		productionPaths(c),
+		upstreamOrigins(c),
 		telegramPair(c.TelegramBotToken, c.TelegramChatID),
 		positiveDuration(c.GitHubHTTPTimeout, "GH_BROKER_GITHUB_HTTP_TIMEOUT must be positive"),
 		optionalPositiveDuration(c.GitHubStreamTimeout, "GH_BROKER_GITHUB_STREAM_TIMEOUT must be positive"),
 		positiveInt64(c.MaxReceivePackBytes, "GH_BROKER_MAX_RECEIVE_PACK_BYTES must be positive"),
 	)
+}
+
+func upstreamOrigins(c Config) error {
+	if err := endpoint.ValidateHTTPOrigin(c.GitHubAPIBaseURL, c.Development); err != nil {
+		return fmt.Errorf("GH_BROKER_GITHUB_API_URL: %w", err)
+	}
+	if err := endpoint.ValidateHTTPOrigin(c.GitHubWebBaseURL, c.Development); err != nil {
+		return fmt.Errorf("GH_BROKER_GITHUB_WEB_URL: %w", err)
+	}
+	return nil
 }
 
 func operatorConfig(c Config) error {
@@ -236,37 +382,32 @@ func operatorCredentials(c Config) error {
 }
 
 func operatorListener(c Config) error {
-	return firstError(operatorBindAddress(c.OperatorBindAddr), operatorPorts(c.OperatorPort, c.Port))
-}
-
-func operatorBindAddress(address string) error {
-	if net.ParseIP(address) == nil && address != "localhost" {
-		return errors.New("GH_BROKER_OPERATOR_BIND_ADDR must be an IP address or localhost")
+	if c.OperatorEndpoint == nil || c.OperatorEndpoint.String() == "" {
+		return errors.New("GH_BROKER_OPERATOR_ENDPOINT is required with operator credentials")
+	}
+	if c.OperatorEndpoint.String() == c.AgentEndpoint.String() {
+		return errors.New("operator and agent endpoints must differ")
 	}
 	return nil
 }
 
-func operatorPorts(operatorPort string, agentPort string) error {
-	port, err := parsePort(operatorPort, "GH_BROKER_OPERATOR_PORT")
-	if err != nil {
-		return err
-	}
-	agent, err := parsePort(agentPort, "GH_BROKER_PORT")
-	if err != nil {
-		return err
-	}
-	if port == agent {
-		return errors.New("operator and agent listeners must use different ports")
+func initializedEndpoint(value endpoint.Endpoint, message string) error {
+	if value.String() == "" {
+		return errors.New(message)
 	}
 	return nil
 }
 
-func parsePort(value string, name string) (int, error) {
-	port, err := strconv.Atoi(value)
-	if err != nil || port < 1 || port > 65535 {
-		return 0, fmt.Errorf("%s must be between 1 and 65535", name)
+func productionPaths(c Config) error {
+	if c.Development {
+		return nil
 	}
-	return port, nil
+	for name, value := range map[string]string{"GH_BROKER_SCOPE_FILE": c.ScopeFile, "GH_BROKER_STATE_DIR": c.StateDir} {
+		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+			return fmt.Errorf("%s must be an absolute normalized production path", name)
+		}
+	}
+	return nil
 }
 
 func firstError(errs ...error) error {
@@ -373,55 +514,6 @@ func telegramPair(token string, chatID int64) error {
 		return errors.New("a Telegram bot token and GH_BROKER_TELEGRAM_CHAT_ID must be set together")
 	}
 	return nil
-}
-
-func getEnvFrom(getenv func(string) string, fallback string, keys ...string) string {
-	for _, key := range keys {
-		if value := getenv(key); value != "" {
-			return value
-		}
-	}
-	return fallback
-}
-
-func durationEnv(fallback time.Duration, keys ...string) time.Duration {
-	return durationEnvFrom(os.Getenv, fallback, keys...)
-}
-
-func durationEnvFrom(getenv func(string) string, fallback time.Duration, keys ...string) time.Duration {
-	value := getEnvFrom(getenv, "", keys...)
-	if value == "" {
-		return fallback
-	}
-	seconds, err := strconv.Atoi(value)
-	if err != nil || seconds <= 0 {
-		return fallback
-	}
-	return time.Duration(seconds) * time.Second
-}
-
-func int64Env(fallback int64, keys ...string) int64 {
-	return int64EnvFrom(os.Getenv, fallback, keys...)
-}
-
-func int64EnvFrom(getenv func(string) string, fallback int64, keys ...string) int64 {
-	value := getEnvFrom(getenv, "", keys...)
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed <= 0 {
-		return fallback
-	}
-	return parsed
-}
-
-func telegramChatIDEnvFrom(getenv func(string) string, key string) int64 {
-	parsed, err := strconv.ParseInt(strings.TrimSpace(getenv(key)), 10, 64)
-	if err != nil || parsed == 0 {
-		return 0
-	}
-	return parsed
 }
 
 func readSecretFile(path string, label string) (string, error) {

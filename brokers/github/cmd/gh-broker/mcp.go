@@ -78,28 +78,47 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 	encoder := json.NewEncoder(stdout)
 	lastTools, _ := mcpToolSignature(getenv)
 	for scanner.Scan() {
-		var request mcpRequest
-		if strictjson.Decode(scanner.Bytes(), &request, true) != nil {
-			if err := encoder.Encode(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: -32700, Message: "Parse error"}}); err != nil {
-				return err
-			}
-			continue
-		}
-		if len(request.ID) == 0 {
-			continue
-		}
-		currentTools, signatureErr := mcpToolSignature(getenv)
-		if signatureErr == nil && currentTools != lastTools {
-			if err := encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}); err != nil {
-				return err
-			}
-			lastTools = currentTools
-		}
-		if err := encoder.Encode(handleMCP(ctx, getenv, request)); err != nil {
+		nextTools, err := handleMCPLine(ctx, getenv, encoder, lastTools, scanner.Bytes())
+		if err != nil {
 			return err
 		}
+		lastTools = nextTools
 	}
 	return scanner.Err()
+}
+
+func handleMCPLine(ctx context.Context, getenv func(string) string, encoder *json.Encoder, lastTools string, line []byte) (string, error) {
+	request, ok := parseMCPRequest(line)
+	if !ok {
+		return lastTools, encoder.Encode(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: -32700, Message: "Parse error"}})
+	}
+	if len(request.ID) == 0 {
+		return lastTools, nil
+	}
+	nextTools, err := notifyMCPToolChanges(getenv, encoder, lastTools)
+	if err != nil {
+		return lastTools, err
+	}
+	return nextTools, encoder.Encode(handleMCP(ctx, getenv, request))
+}
+
+func parseMCPRequest(line []byte) (mcpRequest, bool) {
+	var request mcpRequest
+	if strictjson.Decode(line, &request, true) != nil {
+		return mcpRequest{}, false
+	}
+	return request, true
+}
+
+func notifyMCPToolChanges(getenv func(string) string, encoder *json.Encoder, lastTools string) (string, error) {
+	currentTools, signatureErr := mcpToolSignature(getenv)
+	if signatureErr != nil {
+		return lastTools, signatureErr
+	}
+	if currentTools == lastTools {
+		return lastTools, nil
+	}
+	return currentTools, encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
 }
 
 func mcpToolSignature(getenv func(string) string) (string, error) {
@@ -115,45 +134,61 @@ func mcpToolSignature(getenv func(string) string) (string, error) {
 	return strings.Join(names, "\x00"), nil
 }
 
-//nolint:cyclop // JSON-RPC dispatch keeps each supported MCP method explicit.
 func handleMCP(ctx context.Context, getenv func(string) string, request mcpRequest) mcpResponse {
 	response := mcpResponse{JSONRPC: "2.0", ID: request.ID}
 	switch request.Method {
 	case "initialize":
-		response.Result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": true}, "resources": map[string]any{}}, "serverInfo": map[string]any{"name": "gh-broker", "version": version}}
+		response.Result = mcpInitializeResult()
 	case "ping":
 		response.Result = map[string]any{}
 	case "tools/list":
-		tools, err := configuredMCPTools(getenv)
-		if err != nil {
-			response.Error = &mcpError{Code: -32603, Message: err.Error()}
-		} else {
-			response.Result = map[string]any{"tools": tools}
-		}
+		response.Result, response.Error = handleMCPToolsList(getenv)
 	case "tools/call":
-		var call mcpToolCall
-		if strictjson.Decode(request.Params, &call, true) != nil {
-			response.Error = &mcpError{Code: -32602, Message: "Invalid tool call"}
-			break
-		}
-		value, err := callMCP(ctx, getenv, call)
-		if err != nil {
-			value = mcpoperation.ErrorValue(err)
-		}
-		response.Result = mcpToolResult(value, err)
+		response.Result, response.Error = handleMCPToolsCall(ctx, getenv, request.Params)
 	case "resources/list":
-		response.Result = map[string]any{"resources": []map[string]any{{"uri": "github://operations?limit=50", "name": "GitHub operation catalog", "description": "Paged exhaustive GitHub capability catalog", "mimeType": "application/json"}}}
+		response.Result = mcpResourcesListResult()
 	case "resources/read":
-		value, err := readMCPResource(request.Params)
-		if err != nil {
-			response.Error = &mcpError{Code: -32602, Message: err.Error()}
-		} else {
-			response.Result = value
-		}
+		response.Result, response.Error = handleMCPResourcesRead(request.Params)
 	default:
 		response.Error = &mcpError{Code: -32601, Message: "Method not found"}
 	}
 	return response
+}
+
+func mcpInitializeResult() map[string]any {
+	return map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": true}, "resources": map[string]any{}}, "serverInfo": map[string]any{"name": "gh-broker", "version": version}}
+}
+
+func handleMCPToolsList(getenv func(string) string) (any, *mcpError) {
+	tools, err := configuredMCPTools(getenv)
+	if err != nil {
+		return nil, &mcpError{Code: -32603, Message: err.Error()}
+	}
+	return map[string]any{"tools": tools}, nil
+}
+
+func handleMCPToolsCall(ctx context.Context, getenv func(string) string, params json.RawMessage) (any, *mcpError) {
+	var call mcpToolCall
+	if strictjson.Decode(params, &call, true) != nil {
+		return nil, &mcpError{Code: -32602, Message: "Invalid tool call"}
+	}
+	value, err := callMCP(ctx, getenv, call)
+	if err != nil {
+		value = mcpoperation.ErrorValue(err)
+	}
+	return mcpToolResult(value, err), nil
+}
+
+func mcpResourcesListResult() map[string]any {
+	return map[string]any{"resources": []map[string]any{{"uri": "github://operations?limit=50", "name": "GitHub operation catalog", "description": "Paged exhaustive GitHub capability catalog", "mimeType": "application/json"}}}
+}
+
+func handleMCPResourcesRead(params json.RawMessage) (any, *mcpError) {
+	value, err := readMCPResource(params)
+	if err != nil {
+		return nil, &mcpError{Code: -32602, Message: err.Error()}
+	}
+	return value, nil
 }
 
 func configuredMCPTools(getenv func(string) string) ([]map[string]any, error) {
@@ -195,48 +230,15 @@ func csvSet(value string) map[string]bool {
 	return result
 }
 
-//nolint:cyclop // Typed MCP validation and resumable submission fail closed at each boundary.
 func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) (any, error) {
-	if call.Name == "gh_operation_get" || call.Name == "gh_operation_wait" || call.Name == "gh_operation_list" {
-		connection, err := loadOperationConnection(getenv)
-		if err != nil {
-			return nil, err
-		}
-		client, err := connection.client()
-		if err != nil {
-			return nil, err
-		}
-		return callMCPUtility(ctx, client, call)
+	if mcpUtilityTool(call.Name) {
+		return callMCPUtilityWithEnv(ctx, getenv, call)
 	}
-	selected, err := mcpcatalog.Selected(mcpExposure(getenv), mcpEnabled(getenv))
+	descriptor, err := selectedMCPDescriptor(getenv, call.Name)
 	if err != nil {
 		return nil, err
 	}
-	var descriptor opcatalog.Descriptor
-	found := false
-	for _, value := range selected {
-		if value.MCPTool != nil && *value.MCPTool == call.Name {
-			descriptor = value
-			found = true
-			break
-		}
-	}
-	if !found {
-		return nil, errors.New("tool is not advertised for this client and deployment")
-	}
-	var input mcpOperationInput
-	if strictjson.Decode(call.Arguments, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
-		return nil, errors.New("invalid typed tool arguments")
-	}
-	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
-	if err != nil {
-		return nil, err
-	}
-	if len(input.Arguments) == 0 {
-		input.Arguments = json.RawMessage(`{}`)
-	}
-	input.RequestID = requestID
-	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor.Descriptor, input.Arguments)
+	input, requestID, err := prepareMCPSubmissionInput(descriptor, call.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -247,6 +249,10 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 	if err := prepareMCPArguments(ctx, descriptor, &input, connection); err != nil {
 		return nil, err
 	}
+	return submitMCPApplicationOperation(ctx, connection, descriptor, input, requestID)
+}
+
+func submitMCPApplicationOperation(ctx context.Context, connection operationConnection, descriptor opcatalog.Descriptor, input mcpOperationInput, requestID string) (any, error) {
 	client, err := connection.client()
 	if err != nil {
 		return nil, err
@@ -256,6 +262,52 @@ func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) 
 		return nil, mcpoperation.Conflict(ctx, client, requestID, err)
 	}
 	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
+}
+
+func mcpUtilityTool(name string) bool {
+	return name == "gh_operation_get" || name == "gh_operation_wait" || name == "gh_operation_list"
+}
+
+func callMCPUtilityWithEnv(ctx context.Context, getenv func(string) string, call mcpToolCall) (any, error) {
+	connection, err := loadOperationConnection(getenv)
+	if err != nil {
+		return nil, err
+	}
+	client, err := connection.client()
+	if err != nil {
+		return nil, err
+	}
+	return callMCPUtility(ctx, client, call)
+}
+
+func selectedMCPDescriptor(getenv func(string) string, tool string) (opcatalog.Descriptor, error) {
+	selected, err := mcpcatalog.Selected(mcpExposure(getenv), mcpEnabled(getenv))
+	if err != nil {
+		return opcatalog.Descriptor{}, err
+	}
+	for _, value := range selected {
+		if value.MCPTool != nil && *value.MCPTool == tool {
+			return value, nil
+		}
+	}
+	return opcatalog.Descriptor{}, errors.New("tool is not advertised for this client and deployment")
+}
+
+func prepareMCPSubmissionInput(descriptor opcatalog.Descriptor, raw json.RawMessage) (mcpOperationInput, string, error) {
+	var input mcpOperationInput
+	if strictjson.Decode(raw, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
+		return mcpOperationInput{}, "", errors.New("invalid typed tool arguments")
+	}
+	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if err != nil {
+		return mcpOperationInput{}, "", err
+	}
+	if len(input.Arguments) == 0 {
+		input.Arguments = json.RawMessage(`{}`)
+	}
+	input.RequestID = requestID
+	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor.Descriptor, input.Arguments)
+	return input, requestID, err
 }
 
 func callMCPUtility(ctx context.Context, client *agentclient.Client, call mcpToolCall) (any, error) {

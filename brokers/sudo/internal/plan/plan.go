@@ -234,17 +234,24 @@ func ValidateForHelper(value Plan, snapshot *catalog.Snapshot, identities Identi
 	if err := validate(value); err != nil {
 		return err
 	}
-	if snapshot == nil || identities == nil {
-		return errors.New("sudo helper validation dependencies are unavailable")
+	if err := validateHelperDependencies(snapshot, identities); err != nil {
+		return err
 	}
 	if err := validateCatalogBinding(value, snapshot); err != nil {
 		return err
 	}
-	identity, err := identities.Lookup(value.TargetUser)
-	if err != nil || !identityMatchesPlan(identity, value) {
-		return errors.New("sudo target identity does not match the execution plan")
+	return validateHelperIdentity(identities, value)
+}
+
+func validateHelperDependencies(snapshot *catalog.Snapshot, identities IdentityResolver) error {
+	if snapshot == nil || identities == nil {
+		return errors.New("sudo helper validation dependencies are unavailable")
 	}
 	return nil
+}
+
+func validateHelperIdentity(identities IdentityResolver, value Plan) error {
+	return validatePlanIdentity(identities, value, "sudo target identity does not match the execution plan")
 }
 
 func identityMatchesPlan(identity Identity, value Plan) bool {
@@ -274,13 +281,23 @@ func (v Validator) ValidateActivation(ctx context.Context, grant grants.Grant, c
 }
 
 func (v Validator) ValidateExecution(ctx context.Context, grant grants.Grant) (Plan, error) {
-	if err := v.validateGrant(grant, grants.ApprovalConstraints{}); err != nil {
+	value, err := v.ValidateGrant(grant)
+	if err != nil {
 		return Plan{}, err
 	}
 	if v.Helper == nil {
 		return Plan{}, errors.New("sudo privileged helper is unavailable")
 	}
 	if err := v.Helper.Ready(ctx); err != nil {
+		return Plan{}, err
+	}
+	return value, nil
+}
+
+// ValidateGrant verifies the immutable command and current host bindings
+// without probing helper availability.
+func (v Validator) ValidateGrant(grant grants.Grant) (Plan, error) {
+	if err := v.validateGrant(grant, grants.ApprovalConstraints{}); err != nil {
 		return Plan{}, err
 	}
 	return v.Store.Get(grant.Metadata[MetadataDigest])
@@ -304,24 +321,38 @@ func (v Validator) validateGrant(grant grants.Grant, constraints grants.Approval
 }
 
 func (v Validator) loadGrantPlan(grant grants.Grant) (Plan, time.Duration, error) {
-	if v.Store == nil || v.Catalog == nil || v.Identities == nil {
-		return Plan{}, 0, errors.New("sudo plan validator is unavailable")
-	}
-	if grant.Metadata[MetadataSchema] != SchemaV1 {
-		return Plan{}, 0, errors.New("sudo grant plan schema is missing or unsupported")
+	if err := v.validateGrantPlanInputs(grant); err != nil {
+		return Plan{}, 0, err
 	}
 	value, err := v.Store.Get(grant.Metadata[MetadataDigest])
 	if err != nil {
 		return Plan{}, 0, err
 	}
 	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
-	if !planMatchesGrant(value, grant, requestedDuration, requestedMaxUses) {
-		return Plan{}, 0, errors.New("sudo grant does not match its immutable plan")
-	}
-	if !grantSlotsMatch(value, grant) {
-		return Plan{}, 0, errors.New("sudo grant slot values do not match its plan")
+	if err := validateLoadedGrantPlan(value, grant, requestedDuration, requestedMaxUses); err != nil {
+		return Plan{}, 0, err
 	}
 	return value, requestedDuration, nil
+}
+
+func (v Validator) validateGrantPlanInputs(grant grants.Grant) error {
+	if v.Store == nil || v.Catalog == nil || v.Identities == nil {
+		return errors.New("sudo plan validator is unavailable")
+	}
+	if grant.Metadata[MetadataSchema] != SchemaV1 {
+		return errors.New("sudo grant plan schema is missing or unsupported")
+	}
+	return nil
+}
+
+func validateLoadedGrantPlan(value Plan, grant grants.Grant, requestedDuration time.Duration, requestedMaxUses usebudget.Limit) error {
+	if !planMatchesGrant(value, grant, requestedDuration, requestedMaxUses) {
+		return errors.New("sudo grant does not match its immutable plan")
+	}
+	if !grantSlotsMatch(value, grant) {
+		return errors.New("sudo grant slot values do not match its plan")
+	}
+	return nil
 }
 
 func grantSlotsMatch(value Plan, grant grants.Grant) bool {
@@ -334,9 +365,13 @@ func grantSlotsMatch(value Plan, grant grants.Grant) bool {
 }
 
 func validateCurrentIdentity(resolver IdentityResolver, value Plan) error {
+	return validatePlanIdentity(resolver, value, "sudo target identity changed after request")
+}
+
+func validatePlanIdentity(resolver IdentityResolver, value Plan, message string) error {
 	identity, err := resolver.Lookup(value.TargetUser)
 	if err != nil || !identityMatchesPlan(identity, value) {
-		return errors.New("sudo target identity changed after request")
+		return errors.New(message)
 	}
 	return nil
 }
@@ -432,9 +467,29 @@ func decode(data []byte) (Plan, error) {
 }
 
 func validate(value Plan) error {
+	if err := validatePlanHeader(value); err != nil {
+		return err
+	}
+	if err := validatePlanCollections(value); err != nil {
+		return err
+	}
+	if err := validatePlanEnvironment(value.Environment); err != nil {
+		return err
+	}
+	if !validPlanSlots(value.SlotValues) {
+		return errors.New("sudo plan slot value is invalid")
+	}
+	return nil
+}
+
+func validatePlanHeader(value Plan) error {
 	if !validPlanIdentity(value) || !validPlanLimits(value) {
 		return errors.New("sudo plan is invalid")
 	}
+	return nil
+}
+
+func validatePlanCollections(value Plan) error {
 	if !validPlanCollectionLimits(value) {
 		return errors.New("sudo plan is invalid")
 	}
@@ -443,12 +498,6 @@ func validate(value Plan) error {
 	}
 	if !validPlanArguments(value.Arguments) {
 		return errors.New("sudo plan argument is invalid")
-	}
-	if err := validatePlanEnvironment(value.Environment); err != nil {
-		return err
-	}
-	if !validPlanSlots(value.SlotValues) {
-		return errors.New("sudo plan slot value is invalid")
 	}
 	return nil
 }

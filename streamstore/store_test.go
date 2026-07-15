@@ -207,3 +207,23 @@ func TestStoreEnforcesAggregateQuotaAfterSweeping(t *testing.T) {
 		t.Fatal("aggregate file quota was not enforced")
 	}
 }
+
+func TestStoreEnforcesPerOwnerQuotaWithoutChargingReplay(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	store.maxFiles, store.maxOwnerFiles = 3, 1
+	expires := time.Now().Add(time.Hour)
+	first, err := store.Put("agent-a", "release.upload", "request-1", "application/octet-stream", strings.NewReader("one"), 3, expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := store.Put("agent-a", "release.upload", "request-1", "application/octet-stream", strings.NewReader("one"), 3, expires)
+	if err != nil || replay != first {
+		t.Fatalf("replay = %+v, %v", replay, err)
+	}
+	if _, err := store.Put("agent-a", "release.upload", "request-2", "application/octet-stream", strings.NewReader("two"), 3, expires); err == nil {
+		t.Fatal("per-owner stream quota was not enforced")
+	}
+	if _, err := store.Put("agent-b", "release.upload", "request-3", "application/octet-stream", strings.NewReader("two"), 3, expires); err != nil {
+		t.Fatalf("independent owner was rejected: %v", err)
+	}
+}

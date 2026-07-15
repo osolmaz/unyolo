@@ -69,6 +69,11 @@ func TestParseAndResolveTypedCommand(t *testing.T) {
 	if err := snapshot.ValidateResolved(changed); err == nil {
 		t.Fatal("changed resolved command was accepted")
 	}
+	missingSlot := resolved
+	missingSlot.SlotValues = map[string]string{"environment": "production", "artifact": artifact}
+	if err := snapshot.ValidateResolved(missingSlot); err == nil {
+		t.Fatal("resolved command with missing slot was accepted")
+	}
 }
 
 func TestLoadAndNilSnapshotBehavior(t *testing.T) {

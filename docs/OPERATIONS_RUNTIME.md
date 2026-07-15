@@ -15,19 +15,30 @@ TAG_PREFIX=hf-broker/
 ```
 
 and executes the Brokerkit script. The runtime detects Linux or macOS and
-amd64 or arm64, resolves the latest qualified component release unless
-`VERSION` is set, downloads the matching tarball and `checksums.txt`, verifies
-the archive from its download directory, and installs the declared executable
-set. HF and GitHub declare one CLI. Sudo additionally declares its privileged
+amd64 or arm64. The wrapper resolves the selected qualified release tag to its
+exact commit SHA and fetches the canonical installer from that immutable
+revision. The installer downloads the matching tarball and `checksums.txt`,
+checks the archive digest, and verifies GitHub artifact attestations for both
+files against the BrokerKit repository, release workflow, and selected tag. It
+uses an exact GitHub CLI build whose Linux and macOS checksums are embedded in
+the installer. It then installs the declared executable set. HF and GitHub
+declare one CLI. Sudo additionally declares its privileged
 `sudo-broker-exec` companion, which is installed outside the ordinary `PATH` in
 the adjacent `libexec` directory.
 
-The installer does not create users, credentials, config, state, or services.
-Those changes belong to an explicit broker setup command.
+The installer defaults to `$HOME/.local/bin` and never invokes `sudo`. An
+explicit system destination requires an operator-controlled privileged shell.
+It does not create users, credentials, config, state, or services; those
+changes belong to an explicit broker setup command.
 
-The `BROKERKIT_LATEST_RELEASE_URL`, `BROKERKIT_RELEASE_BASE_URL`,
-`BROKERKIT_UNAME_S`, and `BROKERKIT_UNAME_M` variables are deterministic test
-seams. Normal installs do not need them.
+An offline installation may set `BROKERKIT_VERIFIER_FILE` to an absolute,
+executable path for a verifier the operator obtained and verified separately.
+`BROKERKIT_VERIFY_ONLY=true` downloads, authenticates, and validates release
+contents without installing them. The release workflow combines it with
+`BROKERKIT_VERIFY_RELEASE_SET=true` after publication to verify all four
+platform archives, the checksum manifest, and the SBOM. The remaining
+`BROKERKIT_*` URL and platform variables are test seams. Normal installs do not
+need them.
 
 ## Setup
 
@@ -141,6 +152,26 @@ Provider-specific probes remain in each broker. For example, hf-broker owns
 Hugging Face credential-source and mirror checks, gh-broker owns GitHub App and
 ruleset checks, and sudo-broker owns catalog, target-user, and
 privileged-executor checks.
+
+## State Maintenance
+
+Every broker exposes the same offline maintenance surface:
+
+```text
+BROKER state check --state-dir /absolute/state [--full]
+BROKER state backup --state-dir /absolute/state --output /absolute/new-backup
+BROKER state restore --state-dir /absolute/state --backup /absolute/backup
+BROKER state export --state-dir /absolute/state --output /absolute/new-export.json
+```
+
+Maintenance commands acquire the BrokerKit state lease, so the service must be
+stopped. They accept only the exact current SQLite schema and never create,
+migrate, or convert a database while checking, backing up, or exporting it.
+Backup uses SQLite's consistent backup API and publishes a private database plus
+checksum manifest. Restore validates format, integrity, checksum, size,
+ownership, and modes before replacing offline state. Export is deterministic
+and bounded; it omits operation inputs and results, reasons, plan bodies,
+decision tokens, notification destinations, and credential material.
 
 ## Ownership Rule
 

@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 
+	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/secretfile"
 	"github.com/osolmaz/brokerkit/store"
 )
@@ -26,7 +26,7 @@ const (
 type Config struct {
 	BrokerName string
 	EnvPrefix  string
-	URL        string
+	Endpoint   string
 	Secret     string
 	HomeDir    string
 }
@@ -109,7 +109,7 @@ func Render(cfg Config) ([]byte, error) {
 		return nil, err
 	}
 	prefix := normalizeEnvPrefix(cfg.EnvPrefix)
-	body := "export " + prefix + "_URL=" + shellQuote(cfg.URL) + "\n" +
+	body := "export " + prefix + "_ENDPOINT=" + shellQuote(cfg.Endpoint) + "\n" +
 		"export " + prefix + "_SHARED_SECRET=" + shellQuote(cfg.Secret) + "\n"
 	return []byte(body), nil
 }
@@ -213,11 +213,23 @@ func (cfg Config) validate() error {
 	if err := validateEnvPrefix(cfg.EnvPrefix); err != nil {
 		return err
 	}
-	if err := ValidateURL(cfg.URL); err != nil {
+	if err := ValidateEndpoint(cfg.Endpoint); err != nil {
 		return err
 	}
 	if strings.TrimSpace(cfg.Secret) == "" {
 		return errors.New("client secret is required")
+	}
+	return nil
+}
+
+// ValidateEndpoint accepts only directly dialable local or loopback broker endpoints.
+func ValidateEndpoint(value string) error {
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{})
+	if err != nil || !parsed.ClientCapable() {
+		return errors.New("client endpoint is invalid or not directly dialable")
+	}
+	if parsed.Scheme() != endpoint.SchemeUnix && parsed.Exposure() != endpoint.ExposureLoopback {
+		return errors.New("client endpoint must be local or loopback")
 	}
 	return nil
 }
@@ -257,35 +269,6 @@ func isEnvPrefixChar(char rune) bool {
 
 func normalizeEnvPrefix(value string) string {
 	return strings.Trim(strings.TrimSpace(value), "_")
-}
-
-// ValidateURL validates a broker client URL and rejects embedded credentials.
-func ValidateURL(value string) error {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return errors.New("broker URL is required")
-	}
-	parsed, err := url.Parse(trimmed)
-	if err != nil {
-		return fmt.Errorf("broker URL is invalid: %w", err)
-	}
-	return validateParsedURL(parsed)
-}
-
-func validateParsedURL(parsed *url.URL) error {
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return errors.New("broker URL must use http or https")
-	}
-	if parsed.Host == "" {
-		return errors.New("broker URL host is required")
-	}
-	if parsed.User != nil {
-		return errors.New("broker URL must not contain user information")
-	}
-	if parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("broker URL must not contain a query or fragment")
-	}
-	return nil
 }
 
 // ValidateClientName validates an identifier used as a client secret-file key.

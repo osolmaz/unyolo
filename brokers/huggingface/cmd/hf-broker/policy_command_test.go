@@ -212,29 +212,3 @@ func TestPolicyRenderReplaceRollsBackBeforeCommitFailure(t *testing.T) {
 		t.Fatalf("manifest directory changed: info=%v error=%v", info, statErr)
 	}
 }
-
-func TestBackupPolicyArtifactKeepsOriginalPathPresent(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "scope.json")
-	if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	artifact, err := stagePolicyArtifact(policyArtifactOutput{path: path, data: []byte("replacement")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cleanupPolicyArtifactTransaction([]*stagedPolicyArtifact{artifact}) })
-	if err := backupPolicyArtifact(artifact); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil || string(data) != "existing" {
-		t.Fatalf("original path after backup = %q, error = %v", data, err)
-	}
-	if err := rollbackPolicyArtifact(artifact); err != nil {
-		t.Fatal(err)
-	}
-	if artifact.backup != "" {
-		t.Fatalf("backup path was not cleared: %s", artifact.backup)
-	}
-}

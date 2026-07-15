@@ -51,22 +51,22 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	encoder := json.NewEncoder(stdout)
 	for scanner.Scan() {
-		var request mcpRequest
-		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
-			if err := encoder.Encode(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: -32700, Message: "Parse error"}}); err != nil {
-				return err
-			}
-			continue
-		}
-		if len(request.ID) == 0 {
-			continue
-		}
-		response := handleMCPRequest(ctx, client, request)
-		if err := encoder.Encode(response); err != nil {
+		if err := handleMCPLine(ctx, client, encoder, scanner.Bytes()); err != nil {
 			return err
 		}
 	}
 	return scanner.Err()
+}
+
+func handleMCPLine(ctx context.Context, client *agentClient, encoder *json.Encoder, line []byte) error {
+	var request mcpRequest
+	if err := json.Unmarshal(line, &request); err != nil {
+		return encoder.Encode(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: -32700, Message: "Parse error"}})
+	}
+	if len(request.ID) == 0 {
+		return nil
+	}
+	return encoder.Encode(handleMCPRequest(ctx, client, request))
 }
 
 func handleMCPRequest(ctx context.Context, client *agentClient, request mcpRequest) mcpResponse {
@@ -79,21 +79,23 @@ func handleMCPRequest(ctx context.Context, client *agentClient, request mcpReque
 	case "tools/list":
 		response.Result = map[string]any{"tools": mcpTools()}
 	case "tools/call":
-		var call mcpToolCall
-		if json.Unmarshal(request.Params, &call) != nil {
-			response.Error = &mcpError{Code: -32602, Message: "Invalid tool call"}
-			return response
-		}
-		result, err := callMCPTool(ctx, client, call)
-		if err != nil {
-			response.Result = mcpToolResult(mcpoperation.ErrorValue(err), true)
-		} else {
-			response.Result = mcpToolResult(result, false)
-		}
+		response.Result, response.Error = handleMCPToolCall(ctx, client, request.Params)
 	default:
 		response.Error = &mcpError{Code: -32601, Message: "Method not found"}
 	}
 	return response
+}
+
+func handleMCPToolCall(ctx context.Context, client *agentClient, params json.RawMessage) (any, *mcpError) {
+	var call mcpToolCall
+	if json.Unmarshal(params, &call) != nil {
+		return nil, &mcpError{Code: -32602, Message: "Invalid tool call"}
+	}
+	result, err := callMCPTool(ctx, client, call)
+	if err != nil {
+		return mcpToolResult(mcpoperation.ErrorValue(err), true), nil
+	}
+	return mcpToolResult(result, false), nil
 }
 
 func mcpTools() []map[string]any {
@@ -178,32 +180,58 @@ func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, time
 }
 
 func callMCPOperation(ctx context.Context, client *agentClient, name string, raw json.RawMessage) (any, error) {
-	if name == "hf_operation_list" {
-		var input mcpoperation.ListInput
+	call, found := mcpOperationCalls[name]
+	if !found {
+		return nil, fmt.Errorf("unknown operation tool %q", name)
+	}
+	return call(ctx, client, raw)
+}
+
+type mcpOperationCall func(context.Context, *agentClient, json.RawMessage) (any, error)
+
+var mcpOperationCalls = map[string]mcpOperationCall{
+	"hf_operation_get":    decodedMCPCall(executeMCPGetOperation),
+	"hf_operation_list":   callMCPListOperation,
+	"hf_operation_wait":   decodedMCPCall(executeMCPWaitOperation),
+	"hf_operation_cancel": callMCPCancelOperation,
+}
+
+func callMCPListOperation(ctx context.Context, client *agentClient, raw json.RawMessage) (any, error) {
+	var input mcpoperation.ListInput
+	if err := decodeMCPArguments(raw, &input); err != nil {
+		return nil, err
+	}
+	return mcpoperation.List(ctx, client.operations, input)
+}
+
+func executeMCPWaitOperation(ctx context.Context, client *agentClient, input mcpoperation.WaitInput) (any, error) {
+	return mcpoperation.Wait(ctx, client.operations, input, mcpprojection.ResultToMCP)
+}
+
+func executeMCPGetOperation(ctx context.Context, client *agentClient, input mcpoperation.GetInput) (any, error) {
+	return mcpoperation.Get(ctx, client.operations, input, mcpprojection.ResultToMCP)
+}
+
+func decodedMCPCall[T any](execute func(context.Context, *agentClient, T) (any, error)) mcpOperationCall {
+	return func(ctx context.Context, client *agentClient, raw json.RawMessage) (any, error) {
+		var input T
 		if err := decodeMCPArguments(raw, &input); err != nil {
 			return nil, err
 		}
-		return mcpoperation.List(ctx, client.operations, input)
+		return execute(ctx, client, input)
 	}
-	if name == "hf_operation_wait" {
-		var input mcpoperation.WaitInput
-		if err := decodeMCPArguments(raw, &input); err != nil {
-			return nil, err
-		}
-		return mcpoperation.Wait(ctx, client.operations, input, mcpprojection.ResultToMCP)
-	}
+}
+
+func callMCPCancelOperation(ctx context.Context, client *agentClient, raw json.RawMessage) (any, error) {
 	var input mcpoperation.GetInput
 	if err := decodeMCPArguments(raw, &input); err != nil {
 		return nil, err
 	}
-	if name == "hf_operation_cancel" {
-		operation, err := client.cancel(ctx, input.OperationID)
-		if err != nil {
-			return nil, err
-		}
-		return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
+	operation, err := client.cancel(ctx, input.OperationID)
+	if err != nil {
+		return nil, err
 	}
-	return mcpoperation.Get(ctx, client.operations, input, mcpprojection.ResultToMCP)
+	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
 }
 
 func decodeMCPArguments(raw json.RawMessage, out any) error {

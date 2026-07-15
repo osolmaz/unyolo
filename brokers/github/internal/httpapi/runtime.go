@@ -40,11 +40,11 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 }
 
 func (s *Server) Start(ctx context.Context) {
-	s.startOperationWorker(ctx)
+	s.startOperationRuntime(ctx)
 	s.sealedPayloads.Start(s.lifecycleContext)
 	s.startStreamSweeper(s.lifecycleContext)
-	s.startTelegram(ctx)
-	s.startNotificationSweeper(ctx)
+	s.startTelegram(s.lifecycleContext)
+	s.startNotificationSweeper(s.lifecycleContext)
 }
 
 func (s *Server) startStreamSweeper(ctx context.Context) {
@@ -67,13 +67,21 @@ func (s *Server) startStreamSweeper(ctx context.Context) {
 
 func (s *Server) startTelegram(ctx context.Context) {
 	if s.telegram != nil {
-		go s.telegram.Poll(ctx, s.control.HandleDecision)
+		s.backgroundWorkers.Add(1)
+		go func() {
+			defer s.backgroundWorkers.Done()
+			s.telegram.Poll(ctx, s.control.HandleDecision)
+		}()
 	}
 }
 
 func (s *Server) startNotificationSweeper(ctx context.Context) {
 	if s.notifier != nil {
-		go s.runGrantNotificationSweeper(ctx)
+		s.backgroundWorkers.Add(1)
+		go func() {
+			defer s.backgroundWorkers.Done()
+			s.runGrantNotificationSweeper(ctx)
+		}()
 	}
 }
 
@@ -174,12 +182,8 @@ func (s *Server) reserveGrantUse(id string) ([]grants.Grant, error) {
 	if id == "" {
 		return nil, nil
 	}
-	grant, err := s.grants.ReserveUse(id)
+	grant, err := s.reserveValidatedGrantUse(id)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.planValidator.ValidateExecution(grant); err != nil {
-		_, _ = s.grants.ReleaseUse(grant.ID)
 		return nil, err
 	}
 	return []grants.Grant{grant}, nil
@@ -193,18 +197,26 @@ func (s *Server) reserveAuthorizedGrants(authorized []authorizedReceivePackReque
 		if id == "" || seen[id] {
 			continue
 		}
-		grant, err := s.grants.ReserveUse(id)
+		grant, err := s.reserveValidatedGrantUse(id)
 		if err != nil {
-			return reserved, err
-		}
-		if err := s.planValidator.ValidateExecution(grant); err != nil {
-			_, _ = s.grants.ReleaseUse(grant.ID)
 			return reserved, err
 		}
 		seen[id] = true
 		reserved = append(reserved, grant)
 	}
 	return reserved, nil
+}
+
+func (s *Server) reserveValidatedGrantUse(id string) (grants.Grant, error) {
+	grant, err := s.grants.ReserveUse(id)
+	if err != nil {
+		return grants.Grant{}, err
+	}
+	if err := s.planValidator.ValidateExecution(grant); err != nil {
+		_, _ = s.grants.ReleaseUse(grant.ID)
+		return grants.Grant{}, err
+	}
+	return grant, nil
 }
 
 func (s *Server) commitGrantUses(reserved []grants.Grant) error {

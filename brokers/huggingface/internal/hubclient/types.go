@@ -67,23 +67,33 @@ func ValidNamespaceSegment(value string) bool { return namespaceSegmentPattern.M
 // ValidGitRefComponent reports whether value is a safe single git ref name
 // (branch or tag). It follows git check-ref-format restrictions for one
 // component; slashes are allowed and are always path-escaped on the wire.
-//
-//nolint:cyclop // Git ref constraints are explicit and tracked by the exact HF CRAP baseline.
 func ValidGitRefComponent(value string) bool {
-	if value == "" || len(value) > 200 || strings.HasPrefix(value, "-") ||
-		strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") ||
-		strings.HasSuffix(value, ".lock") || strings.HasSuffix(value, ".") {
+	if invalidGitRefBoundary(value) {
 		return false
 	}
 	if strings.Contains(value, "..") || strings.Contains(value, "//") || strings.Contains(value, "@{") {
 		return false
 	}
 	for _, r := range value {
-		if r < 0x20 || r == 0x7f || strings.ContainsRune(" ~^:?*[\\", r) {
+		if invalidGitRefRune(r) {
 			return false
 		}
 	}
 	return true
+}
+
+func invalidGitRefBoundary(value string) bool {
+	return value == "" ||
+		len(value) > 200 ||
+		strings.HasPrefix(value, "-") ||
+		strings.HasPrefix(value, "/") ||
+		strings.HasSuffix(value, "/") ||
+		strings.HasSuffix(value, ".lock") ||
+		strings.HasSuffix(value, ".")
+}
+
+func invalidGitRefRune(r rune) bool {
+	return r < 0x20 || r == 0x7f || strings.ContainsRune(" ~^:?*[\\", r)
 }
 
 // RepoRef identifies one exact repository.
@@ -379,6 +389,10 @@ func (input CreateRepoInput) validate() error {
 	if input.Visibility != VisibilityPublic && input.Visibility != VisibilityPrivate {
 		return errors.New("hubclient: repository creation visibility must be public or private")
 	}
+	return input.validateSDK()
+}
+
+func (input CreateRepoInput) validateSDK() error {
 	if input.Ref.Type == RepoTypeSpace {
 		if !ValidSpaceSDK(input.SpaceSDK) {
 			return errors.New("hubclient: space SDK must be gradio, streamlit, docker, or static")

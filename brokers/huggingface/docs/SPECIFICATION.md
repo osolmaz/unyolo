@@ -432,8 +432,8 @@ operator's answer to "what did the agent actually do?"
 ## Client Setup
 
 ```sh
-# git: the broker is just a remote
-git remote set-url origin https://broker.tailnet:8080/datasets/osolmaz/scraped-news
+# Standard Git clients use a deployment-owned HTTPS ingress.
+git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped-news
 ```
 
 ## Repository Layout
@@ -475,10 +475,15 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_HF_TOKEN_FILE` | yes unless `HF_BROKER_HF_TOKEN` set | path to a broker-only file containing the upstream Hugging Face write token; preferred for same-host deployments |
 | `HF_BROKER_SHARED_SECRET` | yes unless `HF_BROKER_SECRETS_FILE` set | single client secret; min 32 bytes |
 | `HF_BROKER_SECRETS_FILE` | no | path to a file of `name = secret` lines for per-client secrets (one secret per agent); enables named clients in audit |
-| `HF_BROKER_BIND_ADDR` | no | default `127.0.0.1` |
-| `HF_BROKER_PORT` | no | default `8080` |
-| `HF_BROKER_SCOPE_FILE` | no | default `scope.json` |
-| `HF_BROKER_STATE_DIR` | no | default `./state`; holds mirrors and grant store |
+| `HF_BROKER_AGENT_ENDPOINT` | yes | complete `unix`, `tcp`, `activation`, or `fd` endpoint URI |
+| `HF_BROKER_OPERATOR_SHARED_SECRET` | no | single operator credential; requires a distinct operator endpoint |
+| `HF_BROKER_OPERATOR_SECRETS_FILE` | no | protected named operator credentials file; requires a distinct operator endpoint |
+| `HF_BROKER_OPERATOR_ENDPOINT` | with operator credentials | complete endpoint URI distinct from the agent endpoint |
+| `HF_BROKER_DEVELOPMENT` | no | explicit `true` enables relative paths, loopback HTTP origins, and loopback TCP port `0` |
+| `HF_BROKER_NETWORK_EXPOSURE` | no | must be `allow` before a non-loopback TCP endpoint is accepted |
+| `HF_BROKER_SCOPE_FILE` | yes | policy path; absolute in production |
+| `HF_BROKER_STATE_DIR` | yes | state path; absolute in production |
+| `HF_BROKER_ADMISSION_CONFIG` | no | optional authenticated-client quota configuration |
 | `HF_BROKER_MAX_PACK_BYTES` | no | default `26214400` (25 MiB) |
 | `HF_BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
 | `HF_BROKER_UPSTREAM_HUB_URL` | no | Hub origin, default `https://huggingface.co`; intended for tests or private mirrors |
@@ -487,7 +492,8 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
 | `HF_BROKER_TELEGRAM_CHAT_ID` | no | the single operator chat id decisions are accepted from |
 
-Startup validation fails closed: missing required secret, setting both
+Startup validation fails closed: missing endpoints or paths, unsafe network
+exposure, missing required secret, setting both
 `HF_BROKER_HF_TOKEN` and `HF_BROKER_HF_TOKEN_FILE`, either inline token and
 its corresponding token-file variable, unreadable, oversized, or empty token
 file, unreadable or invalid `scope.json`, or a secret under 32 bytes all abort
@@ -502,7 +508,7 @@ hf-broker doctor \
   --agent-user agent \
   --broker-pid 12345 \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/hf-broker/hf-broker.sock
+  --socket /run/brokerkit/huggingface/agent/broker.sock
 ```
 
 `hf-broker doctor isolation` is equivalent and remains the explicit

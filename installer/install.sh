@@ -8,6 +8,12 @@ VERSION="${VERSION:-}"
 TAG_PREFIX="${TAG_PREFIX:-}"
 COMPANION_BINARIES="${COMPANION_BINARIES:-}"
 LIBEXEC_DIR="${LIBEXEC_DIR:-}"
+BROKERKIT_VERIFY_ONLY="${BROKERKIT_VERIFY_ONLY:-false}"
+BROKERKIT_VERIFY_RELEASE_SET="${BROKERKIT_VERIFY_RELEASE_SET:-false}"
+BROKERKIT_VERIFIER_FILE="${BROKERKIT_VERIFIER_FILE:-}"
+
+GH_VERIFIER_VERSION="2.96.0"
+GH_VERIFIER_RELEASE="https://github.com/cli/cli/releases/download/v${GH_VERIFIER_VERSION}"
 
 fail() {
   label="${BROKER:-broker}"
@@ -48,6 +54,23 @@ validate_inputs() {
       *) fail "install directories must be absolute normalized paths" ;;
     esac
   done
+  for setting in BROKERKIT_VERIFY_ONLY BROKERKIT_VERIFY_RELEASE_SET; do
+    eval "value=\${$setting}"
+    case "$value" in
+      true | false) ;;
+      *) fail "$setting must be true or false" ;;
+    esac
+  done
+  if [ "$BROKERKIT_VERIFY_RELEASE_SET" = true ] && [ "$BROKERKIT_VERIFY_ONLY" != true ]; then
+    fail "BROKERKIT_VERIFY_RELEASE_SET requires BROKERKIT_VERIFY_ONLY=true"
+  fi
+  if [ -n "$BROKERKIT_VERIFIER_FILE" ]; then
+    case "$BROKERKIT_VERIFIER_FILE" in
+      /*) case "$BROKERKIT_VERIFIER_FILE/" in *"/../"* | *"/./"* | *"//"*) fail "BROKERKIT_VERIFIER_FILE must be an absolute normalized path" ;; esac ;;
+      *) fail "BROKERKIT_VERIFIER_FILE must be an absolute normalized path" ;;
+    esac
+    [ -x "$BROKERKIT_VERIFIER_FILE" ] || fail "BROKERKIT_VERIFIER_FILE must be executable"
+  fi
   for binary in $COMPANION_BINARIES; do
     case "$binary" in
       "" | *[!a-z0-9-]* | "$BROKER") fail "COMPANION_BINARIES contains an invalid binary name" ;;
@@ -109,14 +132,6 @@ choose_install_dir() {
     echo "$INSTALL_DIR"
     return
   fi
-  if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-    echo /usr/local/bin
-    return
-  fi
-  if command -v sudo >/dev/null 2>&1; then
-    echo /usr/local/bin
-    return
-  fi
   echo "$HOME/.local/bin"
 }
 
@@ -142,21 +157,86 @@ verify_checksum() {
   fail "missing checksum command: sha256sum or shasum"
 }
 
+verifier_archive() {
+  case "${os}/${arch}" in
+    linux/amd64) echo "gh_${GH_VERIFIER_VERSION}_linux_amd64.tar.gz 83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60" ;;
+    linux/arm64) echo "gh_${GH_VERIFIER_VERSION}_linux_arm64.tar.gz 06f86ec7103d41993b76cd78072f43595c34aaa56506d971d9860e67140bf909" ;;
+    darwin/amd64) echo "gh_${GH_VERIFIER_VERSION}_macOS_amd64.zip 4bd449df9ad639391bc62b8032546f0fe9edcd8526e06682a4f88abd8c5d163c" ;;
+    darwin/arm64) echo "gh_${GH_VERIFIER_VERSION}_macOS_arm64.zip f23a0c37d963aacc3bed703ccbd59b41c5ca22101fab7f00eb2b7cad23aba463" ;;
+    *) fail "unsupported verifier platform: ${os}/${arch}" ;;
+  esac
+}
+
+prepare_verifier() {
+  if [ -n "$BROKERKIT_VERIFIER_FILE" ]; then
+    echo "$BROKERKIT_VERIFIER_FILE"
+    return
+  fi
+
+  verifier_record="$(verifier_archive)"
+  verifier_asset="${verifier_record%% *}"
+  verifier_digest="${verifier_record#* }"
+  verifier_archive_path="${tmp_dir}/${verifier_asset}"
+  curl -fsSL "${GH_VERIFIER_RELEASE}/${verifier_asset}" -o "$verifier_archive_path"
+  printf '%s  %s\n' "$verifier_digest" "$verifier_asset" > "${tmp_dir}/verifier-checksum.txt"
+  verify_checksum "$verifier_asset" "${tmp_dir}/verifier-checksum.txt" >&2
+
+  case "$verifier_asset" in
+    *.tar.gz) tar -xzf "$verifier_archive_path" -C "$tmp_dir" ;;
+    *.zip)
+      need unzip
+      unzip -q "$verifier_archive_path" -d "$tmp_dir"
+      ;;
+    *) fail "unsupported verifier archive: ${verifier_asset}" ;;
+  esac
+  verifier_root="${verifier_asset%.tar.gz}"
+  verifier_root="${verifier_root%.zip}"
+  verifier="${tmp_dir}/${verifier_root}/bin/gh"
+  [ -x "$verifier" ] || fail "pinned provenance verifier is missing its executable"
+  echo "$verifier"
+}
+
+verify_provenance() {
+  verifier="$(prepare_verifier)"
+  for subject in "$@"; do
+    "$verifier" attestation verify "$subject" \
+      --repo "$REPO" \
+      --signer-workflow "$REPO/.github/workflows/release.yml" \
+      --source-ref "refs/tags/$VERSION" \
+      --deny-self-hosted-runners >/dev/null
+  done
+}
+
+verify_complete_release() {
+  set -- "${tmp_dir}/checksums.txt"
+  for release_asset in \
+    "${BROKER}_linux_amd64.tar.gz" \
+    "${BROKER}_linux_arm64.tar.gz" \
+    "${BROKER}_darwin_amd64.tar.gz" \
+    "${BROKER}_darwin_arm64.tar.gz"
+  do
+    if [ "$release_asset" != "$asset" ]; then
+      curl -fsSL "${base_url}/${release_asset}" -o "${tmp_dir}/${release_asset}"
+    fi
+    verify_checksum "$release_asset" "${tmp_dir}/checksums.txt"
+    validate_archive "${tmp_dir}/${release_asset}" "${tmp_dir}/${release_asset}.list"
+    set -- "$@" "${tmp_dir}/${release_asset}"
+  done
+  curl -fsSL "${base_url}/sbom.spdx.json" -o "${tmp_dir}/sbom.spdx.json"
+  set -- "$@" "${tmp_dir}/sbom.spdx.json"
+  verify_provenance "$@"
+}
+
 install_binary() {
   source_path="$1"
   dest_dir="$2"
   binary_name="$3"
-  mkdir -p "$dest_dir" 2>/dev/null || true
-  if [ -w "$dest_dir" ]; then
-    install -m 0755 "$source_path" "$dest_dir/${binary_name}"
-    return
-  fi
-  if command -v sudo >/dev/null 2>&1; then
-    sudo install -d -m 0755 "$dest_dir"
-    sudo install -m 0755 "$source_path" "$dest_dir/${binary_name}"
-    return
-  fi
-  fail "cannot write to ${dest_dir}; rerun with INSTALL_DIR set to a writable directory"
+  mkdir -p "$dest_dir" 2>/dev/null ||
+    fail "cannot create ${dest_dir}; choose a writable INSTALL_DIR or rerun from an operator-controlled privileged shell"
+  [ -w "$dest_dir" ] ||
+    fail "cannot write to ${dest_dir}; choose a writable INSTALL_DIR or rerun from an operator-controlled privileged shell"
+  install -m 0755 "$source_path" "$dest_dir/${binary_name}" ||
+    fail "could not install ${binary_name} in ${dest_dir}"
 }
 
 choose_libexec_dir() {
@@ -226,8 +306,16 @@ echo "Downloading ${REPO} ${VERSION} for ${os}/${arch}"
 curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
 curl -fsSL "${base_url}/checksums.txt" -o "${tmp_dir}/checksums.txt"
 verify_checksum "$asset" "${tmp_dir}/checksums.txt"
-
-validate_archive "${tmp_dir}/${asset}" "${tmp_dir}/archive.list"
+if [ "$BROKERKIT_VERIFY_RELEASE_SET" = true ]; then
+  verify_complete_release
+else
+  verify_provenance "${tmp_dir}/${asset}" "${tmp_dir}/checksums.txt"
+  validate_archive "${tmp_dir}/${asset}" "${tmp_dir}/archive.list"
+fi
+if [ "$BROKERKIT_VERIFY_ONLY" = true ]; then
+  echo "Verified ${REPO} ${VERSION} release assets and provenance"
+  exit 0
+fi
 tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
 main_dest_dir="$(choose_install_dir)"
 install_binary "${tmp_dir}/${BROKER}" "$main_dest_dir" "$BROKER"

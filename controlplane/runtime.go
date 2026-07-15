@@ -4,19 +4,18 @@ package controlplane
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
-	"strings"
 
 	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/observability"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/operatorauth"
 	"github.com/osolmaz/brokerkit/operatorinbox"
+	"github.com/osolmaz/brokerkit/state"
 )
 
 // Options provides broker-owned policy vocabulary and presentation to the shared runtime.
@@ -29,6 +28,7 @@ type Options struct {
 	Audit               operatorapi.AuditRecorder
 	ActivationValidator decision.ActivationValidator
 	NewCorrelationID    func() (string, error)
+	State               *state.Database
 }
 
 // HandleDecision applies one approval-channel callback through the configured decider.
@@ -43,40 +43,42 @@ type Runtime struct {
 	OperatorHandler http.Handler
 	Decider         approval.Decider
 	Decisions       *decision.Service
+	Metrics         *observability.Metrics
+	Diagnostics     *observability.Diagnostics
 }
 
 // New validates and assembles one broker control plane.
 func New(options Options) (*Runtime, error) {
-	if strings.TrimSpace(options.Broker) == "" {
-		return nil, errors.New("broker name is required")
-	}
 	if options.Store == nil {
 		return nil, errors.New("grant store is required")
+	}
+	if options.Audit == nil {
+		return nil, errors.New("audit recorder is required")
 	}
 	clients, err := auth.New(options.ClientSecrets, auth.Options{})
 	if err != nil {
 		return nil, err
 	}
-	recorder := options.Audit
-	if recorder == nil {
-		recorder = audit.New(io.Discard)
+	metrics, err := observability.New(options.Broker, options.State)
+	if err != nil {
+		return nil, err
 	}
-	options.Audit = recorder
+	diagnostics := observability.NewDiagnostics(options.Broker, metrics, nil)
 	decisions, err := decision.New(decision.Options{
-		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: recorder,
+		Store: options.Store, Validator: options.ActivationValidator, Broker: options.Broker, Audit: options.Audit, Observer: metrics,
 	})
 	if err != nil {
 		return nil, err
 	}
-	handler, err := operatorHandler(options, decisions)
+	handler, err := operatorHandler(options, decisions, metrics)
 	if err != nil {
 		return nil, err
 	}
 	decider := channelDecider{service: decisions}
-	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions}, nil
+	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions, Metrics: metrics, Diagnostics: diagnostics}, nil
 }
 
-func operatorHandler(options Options, decisions *decision.Service) (http.Handler, error) {
+func operatorHandler(options Options, decisions *decision.Service, metrics *observability.Metrics) (http.Handler, error) {
 	if len(options.OperatorSecrets) == 0 {
 		return nil, nil
 	}
@@ -88,13 +90,9 @@ func operatorHandler(options Options, decisions *decision.Service) (http.Handler
 	if err != nil {
 		return nil, err
 	}
-	recorder := options.Audit
-	if recorder == nil {
-		recorder = audit.New(io.Discard)
-	}
 	return operatorapi.New(operatorapi.Options{
-		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: recorder,
-		NewCorrelationID: options.NewCorrelationID,
+		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: options.Audit,
+		NewCorrelationID: options.NewCorrelationID, Metrics: metrics.Handler(),
 	})
 }
 

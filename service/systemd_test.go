@@ -33,6 +33,36 @@ func TestRenderSystemd(t *testing.T) {
 	}
 }
 
+func TestRenderSystemdSocket(t *testing.T) {
+	body, err := RenderSystemdSocket(SystemdSocketUnit{
+		Description: "test agent listener", ListenStream: "/run/brokerkit/test/agent/broker.sock",
+		Service: "test-broker.service", FileDescriptorName: "agent", SocketUser: "root",
+		SocketGroup: "test-broker-agent", SocketMode: 0o660, DirectoryMode: 0o750,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ListenStream=/run/brokerkit/test/agent/broker.sock", "FileDescriptorName=agent", "SocketGroup=test-broker-agent", "SocketMode=0660", "DirectoryMode=0750", "Service=test-broker.service", "WantedBy=sockets.target"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("socket unit missing %q:\n%s", want, body)
+		}
+	}
+	for _, mutate := range []func(*SystemdSocketUnit){
+		func(unit *SystemdSocketUnit) { unit.ListenStream = "relative.sock" },
+		func(unit *SystemdSocketUnit) { unit.FileDescriptorName = "bad/name" },
+		func(unit *SystemdSocketUnit) { unit.SocketGroup = "bad=name" },
+		func(unit *SystemdSocketUnit) { unit.SocketMode = 0o666 },
+		func(unit *SystemdSocketUnit) { unit.DirectoryMode = 0o751 },
+		func(unit *SystemdSocketUnit) { unit.Service = "bad.socket" },
+	} {
+		unit := SystemdSocketUnit{Description: "test", ListenStream: "/run/test.sock", Service: "test.service", FileDescriptorName: "agent", SocketUser: "root", SocketGroup: "agent", SocketMode: 0o660, DirectoryMode: 0o750}
+		mutate(&unit)
+		if _, err := RenderSystemdSocket(unit); err == nil {
+			t.Fatalf("RenderSystemdSocket(%+v) error = nil", unit)
+		}
+	}
+}
+
 func TestRenderSystemdRejectsUnsafeValues(t *testing.T) {
 	base := SystemdUnit{
 		Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
@@ -107,9 +137,29 @@ func TestTrustedStateDirectoryRequiresConfiguredServiceOwner(t *testing.T) {
 }
 
 func TestStrictSystemdExecutableValidation(t *testing.T) {
+	rootAccount, err := user.LookupId("0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootGroup, err := user.LookupGroupId("0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	environmentFile, err := filepath.EvalSymlinks("/etc/passwd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateRoot, err := filepath.EvalSymlinks("/var")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := filepath.EvalSymlinks("/usr/bin")
+	if err != nil {
+		t.Fatal(err)
+	}
 	unit := SystemdUnit{
-		Description: "test", User: "root", Group: "root", EnvironmentFile: "/etc/passwd",
-		ExecStart: "/usr/bin", StateDir: "/var/lib/brokerkit-test-missing", ConfigDir: "/etc",
+		Description: "test", User: rootAccount.Username, Group: rootGroup.Name, EnvironmentFile: environmentFile,
+		ExecStart: executable, StateDir: filepath.Join(stateRoot, "lib", "brokerkit-test-missing"), ConfigDir: filepath.Dir(environmentFile),
 	}
 	if _, err := RenderSystemd(unit); err == nil || !strings.Contains(err.Error(), "regular file") {
 		t.Fatalf("RenderSystemd(directory executable) error = %v", err)

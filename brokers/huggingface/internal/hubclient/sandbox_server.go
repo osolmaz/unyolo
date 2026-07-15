@@ -66,10 +66,18 @@ func (c *Client) SandboxFileStat(ctx context.Context, ref SandboxRef, path strin
 	if err := c.sandboxServerJSON(ctx, endpoint, http.MethodGet, basePath+"/files/stat", query, nil, &info, 64*1024); err != nil {
 		return SandboxFileInfo{}, err
 	}
-	if info.Path != path || info.Size < 0 || (info.Type != "file" && info.Type != "dir" && info.Type != "symlink") {
+	if !validSandboxFileInfo(info, path) {
 		return SandboxFileInfo{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
 	}
 	return info, nil
+}
+
+func validSandboxFileInfo(info SandboxFileInfo, path string) bool {
+	return info.Path == path && info.Size >= 0 && validSandboxFileType(info.Type)
+}
+
+func validSandboxFileType(value string) bool {
+	return value == "file" || value == "dir" || value == "symlink"
 }
 
 func (c *Client) WriteSandboxFile(ctx context.Context, ref SandboxRef, path, mode string, content []byte) error {
@@ -143,28 +151,60 @@ func (c *Client) KillSandboxProcess(ctx context.Context, ref SandboxRef, pid int
 	return c.sandboxServerJSON(ctx, endpoint, http.MethodDelete, basePath+"/processes/"+strconv.Itoa(pid), nil, nil, nil, c.maxResponseBytes)
 }
 
-//nolint:cyclop // Pool allocation checks are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) CreateSandboxInPool(ctx context.Context, host SandboxRef, environment map[string]string, idleTimeoutSeconds *int) (SandboxRef, error) {
-	if host.LocalID != "" || !validIdleTimeout(idleTimeoutSeconds) || validateSandboxEnvironment(environment, true) != nil {
-		return SandboxRef{}, errors.New("hubclient: pooled sandbox configuration is invalid")
-	}
-	for _, value := range environment {
-		if value == c.token {
-			return SandboxRef{}, errors.New("hubclient: broker credential cannot be forwarded to a sandbox")
-		}
-	}
-	job, err := c.inspectSandboxJob(ctx, host.Namespace, host.JobID)
-	if err != nil {
+	if err := c.validateSandboxPoolAllocation(host, environment, idleTimeoutSeconds); err != nil {
 		return SandboxRef{}, err
 	}
-	state, err := sandboxStateFromJob(job, host.Namespace, "")
-	if err != nil || state.Mode != modePool || state.Stage != "RUNNING" {
-		return SandboxRef{}, errors.New("hubclient: sandbox pool host is unavailable")
+	job, err := c.inspectSandboxPoolHost(ctx, host)
+	if err != nil {
+		return SandboxRef{}, err
 	}
 	endpoint, err := c.sandboxEndpoint(job, host)
 	if err != nil {
 		return SandboxRef{}, err
 	}
+	response, err := c.createSandboxOnHost(ctx, endpoint, environment, idleTimeoutSeconds)
+	if err != nil {
+		return SandboxRef{}, err
+	}
+	if !validSandboxCreateResponse(response) {
+		return SandboxRef{}, &Error{Code: CodeConflict, StatusCode: http.StatusConflict}
+	}
+	return SandboxRef{Namespace: host.Namespace, JobID: host.JobID, LocalID: response.Sandboxes[0].ID}, nil
+}
+
+type sandboxCreateResponse struct {
+	Sandboxes []struct {
+		ID string `json:"id"`
+	} `json:"sandboxes"`
+	Rejected int `json:"rejected"`
+}
+
+func (c *Client) validateSandboxPoolAllocation(host SandboxRef, environment map[string]string, idleTimeoutSeconds *int) error {
+	if host.LocalID != "" || !validIdleTimeout(idleTimeoutSeconds) || validateSandboxEnvironment(environment, true) != nil {
+		return errors.New("hubclient: pooled sandbox configuration is invalid")
+	}
+	for _, value := range environment {
+		if value == c.token {
+			return errors.New("hubclient: broker credential cannot be forwarded to a sandbox")
+		}
+	}
+	return nil
+}
+
+func (c *Client) inspectSandboxPoolHost(ctx context.Context, host SandboxRef) (sandboxJobWire, error) {
+	job, err := c.inspectSandboxJob(ctx, host.Namespace, host.JobID)
+	if err != nil {
+		return sandboxJobWire{}, err
+	}
+	state, err := sandboxStateFromJob(job, host.Namespace, "")
+	if err != nil || state.Mode != modePool || state.Stage != "RUNNING" {
+		return sandboxJobWire{}, errors.New("hubclient: sandbox pool host is unavailable")
+	}
+	return job, nil
+}
+
+func (c *Client) createSandboxOnHost(ctx context.Context, endpoint sandboxEndpoint, environment map[string]string, idleTimeoutSeconds *int) (sandboxCreateResponse, error) {
 	body := map[string]any{"count": 1}
 	if idleTimeoutSeconds != nil {
 		body["idle_timeout_secs"] = *idleTimeoutSeconds
@@ -172,19 +212,17 @@ func (c *Client) CreateSandboxInPool(ctx context.Context, host SandboxRef, envir
 	if len(environment) > 0 {
 		body["env"] = environment
 	}
-	var response struct {
-		Sandboxes []struct {
-			ID string `json:"id"`
-		} `json:"sandboxes"`
-		Rejected int `json:"rejected"`
-	}
+	var response sandboxCreateResponse
 	if err := c.sandboxServerJSON(ctx, endpoint, http.MethodPost, "/v1/sandboxes", nil, body, &response, 64*1024); err != nil {
-		return SandboxRef{}, err
+		return sandboxCreateResponse{}, err
 	}
-	if response.Rejected != 0 || len(response.Sandboxes) != 1 || !sandboxIDPattern.MatchString(response.Sandboxes[0].ID) {
-		return SandboxRef{}, &Error{Code: CodeConflict, StatusCode: http.StatusConflict}
-	}
-	return SandboxRef{Namespace: host.Namespace, JobID: host.JobID, LocalID: response.Sandboxes[0].ID}, nil
+	return response, nil
+}
+
+func validSandboxCreateResponse(response sandboxCreateResponse) bool {
+	return response.Rejected == 0 &&
+		len(response.Sandboxes) == 1 &&
+		sandboxIDPattern.MatchString(response.Sandboxes[0].ID)
 }
 
 func (c *Client) resolveSandboxEndpoint(ctx context.Context, ref SandboxRef) (sandboxEndpoint, string, error) {
@@ -210,20 +248,16 @@ func (c *Client) resolveSandboxEndpoint(ctx context.Context, ref SandboxRef) (sa
 	return endpoint, basePath, nil
 }
 
-//nolint:cyclop // Endpoint identity checks are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) sandboxEndpoint(job sandboxJobWire, ref SandboxRef) (sandboxEndpoint, error) {
 	if len(job.Status.ExposeURLs) == 0 {
 		return sandboxEndpoint{}, errors.New("hubclient: sandbox server endpoint is unavailable")
 	}
 	for _, candidate := range job.Status.ExposeURLs {
-		parsed, err := url.Parse(candidate)
-		if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" || parsed.RawQuery != "" ||
-			parsed.Fragment != "" || parsed.Path != "" && parsed.Path != "/" {
+		parsed, ok := parseSandboxEndpointCandidate(candidate)
+		if !ok {
 			continue
 		}
-		host := strings.ToLower(parsed.Hostname())
-		prefix := strings.ToLower(ref.JobID) + "--" + strconv.Itoa(SandboxServerPort) + "."
-		if !strings.HasPrefix(host, prefix) || !strings.HasSuffix(host, ".hf.jobs") {
+		if !sandboxEndpointHostMatches(parsed.Hostname(), ref.JobID) {
 			continue
 		}
 		nonce := job.Labels[sandboxNonceLabel]
@@ -233,6 +267,29 @@ func (c *Client) sandboxEndpoint(job sandboxJobWire, ref SandboxRef) (sandboxEnd
 		return sandboxEndpoint{base: "https://" + parsed.Host, token: c.deriveSandboxToken(nonce)}, nil
 	}
 	return sandboxEndpoint{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
+}
+
+func parseSandboxEndpointCandidate(candidate string) (*url.URL, bool) {
+	parsed, err := url.Parse(candidate)
+	if err != nil || !validSandboxEndpointURL(parsed) {
+		return nil, false
+	}
+	return parsed, true
+}
+
+func validSandboxEndpointURL(parsed *url.URL) bool {
+	return parsed.Scheme == "https" &&
+		parsed.User == nil &&
+		parsed.Port() == "" &&
+		parsed.RawQuery == "" &&
+		parsed.Fragment == "" &&
+		(parsed.Path == "" || parsed.Path == "/")
+}
+
+func sandboxEndpointHostMatches(hostname, jobID string) bool {
+	host := strings.ToLower(hostname)
+	prefix := strings.ToLower(jobID) + "--" + strconv.Itoa(SandboxServerPort) + "."
+	return strings.HasPrefix(host, prefix) && strings.HasSuffix(host, ".hf.jobs")
 }
 
 func (c *Client) sandboxServerJSON(ctx context.Context, endpoint sandboxEndpoint, method, path string, query url.Values, body, out any, limit int64) error {
@@ -249,58 +306,104 @@ func (c *Client) sandboxServerJSON(ctx context.Context, endpoint sandboxEndpoint
 	return nil
 }
 
-//nolint:cyclop // Sandbox server trust checks are explicit and tracked by the exact HF CRAP baseline.
 func (c *Client) sandboxServer(ctx context.Context, endpoint sandboxEndpoint, spec sandboxRequest) ([]byte, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	timeout := spec.timeout
-	if timeout <= 0 {
-		timeout = c.timeout
-	}
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-	reader, contentType, err := sandboxRequestBody(spec)
+	ctx, cancel := sandboxRequestContext(ctx, c.timeout, spec.timeout)
+	defer cancel()
+	request, err := sandboxHTTPRequest(ctx, endpoint, spec)
 	if err != nil {
 		return nil, err
 	}
-	requestURL := endpoint.base + spec.path
-	if len(spec.query) > 0 {
-		requestURL += "?" + spec.query.Encode()
-	}
-	request, err := http.NewRequestWithContext(ctx, spec.method, requestURL, reader)
+	response, err := c.doSandboxRequest(request, spec.method)
 	if err != nil {
-		return nil, errors.New("hubclient: sandbox request construction failed")
+		return nil, err
 	}
-	request.Header.Set("X-Sandbox-Token", endpoint.token)
-	request.Header.Set("Accept", "application/json")
-	if contentType != "" {
-		request.Header.Set("Content-Type", contentType)
+	defer func() { _ = response.Body.Close() }()
+	payload, err := c.readSandboxPayload(response, spec)
+	if err != nil {
+		return nil, err
 	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, statusError(response.StatusCode, response.Header)
+	}
+	return payload, nil
+}
+
+func (c *Client) doSandboxRequest(request *http.Request, method string) (*http.Response, error) {
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		if spec.method == http.MethodGet {
+		if method == http.MethodGet {
 			return nil, &Error{Code: CodeUnavailable}
 		}
 		return nil, &Error{Code: CodeResultUnknown, Ambiguous: true}
 	}
-	defer func() { _ = response.Body.Close() }()
-	limit := spec.limit
-	if limit <= 0 || limit > c.maxResponseBytes {
-		limit = c.maxResponseBytes
+	return response, nil
+}
+
+func (c *Client) readSandboxPayload(response *http.Response, spec sandboxRequest) ([]byte, error) {
+	payload, err := readSandboxResponseBody(response, sandboxResponseLimit(spec.limit, c.maxResponseBytes))
+	if err == nil {
+		return payload, nil
 	}
-	payload, readErr := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if readErr != nil || int64(len(payload)) > limit {
-		if spec.method == http.MethodGet {
-			return nil, &Error{Code: CodeResponseInvalid, StatusCode: response.StatusCode}
-		}
-		return nil, &Error{Code: CodeResultUnknown, StatusCode: response.StatusCode, Ambiguous: true}
+	if spec.method == http.MethodGet {
+		return nil, &Error{Code: CodeResponseInvalid, StatusCode: response.StatusCode}
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, statusError(response.StatusCode, response.Header)
+	return nil, &Error{Code: CodeResultUnknown, StatusCode: response.StatusCode, Ambiguous: true}
+}
+
+func sandboxHTTPRequest(ctx context.Context, endpoint sandboxEndpoint, spec sandboxRequest) (*http.Request, error) {
+	reader, contentType, err := sandboxRequestBody(spec)
+	if err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequestWithContext(ctx, spec.method, sandboxRequestURL(endpoint.base, spec), reader)
+	if err != nil {
+		return nil, errors.New("hubclient: sandbox request construction failed")
+	}
+	setSandboxRequestHeaders(request, endpoint.token, contentType)
+	return request, nil
+}
+
+func sandboxRequestURL(base string, spec sandboxRequest) string {
+	requestURL := base + spec.path
+	if len(spec.query) > 0 {
+		requestURL += "?" + spec.query.Encode()
+	}
+	return requestURL
+}
+
+func sandboxRequestContext(ctx context.Context, defaultTimeout, requestTimeout time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	timeout := requestTimeout
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func setSandboxRequestHeaders(request *http.Request, token, contentType string) {
+	request.Header.Set("X-Sandbox-Token", token)
+	request.Header.Set("Accept", "application/json")
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
+	}
+}
+
+func sandboxResponseLimit(limit, maximum int64) int64 {
+	if limit <= 0 || limit > maximum {
+		return maximum
+	}
+	return limit
+}
+
+func readSandboxResponseBody(response *http.Response, limit int64) ([]byte, error) {
+	payload, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil || int64(len(payload)) > limit {
+		return nil, errors.New("hubclient: sandbox response body is invalid")
 	}
 	return payload, nil
 }
@@ -325,25 +428,28 @@ func sandboxRequestBody(spec sandboxRequest) (io.Reader, string, error) {
 	return nil, spec.contentType, nil
 }
 
-//nolint:cyclop // Recursive command values are explicit and tracked by the exact HF CRAP baseline.
 func validSandboxProcessCommandValue(value any) bool {
 	switch value := value.(type) {
 	case string:
 		return value != "" && len(value) <= 64*1024
 	case []any:
-		if len(value) == 0 || len(value) > 256 {
-			return false
-		}
-		for _, item := range value {
-			text, ok := item.(string)
-			if !ok || text == "" || len(text) > 64*1024 {
-				return false
-			}
-		}
-		return true
+		return validSandboxProcessCommandList(value)
 	default:
 		return false
 	}
+}
+
+func validSandboxProcessCommandList(values []any) bool {
+	if len(values) == 0 || len(values) > 256 {
+		return false
+	}
+	for _, item := range values {
+		text, ok := item.(string)
+		if !ok || text == "" || len(text) > 64*1024 {
+			return false
+		}
+	}
+	return true
 }
 
 // ValidSandboxFileMode reports whether mode is empty or a three/four-digit

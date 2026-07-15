@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package main
 
@@ -11,12 +11,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 	bkservice "github.com/osolmaz/brokerkit/service"
+	bksetup "github.com/osolmaz/brokerkit/setup"
 )
 
 const (
@@ -58,6 +60,9 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 }
 
 func requireRootForSystemd(opts setupSystemdOptions) error {
+	if runtime.GOOS != "linux" {
+		return exitError{code: 64, message: "setup systemd is only supported on Linux"}
+	}
 	if os.Geteuid() == 0 || opts.AllowNonRoot || opts.DryRun {
 		return nil
 	}
@@ -97,14 +102,18 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
+	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, unitFileName)
+	if err != nil {
+		return bkservice.SystemdInstallPlan{}, err
+	}
 	policyFiles, err := renderSetupPolicy(plan)
 	if err != nil {
 		return bkservice.SystemdInstallPlan{}, err
 	}
 	files := []bkservice.ManagedFile{
-		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
-		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService},
+		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "huggingface-access"},
+		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
+		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
 	}
 	var removeFiles []bkservice.ManagedFileRef
 	if policyFiles.managedPreset {
@@ -128,27 +137,32 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 		if readErr != nil {
 			return bkservice.SystemdInstallPlan{}, readErr
 		}
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService})
+		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"})
 	} else {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName})
+		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, CredentialClass: "telegram-bot"})
 	}
 	if len(removeFiles) > 0 {
-		readyCheck = bkservice.HTTPReadyCheck(brokerBaseURL(plan.opts.BindAddr, plan.opts.Port)+"/healthz", bkservice.LocalHTTPClient())
+		readyCheck = bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
 	}
 	return bkservice.SystemdInstallPlan{
-		User:         plan.opts.User,
-		Group:        plan.opts.Group,
-		ConfigDir:    plan.opts.ConfigDir,
-		StateDir:     plan.opts.StateDir,
-		SystemdDir:   plan.opts.SystemdDir,
-		UnitName:     unitFileName,
-		Files:        files,
-		RemoveFiles:  removeFiles,
-		ReadyCheck:   readyCheck,
-		Unit:         systemdUnit(plan),
-		NoStart:      plan.opts.NoStart,
-		AllowNonRoot: plan.opts.AllowNonRoot,
-		Runner:       plan.opts.CommandRunner,
+		User:             plan.opts.User,
+		Group:            plan.opts.Group,
+		AdditionalGroups: activation.Groups,
+		GroupMembers:     activation.GroupMembers,
+		ConfigDir:        plan.opts.ConfigDir,
+		StateDir:         plan.opts.StateDir,
+		SystemdDir:       plan.opts.SystemdDir,
+		UnitName:         unitFileName,
+		Files:            files,
+		RemoveFiles:      removeFiles,
+		ReadyCheck:       readyCheck,
+		Unit:             systemdUnit(plan),
+		SocketUnits:      activation.Sockets,
+		ActivationUnits:  activation.ActivationUnits,
+		NoStart:          plan.opts.NoStart,
+		AllowNonRoot:     plan.opts.AllowNonRoot,
+		Runner:           plan.opts.CommandRunner,
+		Lifecycle:        plan.opts.Lifecycle,
 	}, nil
 }
 
@@ -282,14 +296,17 @@ func requirePolicyReplacement(plan systemdPlan) error {
 }
 
 func checkPolicyReplacement(stdout io.Writer, plan systemdPlan) error {
-	err := requirePolicyReplacement(plan)
-	if err == nil || plan.opts.ReplacePolicy {
-		return err
+	_, err := os.Stat(plan.scopePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
-	if previewErr := printPolicyReplacementPreview(stdout, plan); previewErr != nil {
-		return exitError{code: 64, message: previewErr.Error()}
+	if err != nil {
+		return fmt.Errorf("inspect existing policy: %w", err)
 	}
-	return err
+	if err := printPolicyReplacementPreview(stdout, plan); err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
+	return requirePolicyReplacement(plan)
 }
 
 func readHFTokenFile(path string) ([]byte, error) {
@@ -355,11 +372,9 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"HF_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"HF_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
-		"HF_BROKER_BIND_ADDR=" + opts.BindAddr + "\n" +
-		"HF_BROKER_PORT=" + strconv.Itoa(opts.Port) + "\n"
+		"HF_BROKER_AGENT_ENDPOINT=activation://agent\n"
 	body += "HF_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
-		"HF_BROKER_OPERATOR_BIND_ADDR=" + opts.OperatorBindAddr + "\n" +
-		"HF_BROKER_OPERATOR_PORT=" + strconv.Itoa(opts.OperatorPort) + "\n"
+		"HF_BROKER_OPERATOR_ENDPOINT=activation://operator\n"
 	if opts.TelegramBotTokenFile != "" {
 		body += "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
 			"HF_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
@@ -401,11 +416,19 @@ func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
+	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, unitFileName)
+	if err != nil {
+		return err
+	}
+	sockets, err := bkservice.RenderSystemdSockets(activation.Sockets)
+	if err != nil {
+		return err
+	}
 	policyDescription := "preset " + plan.opts.PolicyPreset
 	if plan.opts.Repo != "" {
 		policyDescription = "restricted repository " + plan.opts.Repo
 	}
-	_, err := fmt.Fprintf(stdout, `Would configure hf-broker systemd service:
+	_, err = fmt.Fprintf(stdout, `Would configure hf-broker systemd service:
   user:         %s
   group:        %s
   token file:   %s
@@ -417,7 +440,9 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   state dir:    %s
   unit file:    %s
   broker URL:   %s
-`, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, policyDescription, plan.envPath, plan.opts.StateDir, plan.unitPath, setupBrokerURL(plan.opts))
+  agent access: %s (%s)
+  operator access: %s (%s)
+%s`, plan.opts.User, plan.opts.Group, plan.tokenPath, plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, policyDescription, plan.envPath, plan.opts.StateDir, plan.unitPath, setupBrokerURL(plan.opts), plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
 	if err != nil {
 		return err
 	}
@@ -500,28 +525,25 @@ func printSystemdSummary(stdout io.Writer, opts setupSystemdOptions) {
 	}
 	_, _ = fmt.Fprintf(stdout, `hf-broker systemd service configured.
 
-Broker URL:
+Broker endpoint:
   %s
 
 Policy:
   %s
 
-Operator inbox URL:
+Operator inbox endpoint:
   %s
 
 Operator credential file:
   %s
 
 Configure a client without exposing its secret:
-  sudo hf-broker setup client --client %s --url %s --secret-file %s --home-dir '/home/<user>'
-`, setupBrokerURL(opts), policySummary, brokerBaseURL(opts.OperatorBindAddr, opts.OperatorPort), filepath.Join(opts.ConfigDir, operatorSecretsFileName), shellQuote(opts.ClientName), shellQuote(brokerBaseURL(opts.BindAddr, opts.Port)), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+  sudo hf-broker setup client --client %s --endpoint %s --secret-file %s --home-dir '/home/<user>'
+`, setupBrokerURL(opts), policySummary, opts.OperatorEndpoint, filepath.Join(opts.ConfigDir, operatorSecretsFileName), shellQuote(opts.ClientName), shellQuote(opts.Endpoint), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
 }
 
 func setupBrokerURL(opts setupSystemdOptions) string {
-	if opts.Repo == "" {
-		return brokerBaseURL(opts.BindAddr, opts.Port)
-	}
-	return brokerURL(opts.BindAddr, opts.Port, opts.RepoType, opts.Repo)
+	return opts.Endpoint
 }
 
 func shellQuote(value string) string {

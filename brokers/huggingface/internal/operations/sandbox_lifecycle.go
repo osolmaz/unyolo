@@ -12,7 +12,6 @@ import (
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 )
 
-//nolint:cyclop // Resource resolution is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
 	target, err := a.decodeTarget(input.Target)
 	if err != nil {
@@ -23,108 +22,141 @@ func (a *sandboxAdapter) Resolve(ctx context.Context, input Input) (Plan, error)
 		return Plan{}, err
 	}
 	preconditions := sandboxPreconditions{CredentialIdentity: identity.Name}
-	switch a.descriptor.Name {
-	case "sandbox.create":
-		if _, err = decodeSandboxCreatePublic(input.Arguments); err != nil {
-			return Plan{}, err
-		}
-		preconditions.OperationID, err = newOperationMarker()
-		if err != nil {
-			return Plan{}, err
-		}
-		if target.Pool == "" {
-			var existing []hubclient.SandboxState
-			existing, err = a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
-			if err != nil || len(existing) != 0 {
-				if err != nil {
-					return Plan{}, err
-				}
-				return Plan{}, errors.New("sandbox operation marker already exists")
-			}
-			preconditions.ResourceAbsent = true
-		} else {
-			var hosts []hubclient.SandboxState
-			hosts, err = a.client.ListSandboxPool(ctx, target.poolRef())
-			if err != nil {
-				return Plan{}, err
-			}
-			host := firstRunningSandboxHost(hosts)
-			if host == nil {
-				return Plan{}, errors.New("sandbox pool has no running host")
-			}
-			preconditions.Host = &host.Ref
-			preconditions.PoolDigest = sandboxStatesDigest(hosts)
-		}
-	case "sandbox.pool.create":
-		if _, err = a.materializeSandboxPoolCreate(input.Arguments); err != nil {
-			return Plan{}, err
-		}
-		preconditions.OperationID, err = newOperationMarker()
-		if err != nil {
-			return Plan{}, err
-		}
-		var hosts []hubclient.SandboxState
-		hosts, err = a.client.ListSandboxPool(ctx, target.poolRef())
-		if err != nil {
-			return Plan{}, err
-		}
-		if len(hosts) != 0 {
-			return Plan{}, errors.New("sandbox pool already exists")
-		}
-		var arguments sandboxPoolCreatePublic
-		arguments, _ = a.materializeSandboxPoolCreate(input.Arguments)
-		preconditions.ResourceAbsent = true
-		preconditions.CreatedHosts = arguments.WarmUp
-	case "sandbox.pool.warm", "sandbox.pool.delete":
-		var hosts []hubclient.SandboxState
-		hosts, err = a.client.ListSandboxPool(ctx, target.poolRef())
-		if err != nil {
-			return Plan{}, err
-		}
-		if len(hosts) == 0 {
-			return Plan{}, errors.New("sandbox pool has no active hosts")
-		}
-		preconditions.PoolDigest = sandboxStatesDigest(hosts)
-		if a.descriptor.Name == "sandbox.pool.warm" {
-			config, configErr := sandboxConfigFromStates(hosts)
-			if configErr != nil {
-				return Plan{}, configErr
-			}
-			var arguments sandboxPoolWarmArguments
-			_ = decodeClosed(input.Arguments, &arguments, maxArgumentsBytes)
-			if arguments.NumHosts < len(hosts) {
-				return Plan{}, errors.New("sandbox pool already has more hosts than requested")
-			}
-			if arguments.NumHosts > config.MaxHosts {
-				return Plan{}, errors.New("sandbox pool warm count exceeds its cost ceiling")
-			}
-			preconditions.OperationID, err = newOperationMarker()
-			if err != nil {
-				return Plan{}, err
-			}
-			preconditions.PoolConfig = &config
-			preconditions.ExpectedHosts = arguments.NumHosts
-			preconditions.CreatedHosts = max(0, arguments.NumHosts-len(hosts))
-		}
-	default:
-		var state hubclient.SandboxState
-		state, err = a.client.SandboxState(ctx, target.ref())
-		if err != nil {
-			return Plan{}, err
-		}
-		if a.descriptor.Name != "sandbox.delete" && state.Stage != "RUNNING" {
-			return Plan{}, errors.New("sandbox is not running")
-		}
-		preconditions.StateDigest = sandboxStateDigest(state)
-		if err = a.resolveSandboxResource(ctx, target, input.Arguments, &preconditions); err != nil {
-			return Plan{}, err
-		}
+	if err := a.resolveSandboxPreconditions(ctx, target, input.Arguments, &preconditions); err != nil {
+		return Plan{}, err
 	}
 	encoded, _ := canonical(preconditions)
 	publicArguments := a.publicArguments(input.Arguments)
 	presentation, request := a.presentationAndPolicy(target, publicArguments)
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
 		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *sandboxAdapter) resolveSandboxPreconditions(ctx context.Context, target sandboxTarget, arguments json.RawMessage, preconditions *sandboxPreconditions) error {
+	switch a.descriptor.Name {
+	case "sandbox.create":
+		return a.resolveSandboxCreate(ctx, target, arguments, preconditions)
+	case "sandbox.pool.create":
+		return a.resolveSandboxPoolCreate(ctx, target, arguments, preconditions)
+	case "sandbox.pool.warm", "sandbox.pool.delete":
+		return a.resolveSandboxPoolOperation(ctx, target, arguments, preconditions)
+	default:
+		return a.resolveExistingSandbox(ctx, target, arguments, preconditions)
+	}
+}
+
+func (a *sandboxAdapter) resolveSandboxCreate(ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	if _, err := decodeSandboxCreatePublic(raw); err != nil {
+		return err
+	}
+	operationID, err := newOperationMarker()
+	if err != nil {
+		return err
+	}
+	preconditions.OperationID = operationID
+	if target.Pool == "" {
+		return a.resolveDedicatedSandboxCreate(ctx, target, preconditions)
+	}
+	return a.resolvePooledSandboxCreate(ctx, target, preconditions)
+}
+
+func (a *sandboxAdapter) resolveDedicatedSandboxCreate(ctx context.Context, target sandboxTarget, preconditions *sandboxPreconditions) error {
+	existing, err := a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
+	if err != nil {
+		return err
+	}
+	if len(existing) != 0 {
+		return errors.New("sandbox operation marker already exists")
+	}
+	preconditions.ResourceAbsent = true
+	return nil
+}
+
+func (a *sandboxAdapter) resolvePooledSandboxCreate(ctx context.Context, target sandboxTarget, preconditions *sandboxPreconditions) error {
+	hosts, err := a.client.ListSandboxPool(ctx, target.poolRef())
+	if err != nil {
+		return err
+	}
+	host := firstRunningSandboxHost(hosts)
+	if host == nil {
+		return errors.New("sandbox pool has no running host")
+	}
+	preconditions.Host = &host.Ref
+	preconditions.PoolDigest = sandboxStatesDigest(hosts)
+	return nil
+}
+
+func (a *sandboxAdapter) resolveSandboxPoolCreate(ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	arguments, err := a.materializeSandboxPoolCreate(raw)
+	if err != nil {
+		return err
+	}
+	operationID, err := newOperationMarker()
+	if err != nil {
+		return err
+	}
+	hosts, err := a.client.ListSandboxPool(ctx, target.poolRef())
+	if err != nil {
+		return err
+	}
+	if len(hosts) != 0 {
+		return errors.New("sandbox pool already exists")
+	}
+	preconditions.OperationID = operationID
+	preconditions.ResourceAbsent = true
+	preconditions.CreatedHosts = arguments.WarmUp
+	return nil
+}
+
+func (a *sandboxAdapter) resolveSandboxPoolOperation(ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	hosts, err := a.client.ListSandboxPool(ctx, target.poolRef())
+	if err != nil {
+		return err
+	}
+	if len(hosts) == 0 {
+		return errors.New("sandbox pool has no active hosts")
+	}
+	preconditions.PoolDigest = sandboxStatesDigest(hosts)
+	if a.descriptor.Name != "sandbox.pool.warm" {
+		return nil
+	}
+	return resolveSandboxPoolWarm(raw, hosts, preconditions)
+}
+
+func resolveSandboxPoolWarm(raw json.RawMessage, hosts []hubclient.SandboxState, preconditions *sandboxPreconditions) error {
+	config, err := sandboxConfigFromStates(hosts)
+	if err != nil {
+		return err
+	}
+	var arguments sandboxPoolWarmArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	if arguments.NumHosts < len(hosts) {
+		return errors.New("sandbox pool already has more hosts than requested")
+	}
+	if arguments.NumHosts > config.MaxHosts {
+		return errors.New("sandbox pool warm count exceeds its cost ceiling")
+	}
+	operationID, err := newOperationMarker()
+	if err != nil {
+		return err
+	}
+	preconditions.OperationID = operationID
+	preconditions.PoolConfig = &config
+	preconditions.ExpectedHosts = arguments.NumHosts
+	preconditions.CreatedHosts = max(0, arguments.NumHosts-len(hosts))
+	return nil
+}
+
+func (a *sandboxAdapter) resolveExistingSandbox(ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	state, err := a.client.SandboxState(ctx, target.ref())
+	if err != nil {
+		return err
+	}
+	if a.descriptor.Name != "sandbox.delete" && state.Stage != "RUNNING" {
+		return errors.New("sandbox is not running")
+	}
+	preconditions.StateDigest = sandboxStateDigest(state)
+	return a.resolveSandboxResource(ctx, target, raw, preconditions)
 }
 
 func decodeSandboxCreatePublic(raw json.RawMessage) (sandboxCreatePublic, error) {
@@ -153,18 +185,34 @@ func (a *sandboxAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error
 	if err = a.checkSandboxIdentity(ctx, preconditions); err != nil {
 		return Outcome{}, err
 	}
-	switch a.descriptor.Name {
-	case "sandbox.create":
-		return a.executeSandboxCreate(ctx, target, plan.Arguments, preconditions)
-	case "sandbox.pool.create":
-		return a.executeSandboxPoolCreate(ctx, target, plan.Arguments, preconditions)
-	case "sandbox.pool.warm":
-		return a.executeSandboxPoolWarm(ctx, target, plan.Arguments, preconditions)
-	case "sandbox.pool.delete":
-		return a.executeSandboxPoolDelete(ctx, target, preconditions)
-	default:
+	execute, found := sandboxExecutors[a.descriptor.Name]
+	if !found {
 		return a.executeExistingSandboxAction(ctx, target, plan.Arguments, preconditions)
 	}
+	return execute(a, ctx, target, plan.Arguments, preconditions)
+}
+
+var sandboxExecutors = map[string]func(*sandboxAdapter, context.Context, sandboxTarget, json.RawMessage, sandboxPreconditions) (Outcome, error){
+	"sandbox.create":      executeSandboxCreateOperation,
+	"sandbox.pool.create": executeSandboxPoolCreateOperation,
+	"sandbox.pool.warm":   executeSandboxPoolWarmOperation,
+	"sandbox.pool.delete": executeSandboxPoolDeleteOperation,
+}
+
+func executeSandboxCreateOperation(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
+	return a.executeSandboxCreate(ctx, target, raw, expected)
+}
+
+func executeSandboxPoolCreateOperation(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
+	return a.executeSandboxPoolCreate(ctx, target, raw, expected)
+}
+
+func executeSandboxPoolWarmOperation(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
+	return a.executeSandboxPoolWarm(ctx, target, raw, expected)
+}
+
+func executeSandboxPoolDeleteOperation(a *sandboxAdapter, ctx context.Context, target sandboxTarget, _ json.RawMessage, expected sandboxPreconditions) (Outcome, error) {
+	return a.executeSandboxPoolDelete(ctx, target, expected)
 }
 
 func (a *sandboxAdapter) executeExistingSandboxAction(ctx context.Context, target sandboxTarget, arguments json.RawMessage, preconditions sandboxPreconditions) (Outcome, error) {
@@ -174,54 +222,79 @@ func (a *sandboxAdapter) executeExistingSandboxAction(ctx context.Context, targe
 	return a.executeSandboxAction(ctx, target, arguments, preconditions)
 }
 
-//nolint:cyclop // Resource reconciliation is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
 	target, preconditions, err := a.decodeSandboxPlan(plan)
 	if err != nil {
 		return Outcome{}, err
 	}
-	switch a.descriptor.Name {
-	case "sandbox.create":
-		if target.Pool != "" {
-			return Outcome{Proven: false}, nil
-		}
-		states, listErr := a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
-		return Outcome{Proven: listErr == nil && len(states) == 1, Result: json.RawMessage(`{"created":true}`)}, listErr
-	case "sandbox.pool.create", "sandbox.pool.warm":
-		return a.reconcileSandboxPool(ctx, target, preconditions)
-	case "sandbox.pool.delete":
-		hosts, listErr := a.client.ListSandboxPool(ctx, target.poolRef())
-		return Outcome{Proven: listErr == nil && len(hosts) == 0, Result: json.RawMessage(`{"deleted":true}`)}, listErr
-	case "sandbox.delete":
-		state, stateErr := a.client.SandboxState(ctx, target.ref())
-		if hubclient.IsNotFound(stateErr) {
-			return Outcome{Proven: true, Result: json.RawMessage(`{"deleted":true}`)}, nil
-		}
-		if stateErr != nil {
-			return Outcome{}, stateErr
-		}
-		return Outcome{Proven: terminalSandboxStage(state.Stage), Result: json.RawMessage(`{"deleted":true}`)}, nil
-	case "sandbox.file.delete":
-		var arguments sandboxFileDeleteArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		_, statErr := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
-		return Outcome{Proven: hubclient.IsNotFound(statErr), Result: json.RawMessage(`{"deleted":true}`)}, nonNotFound(statErr)
-	case "sandbox.file.mkdir":
-		var arguments sandboxFileMkdirArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		info, statErr := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
-		return Outcome{Proven: statErr == nil && info.Type == "dir", Result: json.RawMessage(`{"created":true}`)}, nonNotFound(statErr)
-	case "sandbox.process.kill":
-		var arguments sandboxProcessKillArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		processes, listErr := a.client.SandboxProcesses(ctx, target.ref())
-		proven := listErr == nil && !slices.ContainsFunc(processes, func(process hubclient.SandboxProcess) bool {
-			return process.PID == arguments.PID && process.Running
-		})
-		return Outcome{Proven: proven, Result: json.RawMessage(`{"killed":true}`)}, listErr
-	default:
+	reconcile, found := sandboxReconcilers[a.descriptor.Name]
+	if !found {
 		return Outcome{Proven: false}, nil
 	}
+	return reconcile(a, ctx, target, plan.Arguments, preconditions)
+}
+
+var sandboxReconcilers = map[string]func(*sandboxAdapter, context.Context, sandboxTarget, json.RawMessage, sandboxPreconditions) (Outcome, error){
+	"sandbox.create":       reconcileSandboxCreate,
+	"sandbox.pool.create":  reconcileSandboxPoolOperation,
+	"sandbox.pool.warm":    reconcileSandboxPoolOperation,
+	"sandbox.pool.delete":  reconcileSandboxPoolDelete,
+	"sandbox.delete":       reconcileSandboxDelete,
+	"sandbox.file.delete":  reconcileSandboxFileDelete,
+	"sandbox.file.mkdir":   reconcileSandboxFileMkdir,
+	"sandbox.process.kill": reconcileSandboxProcessKill,
+}
+
+func reconcileSandboxCreate(a *sandboxAdapter, ctx context.Context, target sandboxTarget, _ json.RawMessage, preconditions sandboxPreconditions) (Outcome, error) {
+	if target.Pool != "" {
+		return Outcome{Proven: false}, nil
+	}
+	states, err := a.client.ListSandboxesByOperation(ctx, target.Namespace, preconditions.OperationID)
+	return Outcome{Proven: err == nil && len(states) == 1, Result: json.RawMessage(`{"created":true}`)}, err
+}
+
+func reconcileSandboxPoolOperation(a *sandboxAdapter, ctx context.Context, target sandboxTarget, _ json.RawMessage, preconditions sandboxPreconditions) (Outcome, error) {
+	return a.reconcileSandboxPool(ctx, target, preconditions)
+}
+
+func reconcileSandboxPoolDelete(a *sandboxAdapter, ctx context.Context, target sandboxTarget, _ json.RawMessage, _ sandboxPreconditions) (Outcome, error) {
+	hosts, err := a.client.ListSandboxPool(ctx, target.poolRef())
+	return Outcome{Proven: err == nil && len(hosts) == 0, Result: json.RawMessage(`{"deleted":true}`)}, err
+}
+
+func reconcileSandboxDelete(a *sandboxAdapter, ctx context.Context, target sandboxTarget, _ json.RawMessage, _ sandboxPreconditions) (Outcome, error) {
+	state, err := a.client.SandboxState(ctx, target.ref())
+	if hubclient.IsNotFound(err) {
+		return Outcome{Proven: true, Result: json.RawMessage(`{"deleted":true}`)}, nil
+	}
+	if err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Proven: terminalSandboxStage(state.Stage), Result: json.RawMessage(`{"deleted":true}`)}, nil
+}
+
+func reconcileSandboxFileDelete(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, _ sandboxPreconditions) (Outcome, error) {
+	var arguments sandboxFileDeleteArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	_, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
+	return Outcome{Proven: hubclient.IsNotFound(err), Result: json.RawMessage(`{"deleted":true}`)}, nonNotFound(err)
+}
+
+func reconcileSandboxFileMkdir(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, _ sandboxPreconditions) (Outcome, error) {
+	var arguments sandboxFileMkdirArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	info, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
+	return Outcome{Proven: err == nil && info.Type == "dir", Result: json.RawMessage(`{"created":true}`)}, nonNotFound(err)
+}
+
+func reconcileSandboxProcessKill(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, _ sandboxPreconditions) (Outcome, error) {
+	var arguments sandboxProcessKillArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	processes, err := a.client.SandboxProcesses(ctx, target.ref())
+	proven := err == nil && !slices.ContainsFunc(processes, func(process hubclient.SandboxProcess) bool {
+		return process.PID == arguments.PID && process.Running
+	})
+	return Outcome{Proven: proven, Result: json.RawMessage(`{"killed":true}`)}, err
 }
 
 func (a *sandboxAdapter) reconcileSandboxPool(ctx context.Context, target sandboxTarget, preconditions sandboxPreconditions) (Outcome, error) {
@@ -239,61 +312,66 @@ func (a *sandboxAdapter) Cleanup(plan Plan) error {
 	if !a.descriptor.Sealed {
 		return nil
 	}
-	arguments, err := decodeSealedArguments(plan.Arguments)
-	if err != nil || arguments.SealedPayload == nil {
-		return err
-	}
-	return a.store.Delete(*arguments.SealedPayload)
+	return cleanupSealedPayload(a.store, plan.Arguments)
 }
 
-//nolint:cyclop // Resource-kind resolution is explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) resolveSandboxResource(ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
-	switch a.descriptor.Name {
-	case "sandbox.file.write":
-		var arguments sandboxFileWriteArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		info, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
-		if hubclient.IsNotFound(err) {
-			preconditions.ResourceAbsent = true
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		preconditions.ResourceDigest = digestValue(info)
-	case "sandbox.file.mkdir":
-		var arguments sandboxFileMkdirArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		_, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
-		if hubclient.IsNotFound(err) {
-			preconditions.ResourceAbsent = true
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		return errors.New("sandbox directory already exists")
-	case "sandbox.file.delete":
-		var arguments sandboxFileDeleteArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		info, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
-		if err != nil {
-			return err
-		}
-		preconditions.ResourceDigest = digestValue(info)
-	case "sandbox.process.kill":
-		var arguments sandboxProcessKillArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		processes, err := a.client.SandboxProcesses(ctx, target.ref())
-		if err != nil {
-			return err
-		}
-		index := slices.IndexFunc(processes, func(process hubclient.SandboxProcess) bool { return process.PID == arguments.PID && process.Running })
-		if index < 0 {
-			return errors.New("sandbox process is not running")
-		}
-		preconditions.ResourceDigest = digestValue(processes[index])
+	return dispatchSandboxResource(a.descriptor.Name, sandboxResourceResolvers, a, ctx, target, raw, preconditions)
+}
+
+var sandboxResourceResolvers = map[string]func(*sandboxAdapter, context.Context, sandboxTarget, json.RawMessage, *sandboxPreconditions) error{
+	"sandbox.file.write":   resolveSandboxFileWrite,
+	"sandbox.file.mkdir":   resolveSandboxFileMkdir,
+	"sandbox.file.delete":  resolveSandboxFileDelete,
+	"sandbox.process.kill": resolveSandboxProcessKill,
+}
+
+func resolveSandboxFileWrite(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	var arguments sandboxFileWriteArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	info, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
+	if hubclient.IsNotFound(err) {
+		preconditions.ResourceAbsent = true
+		return nil
 	}
+	if err != nil {
+		return err
+	}
+	preconditions.ResourceDigest = digestValue(info)
+	return nil
+}
+
+func resolveSandboxFileMkdir(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	var arguments sandboxFileMkdirArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	_, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
+	if hubclient.IsNotFound(err) {
+		preconditions.ResourceAbsent = true
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New("sandbox directory already exists")
+}
+
+func resolveSandboxFileDelete(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	var arguments sandboxFileDeleteArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	info, err := a.client.SandboxFileStat(ctx, target.ref(), arguments.Path)
+	if err != nil {
+		return err
+	}
+	preconditions.ResourceDigest = digestValue(info)
+	return nil
+}
+
+func resolveSandboxProcessKill(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, preconditions *sandboxPreconditions) error {
+	process, err := a.runningSandboxProcess(ctx, target, raw)
+	if err != nil {
+		return err
+	}
+	preconditions.ResourceDigest = digestValue(process)
 	return nil
 }
 
@@ -325,50 +403,84 @@ func (a *sandboxAdapter) checkSandboxState(ctx context.Context, target sandboxTa
 	return a.checkSandboxResource(ctx, target, raw, expected)
 }
 
-//nolint:cyclop // Resource preconditions are explicit and tracked by the exact HF CRAP baseline.
 func (a *sandboxAdapter) checkSandboxResource(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) error {
-	var path string
-	switch a.descriptor.Name {
-	case "sandbox.file.write":
-		var arguments sandboxFileWriteArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		path = arguments.Path
-	case "sandbox.file.mkdir":
-		var arguments sandboxFileMkdirArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		path = arguments.Path
-	case "sandbox.file.delete":
-		var arguments sandboxFileDeleteArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		path = arguments.Path
-	case "sandbox.process.kill":
-		var arguments sandboxProcessKillArguments
-		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
-		processes, err := a.client.SandboxProcesses(ctx, target.ref())
-		if err != nil {
-			return err
-		}
-		index := slices.IndexFunc(processes, func(process hubclient.SandboxProcess) bool {
-			return process.PID == arguments.PID && process.Running
-		})
-		if index < 0 || digestValue(processes[index]) != expected.ResourceDigest {
-			return errors.New("operation_precondition_failed")
-		}
-		return nil
-	default:
+	return dispatchSandboxResource(a.descriptor.Name, sandboxResourceCheckers, a, ctx, target, raw, expected)
+}
+
+func dispatchSandboxResource[T any](name string,
+	handlers map[string]func(*sandboxAdapter, context.Context, sandboxTarget, json.RawMessage, T) error,
+	adapter *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, state T) error {
+	handle, found := handlers[name]
+	if !found {
 		return nil
 	}
+	return handle(adapter, ctx, target, raw, state)
+}
+
+var sandboxResourceCheckers = map[string]func(*sandboxAdapter, context.Context, sandboxTarget, json.RawMessage, sandboxPreconditions) error{
+	"sandbox.file.write":   checkSandboxFileResource[sandboxFileWriteArguments],
+	"sandbox.file.mkdir":   checkSandboxFileResource[sandboxFileMkdirArguments],
+	"sandbox.file.delete":  checkSandboxFileResource[sandboxFileDeleteArguments],
+	"sandbox.process.kill": checkSandboxProcessResource,
+}
+
+type sandboxPathArgument interface {
+	sandboxPath() string
+}
+
+func (value sandboxFileWriteArguments) sandboxPath() string  { return value.Path }
+func (value sandboxFileMkdirArguments) sandboxPath() string  { return value.Path }
+func (value sandboxFileDeleteArguments) sandboxPath() string { return value.Path }
+
+func checkSandboxFileResource[T sandboxPathArgument](a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) error {
+	var arguments T
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	return a.checkSandboxFileStat(ctx, target, arguments.sandboxPath(), expected)
+}
+
+func (a *sandboxAdapter) checkSandboxFileStat(ctx context.Context, target sandboxTarget, path string, expected sandboxPreconditions) error {
 	info, err := a.client.SandboxFileStat(ctx, target.ref(), path)
-	if expected.ResourceAbsent && hubclient.IsNotFound(err) {
+	if sandboxFileStatMatches(info, err, expected) {
 		return nil
 	}
-	if err != nil || expected.ResourceAbsent || digestValue(info) != expected.ResourceDigest {
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
+	}
+	return errors.New("operation_precondition_failed")
+}
+
+func sandboxFileStatMatches(info hubclient.SandboxFileInfo, err error, expected sandboxPreconditions) bool {
+	if expected.ResourceAbsent {
+		return hubclient.IsNotFound(err)
+	}
+	return err == nil && digestValue(info) == expected.ResourceDigest
+}
+
+func checkSandboxProcessResource(a *sandboxAdapter, ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) error {
+	process, err := a.runningSandboxProcess(ctx, target, raw)
+	if err != nil {
+		return err
+	}
+	if digestValue(process) != expected.ResourceDigest {
 		return errors.New("operation_precondition_failed")
 	}
 	return nil
+}
+
+func (a *sandboxAdapter) runningSandboxProcess(ctx context.Context, target sandboxTarget, raw json.RawMessage) (hubclient.SandboxProcess, error) {
+	var arguments sandboxProcessKillArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	processes, err := a.client.SandboxProcesses(ctx, target.ref())
+	if err != nil {
+		return hubclient.SandboxProcess{}, err
+	}
+	index := slices.IndexFunc(processes, func(process hubclient.SandboxProcess) bool {
+		return process.PID == arguments.PID && process.Running
+	})
+	if index < 0 {
+		return hubclient.SandboxProcess{}, errors.New("sandbox process is not running")
+	}
+	return processes[index], nil
 }
 
 func (a *sandboxAdapter) publicArguments(raw json.RawMessage) json.RawMessage {

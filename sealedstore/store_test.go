@@ -190,6 +190,29 @@ func TestStoreRetainsConsumedMarkerForIdempotencyWindow(t *testing.T) {
 	}
 }
 
+func TestStoreEnforcesPerOwnerQuotaWithoutChargingReplay(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.maxFiles, store.maxOwnerFiles = 3, 1
+	expires := time.Now().Add(time.Hour)
+	first, err := store.PutForRequest("agent-a", "space.secret.set", "request-1", []byte("secret"), expires)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := store.PutForRequest("agent-a", "space.secret.set", "request-1", []byte("secret"), expires)
+	if err != nil || replay != first {
+		t.Fatalf("replay = %+v, %v", replay, err)
+	}
+	if _, err := store.PutForRequest("agent-a", "space.secret.set", "request-2", []byte("other"), expires); err == nil {
+		t.Fatal("per-owner sealed-payload quota was not enforced")
+	}
+	if _, err := store.PutForRequest("agent-b", "space.secret.set", "request-3", []byte("other"), expires); err != nil {
+		t.Fatalf("independent owner was rejected: %v", err)
+	}
+}
+
 func TestStorePersistsKeyAndRejectsUnsafePermissions(t *testing.T) {
 	dir := t.TempDir()
 	first, err := Open(dir)

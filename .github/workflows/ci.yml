@@ -9,11 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  go-macos:
+    runs-on: macos-latest
+    env:
+      TMPDIR: /private/tmp
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - run: go mod download
+      - run: go vet ./...
+      - run: go test -race ./...
+
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.26.5"
           cache: true
@@ -45,14 +59,9 @@ jobs:
           (cd brokers/sudo && slophammer-go dry .)
       - name: Slophammer complexity gates
         run: |
-          slophammer_binary="$(command -v slophammer-go)"
-          slophammer-go() {
-            SLOPHAMMER_GO="$slophammer_binary" ./scripts/check-github-crap.sh
-          }
-          # The wrapper verifies every score against an exact ceiling and rejects tool failures.
           slophammer-go crap . --max-score 8
-          ./scripts/test-check-hf-crap.sh
-          ./scripts/check-hf-crap.sh
+          (cd brokers/huggingface && slophammer-go crap . --max-score 8)
+          (cd brokers/sudo && slophammer-go crap . --max-score 8)
       - name: mutate4go gate (opt-in)
         if: ${{ vars.RUN_MUTATION == 'true' }}
         run: ./scripts/check-mutation.sh
@@ -62,15 +71,15 @@ jobs:
   openclaw-plugin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: 11.11.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version: "24.18.0"
           cache: pnpm
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.26.5"
           cache: true

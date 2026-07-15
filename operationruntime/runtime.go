@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
@@ -47,8 +48,26 @@ type Preparation[P, A any] struct {
 
 // Failure is a provider-redacted terminal execution error.
 type Failure struct {
-	Code    string
-	Message string
+	Code            string
+	Message         string
+	ReleaseApproval bool
+}
+
+// Observer receives bounded lifecycle outcomes without provider or target data.
+type Observer interface {
+	OperationSubmitted(result string)
+	OperationExecuted(result string, elapsed time.Duration)
+	NotificationDelivered(result string)
+}
+
+// Diagnostics receives secret-safe lifecycle context for structured logs and
+// bounded dependency/capacity metrics.
+type Diagnostics interface {
+	WorkerConfigured(workerLimit int)
+	OperationStarted(correlationID, operationClass string, workerLimit int)
+	OperationFinished(correlationID, operationClass, result, errorCode string, elapsed time.Duration)
+	NotificationAttempt(correlationID, result, errorCode string)
+	Retry(correlationID, dependency string)
 }
 
 // Options supplies provider semantics and shared durable dependencies. The
@@ -57,6 +76,7 @@ type Failure struct {
 type Options[I, P, A any] struct {
 	Broker              string
 	Operations          *agentops.Store
+	Admission           *admission.Controller
 	Registry            *Registry[I, P, A]
 	Authorization       *authorization.Coordinator
 	Grants              *grants.Store
@@ -83,6 +103,8 @@ type Options[I, P, A any] struct {
 	WorkerInterval      time.Duration
 	WorkerConcurrency   int
 	NotificationLease   time.Duration
+	Observer            Observer
+	Diagnostics         Diagnostics
 }
 
 // Runtime drives one provider's generic Agent V1 operation lifecycle.
@@ -99,6 +121,9 @@ func New[I, P, A any](options Options[I, P, A]) (*Runtime[I, P, A], error) {
 		return nil, errors.New("operation runtime options are incomplete")
 	}
 	options = defaultOptions(options)
+	if options.Diagnostics != nil {
+		options.Diagnostics.WorkerConfigured(options.WorkerConcurrency)
+	}
 	return &Runtime[I, P, A]{options: options}, nil
 }
 
@@ -180,7 +205,8 @@ func (r *Runtime[I, P, A]) Start(ctx context.Context) {
 func (r *Runtime[I, P, A]) Wait() { r.workers.Wait() }
 
 // Submit validates, resolves, authorizes, and durably submits an operation.
-func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request agentv1.SubmitRequest) (operation agentv1.Operation, created bool, returnErr error) {
+	defer func() { r.observeSubmission(created, returnErr) }()
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.Reason = strings.TrimSpace(request.Reason)
 	adapter, input, err := r.decode(request)
@@ -193,17 +219,63 @@ func (r *Runtime[I, P, A]) Submit(ctx context.Context, client string, request ag
 	if existing, found, replayErr := r.replayed(client, request, input); replayErr != nil || found {
 		return existing, false, replayErr
 	}
+	return r.submitNew(ctx, client, request, adapter, input)
+}
+
+func (r *Runtime[I, P, A]) submitNew(ctx context.Context, client string, request agentv1.SubmitRequest,
+	adapter Adapter[I, P, A], input I) (agentv1.Operation, bool, error) {
 	if bound, ok := any(adapter).(ClientBoundAdapter[I]); ok {
 		if err := bound.ValidateClient(input, client, request.IdempotencyKey); err != nil {
 			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", err.Error())
 		}
+	}
+	permit, err := r.admit(ctx, client)
+	if err != nil {
+		return agentv1.Operation{}, false, err
+	}
+	if permit != nil {
+		defer permit.Release()
 	}
 	plan, err := adapter.Resolve(ctx, input)
 	if err != nil {
 		return agentv1.Operation{}, false, r.options.MapSubmissionError(err)
 	}
 	r.options.SetClient(&plan, client)
-	return r.submitResolved(ctx, client, request, adapter, plan)
+	operation, created, err := r.submitResolved(ctx, client, request, adapter, plan)
+	if created && permit != nil {
+		permit.Commit()
+	}
+	return operation, created, err
+}
+
+func (r *Runtime[I, P, A]) observeSubmission(created bool, err error) {
+	if r.options.Observer == nil {
+		return
+	}
+	result := "replayed"
+	if err != nil {
+		result = "rejected"
+	} else if created {
+		result = "created"
+	}
+	r.options.Observer.OperationSubmitted(result)
+}
+
+func (r *Runtime[I, P, A]) admit(ctx context.Context, client string) (*admission.Permit, error) {
+	if r.options.Admission == nil {
+		return nil, nil
+	}
+	permit, err := r.options.Admission.Admit(ctx, client)
+	if err == nil {
+		return permit, nil
+	}
+	var limit *admission.LimitError
+	if errors.As(err, &limit) {
+		seconds := int((limit.RetryAfter + time.Second - 1) / time.Second)
+		return nil, &agentapi.Error{Status: http.StatusTooManyRequests, Code: limit.Code,
+			Message: "Operation admission limit reached", RetryAfterSeconds: seconds}
+	}
+	return nil, operationAPIError(http.StatusServiceUnavailable, "operation_store_unavailable", "Could not check operation capacity")
 }
 
 func (r *Runtime[I, P, A]) decode(request agentv1.SubmitRequest) (Adapter[I, P, A], I, error) {
@@ -249,7 +321,7 @@ func (r *Runtime[I, P, A]) submitResolved(ctx context.Context, client string, re
 	auth := adapter.Authorize(plan)
 	core := r.options.Project(auth)
 	decision := r.options.Decide(core, policy.DecisionOptions{Now: r.now()})
-	if decision.Allowed && len(decision.MatchedAllowRuleIDs) > 0 {
+	if decision.Allowed && len(decision.MatchedAllowRuleIDs) > 0 && !requiresApproval(adapter) {
 		intent, prepareErr := r.options.Prepare(Preparation[P, A]{Plan: plan, Auth: auth, Core: core, DescriptorName: adapter.Descriptor().Name,
 			Client: client, OperationID: id, Reason: request.Reason, Decision: decision, Direct: true, CreatedAt: r.now()})
 		if prepareErr != nil {
@@ -354,23 +426,27 @@ func (r *Runtime[I, P, A]) Cancel(_ context.Context, client, id string) (agentv1
 }
 
 func (r *Runtime[I, P, A]) cancelApproval(operation agentv1.Operation, client string) error {
-	id := operation.ApprovalID
-	if id == "" {
-		values, err := r.options.Grants.ListForClient(client)
-		if err != nil {
-			return err
-		}
-		grant, found := r.operationApproval(values, operation)
-		if !found {
-			return nil
-		}
-		id = grant.ID
+	id, found, err := r.approvalID(operation, client)
+	if err != nil || !found {
+		return err
 	}
 	grant, err := r.options.Grants.Get(id)
 	if err != nil {
 		return err
 	}
 	return r.cancelGrant(grant, client)
+}
+
+func (r *Runtime[I, P, A]) approvalID(operation agentv1.Operation, client string) (string, bool, error) {
+	if operation.ApprovalID != "" {
+		return operation.ApprovalID, true, nil
+	}
+	values, err := r.options.Grants.ListForClient(client)
+	if err != nil {
+		return "", false, err
+	}
+	grant, found := r.operationApproval(values, operation)
+	return grant.ID, found, nil
 }
 
 func (r *Runtime[I, P, A]) cancelGrant(grant grants.Grant, client string) error {
@@ -419,15 +495,42 @@ func (r *Runtime[I, P, A]) bindApproval(ctx context.Context, operation agentv1.O
 }
 
 func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Grant) error {
+	r.observeNotificationRetry(grant)
 	claim, done, err := r.claimNotification(grant)
-	if err != nil || done {
+	if err != nil {
+		r.observeNotification(grant.ID, "claimed", "notification_claim_failed")
 		return err
+	}
+	if done {
+		r.observeNotification(grant.ID, "already_recorded", "")
+		return nil
 	}
 	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(claim.Grant, claim.DecisionToken))
 	if err = validateNotificationReference(ref, err); err != nil {
+		r.observeNotification(grant.ID, "failed", "notification_unavailable")
 		return r.settleNotificationFailure(claim, err)
 	}
-	return r.recordNotification(claim, ref)
+	if err := r.recordNotification(claim, ref); err != nil {
+		r.observeNotification(grant.ID, "failed", "notification_store_failed")
+		return err
+	}
+	r.observeNotification(grant.ID, "delivered", "")
+	return nil
+}
+
+func (r *Runtime[I, P, A]) observeNotificationRetry(grant grants.Grant) {
+	if !grant.NotificationClaimedAt.IsZero() && r.options.Diagnostics != nil {
+		r.options.Diagnostics.Retry(grant.ID, "notification")
+	}
+}
+
+func (r *Runtime[I, P, A]) observeNotification(correlationID, result, errorCode string) {
+	if r.options.Observer != nil {
+		r.options.Observer.NotificationDelivered(result)
+	}
+	if r.options.Diagnostics != nil {
+		r.options.Diagnostics.NotificationAttempt(correlationID, result, errorCode)
+	}
 }
 
 func (r *Runtime[I, P, A]) claimNotification(grant grants.Grant) (grants.NotificationClaim, bool, error) {
@@ -619,30 +722,69 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 		r.fail(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
 		return
 	}
-	reserved, ok := r.reserveApproval(operation)
+	grant, reserved, ok := r.reserveApproval(operation)
+	if !ok {
+		return
+	}
+	plan, ok = r.bindReservedPlan(operation, adapter, plan, grant, reserved)
 	if !ok {
 		return
 	}
 	r.executeReserved(ctx, operation, adapter, plan, reserved)
 }
 
+func (r *Runtime[I, P, A]) bindReservedPlan(operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
+	grant grants.Grant, reserved bool) (P, bool) {
+	if !reserved {
+		return plan, true
+	}
+	binder, bound := any(adapter).(ReservationBinder[P])
+	if !bound {
+		return plan, true
+	}
+	boundPlan, err := binder.BindReservation(plan, grant)
+	if err == nil {
+		return boundPlan, true
+	}
+	_, _ = r.options.Grants.ReleaseUse(grant.ID)
+	r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approved operation binding is invalid")
+	return plan, false
+}
+
 func (r *Runtime[I, P, A]) executeReserved(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P, reserved bool) {
+	started := time.Now()
+	result, errorCode := "ambiguous", "upstream_result_unknown"
+	operationClass := string(adapter.Descriptor().Risk)
+	if r.options.Diagnostics != nil {
+		r.options.Diagnostics.OperationStarted(operation.ID, operationClass, r.options.WorkerConcurrency)
+	}
+	defer func() {
+		if r.options.Observer != nil {
+			r.options.Observer.OperationExecuted(result, time.Since(started))
+		}
+		if r.options.Diagnostics != nil {
+			r.options.Diagnostics.OperationFinished(operation.ID, operationClass, result, errorCode, time.Since(started))
+		}
+	}()
 	execution, executionErr := adapter.Execute(ctx, plan)
 	if executionErr == nil && execution.Proven {
+		result, errorCode = "succeeded", ""
 		r.succeed(operation, plan, execution.Result, reserved, "", execution.UpstreamStatus)
 		return
 	}
 	if r.options.DefinitiveFailure(executionErr) {
-		if r.settleApproval(operation, reserved, false) {
-			r.failExecution(operation, plan, executionErr, nil)
+		result = "failed"
+		failure := r.options.ExecutionFailure(executionErr, nil)
+		if r.settleApproval(operation, reserved, settlementForFailure(failure)) {
+			errorCode = r.recordExecutionFailure(operation, plan, failure).Code
 		}
 		return
 	}
-	r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
+	result, errorCode = r.reconcileExecution(ctx, operation, adapter, plan, reserved, execution, executionErr)
 }
 
 func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
-	reserved bool, execution Outcome, executionErr error) {
+	reserved bool, execution Outcome, executionErr error) (string, string) {
 	outcome, reconcileErr := adapter.Reconcile(ctx, plan)
 	if reconcileErr == nil && outcome.Proven {
 		if len(outcome.Result) == 0 {
@@ -652,16 +794,18 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 			outcome.UpstreamStatus = execution.UpstreamStatus
 		}
 		r.succeed(operation, plan, outcome.Result, reserved, "", outcome.UpstreamStatus)
-		return
+		return "reconciled", ""
 	}
-	if r.settleApproval(operation, reserved, true) {
-		r.failExecution(operation, plan, executionErr, reconcileErr)
+	failure := r.options.ExecutionFailure(executionErr, reconcileErr)
+	if r.settleApproval(operation, reserved, approvalRetain) {
+		failure = r.failExecution(operation, plan, executionErr, reconcileErr)
 	}
+	return "ambiguous", failure.Code
 }
 
 func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string, upstreamStatus int) {
 	result = NormalizedResult(operation.Operation, result)
-	if !r.settleApproval(operation, reserved, false) {
+	if !r.settleApproval(operation, reserved, approvalCommit) {
 		return
 	}
 	if _, err := r.options.Operations.Succeed(operation.ID, result); err != nil {
@@ -677,160 +821,6 @@ func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result j
 // Succeed records a proven provider result and settles reserved authority.
 func (r *Runtime[I, P, A]) Succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string) {
 	r.succeed(operation, plan, result, reserved, detail, http.StatusOK)
-}
-
-func (r *Runtime[I, P, A]) settleApproval(operation agentv1.Operation, reserved, retain bool) bool {
-	if !reserved {
-		return true
-	}
-	var err error
-	if retain {
-		_, err = r.options.Grants.RetainUse(operation.ApprovalID)
-	} else {
-		_, err = r.options.Grants.CommitUse(operation.ApprovalID)
-	}
-	if err == nil {
-		return true
-	}
-	r.fail(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
-	return false
-}
-
-// ReconcileInterrupted proves an executing operation after restart without
-// replaying the mutation.
-func (r *Runtime[I, P, A]) ReconcileInterrupted(ctx context.Context, operation agentv1.Operation) {
-	adapter, plan, err := r.Load(operation)
-	if err != nil {
-		r.fail(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
-		return
-	}
-	outcome, err := adapter.Reconcile(ctx, plan)
-	if err == nil && outcome.Proven {
-		if !r.settleRecoveredApproval(operation) {
-			return
-		}
-		result := NormalizedResult(operation.Operation, outcome.Result)
-		if _, succeedErr := r.options.Operations.Succeed(operation.ID, result); succeedErr != nil {
-			r.fail(operation.ID, agentv1.StateFailed, "operation_store_unavailable", "Operation ran but its result could not be stored")
-			return
-		}
-		r.cleanup(adapter, plan)
-		if r.options.RecordOutcome != nil {
-			r.options.RecordOutcome(operation, plan, "allowed", "reconciled after restart", normalizedUpstreamStatus(outcome.UpstreamStatus))
-		}
-		return
-	}
-	r.fail(operation.ID, agentv1.StateFailed, "upstream_result_unknown", "Operation result could not be proven after restart")
-}
-
-func normalizedUpstreamStatus(status int) int {
-	if status >= 100 && status <= 599 {
-		return status
-	}
-	return http.StatusOK
-}
-
-func (r *Runtime[I, P, A]) settleRecoveredApproval(operation agentv1.Operation) bool {
-	if operation.ApprovalID == "" {
-		return true
-	}
-	grant, err := r.options.Grants.Get(operation.ApprovalID)
-	if err != nil || r.options.ValidateExecution(grant) != nil {
-		r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
-		return false
-	}
-	commit, valid := RecoveredApprovalCommit(grant)
-	if !valid {
-		r.fail(operation.ID, agentv1.StateFailed, "approval_reservation_missing", "Approval was not reserved before execution")
-		return false
-	}
-	if !commit {
-		return true
-	}
-	if _, err := r.options.Grants.CommitUse(grant.ID); err != nil {
-		r.fail(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
-		return false
-	}
-	return true
-}
-
-// RecoveredApprovalCommit reports whether restart recovery must commit a
-// reserved use and whether the recorded authority state is valid.
-func RecoveredApprovalCommit(grant grants.Grant) (commit, valid bool) {
-	if grant.UsedCount > 0 {
-		return false, true
-	}
-	return grant.ReservedCount > 0, grant.ReservedCount > 0
-}
-
-// Load loads and provider-validates an immutable operation plan.
-func (r *Runtime[I, P, A]) Load(operation agentv1.Operation) (Adapter[I, P, A], P, error) {
-	adapter, found := r.options.Registry.Lookup(operation.Operation)
-	if !found || operation.PlanDigest == "" {
-		var zero P
-		return nil, zero, errors.New("operation adapter is unavailable")
-	}
-	plan, err := r.options.Load(operation, adapter)
-	if err != nil {
-		var zero P
-		return nil, zero, err
-	}
-	return adapter, plan, nil
-}
-
-func (r *Runtime[I, P, A]) reserveApproval(operation agentv1.Operation) (bool, bool) {
-	if operation.ApprovalID == "" {
-		return false, true
-	}
-	grant, err := r.options.Grants.Get(operation.ApprovalID)
-	if err != nil || r.options.ValidateExecution(grant) != nil {
-		r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
-		return false, false
-	}
-	if _, err := r.options.Grants.ReserveUse(grant.ID); err != nil {
-		r.fail(operation.ID, agentv1.StateFailed, "approval_unavailable", "Approval could not be reserved")
-		return false, false
-	}
-	return true, true
-}
-
-func (r *Runtime[I, P, A]) failExecution(operation agentv1.Operation, plan P, executionErr, reconcileErr error) {
-	failure := r.options.ExecutionFailure(executionErr, reconcileErr)
-	r.fail(operation.ID, agentv1.StateFailed, failure.Code, failure.Message)
-	if r.options.RecordOutcome != nil {
-		r.options.RecordOutcome(operation, plan, "refused", failure.Code, 0)
-	}
-}
-
-// FailExecution records one provider-redacted execution or reconciliation
-// failure.
-func (r *Runtime[I, P, A]) FailExecution(operation agentv1.Operation, plan P, executionErr, reconcileErr error) {
-	r.failExecution(operation, plan, executionErr, reconcileErr)
-}
-
-func (r *Runtime[I, P, A]) fail(id string, state agentv1.State, code, message string) agentv1.Operation {
-	operation, err := r.options.Operations.Fail(id, state, code, message)
-	if err != nil {
-		operation, _ = r.options.Operations.GetByID(id)
-	}
-	r.cleanupStored(operation)
-	return operation
-}
-
-func (r *Runtime[I, P, A]) cleanup(adapter Adapter[I, P, A], plan P) {
-	if cleaner, ok := any(adapter).(PlanCleaner[P]); ok {
-		_ = cleaner.Cleanup(plan)
-	}
-}
-
-func (r *Runtime[I, P, A]) cleanupStored(operation agentv1.Operation) {
-	if operation.PlanDigest == "" {
-		return
-	}
-	adapter, plan, err := r.Load(operation)
-	if err == nil {
-		r.cleanup(adapter, plan)
-	}
 }
 
 func (r *Runtime[I, P, A]) authorizationLock(id string) *sync.Mutex {

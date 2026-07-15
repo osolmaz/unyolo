@@ -43,6 +43,26 @@ func TestHostTarget(t *testing.T) {
 	}
 }
 
+func TestParseTargetAndNativeValidation(t *testing.T) {
+	target, err := ParseTarget(HostTarget())
+	if err != nil || target.String() != HostTarget() {
+		t.Fatalf("ParseTarget() = %v, %v", target, err)
+	}
+	if _, err := ParseTarget("plan9/amd64"); err == nil {
+		t.Fatal("ParseTarget() accepted an unsupported target")
+	}
+	other := Target{GOOS: "linux", GOARCH: "amd64"}
+	if other.String() == HostTarget() {
+		other = Target{GOOS: "darwin", GOARCH: "arm64"}
+	}
+	if _, err := normalizedTargets([]Target{other}); err == nil {
+		t.Fatal("normalizedTargets() accepted a non-native target")
+	}
+	if _, err := normalizedTargets([]Target{target, target}); err == nil {
+		t.Fatal("normalizedTargets() accepted a duplicate target")
+	}
+}
+
 func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	directory := t.TempDir()
 	writeReleaseFile(t, directory, "go.mod", "module example.test/release\n\ngo 1.25.0\n")
@@ -63,7 +83,7 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	asset := filepath.Join(dist, "test-broker_linux_amd64.tar.gz")
+	asset := filepath.Join(dist, "test-broker_"+strings.ReplaceAll(HostTarget(), "/", "_")+".tar.gz")
 	if names := archiveNames(t, asset); !slices.Equal(names, []string{"test-broker", "test-broker-exec", "README.md", "LICENSE"}) {
 		t.Fatalf("archive names = %v", names)
 	}
@@ -72,7 +92,7 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := os.ReadFile(filepath.Join(dist, "checksums.txt")) // #nosec G304 -- test-owned path.
-	if err != nil || string(first) != string(second) || strings.Count(string(second), "test-broker_") != 4 {
+	if err != nil || string(first) != string(second) || strings.Count(string(second), "test-broker_") != 1 {
 		t.Fatalf("checksums are not deterministic: %v", err)
 	}
 }

@@ -139,33 +139,55 @@ func reconcileApprovalOutbox(grants []Grant, previous []state.NotificationOutbox
 func applyApprovalOutboxState(record *state.NotificationOutboxRecord, grant Grant, now time.Time) {
 	switch {
 	case grant.Notification != nil:
-		if record.Status != "delivered" {
-			record.DeliveredAt = now
-		}
-		record.Status = "delivered"
-		record.ClaimedUntil = time.Time{}
-		record.LastErrorCode = ""
+		markApprovalDelivered(record, now)
 	case grant.Status != StatusPending:
-		record.Status = "canceled"
-		record.ClaimedUntil = time.Time{}
-		record.LastErrorCode = ""
+		markApprovalCanceled(record)
 	case grant.NotificationDeliveryUnresolved:
-		record.Status = "ambiguous"
-		record.ClaimedUntil = grant.NotificationClaimUntil
-		record.AvailableAt = grant.NotificationClaimUntil
-		record.LastErrorCode = "delivery_ambiguous"
+		markApprovalAmbiguous(record, grant)
 	case !grant.NotificationClaimedAt.IsZero():
-		if record.Status != "claimed" || !record.ClaimedUntil.Equal(grant.NotificationClaimUntil) {
-			record.Attempts++
-		}
-		record.Status = "claimed"
-		record.ClaimedUntil = grant.NotificationClaimUntil
-		record.LastErrorCode = ""
+		markApprovalClaimed(record, grant)
 	default:
-		record.Status = "pending"
-		record.ClaimedUntil = time.Time{}
-		record.LastErrorCode = ""
+		markApprovalPending(record)
 	}
+}
+
+func markApprovalDelivered(record *state.NotificationOutboxRecord, now time.Time) {
+	if record.Status != "delivered" {
+		record.DeliveredAt = now
+	}
+	record.Status = "delivered"
+	record.ClaimedUntil = time.Time{}
+	record.LastErrorCode = ""
+}
+
+func markApprovalCanceled(record *state.NotificationOutboxRecord) {
+	resetApprovalStatus(record, "canceled")
+}
+
+func markApprovalAmbiguous(record *state.NotificationOutboxRecord, grant Grant) {
+	record.Status = "ambiguous"
+	record.ClaimedUntil = grant.NotificationClaimUntil
+	record.AvailableAt = grant.NotificationClaimUntil
+	record.LastErrorCode = "delivery_ambiguous"
+}
+
+func markApprovalClaimed(record *state.NotificationOutboxRecord, grant Grant) {
+	if record.Status != "claimed" || !record.ClaimedUntil.Equal(grant.NotificationClaimUntil) {
+		record.Attempts++
+	}
+	record.Status = "claimed"
+	record.ClaimedUntil = grant.NotificationClaimUntil
+	record.LastErrorCode = ""
+}
+
+func markApprovalPending(record *state.NotificationOutboxRecord) {
+	resetApprovalStatus(record, "pending")
+}
+
+func resetApprovalStatus(record *state.NotificationOutboxRecord, status string) {
+	record.Status = status
+	record.ClaimedUntil = time.Time{}
+	record.LastErrorCode = ""
 }
 
 func validateApprovalOutbox(grants []state.GrantRecord, records []state.NotificationOutboxRecord) error {

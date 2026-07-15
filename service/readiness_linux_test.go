@@ -4,8 +4,11 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -22,6 +25,25 @@ func TestLocalHTTPClientDisablesProxy(t *testing.T) {
 	defaultTransport := http.DefaultTransport.(*http.Transport)
 	if transport == defaultTransport {
 		t.Fatal("local HTTP client mutated the default transport")
+	}
+}
+
+func TestEndpointReadyCheckOverUnixSocket(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", filepath.Join(directory, "broker.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	})}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { _ = server.Close() })
+	if err := EndpointReadyCheck("unix://"+filepath.Join(directory, "broker.sock"), "/readyz")(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }
 

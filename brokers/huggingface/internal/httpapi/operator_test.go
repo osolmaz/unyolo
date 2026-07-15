@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ func TestBrokerkitControlPlaneConformance(t *testing.T) {
 		t.Fatal(err)
 	}
 	server, err := New(Options{
+		Audit: testAuditRecorder(),
 		Config: config.Config{
 			HFToken: "hf_test", Clients: []config.Client{{Name: "bob", Secret: clientSecret}},
 			Operators: []config.Client{{Name: "onur", Secret: operatorSecret}},
@@ -65,7 +67,7 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 		Operators: []config.Client{{Name: "onur", Secret: operatorSecret}},
 		StateDir:  filepath.Join(t.TempDir(), "state"), MaxPackBytes: 1024, HFTimeout: time.Second,
 	}
-	server, err := New(Options{Config: cfg, Scope: scope, UpstreamBaseURL: "http://127.0.0.1:1"})
+	server, err := New(Options{Config: cfg, Scope: scope, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +85,10 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	}
 	operatorServer := httptest.NewServer(server.OperatorHandler())
 	t.Cleanup(operatorServer.Close)
-	client := &operatorclient.Client{BaseURL: operatorServer.URL, Token: operatorSecret, HTTPClient: operatorServer.Client()}
+	client, err := operatorclient.New(strings.Replace(operatorServer.URL, "http://", "tcp://", 1), operatorSecret, operatorServer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
 	page, err := client.List(t.Context(), operatorv1.Query{Status: bkgrants.StatusGroupPending})
 	if err != nil || len(page.Requests) != 1 || len(page.Requests[0].Presentation.Facts) == 0 {
 		t.Fatalf("List() = %+v, %v", page, err)

@@ -3,231 +3,197 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestLoadReadsEnvironment(t *testing.T) {
-	telegramTokenFile := filepath.Join(t.TempDir(), "telegram-token")
-	if err := os.WriteFile(telegramTokenFile, []byte("telegram-token\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GH_BROKER_ENVIRONMENT", "test")
-	t.Setenv("GH_BROKER_BIND_ADDR", "127.0.0.2")
-	t.Setenv("GH_BROKER_PORT", "9090")
-	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
-	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
-	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
-	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
-	t.Setenv("GH_BROKER_SCOPE_FILE", "/tmp/scope.json")
-	t.Setenv("GH_BROKER_STATE_DIR", "/tmp/gh-state")
-	t.Setenv("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", telegramTokenFile)
-	t.Setenv("GH_BROKER_TELEGRAM_CHAT_ID", "123456")
-	t.Setenv("GH_BROKER_GITHUB_HTTP_TIMEOUT", "11")
-	t.Setenv("GH_BROKER_GITHUB_STREAM_TIMEOUT", "601")
-	t.Setenv("GH_BROKER_MAX_RECEIVE_PACK_BYTES", "12345")
-	t.Setenv("GH_BROKER_READ_TIMEOUT", "3")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	assertLoadedConfigStrings(t, cfg)
-	assertLoadedConfigNumbers(t, cfg)
-}
-
-func TestLoadFromLookupUsesInjectedValues(t *testing.T) {
-	telegramTokenFile := filepath.Join(t.TempDir(), "telegram-token")
-	if err := os.WriteFile(telegramTokenFile, []byte("telegram-token\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	values := map[string]string{
-		"GH_BROKER_BIND_ADDR":               "127.0.0.9",
-		"GH_BROKER_SHARED_SECRET":           strings.Repeat("s", minimumSharedSecretBytes),
-		"GH_BROKER_GITHUB_TOKEN":            "github-token",
-		"GH_BROKER_GITHUB_TOKEN_FILE":       "/protected/github-token",
-		"GH_BROKER_SCOPE_FILE":              "/etc/gh-broker/scope.json",
-		"GH_BROKER_STATE_DIR":               "/var/lib/gh-broker",
-		"GH_BROKER_TELEGRAM_CHAT_ID":        "42",
-		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE": telegramTokenFile,
-	}
-	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
-	if err != nil {
-		t.Fatalf("LoadFromLookup() error = %v", err)
-	}
-	if cfg.BindAddr != "127.0.0.9" || cfg.ScopeFile != "/etc/gh-broker/scope.json" || cfg.TelegramChatID != 42 {
-		t.Fatalf("LoadFromLookup() = %+v", cfg)
-	}
-}
-
-func assertLoadedConfigStrings(t *testing.T, cfg Config) {
-	t.Helper()
-	assertString(t, "Environment", cfg.Environment, "test")
-	assertString(t, "BindAddr", cfg.BindAddr, "127.0.0.2")
-	assertString(t, "Port", cfg.Port, "9090")
-	assertString(t, "ClientID", cfg.ClientID, "bob")
-	assertString(t, "ScopeFile", cfg.ScopeFile, "/tmp/scope.json")
-	assertString(t, "StateDir", cfg.StateDir, "/tmp/gh-state")
-	assertString(t, "TelegramBotToken", cfg.TelegramBotToken, "telegram-token")
-}
-
-func assertLoadedConfigNumbers(t *testing.T, cfg Config) {
-	t.Helper()
-	if cfg.TelegramChatID != 123456 {
-		t.Fatalf("TelegramChatID = %d, want 123456", cfg.TelegramChatID)
-	}
-	if cfg.ReadTimeout != 3*time.Second {
-		t.Fatalf("ReadTimeout = %s, want 3s", cfg.ReadTimeout)
-	}
-	if cfg.GitHubHTTPTimeout != 11*time.Second {
-		t.Fatalf("GitHubHTTPTimeout = %s, want 11s", cfg.GitHubHTTPTimeout)
-	}
-	if cfg.GitHubStreamTimeout != 601*time.Second {
-		t.Fatalf("GitHubStreamTimeout = %s, want 601s", cfg.GitHubStreamTimeout)
-	}
-	if cfg.MaxReceivePackBytes != 12345 {
-		t.Fatalf("MaxReceivePackBytes = %d, want 12345", cfg.MaxReceivePackBytes)
-	}
-}
-
-func assertString(t *testing.T, name string, got string, want string) {
-	t.Helper()
-	if got != want {
-		t.Fatalf("%s = %q, want %q", name, got, want)
-	}
-}
-
-func TestLoadReadsGitHubTokenFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "github-token")
-	if err := os.WriteFile(path, []byte(" token-from-file\n"), 0600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
-	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", path)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.GitHubToken != "token-from-file" {
-		t.Fatalf("GitHubToken = %q, want token-from-file", cfg.GitHubToken)
-	}
-}
-
-func TestLoadReadsTelegramBotTokenFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "telegram-token")
-	if err := os.WriteFile(path, []byte(" telegram-from-file\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	values := map[string]string{
-		"GH_BROKER_SHARED_SECRET":           strings.Repeat("a", minimumSharedSecretBytes),
-		"GH_BROKER_GITHUB_TOKEN":            "github-token",
-		"GH_BROKER_GITHUB_TOKEN_FILE":       "/protected/github-token",
-		"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE": path,
-		"GH_BROKER_TELEGRAM_CHAT_ID":        "123",
-	}
-	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
+func TestLoadFromLookupReadsExplicitDevelopmentConfiguration(t *testing.T) {
+	values := developmentValues()
+	values["GH_BROKER_GITHUB_HTTP_TIMEOUT"] = "11"
+	values["GH_BROKER_GITHUB_STREAM_TIMEOUT"] = "601"
+	values["GH_BROKER_MAX_RECEIVE_PACK_BYTES"] = "12345"
+	cfg, err := LoadFromLookup(mapLookup(values))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.TelegramBotToken != "telegram-from-file" || cfg.TelegramBotTokenFile != path {
-		t.Fatalf("telegram config = %+v", cfg)
+	if !cfg.Development || cfg.Environment != "development" || cfg.AgentEndpoint.String() != "tcp://127.0.0.1:0" {
+		t.Fatalf("runtime config = %+v", cfg)
+	}
+	if cfg.ClientID != "agent-a" || cfg.ScopeFile != "scope.json" || cfg.StateDir != "state" {
+		t.Fatalf("identity and paths = %+v", cfg)
+	}
+	if cfg.GitHubHTTPTimeout != 11*time.Second || cfg.GitHubStreamTimeout != 601*time.Second || cfg.MaxReceivePackBytes != 12345 {
+		t.Fatalf("numeric config = %+v", cfg)
 	}
 }
 
-func TestLoadRejectsInlineTelegramToken(t *testing.T) {
-	values := map[string]string{
-		"GH_BROKER_SHARED_SECRET":      strings.Repeat("a", minimumSharedSecretBytes),
-		"GH_BROKER_GITHUB_TOKEN":       "github-token",
-		"GH_BROKER_GITHUB_TOKEN_FILE":  "/protected/github-token",
-		"GH_BROKER_TELEGRAM_BOT_TOKEN": "inline-token",
-		"GH_BROKER_TELEGRAM_CHAT_ID":   "123",
+func TestLoadRejectsMalformedPresentValues(t *testing.T) {
+	for name, value := range map[string]string{
+		"GH_BROKER_DEVELOPMENT":            "yes",
+		"GH_BROKER_GITHUB_HTTP_TIMEOUT":    "bad",
+		"GH_BROKER_GITHUB_STREAM_TIMEOUT":  "-1",
+		"GH_BROKER_MAX_RECEIVE_PACK_BYTES": "0",
+		"GH_BROKER_GITHUB_USER_ID":         "bad",
+		"GH_BROKER_TELEGRAM_CHAT_ID":       "0",
+		"GH_BROKER_NETWORK_EXPOSURE":       "yes",
+	} {
+		t.Run(name, func(t *testing.T) {
+			values := developmentValues()
+			values[name] = value
+			if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("LoadFromLookup() error = %v", err)
+			}
+		})
 	}
-	if _, err := LoadFromLookup(func(key string) string { return values[key] }); err == nil {
-		t.Fatal("inline Telegram token unexpectedly enabled notifications")
+}
+
+func TestLoadAdmissionOverridesForConfiguredClient(t *testing.T) {
+	values := developmentValues()
+	path := writeFile(t, t.TempDir(), "admission.json",
+		`{"requests_per_window":30,"window_seconds":60,"client_active":20,"client_pending":8,"global_active":100,"global_executing":12,"clients":{"agent-a":{"requests_per_window":5,"window_seconds":120,"active":4,"pending":2}}}`)
+	values["GH_BROKER_ADMISSION_CONFIG"] = path
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil || cfg.Admission.Clients["agent-a"].Pending != 2 {
+		t.Fatalf("admission config = %+v, %v", cfg.Admission, err)
+	}
+}
+
+func TestLoadRequiresExplicitNetworkExposure(t *testing.T) {
+	values := developmentValues()
+	values["GH_BROKER_AGENT_ENDPOINT"] = "tcp://192.0.2.10:9000"
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "network exposure") {
+		t.Fatalf("unacknowledged network endpoint error = %v", err)
+	}
+	values["GH_BROKER_NETWORK_EXPOSURE"] = "allow"
+	if _, err := LoadFromLookup(mapLookup(values)); err != nil {
+		t.Fatalf("acknowledged network endpoint: %v", err)
+	}
+}
+
+func TestLoadRejectsPlaintextProductionUpstream(t *testing.T) {
+	values := developmentValues()
+	values["GH_BROKER_GITHUB_API_URL"] = "http://127.0.0.1:9000/"
+	if _, err := LoadFromLookup(mapLookup(values)); err != nil {
+		t.Fatalf("development loopback upstream: %v", err)
+	}
+	values["GH_BROKER_DEVELOPMENT"] = "false"
+	values["GH_BROKER_AGENT_ENDPOINT"] = "unix:///run/brokerkit/github/agent/broker.sock"
+	values["GH_BROKER_SCOPE_FILE"] = "/etc/gh-broker/scope.json"
+	values["GH_BROKER_STATE_DIR"] = "/var/lib/gh-broker"
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "GITHUB_API_URL") {
+		t.Fatalf("production plaintext upstream error = %v", err)
+	}
+}
+
+func TestLoadRequiresExplicitEndpointIdentityAndPaths(t *testing.T) {
+	for _, name := range []string{"GH_BROKER_AGENT_ENDPOINT", "GH_BROKER_CLIENT_ID", "GH_BROKER_SCOPE_FILE", "GH_BROKER_STATE_DIR"} {
+		t.Run(name, func(t *testing.T) {
+			values := developmentValues()
+			delete(values, name)
+			if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("LoadFromLookup() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestProductionRequiresAbsolutePaths(t *testing.T) {
+	values := developmentValues()
+	values["GH_BROKER_DEVELOPMENT"] = "false"
+	values["GH_BROKER_AGENT_ENDPOINT"] = "unix:///run/gh-broker/agent.sock"
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "absolute") {
+		t.Fatalf("relative production paths error = %v", err)
+	}
+	values["GH_BROKER_SCOPE_FILE"] = "/etc/gh-broker/scope.json"
+	values["GH_BROKER_STATE_DIR"] = "/var/lib/gh-broker"
+	if _, err := LoadFromLookup(mapLookup(values)); err != nil {
+		t.Fatalf("absolute production config: %v", err)
+	}
+}
+
+func TestLoadReadsNamedClientAndOperatorSecrets(t *testing.T) {
+	dir := t.TempDir()
+	clientSecret := strings.Repeat("c", minimumSharedSecretBytes)
+	operatorSecret := strings.Repeat("o", minimumSharedSecretBytes)
+	clients := writeFile(t, dir, "clients", "agent-a = "+clientSecret+"\n")
+	operators := writeFile(t, dir, "operators", "operator-a = "+operatorSecret+"\n")
+	values := developmentValues()
+	delete(values, "GH_BROKER_SHARED_SECRET")
+	values["GH_BROKER_SECRETS_FILE"] = clients
+	values["GH_BROKER_OPERATOR_ID"] = "operator-a"
+	values["GH_BROKER_OPERATOR_SECRETS_FILE"] = operators
+	values["GH_BROKER_OPERATOR_ENDPOINT"] = "tcp://127.0.0.1:32192"
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil || cfg.SharedSecret != clientSecret || cfg.OperatorSecret != operatorSecret || cfg.OperatorEndpoint == nil {
+		t.Fatalf("named credentials = %+v, %v", cfg, err)
+	}
+	if err := os.WriteFile(operators, []byte("operator-a = "+clientSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "must differ") || strings.Contains(err.Error(), clientSecret) {
+		t.Fatalf("reused operator secret error = %v", err)
+	}
+}
+
+func TestOperatorRequiresDistinctEndpoint(t *testing.T) {
+	values := developmentValues()
+	values["GH_BROKER_OPERATOR_ID"] = "operator-a"
+	values["GH_BROKER_OPERATOR_SHARED_SECRET"] = strings.Repeat("o", minimumSharedSecretBytes)
+	values["GH_BROKER_OPERATOR_ENDPOINT"] = values["GH_BROKER_AGENT_ENDPOINT"]
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("shared endpoint error = %v", err)
 	}
 }
 
 func TestLoadReadsGitHubAppCredentialFiles(t *testing.T) {
 	dir := t.TempDir()
-	appIDFile := filepath.Join(dir, "app-id")
-	privateKeyFile := filepath.Join(dir, "private-key.pem")
-	webhookSecretFile := filepath.Join(dir, "webhook-secret")
-	if err := os.WriteFile(appIDFile, []byte("12345\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile(app id) error = %v", err)
+	values := developmentValues()
+	delete(values, "GH_BROKER_GITHUB_TOKEN")
+	delete(values, "GH_BROKER_GITHUB_TOKEN_FILE")
+	values["GH_BROKER_GITHUB_APP_ID_FILE"] = writeFile(t, dir, "app-id", "12345\n")
+	values["GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"] = writeFile(t, dir, "private-key", "private-key\n")
+	values["GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"] = writeFile(t, dir, "webhook", "webhook-secret\n")
+	values["GH_BROKER_GITHUB_APP_CLIENT_ID_FILE"] = writeFile(t, dir, "client-id", "Iv1.client\n")
+	values["GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE"] = writeFile(t, dir, "client-secret", "client-secret\n")
+	values["GH_BROKER_GITHUB_USER_ID"] = "1234"
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil || cfg.GitHubAppID != "12345" || cfg.GitHubAppClientID != "Iv1.client" || cfg.GitHubUserID != 1234 {
+		t.Fatalf("GitHub App config = %+v, %v", cfg, err)
 	}
-	if err := os.WriteFile(privateKeyFile, []byte("-----BEGIN RSA PRIVATE KEY-----\nfixture\n-----END RSA PRIVATE KEY-----\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile(private key) error = %v", err)
-	}
-	if err := os.WriteFile(webhookSecretFile, []byte(" webhook-secret-from-file\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile(webhook secret) error = %v", err)
-	}
-	t.Setenv("GH_BROKER_SHARED_SECRET", strings.Repeat("a", minimumSharedSecretBytes))
-	t.Setenv("GH_BROKER_GITHUB_APP_ID_FILE", appIDFile)
-	t.Setenv("GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE", privateKeyFile)
-	t.Setenv("GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE", webhookSecretFile)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.GitHubAppID != "12345" {
-		t.Fatalf("GitHubAppID = %q, want file value", cfg.GitHubAppID)
-	}
-	if string(cfg.GitHubAppPrivateKey) == "" {
-		t.Fatal("GitHubAppPrivateKey is empty")
-	}
-	if cfg.GitHubWebhookSecret != "webhook-secret-from-file" {
-		t.Fatalf("GitHubWebhookSecret = %q, want file value", cfg.GitHubWebhookSecret)
+	delete(values, "GH_BROKER_GITHUB_USER_ID")
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil {
+		t.Fatal("GitHub App user credentials without user id were accepted")
 	}
 }
 
-func TestLoadReadsOptionalGitHubAppUserCredentialFiles(t *testing.T) {
+func TestLoadReadsTelegramTokenFile(t *testing.T) {
 	dir := t.TempDir()
-	files := map[string]string{
-		"app-id": "12345", "private-key": "private-key", "webhook": "webhook-secret",
-		"client-id": "Iv1.client", "client-secret": "client-secret",
-	}
-	for name, value := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	values := map[string]string{
-		"GH_BROKER_SHARED_SECRET":                 strings.Repeat("a", minimumSharedSecretBytes),
-		"GH_BROKER_GITHUB_APP_ID_FILE":            filepath.Join(dir, "app-id"),
-		"GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE":   filepath.Join(dir, "private-key"),
-		"GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE":    filepath.Join(dir, "webhook"),
-		"GH_BROKER_GITHUB_APP_CLIENT_ID_FILE":     filepath.Join(dir, "client-id"),
-		"GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE": filepath.Join(dir, "client-secret"),
-		"GH_BROKER_GITHUB_USER_ID":                "1234",
-	}
-	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.GitHubAppClientID != "Iv1.client" || cfg.GitHubAppClientSecret != "client-secret" || cfg.GitHubUserID != 1234 {
-		t.Fatalf("GitHub App user credential config = %+v", cfg)
-	}
-	values["GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE"] = ""
-	if _, err := LoadFromLookup(func(key string) string { return values[key] }); err == nil {
-		t.Fatal("unpaired GitHub App client credential accepted")
+	values := developmentValues()
+	values["GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"] = writeFile(t, dir, "telegram", "telegram-token\n")
+	values["GH_BROKER_TELEGRAM_CHAT_ID"] = "-1001234567890"
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil || cfg.TelegramBotToken != "telegram-token" || cfg.TelegramChatID != -1001234567890 {
+		t.Fatalf("Telegram config = %+v, %v", cfg, err)
 	}
 }
 
-func TestValidateRejectsInlineDevelopmentAndAppClientSecrets(t *testing.T) {
-	base := Config{Port: "8080", BindAddr: "127.0.0.1", ClientID: "bob", SharedSecret: strings.Repeat("a", minimumSharedSecretBytes),
-		ScopeFile: "scope.json", StateDir: "state", GitHubHTTPTimeout: time.Second, MaxReceivePackBytes: 1}
-	development := base
-	development.GitHubToken = "inline-canary"
-	if err := development.Validate(); err == nil || strings.Contains(err.Error(), "canary") {
-		t.Fatalf("inline development token error = %v", err)
+func TestValidateCredentialBoundaries(t *testing.T) {
+	base := validConfig()
+	base.SharedSecret = "short"
+	if err := base.Validate(); err == nil {
+		t.Fatal("weak client secret was accepted")
 	}
-	app := base
-	app.GitHubAppID, app.GitHubAppPrivateKey, app.GitHubWebhookSecret = "123", []byte("key-canary"), "webhook-canary"
-	app.GitHubAPIBaseURL, app.GitHubWebBaseURL = "https://api.github.com/", "https://github.com/"
-	app.GitHubAppClientID, app.GitHubAppClientSecret = "client-id", "secret-canary"
-	if err := app.Validate(); err == nil || strings.Contains(err.Error(), "canary") {
-		t.Fatalf("inline app client secret error = %v", err)
+	base = validConfig()
+	base.GitHubToken = ""
+	base.GitHubTokenFile = ""
+	if err := base.Validate(); err == nil {
+		t.Fatal("missing GitHub credential was accepted")
+	}
+	base = validConfig()
+	base.GitHubTokenFile = ""
+	if err := base.Validate(); err == nil || strings.Contains(err.Error(), base.GitHubToken) {
+		t.Fatalf("inline development token error = %v", err)
 	}
 }
 
@@ -242,15 +208,11 @@ func TestAppCredentialRequiresBoundUserSelector(t *testing.T) {
 		{"base app", func(*Config) {}, false},
 		{"missing webhook", func(value *Config) { value.GitHubWebhookSecret = "" }, true},
 		{"unpaired client", func(value *Config) { value.GitHubAppClientID = "client" }, true},
-		{"inline client secret", func(value *Config) {
-			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubUserID = "client", "secret", 1234
-		}, true},
 		{"missing user id", func(value *Config) {
-			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubAppClientSecretFile = "client", "secret", "secret-file"
+			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubAppClientSecretFile = "client", "secret", "file"
 		}, true},
-		{"orphan user id", func(value *Config) { value.GitHubUserID = 1234 }, true},
 		{"user credential", func(value *Config) {
-			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubAppClientSecretFile, value.GitHubUserID = "client", "secret", "secret-file", 1234
+			value.GitHubAppClientID, value.GitHubAppClientSecret, value.GitHubAppClientSecretFile, value.GitHubUserID = "client", "secret", "file", 1234
 		}, false},
 	}
 	for _, test := range tests {
@@ -264,244 +226,53 @@ func TestAppCredentialRequiresBoundUserSelector(t *testing.T) {
 	}
 }
 
-func TestLoadReadsBrokerSecretFile(t *testing.T) {
+func TestReadSecretFileRejectsEmpty(t *testing.T) {
 	dir := t.TempDir()
-	secretFile := filepath.Join(dir, "secrets")
-	secret := strings.Repeat("s", minimumSharedSecretBytes)
-	if err := os.WriteFile(secretFile, []byte("bob = "+secret+"\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+	path := writeFile(t, dir, "secret", " value\n")
+	value, err := readSecretFile(path, "secret")
+	if err != nil || value != "value" {
+		t.Fatalf("readSecretFile() = %q, %v", value, err)
 	}
-	t.Setenv("GH_BROKER_CLIENT_ID", "bob")
-	t.Setenv("GH_BROKER_SECRETS_FILE", secretFile)
-	t.Setenv("GH_BROKER_GITHUB_TOKEN", "github-token")
-	t.Setenv("GH_BROKER_GITHUB_TOKEN_FILE", "/protected/github-token")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.SharedSecret != secret {
-		t.Fatalf("SharedSecret = %q, want secret from file", cfg.SharedSecret)
-	}
-	if cfg.SecretsFile != secretFile {
-		t.Fatalf("SecretsFile = %q, want %q", cfg.SecretsFile, secretFile)
+	empty := writeFile(t, dir, "empty", " \n")
+	if _, err := readSecretFile(empty, "secret"); err == nil {
+		t.Fatal("empty secret was accepted")
 	}
 }
 
-func TestLoadReadsSeparateOperatorSecretFile(t *testing.T) {
-	dir := t.TempDir()
-	clientSecret := strings.Repeat("c", minimumSharedSecretBytes)
-	operatorSecret := strings.Repeat("o", minimumSharedSecretBytes)
-	clientFile := filepath.Join(dir, "clients")
-	operatorFile := filepath.Join(dir, "operators")
-	if err := os.WriteFile(clientFile, []byte("bob = "+clientSecret+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(operatorFile, []byte("onur = "+operatorSecret+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	values := map[string]string{
-		"GH_BROKER_CLIENT_ID": "bob", "GH_BROKER_SECRETS_FILE": clientFile,
-		"GH_BROKER_OPERATOR_ID": "onur", "GH_BROKER_OPERATOR_SECRETS_FILE": operatorFile,
+func developmentValues() map[string]string {
+	return map[string]string{
+		"GH_BROKER_DEVELOPMENT":       "true",
+		"GH_BROKER_AGENT_ENDPOINT":    "tcp://127.0.0.1:0",
+		"GH_BROKER_CLIENT_ID":         "agent-a",
+		"GH_BROKER_SHARED_SECRET":     strings.Repeat("s", minimumSharedSecretBytes),
 		"GH_BROKER_GITHUB_TOKEN":      "github-token",
 		"GH_BROKER_GITHUB_TOKEN_FILE": "/protected/github-token",
+		"GH_BROKER_SCOPE_FILE":        "scope.json",
+		"GH_BROKER_STATE_DIR":         "state",
 	}
-	cfg, err := LoadFromLookup(func(key string) string { return values[key] })
-	if err != nil || cfg.OperatorSecret != operatorSecret || cfg.OperatorPort != "8082" {
-		t.Fatalf("operator config = %+v, err=%v", cfg, err)
+}
+
+func validConfig() Config {
+	values := developmentValues()
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil {
+		panic(err)
 	}
-	if err := os.WriteFile(operatorFile, []byte("onur = "+clientSecret+"\n"), 0o600); err != nil {
+	return cfg
+}
+
+func mapLookup(values map[string]string) func(string) (string, bool) {
+	return func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+}
+
+func writeFile(t *testing.T, dir, name, value string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadFromLookup(func(key string) string { return values[key] }); err == nil || !strings.Contains(err.Error(), "must differ") || strings.Contains(err.Error(), clientSecret) {
-		t.Fatalf("reused operator secret error = %v", err)
-	}
-}
-
-func TestOperatorConfigRejectsEquivalentListenerPorts(t *testing.T) {
-	cfg := Config{
-		Port: "08082", BindAddr: "127.0.0.1", ClientID: "bob", SharedSecret: strings.Repeat("c", minimumSharedSecretBytes),
-		OperatorID: "onur", OperatorSecret: strings.Repeat("o", minimumSharedSecretBytes), OperatorBindAddr: "127.0.0.1", OperatorPort: "8082",
-		GitHubToken: "github-token", GitHubTokenFile: "/protected/github-token", ScopeFile: "scope.json", StateDir: "state", GitHubHTTPTimeout: time.Second, MaxReceivePackBytes: 1,
-	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "different ports") {
-		t.Fatalf("Validate() error = %v", err)
-	}
-}
-
-func TestReadSecretFile(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "github-token")
-	if err := os.WriteFile(path, []byte(" token-from-file\n"), 0600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	secret, err := readSecretFile(path, "github token file")
-	if err != nil {
-		t.Fatalf("readSecretFile() error = %v", err)
-	}
-	if secret != "token-from-file" {
-		t.Fatalf("readSecretFile() = %q, want trimmed token", secret)
-	}
-	emptyPath := filepath.Join(dir, "empty")
-	if err := os.WriteFile(emptyPath, []byte(" \n"), 0600); err != nil {
-		t.Fatalf("WriteFile(empty) error = %v", err)
-	}
-	if _, err := readSecretFile(emptyPath, "github token file"); err == nil {
-		t.Fatal("readSecretFile(empty) error = nil, want empty secret error")
-	}
-}
-
-func TestValidateRejectsWeakSharedSecret(t *testing.T) {
-	t.Parallel()
-	cfg := Config{
-		Port:                "8080",
-		BindAddr:            "127.0.0.1",
-		ClientID:            "bob",
-		SharedSecret:        "short",
-		GitHubToken:         "github-token",
-		ScopeFile:           "scope.json",
-		StateDir:            "state",
-		GitHubHTTPTimeout:   time.Second,
-		MaxReceivePackBytes: 1,
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want weak token error")
-	}
-}
-
-func TestValidateAcceptsGitHubAppCredential(t *testing.T) {
-	t.Parallel()
-	cfg := Config{
-		Port:                "8080",
-		BindAddr:            "127.0.0.1",
-		ClientID:            "bob",
-		SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-		GitHubAppID:         "12345",
-		GitHubAppPrivateKey: []byte("private-key"),
-		GitHubWebhookSecret: "webhook-secret",
-		GitHubAPIBaseURL:    "https://api.github.com/",
-		GitHubWebBaseURL:    "https://github.com/",
-		ScopeFile:           "scope.json",
-		StateDir:            "state",
-		GitHubHTTPTimeout:   time.Second,
-		MaxReceivePackBytes: 1,
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-}
-
-func TestValidateRejectsMissingGitHubCredential(t *testing.T) {
-	t.Parallel()
-	cfg := Config{
-		Port:                "8080",
-		BindAddr:            "127.0.0.1",
-		ClientID:            "bob",
-		SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-		ScopeFile:           "scope.json",
-		StateDir:            "state",
-		GitHubHTTPTimeout:   time.Second,
-		MaxReceivePackBytes: 1,
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want missing GitHub token error")
-	}
-}
-
-func TestValidateRejectsBadDeploySafetyConfig(t *testing.T) {
-	t.Parallel()
-	cases := map[string]Config{
-		"empty bind address": {
-			Port:                "8080",
-			ClientID:            "bob",
-			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-			GitHubToken:         "github-token",
-			ScopeFile:           "scope.json",
-			StateDir:            "state",
-			GitHubHTTPTimeout:   time.Second,
-			MaxReceivePackBytes: 1,
-		},
-		"empty client id": {
-			Port:                "8080",
-			BindAddr:            "127.0.0.1",
-			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-			GitHubToken:         "github-token",
-			ScopeFile:           "scope.json",
-			StateDir:            "state",
-			GitHubHTTPTimeout:   time.Second,
-			MaxReceivePackBytes: 1,
-		},
-		"bad github timeout": {
-			Port:                "8080",
-			BindAddr:            "127.0.0.1",
-			ClientID:            "bob",
-			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-			GitHubToken:         "github-token",
-			ScopeFile:           "scope.json",
-			StateDir:            "state",
-			MaxReceivePackBytes: 1,
-		},
-		"bad receive pack limit": {
-			Port:              "8080",
-			BindAddr:          "127.0.0.1",
-			ClientID:          "bob",
-			SharedSecret:      strings.Repeat("a", minimumSharedSecretBytes),
-			GitHubToken:       "github-token",
-			ScopeFile:         "scope.json",
-			StateDir:          "state",
-			GitHubHTTPTimeout: time.Second,
-		},
-		"missing state dir": {
-			Port:                "8080",
-			BindAddr:            "127.0.0.1",
-			ClientID:            "bob",
-			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-			GitHubToken:         "github-token",
-			ScopeFile:           "scope.json",
-			GitHubHTTPTimeout:   time.Second,
-			MaxReceivePackBytes: 1,
-		},
-		"half telegram config": {
-			Port:                "8080",
-			BindAddr:            "127.0.0.1",
-			ClientID:            "bob",
-			SharedSecret:        strings.Repeat("a", minimumSharedSecretBytes),
-			GitHubToken:         "github-token",
-			ScopeFile:           "scope.json",
-			StateDir:            "state",
-			TelegramBotToken:    "token",
-			GitHubHTTPTimeout:   time.Second,
-			MaxReceivePackBytes: 1,
-		},
-	}
-	for name, cfg := range cases {
-		if err := cfg.Validate(); err == nil {
-			t.Fatalf("%s Validate() error = nil, want validation error", name)
-		}
-	}
-}
-
-func TestDurationEnvFallsBackForInvalidValue(t *testing.T) {
-	t.Setenv("GH_BROKER_BAD_DURATION", "bad")
-	if got := durationEnv(7*time.Second, "GH_BROKER_BAD_DURATION"); got != 7*time.Second {
-		t.Fatalf("durationEnv() = %s, want fallback", got)
-	}
-}
-
-func TestInt64EnvFallsBackForInvalidValue(t *testing.T) {
-	t.Setenv("GH_BROKER_BAD_INT", "bad")
-	if got := int64Env(42, "GH_BROKER_BAD_INT"); got != 42 {
-		t.Fatalf("int64Env() = %d, want fallback", got)
-	}
-}
-
-func TestTelegramChatIDAcceptsSignedInt64Values(t *testing.T) {
-	for _, value := range []string{"-1001234567890", "9223372036854775807"} {
-		values := map[string]string{"GH_BROKER_TELEGRAM_CHAT_ID": value}
-		got := telegramChatIDEnvFrom(func(key string) string { return values[key] }, "GH_BROKER_TELEGRAM_CHAT_ID")
-		want, _ := strconv.ParseInt(value, 10, 64)
-		if got != want {
-			t.Fatalf("telegramChatIDEnvFrom(%q) = %d, want %d", value, got, want)
-		}
-	}
+	return path
 }

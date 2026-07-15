@@ -54,9 +54,10 @@ type Check struct {
 
 // Report is a portable doctor report.
 type Report struct {
-	Status Status   `json:"status"`
-	Agent  Identity `json:"agent"`
-	Checks []Check  `json:"checks"`
+	Status      Status             `json:"status"`
+	Agent       Identity           `json:"agent"`
+	Checks      []Check            `json:"checks"`
+	Credentials []CredentialStatus `json:"credentials,omitempty"`
 }
 
 var lookupGroupByID = user.LookupGroupId
@@ -382,6 +383,12 @@ func NewReport(agent Identity, checks ...Check) Report {
 	return Report{Status: OverallStatus(checks), Agent: agent, Checks: checks}
 }
 
+// WithCredentials adds secret-safe credential lifecycle metadata to a report.
+func WithCredentials(report Report, credentials ...CredentialStatus) Report {
+	report.Credentials = NormalizeCredentialStatuses(credentials)
+	return report
+}
+
 // OverallStatus computes the fail-closed verdict for a set of checks.
 func OverallStatus(checks []Check) Status {
 	status := StatusOK
@@ -404,8 +411,25 @@ func WriteText(w io.Writer, report Report) error {
 	if _, err := fmt.Fprintln(w, strings.ToUpper(string(report.Status))); err != nil {
 		return err
 	}
-	for _, check := range report.Checks {
+	if err := writeChecks(w, report.Checks); err != nil {
+		return err
+	}
+	return writeCredentialStatuses(w, report.Credentials)
+}
+
+func writeChecks(w io.Writer, checks []Check) error {
+	for _, check := range checks {
 		if _, err := fmt.Fprintf(w, "- %s %s: %s\n", check.Status, check.Name, check.Message); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeCredentialStatuses(w io.Writer, credentials []CredentialStatus) error {
+	for _, credential := range credentials {
+		if _, err := fmt.Fprintf(w, "- credential %s: source=%s age=%s expiry=%s expires_at=%s rotation=%s revocation=%s\n",
+			credential.Class, credential.Source, credential.Age, credential.Expiry, credential.ExpiresAt, credential.Rotation, credential.Revocation); err != nil {
 			return err
 		}
 	}

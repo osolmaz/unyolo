@@ -3,36 +3,33 @@ package routes
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
+	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/brokerkit/brokers/sudo/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/presenter"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/clockx"
+	"github.com/osolmaz/brokerkit/internal/slicex"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
 )
-
-const maxBodyBytes int64 = 32 * 1024
 
 type DecisionPoller interface {
 	Poll(context.Context, func(context.Context, notify.Decision) notify.DecisionResult)
@@ -51,6 +48,7 @@ type Options struct {
 	Audit              *audit.Writer
 	Now                func() time.Time
 	OperatorConfigured bool
+	Admission          admission.Config
 }
 
 type Server struct {
@@ -68,9 +66,12 @@ type Server struct {
 	audit              *audit.Writer
 	now                func() time.Time
 	operatorConfigured bool
-	requestMu          sync.Mutex
 	database           *state.Database
 	operations         *agentops.Store
+	admission          *admission.Controller
+	authorization      *bkauthorization.Coordinator
+	operationRegistry  *operations.Registry
+	operationRuntime   *operations.Runtime
 	agentAPI           *agentapi.Handler
 	lifecycleContext   context.Context
 	lifecycleCancel    context.CancelFunc
@@ -81,45 +82,105 @@ type Server struct {
 }
 
 func New(opts Options) (*Server, error) {
-	if opts.Policy == nil || opts.Catalog == nil || opts.Database == nil || opts.Identities == nil || opts.Helper == nil {
-		return nil, errors.New("sudo broker dependencies are required")
+	if err := validateOptions(opts); err != nil {
+		return nil, err
 	}
-	plans, err := plan.NewStore(opts.Database)
+	parts, err := newServerParts(opts)
 	if err != nil {
 		return nil, err
 	}
-	now := opts.Now
-	if now == nil {
-		now = time.Now
-	}
-	grantStore := grants.NewDatabase(opts.Database, grants.Options{Now: now})
-	validator := plan.Validator{Store: plans, Catalog: opts.Catalog, Identities: opts.Identities, Helper: opts.Helper}
-	control, err := controlplane.New(controlplane.Options{
-		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
-		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit,
-	})
+	server := assembleServer(opts, parts)
+	server.operationRuntime, err = server.newOperationRuntime()
 	if err != nil {
 		return nil, err
 	}
-	auditWriter := opts.Audit
-	if auditWriter == nil {
-		auditWriter = audit.New(io.Discard)
-	}
-	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
-	e.Use(middleware.Recover(), noStore)
-	server := &Server{echo: e, control: control, policy: opts.Policy, catalog: opts.Catalog, grants: grantStore, plans: plans,
-		identities: opts.Identities, helper: opts.Helper, validator: validator, notifier: opts.Notifier, poller: opts.Poller,
-		audit: auditWriter, now: now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
-		database: opts.Database, operations: agentops.New(opts.Database)}
-	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: control.Clients.AuthenticateHeader,
+	server.agentAPI, err = agentapi.New(agentapi.Options{Store: server.operations, Authenticate: server.control.Clients.AuthenticateHeader,
 		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "sudo-broker"})
 	if err != nil {
 		return nil, err
 	}
 	server.registerRoutes()
 	return server, nil
+}
+
+type serverParts struct {
+	echo              *echo.Echo
+	plans             *plan.Store
+	grantStore        *grants.Store
+	validator         plan.Validator
+	operationRegistry *operations.Registry
+	authorization     *bkauthorization.Coordinator
+	control           *controlplane.Runtime
+	operationStore    *agentops.Store
+	admission         *admission.Controller
+	now               func() time.Time
+}
+
+func validateOptions(opts Options) error {
+	if err := validateRequiredDependencies(opts); err != nil {
+		return err
+	}
+	return validateRequiredAudit(opts)
+}
+
+func validateRequiredDependencies(opts Options) error {
+	if opts.Policy == nil || opts.Catalog == nil || opts.Database == nil || opts.Identities == nil || opts.Helper == nil {
+		return errors.New("sudo broker dependencies are required")
+	}
+	return nil
+}
+
+func validateRequiredAudit(opts Options) error {
+	if opts.Audit == nil {
+		return errors.New("audit recorder is required")
+	}
+	return nil
+}
+
+func newServerParts(opts Options) (serverParts, error) {
+	plans, err := plan.NewStore(opts.Database)
+	if err != nil {
+		return serverParts{}, err
+	}
+	now := clockx.OrNow(opts.Now)
+	grantStore := grants.NewDatabase(opts.Database, grants.Options{Now: now})
+	validator := plan.Validator{Store: plans, Catalog: opts.Catalog, Identities: opts.Identities, Helper: opts.Helper}
+	operationRegistry, err := operations.NewRegistry(opts.Catalog, opts.Helper)
+	if err != nil {
+		return serverParts{}, err
+	}
+	authorization, err := bkauthorization.New(bkauthorization.Options{Registry: sudopolicy.Registry(opts.Catalog),
+		Decide: opts.Policy.Decide, Grants: grantStore, Now: now})
+	if err != nil {
+		return serverParts{}, err
+	}
+	control, err := controlplane.New(controlplane.Options{
+		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
+		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit, State: opts.Database,
+	})
+	if err != nil {
+		return serverParts{}, err
+	}
+	e := echo.New()
+	e.HideBanner = true
+	e.HidePort = true
+	e.Use(middleware.Recover(), noStore)
+	operationStore := agentops.New(opts.Database)
+	admissionController, err := admission.NewConfigured(slicex.Keys(opts.ClientSecrets), opts.Admission, operationStore.AdmissionUsage)
+	if err != nil {
+		return serverParts{}, err
+	}
+	admissionController.SetObserver(control.Metrics)
+	return serverParts{echo: e, plans: plans, grantStore: grantStore, validator: validator, operationRegistry: operationRegistry,
+		authorization: authorization, control: control, operationStore: operationStore, admission: admissionController, now: now}, nil
+}
+
+func assembleServer(opts Options, parts serverParts) *Server {
+	return &Server{echo: parts.echo, control: parts.control, policy: opts.Policy, catalog: opts.Catalog, grants: parts.grantStore, plans: parts.plans,
+		identities: opts.Identities, helper: opts.Helper, validator: parts.validator, notifier: opts.Notifier, poller: opts.Poller,
+		audit: opts.Audit, now: parts.now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
+		database: opts.Database, operations: parts.operationStore, admission: parts.admission, authorization: parts.authorization,
+		operationRegistry: parts.operationRegistry}
 }
 
 func (s *Server) Handler() http.Handler { return s.echo }
@@ -134,6 +195,9 @@ func (s *Server) Close() error {
 		if s.lifecycleCancel != nil {
 			s.lifecycleCancel()
 		}
+		if s.operationRuntime != nil {
+			s.operationRuntime.Wait()
+		}
 		s.backgroundWorkers.Wait()
 		s.closeErr = s.database.Close()
 	})
@@ -141,9 +205,13 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) Start(ctx context.Context) {
-	s.startOperationWorker(ctx)
+	s.startOperationRuntime(ctx)
 	if s.poller != nil {
-		go s.poller.Poll(ctx, s.control.HandleDecision)
+		s.backgroundWorkers.Add(1)
+		go func() {
+			defer s.backgroundWorkers.Done()
+			s.poller.Poll(s.lifecycleContext, s.control.HandleDecision)
+		}()
 	}
 }
 
@@ -165,80 +233,6 @@ func (s *Server) readiness(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]bool{"ok": false})
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
-}
-
-type commandInput struct {
-	CommandID  string                     `json:"command_id"`
-	TargetUser string                     `json:"target_user"`
-	Arguments  map[string]json.RawMessage `json:"arguments"`
-}
-
-func (s *Server) classify(client string, input commandInput) (catalog.Resolved, corepolicy.Request, error) {
-	resolved, err := s.catalog.Resolve(strings.TrimSpace(input.CommandID), strings.TrimSpace(input.TargetUser), input.Arguments)
-	if err != nil {
-		return catalog.Resolved{}, corepolicy.Request{}, err
-	}
-	return resolved, sudopolicy.Request(client, resolved), nil
-}
-
-func (s *Server) notifyRequest(ctx context.Context, result grants.RequestResult) (grants.Grant, error) {
-	grant := result.Grant
-	if grant.Notification != nil || grant.Status != grants.StatusPending || s.notifier == nil {
-		return grant, nil
-	}
-	claim, claimed, err := s.grants.ClaimNotification(grant.ID, 2*time.Minute)
-	if err != nil {
-		return grants.Grant{}, echo.NewHTTPError(http.StatusServiceUnavailable, "approval notification could not be claimed")
-	}
-	if !claimed {
-		return s.grants.Get(grant.ID)
-	}
-	commandID := corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID])
-	target := corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName])
-	ref, err := s.notifier.SendApproval(ctx, notify.ApprovalMessage{
-		GrantID: claim.Grant.ID, DecisionToken: claim.DecisionToken,
-		Text:   fmt.Sprintf("Approval needed for sudo-broker\n\n%s requests %s once as %s.", grant.Client, commandID, target),
-		Client: grant.Client, Operation: grant.Operation, Target: target, Reason: grant.Reason,
-		RequestedMinutes: int(grant.Duration / time.Minute), MaxUses: 1,
-		Fields: []notify.Field{{Name: "command", Value: commandID}, {Name: "target user", Value: target}},
-	})
-	if err != nil || ref.MessageID <= 0 {
-		if s.operatorConfigured {
-			stored, _, retainErr := s.grants.RetainNotificationClaim(grant.ID, claim.Grant.NotificationClaimedAt)
-			if retainErr == nil {
-				return stored, nil
-			}
-		}
-		_, _, _ = s.grants.CancelIfNotificationClaimed(grant.ID, claim.Grant.NotificationClaimedAt)
-		return grants.Grant{}, echo.NewHTTPError(http.StatusServiceUnavailable, "operator could not be notified")
-	}
-	stored, recorded, err := s.grants.SetNotificationIfClaimed(grant.ID, claim.Grant.NotificationClaimedAt, ref)
-	if err != nil || !recorded {
-		return grants.Grant{}, echo.NewHTTPError(http.StatusServiceUnavailable, "approval notification could not be recorded")
-	}
-	return stored, nil
-}
-
-func grantBounds(policy *corepolicy.GrantPolicy, minutes int) (time.Duration, time.Duration, error) {
-	if policy.Mode != string(corepolicy.GrantModeExecution) || policy.DefaultMaxUses != 1 || policy.MaxUses != 1 {
-		return 0, 0, errors.New("sudo command policy must use one-shot execution grants")
-	}
-	if minutes == 0 {
-		minutes = policy.DefaultMinutes
-	}
-	if minutes < 1 || minutes > policy.MaxMinutes {
-		return 0, 0, errors.New("requested duration exceeds policy bounds")
-	}
-	return time.Duration(minutes) * time.Minute, time.Duration(policy.RequestTTLMinutes) * time.Minute, nil
-}
-
-func executionView(response executorprotocol.Response) map[string]any {
-	outcome := response.Outcome
-	return map[string]any{
-		"id": response.ExecutionID, "started": outcome.Started, "exit_code": outcome.ExitCode, "signal": outcome.Signal,
-		"timed_out": outcome.TimedOut, "truncated": outcome.Truncated, "duration_ns": outcome.Duration.Nanoseconds(),
-		"stdout_base64": base64.StdEncoding.EncodeToString(outcome.Stdout), "stderr_base64": base64.StdEncoding.EncodeToString(outcome.Stderr),
-	}
 }
 
 func (s *Server) record(request corepolicy.Request, decision string, reason string, grantID string, rules []string) {

@@ -47,6 +47,10 @@ func ValidateStaleSocket(path string, brokerUID uint32) error {
 	if err != nil {
 		return err
 	}
+	return validateStaleSocketInfo(info, brokerUID)
+}
+
+func validateStaleSocketInfo(info os.FileInfo, brokerUID uint32) error {
 	if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSocket == 0 {
 		return errors.New("existing helper socket path is not a Unix socket")
 	}
@@ -75,30 +79,75 @@ func validateTrustedChain(path string, finalFile bool, brokerUID uint32, targetU
 		if err != nil {
 			return fmt.Errorf("lstat %s: %w", current, err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%s is a symlink", current)
-		}
-		uid, err := fileOwner(info)
-		if err != nil {
+		last := index == len(components)-1
+		if err := validateTrustedComponent(current, info, trustedComponentRules{
+			finalFile: finalFile, last: last, brokerUID: brokerUID, targetUID: targetUID,
+		}); err != nil {
 			return err
 		}
-		if uid != 0 || (uid == brokerUID && brokerUID != 0) || (uid == targetUID && targetUID != 0) {
-			return fmt.Errorf("%s is not root-owned", current)
+	}
+	return nil
+}
+
+type trustedComponentRules struct {
+	finalFile bool
+	last      bool
+	brokerUID uint32
+	targetUID uint32
+}
+
+func validateTrustedComponent(path string, info os.FileInfo, rules trustedComponentRules) error {
+	if err := validateTrustedComponentOwnership(path, info, rules.brokerUID, rules.targetUID); err != nil {
+		return err
+	}
+	if err := validateTrustedComponentKind(path, info, rules.finalFile, rules.last); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateTrustedComponentOwnership(path string, info os.FileInfo, brokerUID uint32, targetUID uint32) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symlink", path)
+	}
+	if err := validateRootOwner(path, info, brokerUID, targetUID); err != nil {
+		return err
+	}
+	return validateTrustedPermissions(path, info)
+}
+
+func validateRootOwner(path string, info os.FileInfo, brokerUID uint32, targetUID uint32) error {
+	uid, err := fileOwner(info)
+	if err != nil {
+		return err
+	}
+	if !trustedRootOwner(uid) {
+		return fmt.Errorf("%s is not root-owned", path)
+	}
+	return nil
+}
+
+func trustedRootOwner(uid uint32) bool { return uid == 0 }
+
+func validateTrustedPermissions(path string, info os.FileInfo) error {
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%s is group- or world-writable", path)
+	}
+	if err := validatePathACL(path, info.IsDir()); err != nil {
+		return fmt.Errorf("%s ACL is unsafe: %w", path, err)
+	}
+	return nil
+}
+
+func validateTrustedComponentKind(path string, info os.FileInfo, finalFile bool, last bool) error {
+	if !last || !finalFile {
+		if !info.IsDir() {
+			return fmt.Errorf("%s is not a directory", path)
 		}
-		if info.Mode().Perm()&0o022 != 0 {
-			return fmt.Errorf("%s is group- or world-writable", current)
-		}
-		if err := validatePathACL(current, info.IsDir()); err != nil {
-			return fmt.Errorf("%s ACL is unsafe: %w", current, err)
-		}
-		last := index == len(components)-1
-		if !last || !finalFile {
-			if !info.IsDir() {
-				return fmt.Errorf("%s is not a directory", current)
-			}
-		} else if !info.Mode().IsRegular() {
-			return fmt.Errorf("%s is not a regular file", current)
-		}
+		return nil
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
 	}
 	return nil
 }

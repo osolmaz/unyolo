@@ -97,6 +97,35 @@ func TestInstallSystemdReplacesManagedFileSymlink(t *testing.T) {
 	}
 }
 
+func TestInstallSnapshotRestoresPreviousManagedSymlink(t *testing.T) {
+	directory := t.TempDir()
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := root.Symlink("previous-target", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, _, err := captureInstallFile(installTarget{root: root, name: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtomicInstallFile(root, "secret", []byte("new-secret"), 0o600, uint64(os.Geteuid()), uint64(os.Getegid()), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreInstallFile(snapshot, true); err != nil {
+		t.Fatal(err)
+	}
+	info, err := root.Lstat("secret")
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("restored link info = %+v, %v", info, err)
+	}
+	if target, err := root.Readlink("secret"); err != nil || target != "previous-target" {
+		t.Fatalf("restored link = %q, %v", target, err)
+	}
+}
+
 func TestInstallSystemdOrdersSecretsBeforeEnvironment(t *testing.T) {
 	plan := nonRootInstallPlan(t)
 	if err := os.MkdirAll(plan.ConfigDir, 0o750); err != nil {
@@ -212,6 +241,71 @@ func TestInstallSystemdPreservesRetiredFileWhenReadinessFails(t *testing.T) {
 	}
 }
 
+func TestInstallSystemdRestoresPreviousCredentialsWhenReadinessFails(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	for _, directory := range []string{plan.ConfigDir, plan.StateDir, plan.SystemdDir} {
+		if err := os.MkdirAll(directory, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldFiles := map[string]string{
+		filepath.Join(plan.ConfigDir, "env"):          "OLD=1\n",
+		filepath.Join(plan.ConfigDir, "secret"):       "old-secret",
+		filepath.Join(plan.StateDir, "grants.json"):   "old-state\n",
+		filepath.Join(plan.SystemdDir, plan.UnitName): "old-unit\n",
+	}
+	for path, body := range oldFiles {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan.ReadyCheck = func(context.Context) error { return errors.New("not ready") }
+	plan.ReadyTimeout = 5 * time.Millisecond
+	plan.ReadyInterval = time.Millisecond
+	runner := &recordingCommandRunner{}
+	if err := installActivatedFixtureError(t, plan, runner); err == nil {
+		t.Fatal("failed readiness did not fail installation")
+	}
+	for path, want := range oldFiles {
+		data, err := os.ReadFile(path) // #nosec G304 -- controlled test fixture.
+		if err != nil || string(data) != want {
+			t.Fatalf("restored %s = %q, %v; want %q", path, data, err, want)
+		}
+	}
+	if got := strings.Count(strings.Join(runner.calls, "\n"), "systemctl restart "+plan.UnitName); got != 2 {
+		t.Fatalf("service restart count = %d, want activation and rollback", got)
+	}
+}
+
+func TestInstallSystemdRollsBackManagedFilesWhenUnitWriteFails(t *testing.T) {
+	plan := nonRootInstallPlan(t)
+	for _, directory := range []string{plan.ConfigDir, plan.StateDir, plan.SystemdDir} {
+		if err := os.MkdirAll(directory, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	envPath := filepath.Join(plan.ConfigDir, "env")
+	secretPath := filepath.Join(plan.ConfigDir, "secret")
+	if err := os.WriteFile(envPath, []byte("OLD=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secretPath, []byte("old-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(plan.SystemdDir, plan.UnitName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	uid, gid, err := currentInstallIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := installSystemdForIdentity(context.Background(), &recordingCommandRunner{}, plan, uid, gid); err == nil {
+		t.Fatal("unit directory did not fail installation")
+	}
+	assertInstalledFile(t, envPath, "OLD=1\n", 0o600)
+	assertInstalledFile(t, secretPath, "old-secret", 0o600)
+}
+
 func TestInstallSystemdRunsConfiguredReadinessWithoutRetirement(t *testing.T) {
 	plan := nonRootInstallPlan(t)
 	calls := 0
@@ -323,21 +417,21 @@ func TestEnsureSystemAccountCreatesMissingAccount(t *testing.T) {
 	}
 }
 
-func TestActivateSystemdUnit(t *testing.T) {
+func TestActivateSystemdUnits(t *testing.T) {
 	runner := &recordingCommandRunner{}
-	if err := activateSystemdUnit(context.Background(), runner, "broker.service"); err != nil {
+	if err := activateSystemdUnits(context.Background(), runner, []string{"broker.service"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(runner.calls, "\n"); got != "systemctl daemon-reload\nsystemctl enable broker.service\nsystemctl restart broker.service" {
 		t.Fatalf("runner calls:\n%s", got)
 	}
 	runner.fail = map[string]error{"systemctl daemon-reload": errors.New("failed")}
-	if err := activateSystemdUnit(context.Background(), runner, "broker.service"); err == nil {
-		t.Fatal("activateSystemdUnit(failed reload) error = nil")
+	if err := activateSystemdUnits(context.Background(), runner, []string{"broker.service"}); err == nil {
+		t.Fatal("activateSystemdUnits(failed reload) error = nil")
 	}
 	runner = &recordingCommandRunner{fail: map[string]error{"systemctl restart broker.service": errors.New("failed")}}
-	if err := activateSystemdUnit(context.Background(), runner, "broker.service"); err == nil || !strings.Contains(err.Error(), "restart") {
-		t.Fatalf("activateSystemdUnit(failed restart) error = %v", err)
+	if err := activateSystemdUnits(context.Background(), runner, []string{"broker.service"}); err == nil || !strings.Contains(err.Error(), "restart") {
+		t.Fatalf("activateSystemdUnits(failed restart) error = %v", err)
 	}
 }
 

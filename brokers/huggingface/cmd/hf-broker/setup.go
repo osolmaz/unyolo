@@ -7,15 +7,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
 	"github.com/osolmaz/brokerkit/clientconfig"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
+	"github.com/osolmaz/brokerkit/endpoint"
 	bkservice "github.com/osolmaz/brokerkit/service"
 	bksetup "github.com/osolmaz/brokerkit/setup"
 )
@@ -23,7 +24,8 @@ import (
 const setupUsage = `usage:
 	  hf-broker setup systemd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
 	  hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]
-  hf-broker setup client --client <name> --url <url> --secret-file <path> [--home-dir <path>]`
+  hf-broker setup launchd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
+  hf-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
 
 var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
@@ -43,9 +45,9 @@ type setupSystemdOptions struct {
 	OperatorName          string
 	OperatorSecretFile    string
 	OperatorSecret        string
-	OperatorBindAddr      string
-	OperatorPort          int
+	OperatorEndpoint      string
 	CommandRunner         bkservice.CommandRunner
+	Lifecycle             *credentiallifecycle.Reporter
 }
 
 func runSetup(ctx context.Context, stdout, stderr io.Writer, args []string) error {
@@ -56,22 +58,40 @@ func runSetupInput(ctx context.Context, stdin io.Reader, stdout, stderr io.Write
 	if len(args) == 0 {
 		return exitError{code: 64, message: setupUsage}
 	}
-	switch args[0] {
+	return runSetupSubcommand(ctx, stdin, stdout, stderr, args[0], args[1:])
+}
+
+func runSetupSubcommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, command string, args []string) error {
+	switch command {
 	case "systemd":
-		opts, err := parseSetupSystemdInput(stderr, stdin, args[1:])
-		if err != nil {
-			return err
-		}
-		return runSetupSystemd(ctx, stdout, opts)
+		return runSetupSystemdCommand(ctx, stdin, stdout, stderr, args)
+	case "launchd":
+		return runSetupLaunchdCommand(ctx, stdin, stdout, stderr, args)
 	case "client":
-		opts, err := parseSetupClient(stderr, args[1:])
-		if err != nil {
-			return err
-		}
-		return runSetupClient(stdout, opts)
+		return runSetupClientCommand(stdout, stderr, args)
 	default:
 		return exitError{code: 64, message: setupUsage}
 	}
+}
+
+func runSetupSystemdCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+	opts, err := parseSetupSystemdInput(stderr, stdin, args)
+	if err != nil {
+		return err
+	}
+	opts.Lifecycle, err = credentiallifecycle.New(audit.New(stderr), "hf-broker", "local-operator")
+	if err != nil {
+		return err
+	}
+	return runSetupSystemd(ctx, stdout, opts)
+}
+
+func runSetupClientCommand(stdout, stderr io.Writer, args []string) error {
+	opts, err := parseSetupClient(stderr, args)
+	if err != nil {
+		return err
+	}
+	return runSetupClient(stdout, opts)
 }
 
 func parseSetupSystemd(stderr io.Writer, args []string) (setupSystemdOptions, error) {
@@ -82,7 +102,7 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	opts := setupSystemdOptions{
 		SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
-			ClientName: "agent", BindAddr: "127.0.0.1", Port: 8080,
+			Endpoint: "unix:///run/brokerkit/huggingface/agent/broker.sock",
 		}),
 	}
 	var flagOutput strings.Builder
@@ -98,10 +118,9 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
-	fs.StringVar(&opts.OperatorName, "operator", "onur", "operator identity for the protected inbox")
+	fs.StringVar(&opts.OperatorName, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
-	fs.StringVar(&opts.OperatorBindAddr, "operator-bind-addr", "127.0.0.1", "operator inbox listen address")
-	fs.IntVar(&opts.OperatorPort, "operator-port", 8081, "operator inbox listen port")
+	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/huggingface/operator/broker.sock", "operator inbox endpoint URI")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
@@ -134,11 +153,11 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 }
 
 func validateSetupSystemdOptions(opts setupSystemdOptions) error {
-	if err := opts.Validate(); err != nil {
-		return exitError{code: 64, message: err.Error()}
-	}
 	if err := validateSetupRequired(opts); err != nil {
 		return err
+	}
+	if err := opts.Validate(); err != nil {
+		return exitError{code: 64, message: err.Error()}
 	}
 	if err := validateSetupRepo(opts); err != nil {
 		return err
@@ -177,14 +196,15 @@ func validateOperatorCredentials(opts setupSystemdOptions) error {
 }
 
 func validateOperatorListener(opts setupSystemdOptions) error {
-	if ip := net.ParseIP(opts.OperatorBindAddr); ip == nil && opts.OperatorBindAddr != "localhost" {
-		return exitError{code: 64, message: "--operator-bind-addr must be an IP address or localhost"}
+	operatorEndpoint, err := endpoint.Parse(opts.OperatorEndpoint, endpoint.ParseOptions{})
+	if err != nil {
+		return exitError{code: 64, message: "--operator-endpoint: " + err.Error()}
 	}
-	if opts.OperatorPort < 1 || opts.OperatorPort > 65535 {
-		return exitError{code: 64, message: "--operator-port must be between 1 and 65535"}
+	if operatorEndpoint.Scheme() == endpoint.SchemeFD {
+		return exitError{code: 64, message: "--operator-endpoint cannot use a raw inherited descriptor"}
 	}
-	if opts.OperatorPort == opts.Port {
-		return exitError{code: 64, message: "operator and agent listeners must use different ports"}
+	if operatorEndpoint.String() == opts.Endpoint {
+		return exitError{code: 64, message: "operator and agent endpoints must differ"}
 	}
 	return nil
 }
@@ -245,30 +265,4 @@ func validHubName(name string) bool {
 
 func validRepoType(repoType string) bool {
 	return repoType == "model" || repoType == "dataset" || repoType == "space"
-}
-
-func repoRemotePath(repoType, repo string) string {
-	switch repoType {
-	case "dataset":
-		return "/datasets/" + repo
-	case "space":
-		return "/spaces/" + repo
-	default:
-		return "/" + repo
-	}
-}
-
-func brokerURL(bindAddr string, port int, repoType, repo string) string {
-	return brokerBaseURL(bindAddr, port) + repoRemotePath(repoType, repo)
-}
-
-func brokerBaseURL(bindAddr string, port int) string {
-	host := bindAddr
-	switch host {
-	case "0.0.0.0":
-		host = "127.0.0.1"
-	case "::":
-		host = "::1"
-	}
-	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 }

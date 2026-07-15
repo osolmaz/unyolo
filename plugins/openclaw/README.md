@@ -46,7 +46,7 @@ Choose one explicit trust mode:
             {
               id: "hf-primary",
               label: "Hugging Face",
-              endpoint: "http://127.0.0.1:18080",
+              endpoint: "https://hf-broker.example.com",
               operatorCredential: {
                 source: "env",
                 provider: "default",

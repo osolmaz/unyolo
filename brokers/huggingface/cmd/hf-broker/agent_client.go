@@ -16,6 +16,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentclient"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/clienthttp"
 )
 
 const defaultClientWait = 15 * time.Minute
@@ -33,7 +34,7 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	if len(args) >= 2 && args[0] == "operation" && (args[1] == "get" || args[1] == "wait" || args[1] == "cancel") {
+	if len(args) >= 2 && isClientOperationCommand(args) {
 		return runClientOperation(ctx, client, stdout, args[1], args[2:])
 	}
 	if descriptor, consumed, found := matchCLICommand(args); found {
@@ -42,51 +43,81 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 	return exitError{code: 64, message: "usage: hf-broker client <catalog operation> --target-json JSON [options] | hf-broker client operation <get|wait> ID | hf-broker client grant ..."}
 }
 
+func isClientOperationCommand(args []string) bool {
+	return len(args) >= 2 &&
+		args[0] == "operation" &&
+		(args[1] == "get" || args[1] == "wait" || args[1] == "cancel")
+}
+
 func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writer, action string, args []string) error {
+	options, err := parseClientOperationOptions(action, args)
+	if err != nil {
+		return err
+	}
+	operation, err := clientOperationInitialState(ctx, client, action, options.id)
+	if err != nil {
+		return err
+	}
+	operation, err = waitForClientOperationAction(ctx, client, action, operation, options.timeout)
+	if err != nil {
+		return err
+	}
+	return printClientOperation(stdout, operation, options.jsonOutput)
+}
+
+type clientOperationOptions struct {
+	id         string
+	timeout    time.Duration
+	jsonOutput bool
+}
+
+func parseClientOperationOptions(action string, args []string) (clientOperationOptions, error) {
 	flags := flag.NewFlagSet("operation "+action, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	jsonOutput := flags.Bool("json", false, "emit JSON")
 	timeout := flags.Duration("wait-timeout", defaultClientWait, "maximum wait")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
-		return exitError{code: 64, message: "operation ID is required"}
+		return clientOperationOptions{}, exitError{code: 64, message: "operation ID is required"}
 	}
-	var operation agentv1.Operation
-	var err error
+	return clientOperationOptions{id: flags.Arg(0), timeout: *timeout, jsonOutput: *jsonOutput}, nil
+}
+
+func waitForClientOperationAction(ctx context.Context, client *agentClient, action string, operation agentv1.Operation, timeout time.Duration) (agentv1.Operation, error) {
+	if action != "wait" || operation.State.Terminal() {
+		return operation, nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return client.wait(waitCtx, operation)
+}
+
+func clientOperationInitialState(ctx context.Context, client *agentClient, action, id string) (agentv1.Operation, error) {
 	if action == "cancel" {
-		operation, err = client.cancel(ctx, flags.Arg(0))
-	} else {
-		operation, err = client.get(ctx, flags.Arg(0))
+		return client.cancel(ctx, id)
 	}
-	if err != nil {
-		return err
-	}
-	if action == "wait" && !operation.State.Terminal() {
-		waitCtx, cancel := context.WithTimeout(ctx, *timeout)
-		defer cancel()
-		operation, err = client.wait(waitCtx, operation)
-		if err != nil {
-			return err
-		}
-	}
-	return printClientOperation(stdout, operation, *jsonOutput)
+	return client.get(ctx, id)
 }
 
 func loadAgentClient(getenv func(string) string) (*agentClient, error) {
-	baseURL := firstEnvironment(getenv, "HF_BROKER_URL", "MLCLAW_HF_BROKER_URL")
+	endpointURI := firstEnvironment(getenv, "HF_BROKER_AGENT_ENDPOINT")
 	secret, err := loadAgentSecret(getenv)
 	if err != nil {
 		return nil, err
 	}
-	operations, err := agentclient.New(agentclient.Options{BaseURL: baseURL, Credential: secret})
+	operations, err := agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret})
 	if err != nil {
 		return nil, err
 	}
-	grantClient, err := newHFGrantClient(baseURL, secret)
+	grantClient, err := newHFGrantClient(endpointURI, secret)
+	if err != nil {
+		return nil, err
+	}
+	baseURL, httpClient, err := clienthttp.ForEndpoint(endpointURI, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &agentClient{operations: operations, baseURL: baseURL, secret: secret,
-		httpClient:  &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		httpClient:  httpClient,
 		grantClient: grantClient}, nil
 }
 

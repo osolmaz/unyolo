@@ -22,13 +22,15 @@ import (
 )
 
 const (
-	grantFileVersion          = 1
-	defaultPendingTimeout     = 5 * time.Minute
-	defaultDuration           = 5 * time.Minute
-	defaultMaxDuration        = time.Hour
-	defaultMaxUses            = 1
-	maxMaxUses                = 25
-	defaultReservationTimeout = 5 * time.Minute
+	grantFileVersion           = 1
+	defaultPendingTimeout      = 5 * time.Minute
+	defaultDuration            = 5 * time.Minute
+	defaultMaxDuration         = time.Hour
+	defaultMaxUses             = 1
+	maxMaxUses                 = 25
+	defaultReservationTimeout  = 5 * time.Minute
+	defaultMaxPendingPerClient = 10
+	defaultMaxPendingGlobal    = 512
 )
 
 // Grant status values.
@@ -49,6 +51,7 @@ var (
 	ErrNotActive            = errors.New("grant is not active")
 	ErrIdempotencyConflict  = errors.New("idempotency conflict")
 	ErrUnsupportedState     = errors.New("unsupported grant state")
+	ErrCapacity             = errors.New("grant pending capacity reached")
 )
 
 // Status is a grant lifecycle state.
@@ -56,13 +59,15 @@ type Status string
 
 // Options configures a Store.
 type Options struct {
-	PendingTimeout     time.Duration
-	DefaultDuration    time.Duration
-	MaxDuration        time.Duration
-	ReservationTimeout time.Duration
-	MaxEvents          int
-	Now                func() time.Time
-	NewID              func(int) (string, error)
+	PendingTimeout      time.Duration
+	DefaultDuration     time.Duration
+	MaxDuration         time.Duration
+	ReservationTimeout  time.Duration
+	MaxEvents           int
+	MaxPendingPerClient int
+	MaxPendingGlobal    int
+	Now                 func() time.Time
+	NewID               func(int) (string, error)
 }
 
 // Request creates one pending approval grant.
@@ -173,7 +178,21 @@ func NewDatabase(database *state.Database, opts Options) *Store {
 // grant creation in one database transaction.
 func (s *Store) SupportsPlanTransactions() bool { return s != nil && s.database != nil }
 
+// Database returns the shared state database when this store is SQLite-backed.
+func (s *Store) Database() *state.Database {
+	if s == nil {
+		return nil
+	}
+	return s.database
+}
+
 func newStore(path string, database *state.Database, opts Options) *Store {
+	opts = defaultStoreBounds(opts)
+	opts = defaultStoreDependencies(opts)
+	return &Store{path: path, database: database, opts: opts, eventSignal: make(chan struct{})}
+}
+
+func defaultStoreBounds(opts Options) Options {
 	if opts.PendingTimeout <= 0 {
 		opts.PendingTimeout = defaultPendingTimeout
 	}
@@ -189,13 +208,23 @@ func newStore(path string, database *state.Database, opts Options) *Store {
 	if opts.MaxEvents <= 0 {
 		opts.MaxEvents = defaultMaxEvents
 	}
+	if opts.MaxPendingPerClient <= 0 {
+		opts.MaxPendingPerClient = defaultMaxPendingPerClient
+	}
+	if opts.MaxPendingGlobal <= 0 {
+		opts.MaxPendingGlobal = defaultMaxPendingGlobal
+	}
+	return opts
+}
+
+func defaultStoreDependencies(opts Options) Options {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
 	if opts.NewID == nil {
 		opts.NewID = randomID
 	}
-	return &Store{path: path, database: database, opts: opts, eventSignal: make(chan struct{})}
+	return opts
 }
 
 // Request creates or returns an idempotent pending grant.
@@ -238,6 +267,9 @@ func (s *Store) request(req Request, plan *state.PlanRecord) (RequestResult, boo
 			out, existingErr = s.idempotentRequest(data, index, existing, req)
 			return existingErr
 		}
+		if !s.pendingCapacityAvailable(data.Grants, req.Client) {
+			return ErrCapacity
+		}
 		grant, decisionToken, err := s.newGrant(req)
 		if err != nil {
 			return err
@@ -251,6 +283,20 @@ func (s *Store) request(req Request, plan *state.PlanRecord) (RequestResult, boo
 		out.Grant, err = s.Get(out.Grant.ID)
 	}
 	return out, created, err
+}
+
+func (s *Store) pendingCapacityAvailable(values []Grant, client string) bool {
+	clientPending, globalPending := 0, 0
+	for _, grant := range values {
+		if grant.Status != StatusPending {
+			continue
+		}
+		globalPending++
+		if grant.Client == client {
+			clientPending++
+		}
+	}
+	return clientPending < s.opts.MaxPendingPerClient && globalPending < s.opts.MaxPendingGlobal
 }
 
 func (s *Store) idempotentRequest(data *fileData, index int, existing Grant, req Request) (RequestResult, error) {

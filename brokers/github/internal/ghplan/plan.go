@@ -294,10 +294,18 @@ func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 }
 
 func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
-	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation &&
-		plan.Authorization.Target.Kind == grant.Target.Kind && reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) && reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
-		plan.Authorization.Mode == grant.Metadata["github_grant_mode"] && plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
-		plan.Authorization.RequestedMaxUses == maxUses && plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
+	return planMatchesGrantIdentity(plan, grant) && planMatchesGrantAuthorization(plan.Authorization, grant, duration, maxUses)
+}
+
+func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
+	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation
+}
+
+func planMatchesGrantAuthorization(auth Authorization, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
+	return auth.Target.Kind == grant.Target.Kind && reflect.DeepEqual(auth.Target.Fields, grant.Target.Fields) &&
+		reflect.DeepEqual(auth.Attributes, grant.Attrs) && auth.Mode == grant.Metadata["github_grant_mode"] &&
+		auth.RequestedDurationSeconds == int64(duration.Seconds()) && auth.RequestedMaxUses == maxUses &&
+		auth.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
 
 func encode(plan Plan) ([]byte, error) {
@@ -325,23 +333,72 @@ func canonicalize(plan Plan) (Plan, error) {
 	return plan, nil
 }
 
-//nolint:cyclop // Plan invariants are explicit and tracked by the exact HF CRAP baseline.
 func validate(plan Plan) error {
-	if plan.APIVersion != SchemaV1 || plan.OperationRevision != 1 || !ghpolicy.IsOperation(plan.Operation) ||
-		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" ||
-		plan.CredentialSelector.Name != "primary" || !validCredentialKind(plan.CredentialSelector.Kind) || plan.CreatedAt.IsZero() || !plan.ExpiresAt.After(plan.CreatedAt) {
+	if !validPlanIdentity(plan) {
 		return errors.New("GitHub plan identity is invalid")
 	}
-	if plan.Presentation.Title == "" || len(plan.Presentation.Title) > 160 || len(plan.Presentation.Summary) > 500 {
+	if !validPresentation(plan.Presentation) {
 		return errors.New("GitHub plan presentation is invalid")
 	}
-	if plan.Authorization.Mode != "window" && plan.Authorization.Mode != "execution" ||
-		plan.Authorization.RequestedDurationSeconds <= 0 || plan.Authorization.RequestedMaxUses < 0 ||
-		plan.Authorization.Mode == "execution" && plan.Authorization.RequestedMaxUses != 1 ||
-		strings.TrimSpace(plan.Authorization.Target.Kind) == "" || len(plan.Authorization.Target.Fields) == 0 {
+	if !validAuthorization(plan.Authorization) {
 		return errors.New("GitHub plan authorization is invalid")
 	}
-	for _, value := range []json.RawMessage{plan.Target, plan.Arguments, plan.Preconditions} {
+	if err := validateRawObjects(plan.Target, plan.Arguments, plan.Preconditions); err != nil {
+		return err
+	}
+	if err := validateValues(plan.Authorization.Target.Fields); err != nil {
+		return err
+	}
+	return validateValues(plan.Authorization.Attributes)
+}
+
+func validPlanIdentity(plan Plan) bool {
+	return validPlanSchema(plan) && validPlanClient(plan) && validPlanCredential(plan.CredentialSelector) && validPlanTimes(plan)
+}
+
+func validPlanSchema(plan Plan) bool {
+	return plan.APIVersion == SchemaV1 && plan.OperationRevision == 1 && ghpolicy.IsOperation(plan.Operation)
+}
+
+func validPlanClient(plan Plan) bool {
+	return strings.TrimSpace(plan.ClientID) != "" && strings.TrimSpace(plan.ClientRequestID) != ""
+}
+
+func validPlanCredential(value CredentialSelector) bool {
+	return value.Name == "primary" && validCredentialKind(value.Kind)
+}
+
+func validPlanTimes(plan Plan) bool {
+	return !plan.CreatedAt.IsZero() && plan.ExpiresAt.After(plan.CreatedAt)
+}
+
+func validPresentation(value agentv1.Presentation) bool {
+	return value.Title != "" && len(value.Title) <= 160 && len(value.Summary) <= 500
+}
+
+func validAuthorization(value Authorization) bool {
+	if !validAuthorizationMode(value) {
+		return false
+	}
+	if !validAuthorizationBounds(value) {
+		return false
+	}
+	if value.Mode == "execution" && value.RequestedMaxUses != 1 {
+		return false
+	}
+	return strings.TrimSpace(value.Target.Kind) != "" && len(value.Target.Fields) > 0
+}
+
+func validAuthorizationMode(value Authorization) bool {
+	return value.Mode == "window" || value.Mode == "execution"
+}
+
+func validAuthorizationBounds(value Authorization) bool {
+	return value.RequestedDurationSeconds > 0 && value.RequestedMaxUses >= 0
+}
+
+func validateRawObjects(values ...json.RawMessage) error {
+	for _, value := range values {
 		if len(value) == 0 {
 			return errors.New("GitHub plan contains an empty object")
 		}
@@ -349,10 +406,7 @@ func validate(plan Plan) error {
 			return errors.New("GitHub plan contains a raw secret field")
 		}
 	}
-	if err := validateValues(plan.Authorization.Target.Fields); err != nil {
-		return err
-	}
-	return validateValues(plan.Authorization.Attributes)
+	return nil
 }
 
 func modeForOperation(operation, value string) string {
@@ -400,28 +454,46 @@ func containsRawSecret(value json.RawMessage) bool {
 func hasRawSecret(value any) bool {
 	switch typed := value.(type) {
 	case map[string]any:
-		for key, nested := range typed {
-			if rawSecretKey(key) || hasRawSecret(nested) {
-				return true
-			}
-		}
+		return mapHasRawSecret(typed)
 	case []any:
-		for _, nested := range typed {
-			if hasRawSecret(nested) {
-				return true
-			}
+		return listHasRawSecret(typed)
+	}
+	return false
+}
+
+func mapHasRawSecret(values map[string]any) bool {
+	for key, nested := range values {
+		if rawSecretKey(key) || hasRawSecret(nested) {
+			return true
 		}
 	}
 	return false
 }
 
-//nolint:cyclop // The closed secret-key vocabulary is tracked by the exact HF CRAP baseline.
+func listHasRawSecret(values []any) bool {
+	for _, nested := range values {
+		if hasRawSecret(nested) {
+			return true
+		}
+	}
+	return false
+}
+
 func rawSecretKey(key string) bool {
 	normalized := strings.ToLower(strings.NewReplacer("-", "_", ".", "_").Replace(key))
 	if strings.HasSuffix(normalized, "_id") || strings.HasSuffix(normalized, "_ref") || strings.HasSuffix(normalized, "_digest") || strings.HasSuffix(normalized, "_name") {
 		return false
 	}
-	return normalized == "authorization" || normalized == "cookie" || normalized == "password" || normalized == "private_key" || normalized == "secret" || normalized == "token" || strings.HasSuffix(normalized, "_token")
+	return rawSecretKeys[normalized] || strings.HasSuffix(normalized, "_token")
+}
+
+var rawSecretKeys = map[string]bool{
+	"authorization": true,
+	"cookie":        true,
+	"password":      true,
+	"private_key":   true,
+	"secret":        true,
+	"token":         true,
 }
 
 func validateValues(values map[string][]string) error {

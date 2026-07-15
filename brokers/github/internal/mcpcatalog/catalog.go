@@ -77,38 +77,52 @@ func streamReferenceSchema() map[string]any {
 		}}
 }
 
-//nolint:cyclop // The four-way exposure intersection is kept explicit and fail-closed.
 func Selected(exposure Exposure, enabled Enabled) ([]opcatalog.Descriptor, error) {
 	values, err := opcatalog.All()
 	if err != nil {
 		return nil, err
 	}
+	exact, err := exactExposure(exposure.Exact)
+	if err != nil {
+		return nil, err
+	}
+	result := []opcatalog.Descriptor{}
+	for _, descriptor := range values {
+		if selectedDescriptor(descriptor, exposure, exact, enabled) {
+			result = append(result, descriptor)
+		}
+	}
+	return result, nil
+}
+
+func exactExposure(names []string) (map[string]bool, error) {
 	exact := map[string]bool{}
-	for _, name := range exposure.Exact {
+	for _, name := range names {
 		if _, found := opcatalog.ByName(name); !found {
 			return nil, fmt.Errorf("unknown MCP exposure operation %q", name)
 		}
 		exact[name] = true
 	}
-	result := []opcatalog.Descriptor{}
-	for _, descriptor := range values {
-		if !descriptor.AgentFacing || !enabledForAll(descriptor.Name, enabled) {
-			continue
-		}
-		exposed := exact[descriptor.Name] || exposure.Complete
-		if !exposed && !descriptor.ExplicitOnly {
-			for _, family := range exposure.Families {
-				if familyMatch(family, descriptor.Name) {
-					exposed = true
-					break
-				}
-			}
-		}
-		if exposed {
-			result = append(result, descriptor)
+	return exact, nil
+}
+
+func selectedDescriptor(descriptor opcatalog.Descriptor, exposure Exposure, exact map[string]bool, enabled Enabled) bool {
+	if !descriptor.AgentFacing || !enabledForAll(descriptor.Name, enabled) {
+		return false
+	}
+	return exact[descriptor.Name] || exposure.Complete || familyExposed(descriptor, exposure.Families)
+}
+
+func familyExposed(descriptor opcatalog.Descriptor, families []string) bool {
+	if descriptor.ExplicitOnly {
+		return false
+	}
+	for _, family := range families {
+		if familyMatch(family, descriptor.Name) {
+			return true
 		}
 	}
-	return result, nil
+	return false
 }
 
 func enabledForAll(name string, enabled Enabled) bool {
@@ -124,16 +138,9 @@ func Discover(cursor string, limit int) (Page, error) {
 	if limit <= 0 || limit > 100 {
 		return Page{}, errors.New("discovery page size must be between 1 and 100")
 	}
-	offset := 0
-	if cursor != "" {
-		data, err := base64.RawURLEncoding.DecodeString(cursor)
-		if err != nil {
-			return Page{}, errors.New("invalid discovery cursor")
-		}
-		offset, err = strconv.Atoi(string(data))
-		if err != nil || offset < 0 {
-			return Page{}, errors.New("invalid discovery cursor")
-		}
+	offset, err := decodeCursor(cursor)
+	if err != nil {
+		return Page{}, err
 	}
 	values, err := opcatalog.All()
 	if err != nil {
@@ -144,8 +151,28 @@ func Discover(cursor string, limit int) (Page, error) {
 	}
 	end := min(offset+limit, len(values))
 	page := Page{Items: values[offset:end], Total: len(values)}
-	if end < len(values) {
-		page.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
-	}
+	page.NextCursor = nextCursor(end, len(values))
 	return page, nil
+}
+
+func decodeCursor(cursor string) (int, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+	data, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, errors.New("invalid discovery cursor")
+	}
+	offset, err := strconv.Atoi(string(data))
+	if err != nil || offset < 0 {
+		return 0, errors.New("invalid discovery cursor")
+	}
+	return offset, nil
+}
+
+func nextCursor(end, total int) string {
+	if end >= total {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
 }

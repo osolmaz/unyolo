@@ -27,7 +27,8 @@ The shared install, setup, policy, approval, and release contract is in
   development credential providers
 - Exact installation-token narrowing and cache isolation by installation,
   repository ids, permissions, API host, and expiry behavior
-- Localhost bind by default for Tailnet-oriented deployment
+- Explicit deployment-owned endpoint URIs with Unix socket activation for
+  local production installs
 - Conservative receive-pack size cap and upstream GitHub timeouts
 - Structured audit logs without secrets, request bodies, diffs, or pack contents
 - Brokerkit-backed grants with a durable operator inbox and optional Telegram notifications
@@ -87,29 +88,31 @@ make run
 
 ## Install
 
-Install the latest release globally:
+Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+GH Broker release to its exact commit and installs to `$HOME/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
 ```
 
 Pin a version from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/github/install.sh | VERSION=<version> sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | VERSION=<version> sh
 ```
 
 Write a client config file from a broker secrets file:
 
 ```sh
 gh-broker setup client \
-  --client bob \
-  --url http://127.0.0.1:8081 \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/github/agent/broker.sock \
   --secret-file /etc/gh-broker/secrets \
-  --home-dir /home/bob
+  --home-dir /home/agent-a
 ```
 
-The generated `client.env` contains only `GH_BROKER_URL` and
+The generated `client.env` contains only `GH_BROKER_ENDPOINT` and
 `GH_BROKER_SHARED_SECRET`; it does not contain GitHub credentials.
 
 Production Linux service setup with GitHub App credentials:
@@ -119,7 +122,11 @@ sudo gh-broker setup systemd \
   --github-app-id-file ./app-id \
   --github-app-private-key-file ./private-key.pem \
   --github-webhook-secret-file ./webhook-secret \
-  --scope-file ./scope.json
+  --scope-file ./scope.json \
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
 To enable encrypted GitHub App user credentials, add the App's OAuth client
@@ -133,7 +140,11 @@ sudo gh-broker setup systemd \
   --github-app-client-secret-file ./client-secret \
   --github-user-id 1234 \
   --github-webhook-secret-file ./webhook-secret \
-  --scope-file ./scope.json
+  --scope-file ./scope.json \
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
 Development setup with a token file:
@@ -142,7 +153,11 @@ Development setup with a token file:
 sudo gh-broker setup systemd \
   --dev-token-fallback \
   --github-token-file ./github-token \
-  --scope-file ./scope.json
+  --scope-file ./scope.json \
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
 This fallback is protected-file-only and non-production. `doctor github`
@@ -189,24 +204,28 @@ sudo gh-broker setup systemd \
   --github-token-file ./github-token \
   --scope-file ./scope.json \
   --telegram-bot-token-file ./telegram-bot-token \
-  --telegram-chat-id 123456789
+  --telegram-chat-id 123456789 \
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
 Use `--no-start` to write files without enabling or starting the service.
 The setup command writes `/etc/gh-broker/secrets`,
 `/etc/gh-broker/operator-secrets`, and the optional Telegram token as protected
 files. It does not place broker client secrets, operator secrets, GitHub
-credentials, or Telegram credentials directly in the env file. The operator
-API uses a separate credential and listener at `http://127.0.0.1:8082` by
-default. Use `--operator-secret-file`, `--operator-bind-addr`, and
-`--operator-port` to supply or change them.
+credentials, or Telegram credentials directly in the env file. The agent and
+operator APIs use distinct Unix sockets by default. Use `--endpoint`,
+`--operator-endpoint`, and `--operator-secret-file` to select deployment-owned
+endpoints or preserve an existing operator credential.
 
 Verify the installed deployment:
 
 ```sh
 sudo gh-broker doctor github \
   --repo osolmaz/gh-broker \
-  --agent-user bob \
+  --agent-user agent-a \
   --service-user gh-broker
 ```
 
@@ -224,14 +243,15 @@ them. Protected credential files are required for a safe isolation verdict.
 Health check:
 
 ```sh
-curl http://localhost:8080/healthz
+curl --unix-socket /run/brokerkit/github/agent/broker.sock \
+  http://localhost/healthz
 ```
 
 Fetch through the broker:
 
 ```sh
 git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  ls-remote http://localhost:8080/osolmaz/gh-broker.git
+  ls-remote https://github-broker.example.com/osolmaz/gh-broker.git
 ```
 
 List repositories visible to the selected GitHub user credential:
@@ -252,13 +272,15 @@ gh-broker operation submit repo.contents.read \
   --wait
 ```
 
-Open a pull request:
+Open a pull request through Agent V1:
 
 ```sh
-curl -X POST -H "Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"idempotency_key":"open-agent-pr","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"arguments":{"title":"agent work","head":"bob/work","base":"main","body":"Ready for review."},"reason":"Open the reviewed feature branch"}' \
-  http://localhost:8080/api/agent/v1/operations
+gh-broker operation submit pull_request.create \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"gh-broker"}' \
+  --arguments-json '{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}' \
+  --reason "Open the reviewed feature branch" \
+  --request-id open-agent-pr \
+  --wait
 ```
 
 ## Policy
@@ -274,7 +296,7 @@ Deny rules win over allow rules. A rule matches only when the same rule matches 
 The default production-oriented workflow is:
 
 - allow fetch, repository listing, and content reads for scoped repositories
-- allow agents to push feature branches such as `refs/heads/bob/*`
+- allow agents to push feature branches such as `refs/heads/agent-a/*`
 - allow agents to open pull requests into `refs/heads/main`
 - deny ref deletion and unsupported ref updates before forwarding
 - deny default-branch pushes unless a repository has an explicit direct-main allow rule
@@ -287,7 +309,7 @@ Example direct-main exception:
 {
   "id": "direct-main-example",
   "effect": "allow",
-  "clients": ["bob"],
+  "clients": ["agent-a"],
   "operations": ["git.push.force"],
   "targets": [{"kind": "repo", "owner": "osolmaz", "name": "direct-main"}],
   "attrs": {"refs": ["refs/heads/main"]}
@@ -329,13 +351,12 @@ Compatibility aliases are not part of the production surface.
 The protected operator listener exposes Brokerkit's shared backend:
 
 ```text
-GET  /api/grants
-GET  /api/grants/{id}
-GET  /api/grants/events
-POST /api/grants/{id}/approve
-POST /api/grants/{id}/deny
-POST /api/grants/{id}/cancel
-POST /api/grants/{id}/revoke
+GET  /api/operator/v1/requests
+GET  /api/operator/v1/requests/{id}
+GET  /api/operator/v1/events
+POST /api/operator/v1/requests/{id}/approve
+POST /api/operator/v1/requests/{id}/deny
+POST /api/operator/v1/requests/{id}/revoke
 ```
 
 Authenticate with the separate operator credential from
@@ -390,10 +411,12 @@ credentials are persisted as one encrypted record, and enrollment, rotation,
 revocation, errors, plans, results, audit events, and operator surfaces never
 return credential material.
 
-Deployment safety defaults:
+Deployment safety settings:
 
-- `GH_BROKER_BIND_ADDR` defaults to `127.0.0.1`.
-- `GH_BROKER_STATE_DIR` defaults to `./state`.
+- `GH_BROKER_AGENT_ENDPOINT` is required. Production setup uses a protected
+  Unix socket unless the deployment explicitly selects TCP.
+- `GH_BROKER_STATE_DIR` and `GH_BROKER_SCOPE_FILE` are required and must be
+  absolute in production.
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds.
 - `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds for bounded uploads and downloads.
 - `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.

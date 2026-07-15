@@ -16,6 +16,7 @@ import (
 
 	github "github.com/google/go-github/v88/github"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -60,9 +61,10 @@ type installationProvider struct {
 	repositories  map[string]repositoryResolution
 	disabled      map[int64]bool
 	generation    map[int64]uint64
+	lifecycle     *credentiallifecycle.Reporter
 }
 
-func newInstallationProvider(app *appProvider, apiURL *url.URL, client *http.Client, now func() time.Time, refreshBefore time.Duration) *installationProvider {
+func newInstallationProvider(app *appProvider, apiURL *url.URL, client *http.Client, now func() time.Time, refreshBefore time.Duration, lifecycle *credentiallifecycle.Reporter) *installationProvider {
 	if now == nil {
 		now = time.Now
 	}
@@ -70,7 +72,7 @@ func newInstallationProvider(app *appProvider, apiURL *url.URL, client *http.Cli
 		refreshBefore = defaultRefreshBefore
 	}
 	return &installationProvider{app: app, apiURL: apiURL, client: client, now: now, refreshBefore: refreshBefore,
-		cache: map[string]cacheEntry{}, repositories: map[string]repositoryResolution{}, disabled: map[int64]bool{}, generation: map[int64]uint64{}}
+		cache: map[string]cacheEntry{}, repositories: map[string]repositoryResolution{}, disabled: map[int64]bool{}, generation: map[int64]uint64{}, lifecycle: lifecycle}
 }
 
 func (p *installationProvider) credential(ctx context.Context, installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool) (*Credential, error) {
@@ -97,18 +99,10 @@ func (p *installationProvider) credential(ctx context.Context, installationID in
 }
 
 func (p *installationProvider) mintCredential(ctx context.Context, key string, installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool) (*Credential, error) {
-	p.mu.Lock()
-	if p.disabled[installationID] {
-		p.mu.Unlock()
-		return nil, errors.New("GitHub installation is suspended or deleted")
+	generation, now, cached, err := p.cachedCredentialState(key, installationID)
+	if err != nil || cached != nil {
+		return cached, err
 	}
-	generation := p.generation[installationID]
-	now := p.now().UTC()
-	if entry, ok := p.cache[key]; ok && now.Before(entry.refreshAt) {
-		p.mu.Unlock()
-		return entry.credential, nil
-	}
-	p.mu.Unlock()
 	token, err := p.createInstallationToken(ctx, installationID, installationTokenRequest{
 		RepositoryIDs: repositoryIDs,
 		Permissions:   permissions,
@@ -116,45 +110,92 @@ func (p *installationProvider) mintCredential(ctx context.Context, key string, i
 	if err != nil {
 		return nil, err
 	}
+	credential, err := p.credentialFromToken(installationID, repositoryIDs, permissions, allowEmpty, token, now)
+	if err != nil {
+		return nil, err
+	}
+	return p.storeMintedCredential(ctx, key, installationID, generation, now, credential)
+}
+
+func (p *installationProvider) cachedCredentialState(key string, installationID int64) (uint64, time.Time, *Credential, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.disabled[installationID] {
+		return 0, time.Time{}, nil, errors.New("GitHub installation is suspended or deleted")
+	}
+	generation := p.generation[installationID]
+	now := p.now().UTC()
+	if entry, ok := p.cache[key]; ok && now.Before(entry.refreshAt) {
+		return generation, now, entry.credential, nil
+	}
+	return generation, now, nil, nil
+}
+
+func (p *installationProvider) credentialFromToken(installationID int64, repositoryIDs []int64, permissions map[string]string, allowEmpty bool, token installationTokenResponse, now time.Time) (*Credential, error) {
 	value := []byte(strings.TrimSpace(token.Token))
 	expiresAt := token.ExpiresAt.UTC()
 	if len(value) == 0 || !expiresAt.After(now.Add(p.refreshBefore)) {
 		zero(value)
 		return nil, errors.New("GitHub installation token response is invalid")
 	}
-	credential := &Credential{metadata: Metadata{Kind: KindInstallation, InstallationID: installationID,
+	return &Credential{metadata: Metadata{Kind: KindInstallation, InstallationID: installationID,
 		RepositoryIDs: slices.Clone(repositoryIDs), Permissions: clonePermissions(permissions), AllowEmptyPermissions: allowEmpty,
-		APIHost: p.apiURL.Host, ExpiresAt: expiresAt}, token: value}
+		APIHost: p.apiURL.Host, ExpiresAt: expiresAt}, token: value}, nil
+}
+
+func (p *installationProvider) storeMintedCredential(ctx context.Context, key string, installationID int64, generation uint64, now time.Time, credential *Credential) (*Credential, error) {
 	p.mu.Lock()
 	if p.disabled[installationID] || p.generation[installationID] != generation {
 		p.mu.Unlock()
-		p.revokeCredential(ctx, credential)
-		return nil, errors.New("GitHub installation credential was invalidated while it was issued")
+		revokeErr := p.revokeCredential(ctx, credential)
+		return nil, errors.Join(errors.New("GitHub installation credential was invalidated while it was issued"), revokeErr)
 	}
 	p.evictExpired(now)
 	if len(p.cache) >= maxCachedCredentials {
 		p.evictOldest()
 	}
-	p.cache[key] = cacheEntry{credential: credential, refreshAt: expiresAt.Add(-p.refreshBefore)}
+	p.cache[key] = cacheEntry{credential: credential, refreshAt: credential.metadata.ExpiresAt.Add(-p.refreshBefore)}
 	p.mu.Unlock()
 	return credential, nil
 }
 
-func (p *installationProvider) revokeCredential(ctx context.Context, credential *Credential) {
+func (p *installationProvider) revokeCredential(ctx context.Context, credential *Credential) error {
+	installationID := credential.Metadata().InstallationID
 	token, err := credential.tokenCopy()
 	if err != nil {
 		credential.invalidate()
-		return
+		return errors.Join(err, p.recordRevocation(installationID, err))
 	}
 	defer zero(token)
 	defer credential.invalidate()
 	client, err := newGitHubClient(p.client, p.apiURL, token)
 	if err != nil {
-		return
+		return errors.Join(err, p.recordRevocation(installationID, err))
 	}
 	revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	_, _ = client.Apps.RevokeInstallationToken(revokeCtx)
+	_, revokeErr := client.Apps.RevokeInstallationToken(revokeCtx)
+	classified := classifyAPIError(revokeErr)
+	return errors.Join(classified, p.recordRevocation(installationID, classified))
+}
+
+func (p *installationProvider) recordRevocation(installationID int64, operationErr error) error {
+	if !canReportInstallationLifecycle(p, installationID) {
+		return nil
+	}
+	return p.lifecycle.Record(credentiallifecycle.Event{Class: "github-installation", Action: credentiallifecycle.ActionRevoked,
+		Outcome: lifecycleOutcome(operationErr), PreviousID: fmt.Sprintf("github-installation:%d", installationID), Provider: "github"})
+}
+
+func canReportInstallationLifecycle(provider *installationProvider, installationID int64) bool {
+	return provider != nil && provider.lifecycle != nil && installationID > 0
+}
+
+func lifecycleOutcome(err error) credentiallifecycle.Outcome {
+	if err != nil {
+		return credentiallifecycle.OutcomeFailed
+	}
+	return credentiallifecycle.OutcomeSucceeded
 }
 
 func (p *installationProvider) repositoryCredential(ctx context.Context, operation, owner, repo string) (*Credential, repositoryResolution, error) {
@@ -171,9 +212,9 @@ func (p *installationProvider) repositoryCredential(ctx context.Context, operati
 }
 
 func (p *installationProvider) resolveRepository(ctx context.Context, owner, repo string, permissions map[string]string) (repositoryResolution, error) {
-	owner, repo = strings.TrimSpace(owner), strings.TrimSpace(repo)
-	if owner == "" || repo == "" {
-		return repositoryResolution{}, errors.New("GitHub repository is required")
+	owner, repo, err := normalizedRepositoryName(owner, repo)
+	if err != nil {
+		return repositoryResolution{}, err
 	}
 	lookupKey := strings.ToLower(p.apiURL.Host + "\x00" + owner + "\x00" + repo)
 	if cached, ok := p.cachedRepository(lookupKey); ok {
@@ -194,12 +235,16 @@ func (p *installationProvider) resolveRepository(ctx context.Context, owner, rep
 	if err != nil {
 		return repositoryResolution{}, err
 	}
-	p.mu.Lock()
-	if !p.disabled[result.InstallationID] {
-		p.repositories[lookupKey] = result
-	}
-	p.mu.Unlock()
+	p.cacheRepository(lookupKey, result)
 	return result, nil
+}
+
+func normalizedRepositoryName(owner, repo string) (string, string, error) {
+	owner, repo = strings.TrimSpace(owner), strings.TrimSpace(repo)
+	if owner == "" || repo == "" {
+		return "", "", errors.New("GitHub repository is required")
+	}
+	return owner, repo, nil
 }
 
 func (p *installationProvider) cachedRepository(key string) (repositoryResolution, bool) {
@@ -209,40 +254,69 @@ func (p *installationProvider) cachedRepository(key string) (repositoryResolutio
 	return cached, ok && !p.disabled[cached.InstallationID]
 }
 
+func (p *installationProvider) cacheRepository(key string, result repositoryResolution) {
+	p.mu.Lock()
+	if !p.disabled[result.InstallationID] {
+		p.repositories[key] = result
+	}
+	p.mu.Unlock()
+}
+
 // GitHub's repository-installation response does not include the repository
 // id. Mint one uncached name-restricted credential, resolve the immutable id,
 // revoke that bootstrap credential, then mint/cache only by repository id.
 func (p *installationProvider) resolveRepositoryID(ctx context.Context, installation *github.Installation, owner, repo string, permissions map[string]string) (repositoryResolution, error) {
-	token, err := p.createInstallationToken(ctx, installation.GetID(), installationTokenRequest{
-		Repositories: []string{repo},
-		Permissions:  permissions,
-	})
+	sdk, err := p.bootstrapRepositoryResolver(ctx, installation.GetID(), repo, permissions)
 	if err != nil {
 		return repositoryResolution{}, err
 	}
-	bootstrap := []byte(token.Token)
-	if len(bootstrap) == 0 {
-		return repositoryResolution{}, errors.New("GitHub repository resolution credential is invalid")
-	}
-	sdk, clientErr := newGitHubClient(p.client, p.apiURL, bootstrap)
-	if clientErr != nil {
-		zero(bootstrap)
-		return repositoryResolution{}, errors.New("initialize GitHub repository resolver")
-	}
 	resolved, _, getErr := sdk.Repositories.Get(ctx, owner, repo)
-	_, revokeErr := sdk.Apps.RevokeInstallationToken(ctx)
-	zero(bootstrap)
+	revokeErr := revokeBootstrapCredential(ctx, sdk)
+	auditErr := p.recordRevocation(installation.GetID(), revokeErr)
 	if getErr != nil {
-		return repositoryResolution{}, classifyAPIError(getErr)
+		return repositoryResolution{}, errors.Join(classifyAPIError(getErr), classifyAPIError(revokeErr), auditErr)
 	}
-	if revokeErr != nil {
-		return repositoryResolution{}, classifyAPIError(revokeErr)
+	if retirementErr := bootstrapRetirementError(revokeErr, auditErr); retirementErr != nil {
+		return repositoryResolution{}, retirementErr
 	}
-	if resolved.GetID() <= 0 || !strings.EqualFold(resolved.GetName(), repo) || !strings.EqualFold(resolved.GetOwner().GetLogin(), owner) {
+	if !resolvedRepositoryMatches(resolved, owner, repo) {
 		return repositoryResolution{}, errors.New("GitHub repository identity response is invalid")
 	}
 	return repositoryResolution{ID: resolved.GetID(), InstallationID: installation.GetID(), Owner: resolved.GetOwner().GetLogin(), Name: resolved.GetName(),
 		Permissions: installationPermissionMap(installation.GetPermissions())}, nil
+}
+
+func (p *installationProvider) bootstrapRepositoryResolver(ctx context.Context, installationID int64, repo string, permissions map[string]string) (*github.Client, error) {
+	token, err := p.createInstallationToken(ctx, installationID, installationTokenRequest{
+		Repositories: []string{repo},
+		Permissions:  permissions,
+	})
+	if err != nil {
+		return nil, err
+	}
+	bootstrap := []byte(token.Token)
+	defer zero(bootstrap)
+	if len(bootstrap) == 0 {
+		return nil, errors.New("GitHub repository resolution credential is invalid")
+	}
+	sdk, err := newGitHubClient(p.client, p.apiURL, bootstrap)
+	if err != nil {
+		return nil, errors.New("initialize GitHub repository resolver")
+	}
+	return sdk, nil
+}
+
+func revokeBootstrapCredential(ctx context.Context, sdk *github.Client) error {
+	_, err := sdk.Apps.RevokeInstallationToken(ctx)
+	return err
+}
+
+func bootstrapRetirementError(revokeErr, auditErr error) error {
+	return errors.Join(classifyAPIError(revokeErr), auditErr)
+}
+
+func resolvedRepositoryMatches(resolved *github.Repository, owner, repo string) bool {
+	return resolved.GetID() > 0 && strings.EqualFold(resolved.GetName(), repo) && strings.EqualFold(resolved.GetOwner().GetLogin(), owner)
 }
 
 func (p *installationProvider) invalidate(installationID int64, disabled bool) {

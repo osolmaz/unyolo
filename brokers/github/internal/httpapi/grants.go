@@ -116,27 +116,42 @@ func existingGitHubPlanCreatedAt(store *grants.Store, plans *ghplan.Store, clien
 }
 
 func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
-	if s.notifier == nil && !s.operatorConfigured {
-		return grantCreatePlan{}, echo.NewHTTPError(http.StatusServiceUnavailable, "approval channel is not configured")
-	}
 	payload, err := decodeGrantCreate(c)
 	if err != nil {
 		return grantCreatePlan{}, err
 	}
-	if !protocolGrantOperation(payload.Operation) {
-		return grantCreatePlan{}, echo.NewHTTPError(http.StatusBadRequest, "Agent V1 is required for non-protocol operations")
+	if err := s.validateGrantCreateChannelAndOperation(payload); err != nil {
+		return grantCreatePlan{}, err
 	}
 	request := grantPolicyRequest(c, payload)
-	decision := s.policy.EvaluateGrantRequest(request)
-	if decision.Effect != policy.EffectRequest || decision.GrantPolicy == nil {
-		s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
-		return grantCreatePlan{}, echo.NewHTTPError(http.StatusForbidden, "operation is not requestable")
+	decision, err := s.requestableGrantDecision(c, request)
+	if err != nil {
+		return grantCreatePlan{}, err
 	}
 	duration, pendingTimeout, maxUses, err := grantBounds(decision.GrantPolicy, payload.Minutes, payload.MaxUses)
 	if err != nil {
 		return grantCreatePlan{}, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	return grantCreatePlan{payload: payload, request: request, decision: decision, duration: duration, pendingTimeout: pendingTimeout, maxUses: maxUses}, nil
+}
+
+func (s *Server) validateGrantCreateChannelAndOperation(payload grantCreateRequest) error {
+	if s.notifier == nil && !s.operatorConfigured {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "approval channel is not configured")
+	}
+	if !protocolGrantOperation(payload.Operation) {
+		return echo.NewHTTPError(http.StatusBadRequest, "Agent V1 is required for non-protocol operations")
+	}
+	return nil
+}
+
+func (s *Server) requestableGrantDecision(c echo.Context, request policy.Request) (policy.Decision, error) {
+	decision := s.policy.EvaluateGrantRequest(request)
+	if decision.Effect == policy.EffectRequest && decision.GrantPolicy != nil {
+		return decision, nil
+	}
+	s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
+	return policy.Decision{}, echo.NewHTTPError(http.StatusForbidden, "operation is not requestable")
 }
 
 func protocolGrantOperation(operation policy.Operation) bool {
@@ -351,6 +366,9 @@ func grantBounds(grantPolicy *corepolicy.GrantPolicy, requestedMinutes int, requ
 func grantStoreHTTPError(err error) error {
 	if errors.Is(err, grants.ErrIdempotencyConflict) {
 		return echo.NewHTTPError(http.StatusConflict, "idempotency conflict")
+	}
+	if errors.Is(err, grants.ErrCapacity) {
+		return echo.NewHTTPError(http.StatusTooManyRequests, "pending approval limit reached")
 	}
 	return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 }

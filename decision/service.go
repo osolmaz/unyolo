@@ -32,6 +32,12 @@ type Service struct {
 	validator ActivationValidator
 	broker    string
 	audit     audit.Recorder
+	observer  Observer
+}
+
+// Observer receives bounded operational decision outcomes.
+type Observer interface {
+	OperatorDecision(action, result string)
 }
 
 // Options assembles the transport-independent decision path.
@@ -40,6 +46,7 @@ type Options struct {
 	Validator ActivationValidator
 	Broker    string
 	Audit     audit.Recorder
+	Observer  Observer
 }
 
 // Result is a committed revision-bound decision and its export diagnostic.
@@ -52,7 +59,7 @@ func New(options Options) (*Service, error) {
 	if options.Store == nil {
 		return nil, errors.New("grant store is required")
 	}
-	return &Service{store: options.Store, validator: options.Validator, broker: options.Broker, audit: options.Audit}, nil
+	return &Service{store: options.Store, validator: options.Validator, broker: options.Broker, audit: options.Audit, observer: options.Observer}, nil
 }
 
 // Decide applies one revision-bound Operator V1 decision.
@@ -76,6 +83,7 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 		auditCurrent = auditPrevious
 	}
 	auditErr := s.record(auditPrevious, auditCurrent, string(action), actor, command.OnBehalfOf, "revision", result.EventCursor, result.Replay, command.ExpectedRevision, constraints, decisionErr)
+	s.observe(string(action), decisionErr, result.Replay)
 	return Result{OperatorDecisionResult: result, AuditExportFailed: auditErr != nil}, decisionErr
 }
 
@@ -104,6 +112,7 @@ func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref
 	result, err := s.store.ApproveWithNotificationValidated(ctx, id, token, actor, ref, s.validate)
 	previous, current := s.tokenAuditGrants(id, result)
 	_ = s.record(previous, current, string(grants.ActionApprove), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
+	s.observe(string(grants.ActionApprove), err, false)
 	if err != nil && !result.Changed {
 		return grants.Grant{}, err
 	}
@@ -115,10 +124,24 @@ func (s *Service) DenyToken(ctx context.Context, id, token, actor string, ref no
 	result, err := s.store.DenyWithNotificationResult(ctx, id, token, actor, ref)
 	previous, current := s.tokenAuditGrants(id, result)
 	_ = s.record(previous, current, string(grants.ActionDeny), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
+	s.observe(string(grants.ActionDeny), err, false)
 	if err != nil && !result.Changed {
 		return grants.Grant{}, err
 	}
 	return result.Grant, err
+}
+
+func (s *Service) observe(action string, err error, replay bool) {
+	if s.observer == nil {
+		return
+	}
+	result := "committed"
+	if err != nil {
+		result = "rejected"
+	} else if replay {
+		result = "replayed"
+	}
+	s.observer.OperatorDecision(action, result)
 }
 
 func (s *Service) tokenAuditGrants(id string, result grants.TokenDecisionResult) (grants.Grant, grants.Grant) {

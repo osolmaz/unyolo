@@ -2,6 +2,7 @@ package opcatalog
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -94,6 +95,25 @@ func TestGeneratedCapabilityJSONMatchesCatalog(t *testing.T) {
 	}
 	if !bytes.Equal(bytes.TrimSpace(data), bytes.TrimSpace(raw)) {
 		t.Fatal("generated capability JSON is stale")
+	}
+}
+
+func TestEveryGitHubOperationHasReviewedDefaultPolicyEffect(t *testing.T) {
+	counts := map[capability.DefaultPolicyEffect]int{}
+	for _, descriptor := range MustAll() {
+		counts[descriptor.DefaultPolicyEffect]++
+		if (!descriptor.AgentFacing || descriptor.CredentialOutputKind != nil) && descriptor.DefaultPolicyEffect != capability.DefaultEffectDeny {
+			t.Fatalf("non-agent or credential-output operation %q is not denied", descriptor.Name)
+		}
+		if descriptor.DefaultPolicyEffect == capability.DefaultEffectAllow && (descriptor.Risk != capability.RiskLow || descriptor.ExplicitOnly) {
+			t.Fatalf("unsafe operation %q is allowed by default", descriptor.Name)
+		}
+	}
+	want := map[capability.DefaultPolicyEffect]int{
+		capability.DefaultEffectAllow: 611, capability.DefaultEffectRequest: 514, capability.DefaultEffectDeny: 311,
+	}
+	if !maps.Equal(counts, want) {
+		t.Fatalf("default policy counts = %v, want %v", counts, want)
 	}
 }
 

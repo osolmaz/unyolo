@@ -29,18 +29,34 @@ func (a *API) BranchProtected(ctx context.Context, owner, repo, branch string) (
 		return false, errors.New("GitHub API client is unavailable")
 	}
 	rules, _, rulesErr := a.client.Repositories.ListRulesForBranch(ctx, owner, repo, branch, &github.ListOptions{PerPage: 100})
-	if rulesErr == nil && rules != nil && !reflect.ValueOf(*rules).IsZero() {
+	if branchRulesProtected(rules, rulesErr) {
 		return true, nil
 	}
 	_, _, protectionErr := a.client.Repositories.GetBranchProtection(ctx, owner, repo, branch)
 	if protectionErr == nil {
 		return true, nil
 	}
-	if rulesErr != nil && !IsNotFound(classifyAPIError(rulesErr)) {
-		return false, classifyAPIError(rulesErr)
+	return classifyBranchProtectionErrors(rulesErr, protectionErr)
+}
+
+func branchRulesProtected(rules *github.BranchRules, err error) bool {
+	return err == nil && rules != nil && !reflect.ValueOf(*rules).IsZero()
+}
+
+func classifyBranchProtectionErrors(rulesErr, protectionErr error) (bool, error) {
+	if err := notFoundOrClassified(rulesErr); err != nil {
+		return false, err
 	}
-	if !IsNotFound(classifyAPIError(protectionErr)) {
-		return false, classifyAPIError(protectionErr)
+	if err := notFoundOrClassified(protectionErr); err != nil {
+		return false, err
 	}
 	return false, nil
+}
+
+func notFoundOrClassified(err error) error {
+	classified := classifyAPIError(err)
+	if IsNotFound(classified) {
+		return nil
+	}
+	return classified
 }

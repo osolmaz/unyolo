@@ -12,9 +12,9 @@ BrokerKit versus broker boundary.
 {
   "rules": [
     {
-      "id": "bob-can-run-restart",
+      "id": "agent-a-can-run-restart",
       "effect": "allow",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["exec.command"],
       "targets": [{"kind": "user", "name": "deploy"}],
       "attrs": {

@@ -166,53 +166,85 @@ func renderBoundPath(template string, fixed map[string]any, raw json.RawMessage)
 func scalarPathValue(value any) (string, bool) {
 	switch value := value.(type) {
 	case string:
-		valid := value != "" && value != "." && value != ".." &&
-			!strings.ContainsAny(value, "/\\\x00")
-		return value, valid
+		return value, validScalarPathString(value)
 	case float64:
-		if value < 0 || value != float64(int64(value)) {
-			return "", false
-		}
-		return fmt.Sprintf("%d", int64(value)), true
+		return scalarPathNumber(value)
 	default:
 		return "", false
 	}
 }
 
-//nolint:cyclop // Binding projections are explicit and tracked by the exact HF CRAP baseline.
+func validScalarPathString(value string) bool {
+	return value != "" &&
+		value != "." &&
+		value != ".." &&
+		!strings.ContainsAny(value, "/\\\x00")
+}
+
+func scalarPathNumber(value float64) (string, bool) {
+	if value < 0 || value != float64(int64(value)) {
+		return "", false
+	}
+	return fmt.Sprintf("%d", int64(value)), true
+}
+
 func boundBody(binding opbinding.Binding, targetRaw, raw json.RawMessage) (any, error) {
 	if binding.Transform != "" {
 		return transformBoundBody(binding.Transform, raw)
 	}
-	var arguments map[string]any
-	if err := strictjson.Decode(raw, &arguments, true); err != nil {
-		return nil, errors.New("hubclient: bound arguments are invalid")
+	arguments, err := decodeBoundArguments(raw)
+	if err != nil {
+		return nil, err
 	}
-	if binding.ArgumentProjection != "" {
-		value, found := arguments[binding.ArgumentProjection]
-		if !found {
-			return nil, errors.New("hubclient: projected arguments are missing")
-		}
-		return value, nil
+	if projection := binding.ArgumentProjection; projection != "" {
+		return projectedBoundArgument(arguments, projection)
 	}
-	for key, value := range binding.FixedBody {
-		arguments[key] = value
-	}
-	if len(binding.BodyFromTarget) > 0 {
-		var target map[string]any
-		if err := strictjson.Decode(targetRaw, &target, true); err != nil {
-			return nil, errors.New("hubclient: bound target is invalid")
-		}
-		for bodyKey, targetKey := range binding.BodyFromTarget {
-			value, found := target[targetKey]
-			if !found {
-				return nil, errors.New("hubclient: bound body target field is missing")
-			}
-			arguments[bodyKey] = value
-		}
+	mergeFixedBody(arguments, binding.FixedBody)
+	if err := mergeBodyFromTarget(arguments, binding.BodyFromTarget, targetRaw); err != nil {
+		return nil, err
 	}
 	if len(arguments) == 0 && len(binding.FixedBody) == 0 {
 		return nil, nil
 	}
 	return arguments, nil
+}
+
+func decodeBoundArguments(raw json.RawMessage) (map[string]any, error) {
+	var arguments map[string]any
+	if err := strictjson.Decode(raw, &arguments, true); err != nil {
+		return nil, errors.New("hubclient: bound arguments are invalid")
+	}
+	return arguments, nil
+}
+
+func projectedBoundArgument(arguments map[string]any, projection string) (any, error) {
+	value, found := arguments[projection]
+	if !found {
+		return nil, errors.New("hubclient: projected arguments are missing")
+	}
+	return value, nil
+}
+
+func mergeFixedBody(arguments map[string]any, fixed map[string]any) {
+	for key, value := range fixed {
+		arguments[key] = value
+	}
+}
+
+func mergeBodyFromTarget(arguments map[string]any, projection map[string]string, targetRaw json.RawMessage) error {
+	if len(projection) == 0 {
+		return nil
+	}
+	var target map[string]any
+	if err := strictjson.Decode(targetRaw, &target, true); err != nil {
+		return errors.New("hubclient: bound target is invalid")
+	}
+	for bodyKey, targetKey := range projection {
+		value, found := target[targetKey]
+		if !found {
+			return errors.New("hubclient: bound body target field is missing")
+		}
+		arguments[bodyKey] = value
+	}
+	return nil
 }

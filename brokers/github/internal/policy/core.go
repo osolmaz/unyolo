@@ -101,7 +101,7 @@ func expandOperation(op Operation) ([]Operation, error) {
 	if expanded, ok := expandFamilyOperation(op); ok {
 		return expanded, nil
 	}
-	if _, ok := operationSpecs()[op]; !ok {
+	if _, ok := operationInfos()[op]; !ok {
 		return nil, fmt.Errorf("unsupported operation %q", op)
 	}
 	return []Operation{op}, nil
@@ -195,7 +195,7 @@ func grantPolicyForEffect(effect Effect, operation Operation) *corepolicy.GrantP
 		return nil
 	}
 	mode := corepolicy.GrantModeWindow
-	if operationSpecs()[canonicalOperation(operation)].GrantMode == corepolicy.GrantModeExecution {
+	if operationInfos()[canonicalOperation(operation)].spec.GrantMode == corepolicy.GrantModeExecution {
 		mode = corepolicy.GrantModeExecution
 	}
 	return &corepolicy.GrantPolicy{

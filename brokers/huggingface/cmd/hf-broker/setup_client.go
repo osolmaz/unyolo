@@ -10,7 +10,7 @@ type setupClientOptions = bksetup.ClientOptions
 
 func parseSetupClient(stderr io.Writer, args []string) (setupClientOptions, error) {
 	opts, help, err := bksetup.ParseClient(stderr, args, bksetup.ClientDefaults{
-		BrokerName: "hf-broker", EnvPrefix: "HF_BROKER", ClientName: "agent",
+		BrokerName: "hf-broker", EnvPrefix: "HF_BROKER",
 	})
 	if help {
 		return setupClientOptions{}, exitError{code: 0}

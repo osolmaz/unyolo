@@ -17,13 +17,8 @@ func IsOperation(value string) bool {
 	if descriptor, found := opcatalog.ByName(value); found && descriptor.AgentFacing {
 		return true
 	}
-	switch Operation(value) {
-	case OperationGitFetch, OperationGitPushAdvertise, OperationGitPushBranchCreate, OperationGitPushFastForward,
-		OperationGitPushForce, OperationGitRefDelete, OperationGitTagUpdate, OperationWebhookGitHubReceive:
-		return true
-	default:
-		return false
-	}
+	_, found := protocolOperationSpecs()[Operation(value)]
+	return found
 }
 
 type Effect string
@@ -101,20 +96,25 @@ func LoadFile(file string) (*Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read scope file: %w", err)
 	}
+	return Parse(data)
+}
+
+// Parse strictly decodes and validates one GitHub scope policy.
+func Parse(data []byte) (*Policy, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var raw scopeFile
 	if err := decoder.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("parse scope file: %w", err)
+		return nil, fmt.Errorf("parse scope policy: %w", err)
 	}
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err == nil {
-		return nil, errors.New("parse scope file: trailing json data")
+		return nil, errors.New("parse scope policy: trailing json data")
 	} else if !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("parse scope file: %w", err)
+		return nil, fmt.Errorf("parse scope policy: %w", err)
 	}
 	if raw.Rules == nil {
-		return nil, errors.New("parse scope file: rules is required")
+		return nil, errors.New("parse scope policy: rules is required")
 	}
 	return New(Scope{Rules: *raw.Rules})
 }

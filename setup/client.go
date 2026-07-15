@@ -24,7 +24,7 @@ type ClientOptions struct {
 	BrokerName string
 	EnvPrefix  string
 	ClientName string
-	URL        string
+	Endpoint   string
 	SecretFile string
 	HomeDir    string
 }
@@ -41,7 +41,7 @@ func ParseClient(stderr io.Writer, args []string, defaults ClientDefaults) (opts
 	fs := flag.NewFlagSet(defaults.BrokerName+" setup client", flag.ContinueOnError)
 	fs.SetOutput(&flagOutput)
 	fs.StringVar(&opts.ClientName, "client", opts.ClientName, "broker client name to read from the secrets file")
-	fs.StringVar(&opts.URL, "url", "", "broker base URL")
+	fs.StringVar(&opts.Endpoint, "endpoint", "", "broker client endpoint URI")
 	fs.StringVar(&opts.SecretFile, "secret-file", "", "file containing broker client secrets")
 	fs.StringVar(&opts.HomeDir, "home-dir", "", "home directory that receives the broker client config")
 	if parseErr := fs.Parse(args); parseErr != nil {
@@ -72,8 +72,8 @@ func (opts ClientOptions) Validate() error {
 	if err := validateClientIdentity(opts); err != nil {
 		return err
 	}
-	if err := clientconfig.ValidateURL(opts.URL); err != nil {
-		return err
+	if err := clientconfig.ValidateEndpoint(opts.Endpoint); err != nil {
+		return fmt.Errorf("--endpoint: %w", err)
 	}
 	return validateClientLocations(opts)
 }
@@ -91,6 +91,9 @@ func validateClientIdentity(opts ClientOptions) error {
 func validateClientLocations(opts ClientOptions) error {
 	if strings.TrimSpace(opts.SecretFile) == "" {
 		return errors.New("--secret-file is required")
+	}
+	if strings.TrimSpace(opts.Endpoint) == "" {
+		return errors.New("--endpoint is required")
 	}
 	if strings.TrimSpace(opts.HomeDir) == "" {
 		return errors.New("--home-dir must not be empty")
@@ -115,13 +118,13 @@ func ConfigureClient(stdout io.Writer, opts ClientOptions) (string, error) {
 	path, err := clientconfig.WriteForHomeOwner(clientconfig.Config{
 		BrokerName: opts.BrokerName,
 		EnvPrefix:  opts.EnvPrefix,
-		URL:        opts.URL,
+		Endpoint:   opts.Endpoint,
 		Secret:     secret,
 		HomeDir:    opts.HomeDir,
 	})
 	if err != nil {
 		return "", err
 	}
-	_, err = fmt.Fprintf(stdout, "%s client config written\n  client: %s\n  file: %s\n  url: %s\n", opts.BrokerName, opts.ClientName, path, opts.URL)
+	_, err = fmt.Fprintf(stdout, "%s client config written\n  client: %s\n  file: %s\n  endpoint: %s\n", opts.BrokerName, opts.ClientName, path, opts.Endpoint)
 	return path, err
 }

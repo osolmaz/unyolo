@@ -40,7 +40,7 @@ func newAppProvider(appID string, privateKey []byte, apiURL *url.URL, client *ht
 }
 
 func (p *appProvider) check(ctx context.Context) error {
-	if p == nil || p.client == nil {
+	if !p.available() {
 		return errors.New("GitHub App credential is unavailable")
 	}
 	_, _, err := p.client.Apps.Get(ctx, "")
@@ -48,21 +48,21 @@ func (p *appProvider) check(ctx context.Context) error {
 }
 
 func (p *appProvider) repositoryInstallation(ctx context.Context, owner, repo string) (*github.Installation, error) {
-	if p == nil || p.client == nil || strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
+	if !p.available() || strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
 		return nil, errors.New("GitHub repository installation lookup is invalid")
 	}
 	installation, _, err := p.client.Apps.GetRepositoryInstallation(ctx, owner, repo)
 	if err != nil {
 		return nil, classifyAPIError(err)
 	}
-	if installation.GetID() <= 0 || !installation.GetSuspendedAt().IsZero() {
+	if !availableInstallation(installation) {
 		return nil, errors.New("GitHub repository installation is unavailable")
 	}
 	return installation, nil
 }
 
 func (p *appProvider) installations(ctx context.Context) ([]*github.Installation, error) {
-	if p == nil || p.client == nil {
+	if !p.available() {
 		return nil, errors.New("GitHub App credential is unavailable")
 	}
 	result := make([]*github.Installation, 0, installationPageSize)
@@ -72,11 +72,7 @@ func (p *appProvider) installations(ctx context.Context) ([]*github.Installation
 		if err != nil {
 			return nil, classifyAPIError(err)
 		}
-		for _, item := range items {
-			if item.GetID() > 0 {
-				result = append(result, item)
-			}
-		}
+		result = appendValidInstallations(result, items)
 		if response == nil || response.NextPage == 0 {
 			return result, nil
 		}
@@ -94,10 +90,35 @@ func (p *appProvider) installationForAccount(ctx context.Context, account string
 	if err != nil {
 		return nil, err
 	}
+	return installationByAccount(installations, account)
+}
+
+func (p *appProvider) available() bool {
+	return p != nil && p.client != nil
+}
+
+func appendValidInstallations(result, items []*github.Installation) []*github.Installation {
+	for _, item := range items {
+		if item.GetID() > 0 {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func installationByAccount(installations []*github.Installation, account string) (*github.Installation, error) {
 	for _, installation := range installations {
-		if strings.EqualFold(installation.GetAccount().GetLogin(), account) && installation.GetID() > 0 && installation.GetSuspendedAt().IsZero() {
+		if installationMatchesAccount(installation, account) {
 			return installation, nil
 		}
 	}
 	return nil, errors.New("GitHub installation is unavailable")
+}
+
+func installationMatchesAccount(installation *github.Installation, account string) bool {
+	return strings.EqualFold(installation.GetAccount().GetLogin(), account) && availableInstallation(installation)
+}
+
+func availableInstallation(installation *github.Installation) bool {
+	return installation.GetID() > 0 && installation.GetSuspendedAt().IsZero()
 }

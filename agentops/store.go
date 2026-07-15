@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
@@ -52,6 +53,15 @@ type Submit struct {
 	Reason         string
 	Presentation   agentv1.Presentation
 	PlanDigest     string
+}
+
+// AdmissionUsage returns durable occupancy without exposing operation contents.
+func (s *Store) AdmissionUsage(ctx context.Context, clientID string) (admission.Usage, error) {
+	usage, err := s.db.OperationUsage(ctx, clientID)
+	return admission.Usage{
+		ClientActive: usage.ClientActive, ClientPending: usage.ClientPending,
+		GlobalActive: usage.GlobalActive, GlobalExecuting: usage.GlobalExecuting,
+	}, err
 }
 
 // NewID allocates an operation identifier for callers that bind an approval

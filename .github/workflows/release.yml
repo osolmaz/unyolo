@@ -13,14 +13,16 @@ permissions:
   attestations: write
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      broker: ${{ steps.component.outputs.broker }}
+      command: ${{ steps.component.outputs.command }}
+      companions: ${{ steps.component.outputs.companions }}
+      directory: ${{ steps.component.outputs.directory }}
+      extra: ${{ steps.component.outputs.extra }}
+      version: ${{ steps.component.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26.5"
-          cache: true
       - name: Select component
         id: component
         shell: bash
@@ -28,6 +30,8 @@ jobs:
           set -euo pipefail
           tag=${GITHUB_REF_NAME}
           version=${tag#*/}
+          companions=""
+          extra=""
           case "$tag" in
             hf-broker/*)
               echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
@@ -43,33 +47,89 @@ jobs:
               echo "broker=sudo-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/sudo" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/sudo-broker" >> "$GITHUB_OUTPUT"
-              echo "extra=--extra-command=sudo-broker-exec=./cmd/sudo-broker-exec" >> "$GITHUB_OUTPUT"
+              extra="--extra-command=sudo-broker-exec=./cmd/sudo-broker-exec"
+              companions="sudo-broker-exec"
               ;;
             *) exit 64 ;;
           esac
+          echo "companions=$companions" >> "$GITHUB_OUTPUT"
+          echo "extra=$extra" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm }
+          - { goos: darwin, goarch: amd64, runner: macos-15-intel }
+          - { goos: darwin, goarch: arm64, runner: macos-latest }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26.5"
+          cache: true
       - name: Build reproducible archives
         shell: bash
         run: |
           set -euo pipefail
           go run ./cmd/brokerkit-release \
-            --broker '${{ steps.component.outputs.broker }}' \
-            --directory '${{ steps.component.outputs.directory }}' \
-            --command '${{ steps.component.outputs.command }}' \
-            --version '${{ steps.component.outputs.version }}' \
+            --broker '${{ needs.prepare.outputs.broker }}' \
+            --directory '${{ needs.prepare.outputs.directory }}' \
+            --command '${{ needs.prepare.outputs.command }}' \
+            --version '${{ needs.prepare.outputs.version }}' \
             --dist "$GITHUB_WORKSPACE/dist" \
-            ${{ steps.component.outputs.extra }}
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            ${{ needs.prepare.outputs.extra }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Generate complete checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ./*.tar.gz | sed 's#  \./#  #' > checksums.txt
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: dist
           format: spdx-json
           output-file: dist/sbom.spdx.json
       - name: Attest release artifacts
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: "dist/*"
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes
+      - name: Verify published release
+        env:
+          BROKER: ${{ needs.prepare.outputs.broker }}
+          REPO: ${{ github.repository }}
+          TAG_PREFIX: ${{ needs.prepare.outputs.broker }}/
+          VERSION: ${{ github.ref_name }}
+          BROKERKIT_VERIFY_ONLY: "true"
+          BROKERKIT_VERIFY_RELEASE_SET: "true"
+          COMPANION_BINARIES: ${{ needs.prepare.outputs.companions }}
+          GH_TOKEN: ${{ github.token }}
+        run: sh installer/install.sh

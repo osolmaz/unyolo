@@ -529,6 +529,46 @@ func TestResolveVerifiesUnboundImmutableTargetIdentity(t *testing.T) {
 	}
 }
 
+func TestTargetIdentityResolverRequiresMatchingGetProjection(t *testing.T) {
+	candidates := opbinding.ByOperation("issue.issues_get")
+	if len(candidates) != 1 {
+		t.Fatalf("issue resolver bindings = %+v", candidates)
+	}
+	resolver := candidates[0]
+	if !isTargetIdentityResolver(resolver, "issue", "/repos/{owner}/{repo}/issues/{issue_number}", []string{"id", "node_id"}) {
+		t.Fatal("reviewed issue get binding was not accepted as an identity resolver")
+	}
+	for name, candidate := range map[string]opbinding.Binding{
+		"wrong method":     withBindingMethod(resolver, http.MethodPost),
+		"wrong projection": withBindingProjection(resolver, []string{"id"}),
+		"wrong path":       withBindingPath(resolver, "/repos/{owner}/{repo}/issues"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if isTargetIdentityResolver(candidate, "issue", "/repos/{owner}/{repo}/issues/{issue_number}", []string{"id", "node_id"}) {
+				t.Fatal("mismatched binding accepted")
+			}
+		})
+	}
+	if isTargetIdentityResolver(resolver, "repo", resolver.PathTemplate, []string{"id"}) {
+		t.Fatal("resolver crossed target kind")
+	}
+}
+
+func withBindingMethod(binding opbinding.Binding, method string) opbinding.Binding {
+	binding.Method = method
+	return binding
+}
+
+func withBindingProjection(binding opbinding.Binding, projection []string) opbinding.Binding {
+	binding.ResponseProjection = projection
+	return binding
+}
+
+func withBindingPath(binding opbinding.Binding, path string) opbinding.Binding {
+	binding.PathTemplate = path
+	return binding
+}
+
 func TestOptionalSealedArgumentsExecuteWithoutPayloadReference(t *testing.T) {
 	adapter := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1:1"), "organization.update_webhook")
 	input, err := adapter.Decode(json.RawMessage(`{"kind":"organization","name":"osolmaz"}`), json.RawMessage(`{"public":{"hook_id":1}}`))

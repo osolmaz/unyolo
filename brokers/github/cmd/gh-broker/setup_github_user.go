@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
 )
 
@@ -37,7 +39,11 @@ func runSetupGitHubUser(ctx context.Context, stdout, stderr io.Writer, args []st
 	if err != nil {
 		return err
 	}
-	return executeGitHubUserSetup(ctx, stdout, opts)
+	lifecycle, err := credentiallifecycle.New(audit.New(stderr), "gh-broker", "local-operator")
+	if err != nil {
+		return err
+	}
+	return executeGitHubUserSetup(ctx, stdout, opts, lifecycle)
 }
 
 func parseGitHubUserSetup(stderr io.Writer, action string, args []string) (githubUserSetupOptions, error) {
@@ -69,17 +75,28 @@ func validateGitHubUserSetup(extraArgs int, opts githubUserSetupOptions) error {
 }
 
 func validateGitHubUserAction(opts githubUserSetupOptions) error {
-	if opts.action == "revoke" && (opts.userID <= 0 || opts.credential != "") {
-		return errors.New("github-user revoke requires --user-id and does not accept --credential-file")
+	if opts.action == "revoke" {
+		return validateGitHubUserRevoke(opts)
 	}
-	if opts.action != "revoke" && (opts.credential == "" || opts.userID != 0) {
-		return errors.New("github-user enroll and rotate require --credential-file and do not accept --user-id")
-	}
-	return nil
+	return validateGitHubUserStoreAction(opts)
 }
 
-func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions) (resultErr error) {
-	manager, err := newGitHubUserSetupManager(opts)
+func validateGitHubUserRevoke(opts githubUserSetupOptions) error {
+	if opts.userID > 0 && opts.credential == "" {
+		return nil
+	}
+	return errors.New("github-user revoke requires --user-id and does not accept --credential-file")
+}
+
+func validateGitHubUserStoreAction(opts githubUserSetupOptions) error {
+	if opts.credential != "" && opts.userID == 0 {
+		return nil
+	}
+	return errors.New("github-user enroll and rotate require --credential-file and do not accept --user-id")
+}
+
+func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUserSetupOptions, lifecycle *credentiallifecycle.Reporter) (resultErr error) {
+	manager, err := newGitHubUserSetupManager(opts, lifecycle)
 	if err != nil {
 		return err
 	}
@@ -98,7 +115,7 @@ func executeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUs
 	return storeGitHubUserSetup(ctx, stdout, opts, manager)
 }
 
-func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager, error) {
+func newGitHubUserSetupManager(opts githubUserSetupOptions, lifecycle *credentiallifecycle.Reporter) (*githubauth.Manager, error) {
 	clientID, err := readProtectedSetupFile(opts.clientID)
 	if err != nil {
 		return nil, fmt.Errorf("read GitHub App client id: %w", err)
@@ -119,7 +136,7 @@ func newGitHubUserSetupManager(opts githubUserSetupOptions) (*githubauth.Manager
 		return nil, err
 	}
 	manager, err := githubauth.New(githubauth.Config{AppClientID: strings.TrimSpace(string(clientID)), AppClientSecret: clientSecret,
-		APIBaseURL: apiURL, WebBaseURL: webURL, Store: store, HTTPClient: &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopUserSetupRedirect}})
+		APIBaseURL: apiURL, WebBaseURL: webURL, Store: store, HTTPClient: &http.Client{Timeout: 30 * time.Second, CheckRedirect: stopUserSetupRedirect}, Lifecycle: lifecycle})
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +183,7 @@ func storeGitHubUserSetup(ctx context.Context, stdout io.Writer, opts githubUser
 }
 
 func readProtectedSetupFile(path string) ([]byte, error) {
-	info, err := os.Lstat(path) // #nosec G703 -- local operator-supplied protected path.
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+	if !protectedSetupFileMode(path) {
 		return nil, errors.New("credential file must be a regular protected file")
 	}
 	file, err := os.Open(path) // #nosec G304,G703 -- local operator-supplied protected path.
@@ -181,6 +197,11 @@ func readProtectedSetupFile(path string) ([]byte, error) {
 		return nil, errors.New("credential file is empty, unreadable, or too large")
 	}
 	return data, nil
+}
+
+func protectedSetupFileMode(path string) bool {
+	info, err := os.Lstat(path) // #nosec G703 -- local operator-supplied protected path.
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 == 0
 }
 
 func clearBytes(value []byte) {

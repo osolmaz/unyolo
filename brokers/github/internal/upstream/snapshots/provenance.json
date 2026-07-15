@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "retrieved_at": "2026-07-14T05:12:00+08:00",
+  "retrieved_at": "2026-07-15T07:34:56+08:00",
   "artifacts": [
     {
       "path": "rest-api-2026-03-10.json",
@@ -25,6 +25,14 @@
       "source_commit": "0e9fa09707cfbd5a88e508a5fc1b35c05bb53297",
       "api_version": "2026-03-10",
       "sha256": "68587f9776a651ea550727c7c16c252e5196e1116b0ef3c8dc16e43df82c9c4d",
+      "license": "CC-BY-4.0",
+      "license_file": "LICENSE.github-docs"
+    },
+    {
+      "path": "rest-api-versions-2026-07-15.yml",
+      "source_url": "https://raw.githubusercontent.com/github/docs/573cdfa82f9cf4e4d56285b0472a6f8212a19d93/data/tables/rest-api-versions.yml",
+      "source_commit": "573cdfa82f9cf4e4d56285b0472a6f8212a19d93",
+      "sha256": "2839a3bae746e25f1a5d94a6065f3832c6113417b6207d2bf37a3143321feda0",
       "license": "CC-BY-4.0",
       "license_file": "LICENSE.github-docs"
     },

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-var targets = [][2]string{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "amd64"}, {"darwin", "arm64"}}
+var supportedTargets = []Target{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "amd64"}, {"darwin", "arm64"}}
 
 var brokerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
@@ -31,9 +31,28 @@ type Options struct {
 	Version       string
 	Dist          string
 	ExtraCommands map[string]string
+	Targets       []Target
 }
 
-// Run builds all supported release assets and checksums.
+// Target identifies one natively built release platform.
+type Target struct {
+	GOOS   string
+	GOARCH string
+}
+
+func (target Target) String() string { return target.GOOS + "/" + target.GOARCH }
+
+// ParseTarget parses one supported release platform.
+func ParseTarget(value string) (Target, error) {
+	goos, goarch, found := strings.Cut(strings.TrimSpace(value), "/")
+	target := Target{GOOS: goos, GOARCH: goarch}
+	if !found || !isSupportedTarget(target) {
+		return Target{}, fmt.Errorf("unsupported release target %q", value)
+	}
+	return target, nil
+}
+
+// Run builds the selected native release assets and their checksums.
 func Run(ctx context.Context, options Options) error {
 	normalized, err := normalizeOptions(options)
 	if err != nil {
@@ -57,13 +76,17 @@ func normalizeOptions(options Options) (Options, error) {
 		return Options{}, err
 	}
 	options.Directory, options.Dist = directory, dist
+	options.Targets, err = normalizedTargets(options.Targets)
+	if err != nil {
+		return Options{}, err
+	}
 	return options, nil
 }
 
 func buildAssets(ctx context.Context, options Options) error {
 	var checksums strings.Builder
-	for _, target := range targets {
-		asset, err := build(ctx, options, target[0], target[1])
+	for _, target := range options.Targets {
+		asset, err := build(ctx, options, target.GOOS, target.GOARCH)
 		if err != nil {
 			return err
 		}
@@ -74,6 +97,33 @@ func buildAssets(ctx context.Context, options Options) error {
 		fmt.Fprintf(&checksums, "%x  %s\n", digest, filepath.Base(asset))
 	}
 	return os.WriteFile(filepath.Join(options.Dist, "checksums.txt"), []byte(checksums.String()), 0o600)
+}
+
+func normalizedTargets(values []Target) ([]Target, error) {
+	if len(values) == 0 {
+		return []Target{{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}}, nil
+	}
+	result := append([]Target(nil), values...)
+	seen := make(map[Target]struct{}, len(result))
+	for _, target := range result {
+		if !isSupportedTarget(target) || target.GOOS != runtime.GOOS || target.GOARCH != runtime.GOARCH {
+			return nil, fmt.Errorf("release target %s requires a matching native runner", target)
+		}
+		if _, exists := seen[target]; exists {
+			return nil, fmt.Errorf("release target %s is duplicated", target)
+		}
+		seen[target] = struct{}{}
+	}
+	return result, nil
+}
+
+func isSupportedTarget(target Target) bool {
+	for _, supported := range supportedTargets {
+		if target == supported {
+			return true
+		}
+	}
+	return false
 }
 
 func safePaths(directory, dist string) (string, string, error) {
@@ -177,7 +227,11 @@ func buildExecutable(ctx context.Context, options Options, command string, binar
 	// #nosec G204 -- the executable and flags are fixed; values come from the release operator.
 	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+options.Version, "-o", binary, command)
 	cmd.Dir = options.Directory
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
+	cgo := "0"
+	if goos == "darwin" {
+		cgo = "1"
+	}
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED="+cgo)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("build %s/%s: %w", goos, goarch, err)

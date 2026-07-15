@@ -1,10 +1,15 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
 description = "Reviewed non-secret protocol and historical test fixtures"
+condition = "AND"
 paths = [
   '''docs/2026-07-11-universal-broker-platform-plan\.md''',
+  '''brokers/github/cmd/gh-broker/operations_test\.go''',
   '''(^|/)internal/httpapi/server_test\.go'''
 ]
 regexTarget = "match"
@@ -13,18 +18,30 @@ regexes = [
   '''0123456789abcdef0123456789abcdef'''
 ]
 
-[[allowlists]]
-description = "Pinned official GitHub OpenAPI snapshot with upstream example credentials"
-paths = [
-  '''brokers/github/internal/upstream/snapshots/rest-api-2026-03-10\.json'''
-]
-
-[[allowlists]]
+[[rules.allowlists]]
 description = "Encrypted sealed-payload test canary"
+condition = "AND"
 paths = [
   '''brokers/github/internal/operations/operations_test\.go'''
 ]
 regexTarget = "match"
 regexes = [
   '''ZW5jcnlwdGVkLWNhbmFyeS12YWx1ZQ=='''
+]
+
+[[rules.allowlists]]
+description = "Synthetic authentication test credentials"
+condition = "AND"
+paths = [
+  '''auth/auth_test\.go'''
+]
+regexTarget = "match"
+regexes = [
+  '''(?:bob|agent)-secret-with-enough-bytes-[0-9]+'''
+]
+
+[[allowlists]]
+description = "Pinned official GitHub OpenAPI snapshot with upstream example credentials"
+paths = [
+  '''brokers/github/internal/upstream/snapshots/rest-api-2026-03-10\.json'''
 ]

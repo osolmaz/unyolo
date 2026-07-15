@@ -128,11 +128,15 @@ func assertRestartRecovery(t *testing.T, fixture Fixture, terminal agentv1.Opera
 
 func newClient(t *testing.T, endpoint Endpoint, token string) *agentclient.Client {
 	t.Helper()
-	client, err := agentclient.New(agentclient.Options{BaseURL: endpoint.BaseURL, Credential: token, HTTPClient: endpoint.HTTPClient})
+	client, err := agentclient.New(agentclient.Options{Endpoint: endpointURI(endpoint.BaseURL), Credential: token, HTTPClient: endpoint.HTTPClient})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return client
+}
+
+func endpointURI(baseURL string) string {
+	return strings.Replace(baseURL, "http://", "tcp://", 1)
 }
 
 func assertDiscovery(t *testing.T, endpoint Endpoint, token string) {

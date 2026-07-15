@@ -12,25 +12,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/admission"
+	"github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/secretfile"
 )
 
 // MinSecretBytes is the minimum accepted client secret length.
-const MinSecretBytes = 32
+const MinSecretBytes = auth.MinimumSecretBytes
 
 // Defaults for optional settings.
 const (
-	DefaultBindAddr          = "127.0.0.1"
-	DefaultPort              = 8080
-	DefaultOperatorBindAddr  = "127.0.0.1"
-	DefaultOperatorPort      = 8081
-	DefaultScopeFile         = "scope.json"
-	DefaultStateDir          = "./state"
 	DefaultMaxPackBytes      = 25 * 1024 * 1024
 	DefaultHFTimeout         = 120 * time.Second
 	DefaultUpstreamHubURL    = "https://huggingface.co"
@@ -53,10 +51,9 @@ type Config struct {
 	HFToken           string
 	Clients           []Client
 	Operators         []Client
-	BindAddr          string
-	Port              int
-	OperatorBindAddr  string
-	OperatorPort      int
+	AgentEndpoint     endpoint.Endpoint
+	OperatorEndpoint  *endpoint.Endpoint
+	Development       bool
 	ScopeFile         string
 	StateDir          string
 	MaxPackBytes      int64
@@ -65,40 +62,167 @@ type Config struct {
 	UpstreamRouterURL string
 	TelegramBotToken  string
 	TelegramChatID    int64
+	Admission         admission.Config
 }
 
 // Load reads and validates configuration from getenv (normally
 // os.Getenv). It reads the secrets file, if configured, from disk.
 func Load(getenv func(string) string) (Config, error) {
+	cfg, err := loadBaseConfig(getenv)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := loadConfigSections(getenv, &cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func loadBaseConfig(getenv func(string) string) (Config, error) {
 	hfToken, err := loadHFToken(getenv)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg := Config{
 		HFToken:           hfToken,
-		BindAddr:          stringOr(brokerEnv(getenv, "BIND_ADDR"), DefaultBindAddr),
-		OperatorBindAddr:  stringOr(brokerEnv(getenv, "OPERATOR_BIND_ADDR"), DefaultOperatorBindAddr),
-		ScopeFile:         stringOr(brokerEnv(getenv, "SCOPE_FILE"), DefaultScopeFile),
-		StateDir:          stringOr(brokerEnv(getenv, "STATE_DIR"), DefaultStateDir),
+		ScopeFile:         brokerEnv(getenv, "SCOPE_FILE"),
+		StateDir:          brokerEnv(getenv, "STATE_DIR"),
 		UpstreamHubURL:    stringOr(brokerEnv(getenv, "UPSTREAM_HUB_URL"), DefaultUpstreamHubURL),
 		UpstreamRouterURL: stringOr(brokerEnv(getenv, "UPSTREAM_ROUTER_URL"), DefaultUpstreamRouterURL),
 	}
 	if cfg.HFToken == "" {
 		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
 	}
+	return cfg, nil
+}
+
+func loadConfigSections(getenv func(string) string, cfg *Config) error {
+	var err error
 	if cfg.Clients, err = loadClients(getenv); err != nil {
-		return Config{}, err
+		return err
 	}
 	if cfg.Operators, err = loadOperators(getenv, cfg.Clients); err != nil {
-		return Config{}, err
+		return err
 	}
-	if err := loadNumeric(getenv, &cfg); err != nil {
-		return Config{}, err
+	if cfg.Admission, err = admission.LoadFile(brokerEnv(getenv, "ADMISSION_CONFIG"), clientNames(cfg.Clients)); err != nil {
+		return fmt.Errorf("%s: %w", brokerEnvName("ADMISSION_CONFIG"), err)
 	}
-	if len(cfg.Operators) > 0 && cfg.Port == cfg.OperatorPort {
-		return Config{}, errors.New("operator and agent listeners must use different ports")
+	if err := loadRuntime(getenv, cfg); err != nil {
+		return err
 	}
-	return cfg, loadTelegram(getenv, &cfg)
+	if err := loadNumeric(getenv, cfg); err != nil {
+		return err
+	}
+	return loadTelegram(getenv, cfg)
+}
+
+func clientNames(clients []Client) []string {
+	names := make([]string, 0, len(clients))
+	for _, client := range clients {
+		names = append(names, client.Name)
+	}
+	return names
+}
+
+func loadRuntime(getenv func(string) string, cfg *Config) error {
+	development, err := parseDevelopment(brokerEnv(getenv, "DEVELOPMENT"))
+	if err != nil {
+		return err
+	}
+	cfg.Development = development
+	allowNetwork, err := parseNetworkExposure(brokerEnv(getenv, "NETWORK_EXPOSURE"))
+	if err != nil {
+		return err
+	}
+	parseOptions := endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: allowNetwork}
+	if err := loadRuntimeEndpoints(getenv, cfg, parseOptions); err != nil {
+		return err
+	}
+	if err := validateRuntimePaths(cfg.ScopeFile, cfg.StateDir, development); err != nil {
+		return err
+	}
+	return validateRuntimeOrigins(cfg.UpstreamHubURL, cfg.UpstreamRouterURL, development)
+}
+
+func loadRuntimeEndpoints(getenv func(string) string, cfg *Config, parseOptions endpoint.ParseOptions) error {
+	var err error
+	cfg.AgentEndpoint, err = parseEndpoint(brokerEnv(getenv, "AGENT_ENDPOINT"), "AGENT_ENDPOINT", parseOptions)
+	if err != nil {
+		return err
+	}
+	if len(cfg.Operators) > 0 {
+		operatorEndpoint, parseErr := parseEndpoint(brokerEnv(getenv, "OPERATOR_ENDPOINT"), "OPERATOR_ENDPOINT", parseOptions)
+		if parseErr != nil {
+			return parseErr
+		}
+		if operatorEndpoint.String() == cfg.AgentEndpoint.String() {
+			return errors.New("operator and agent endpoints must differ")
+		}
+		cfg.OperatorEndpoint = &operatorEndpoint
+	}
+	return nil
+}
+
+func validateRuntimeOrigins(upstreamHubURL, upstreamRouterURL string, development bool) error {
+	if err := endpoint.ValidateHTTPOrigin(upstreamHubURL, development); err != nil {
+		return fmt.Errorf("%s: %w", brokerEnvName("UPSTREAM_HUB_URL"), err)
+	}
+	if err := endpoint.ValidateHTTPOrigin(upstreamRouterURL, development); err != nil {
+		return fmt.Errorf("%s: %w", brokerEnvName("UPSTREAM_ROUTER_URL"), err)
+	}
+	return nil
+}
+
+func parseNetworkExposure(raw string) (bool, error) {
+	if raw == "" {
+		return false, nil
+	}
+	if raw == "allow" {
+		return true, nil
+	}
+	return false, fmt.Errorf("%s: expected allow when set", brokerEnvName("NETWORK_EXPOSURE"))
+}
+
+func parseDevelopment(raw string) (bool, error) {
+	switch raw {
+	case "":
+		return false, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s: expected true or false", brokerEnvName("DEVELOPMENT"))
+	}
+}
+
+func parseEndpoint(raw, suffix string, options endpoint.ParseOptions) (endpoint.Endpoint, error) {
+	if raw == "" {
+		return endpoint.Endpoint{}, fmt.Errorf("%s is required", brokerEnvName(suffix))
+	}
+	value, err := endpoint.Parse(raw, options)
+	if err != nil {
+		return endpoint.Endpoint{}, fmt.Errorf("%s: %w", brokerEnvName(suffix), err)
+	}
+	return value, nil
+}
+
+func validateRuntimePaths(scopeFile, stateDir string, development bool) error {
+	if missingRuntimePath(scopeFile, stateDir) {
+		return fmt.Errorf("%s and %s are required", brokerEnvName("SCOPE_FILE"), brokerEnvName("STATE_DIR"))
+	}
+	if productionRuntimePathIsRelative(scopeFile, stateDir, development) {
+		return errors.New("production policy and state paths must be absolute")
+	}
+	return nil
+}
+
+func missingRuntimePath(scopeFile, stateDir string) bool {
+	return scopeFile == "" || stateDir == ""
+}
+
+func productionRuntimePathIsRelative(scopeFile, stateDir string, development bool) bool {
+	return !development && (!filepath.IsAbs(scopeFile) || !filepath.IsAbs(stateDir))
 }
 
 func loadHFToken(getenv func(string) string) (string, error) {
@@ -119,10 +243,6 @@ func secretPathReadFailure(err error) string {
 }
 
 func loadNumeric(getenv func(string) string, cfg *Config) error {
-	port, operatorPort, err := loadPorts(getenv)
-	if err != nil {
-		return err
-	}
 	maxPack, err := intOr(brokerEnv(getenv, "MAX_PACK_BYTES"), DefaultMaxPackBytes)
 	if err != nil {
 		return fmt.Errorf("%s: %w", brokerEnvName("MAX_PACK_BYTES"), err)
@@ -131,32 +251,12 @@ func loadNumeric(getenv func(string) string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", brokerEnvName("HF_TIMEOUT"), err)
 	}
-	cfg.Port = port
-	cfg.OperatorPort = operatorPort
 	cfg.MaxPackBytes = int64(maxPack)
 	cfg.HFTimeout = DefaultHFTimeout
 	if timeoutSeconds > 0 {
 		cfg.HFTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 	return nil
-}
-
-func loadPorts(getenv func(string) string) (int, int, error) {
-	port, err := intOr(brokerEnv(getenv, "PORT"), DefaultPort)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%s: %w", brokerEnvName("PORT"), err)
-	}
-	operatorPort, err := intOr(brokerEnv(getenv, "OPERATOR_PORT"), DefaultOperatorPort)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%s: %w", brokerEnvName("OPERATOR_PORT"), err)
-	}
-	if port < 1 || port > 65535 {
-		return 0, 0, fmt.Errorf("%s: expected a port between 1 and 65535", brokerEnvName("PORT"))
-	}
-	if operatorPort < 1 || operatorPort > 65535 {
-		return 0, 0, fmt.Errorf("%s: expected a port between 1 and 65535", brokerEnvName("OPERATOR_PORT"))
-	}
-	return port, operatorPort, nil
 }
 
 func loadTelegram(getenv func(string) string, cfg *Config) error {

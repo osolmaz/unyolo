@@ -109,7 +109,7 @@ func runHFMCPSProcess(t *testing.T, serverURL, input string) string {
 		t.Fatal(err)
 	}
 	command := exec.Command(executable, "-test.run=^TestHFMCPSHelperProcess$")
-	command.Env = append(os.Environ(), mcpHelperEnvironment+"=1", "HF_BROKER_URL="+serverURL, "HF_BROKER_SHARED_SECRET="+agentClientTestSecret)
+	command.Env = append(os.Environ(), mcpHelperEnvironment+"=1", "HF_BROKER_AGENT_ENDPOINT="+testTCPEndpoint(serverURL), "HF_BROKER_SHARED_SECRET="+agentClientTestSecret)
 	command.Stdin = strings.NewReader(input + "\n")
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr

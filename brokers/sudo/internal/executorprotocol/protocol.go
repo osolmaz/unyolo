@@ -130,18 +130,38 @@ func writeAll(writer io.Writer, data []byte) error {
 
 func readFrame(reader io.Reader, out any) error {
 	buffered := bufio.NewReader(reader)
-	var header [4]byte
-	if _, err := io.ReadFull(buffered, header[:]); err != nil {
+	size, err := readFrameSize(buffered)
+	if err != nil {
 		return err
+	}
+	data, err := readFrameData(buffered, size)
+	if err != nil {
+		return err
+	}
+	return decodeFrameData(data, out)
+}
+
+func readFrameSize(reader io.Reader) (uint32, error) {
+	var header [4]byte
+	if _, err := io.ReadFull(reader, header[:]); err != nil {
+		return 0, err
 	}
 	size := binary.BigEndian.Uint32(header[:])
 	if size == 0 || size > MaxFrameSize {
-		return errors.New("executor protocol frame size is invalid")
+		return 0, errors.New("executor protocol frame size is invalid")
 	}
+	return size, nil
+}
+
+func readFrameData(reader io.Reader, size uint32) ([]byte, error) {
 	data := make([]byte, size)
-	if _, err := io.ReadFull(buffered, data); err != nil {
-		return err
+	if _, err := io.ReadFull(reader, data); err != nil {
+		return nil, err
 	}
+	return data, nil
+}
+
+func decodeFrameData(data []byte, out any) error {
 	if err := strictjson.RejectDuplicateKeys(data); err != nil {
 		return err
 	}
@@ -162,15 +182,26 @@ func validateRequest(request Request) error {
 	}
 	switch request.Type {
 	case TypePing:
-		if request.ExecutionID != "" || len(request.Plan) > 0 || request.PlanDigest != "" || request.GrantID != "" || request.ReservationID != "" || !request.ExpiresAt.IsZero() {
-			return errors.New("executor ping contains execution fields")
-		}
+		return validatePingRequest(request)
 	case TypeExecute:
-		if !boundedID(request.ExecutionID) || len(request.Plan) == 0 || request.PlanDigest == "" || !boundedID(request.GrantID) || !boundedID(request.ReservationID) || request.ExpiresAt.IsZero() {
-			return errors.New("executor request is incomplete")
-		}
+		return validateExecuteRequest(request)
 	default:
 		return errors.New("executor request type is unsupported")
+	}
+}
+
+func validatePingRequest(request Request) error {
+	if request.ExecutionID != "" || len(request.Plan) > 0 || request.PlanDigest != "" ||
+		request.GrantID != "" || request.ReservationID != "" || !request.ExpiresAt.IsZero() {
+		return errors.New("executor ping contains execution fields")
+	}
+	return nil
+}
+
+func validateExecuteRequest(request Request) error {
+	if !boundedID(request.ExecutionID) || len(request.Plan) == 0 || request.PlanDigest == "" ||
+		!boundedID(request.GrantID) || !boundedID(request.ReservationID) || request.ExpiresAt.IsZero() {
+		return errors.New("executor request is incomplete")
 	}
 	return nil
 }
@@ -181,22 +212,36 @@ func validateResponse(response Response) error {
 	}
 	switch response.Status {
 	case StatusReady:
-		if response.ExecutionID != "" || response.Outcome != nil || response.ErrorCode != "" {
-			return errors.New("executor ready response contains result fields")
-		}
+		return validateReadyResponse(response)
 	case StatusCompleted:
-		if !boundedID(response.ExecutionID) || response.Outcome == nil || response.ErrorCode != "" || !validOutcome(*response.Outcome) {
-			return errors.New("executor completed response is invalid")
-		}
+		return validateCompletedResponse(response)
 	case StatusRejected, StatusAmbiguous:
-		if response.Status == StatusAmbiguous && !boundedID(response.ExecutionID) {
-			return errors.New("executor ambiguous response is invalid")
-		}
-		if response.Outcome != nil || !safeCode(response.ErrorCode) {
-			return errors.New("executor error response is invalid")
-		}
+		return validateErrorResponse(response)
 	default:
 		return errors.New("executor response status is unsupported")
+	}
+}
+
+func validateReadyResponse(response Response) error {
+	if response.ExecutionID != "" || response.Outcome != nil || response.ErrorCode != "" {
+		return errors.New("executor ready response contains result fields")
+	}
+	return nil
+}
+
+func validateCompletedResponse(response Response) error {
+	if !boundedID(response.ExecutionID) || response.Outcome == nil || response.ErrorCode != "" || !validOutcome(*response.Outcome) {
+		return errors.New("executor completed response is invalid")
+	}
+	return nil
+}
+
+func validateErrorResponse(response Response) error {
+	if response.Status == StatusAmbiguous && !boundedID(response.ExecutionID) {
+		return errors.New("executor ambiguous response is invalid")
+	}
+	if response.Outcome != nil || !safeCode(response.ErrorCode) {
+		return errors.New("executor error response is invalid")
 	}
 	return nil
 }
@@ -222,11 +267,15 @@ func safeCode(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '_' {
+		if !safeCodeCharacter(character) {
 			return false
 		}
 	}
 	return true
+}
+
+func safeCodeCharacter(character rune) bool {
+	return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '_'
 }
 
 func NewRejected(code string) Response {

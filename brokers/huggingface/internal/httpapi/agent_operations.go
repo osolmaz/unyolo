@@ -30,6 +30,7 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 	return operationruntime.New(operations.RuntimeOptions{
 		Broker:        "hf-broker",
 		Operations:    s.operations,
+		Admission:     s.admission,
 		Registry:      s.operationRegistry.Registry,
 		Authorization: s.authorization,
 		Grants:        s.grants,
@@ -59,6 +60,8 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		OperatorConfigured:  s.operatorConfigured,
 		Now:                 s.utcNow,
 		AuthorizationGrace:  operationAuthorizationGrace,
+		Observer:            s.control.Metrics,
+		Diagnostics:         s.control.Diagnostics,
 	})
 }
 
@@ -67,15 +70,9 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 	if !found {
 		return bkauthorization.GrantIntent{}, errors.New("operation adapter is unavailable")
 	}
-	duration := time.Duration(descriptor.Descriptor().ApprovalTTLSeconds) * time.Second
-	pending := time.Duration(descriptor.Descriptor().RequestTTLSeconds) * time.Second
-	if !preparation.Direct {
-		bounds := preparation.Decision.GrantPolicy
-		if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution {
-			return bkauthorization.GrantIntent{}, errors.New("operation requires execution approval")
-		}
-		duration = min(time.Duration(bounds.DefaultMinutes)*time.Minute, duration)
-		pending = min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending)
+	duration, pending, err := preparationBounds(preparation, descriptor)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
@@ -102,6 +99,21 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 	return bkauthorization.GrantIntent{Mode: corepolicy.GrantModeExecution, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
 }
 
+func preparationBounds(preparation operations.Preparation, descriptor operations.Adapter) (time.Duration, time.Duration, error) {
+	duration := time.Duration(descriptor.Descriptor().ApprovalTTLSeconds) * time.Second
+	pending := time.Duration(descriptor.Descriptor().RequestTTLSeconds) * time.Second
+	if preparation.Direct {
+		return duration, pending, nil
+	}
+	bounds := preparation.Decision.GrantPolicy
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution {
+		return 0, 0, errors.New("operation requires execution approval")
+	}
+	duration = min(time.Duration(bounds.DefaultMinutes)*time.Minute, duration)
+	pending = min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending)
+	return duration, pending, nil
+}
+
 func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
 	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
 	return hfplan.Prepare(hfplan.Plan{
@@ -115,24 +127,16 @@ func prepareAdapterPlan(provider operations.Plan, request grants.Request, presen
 	})
 }
 
-//nolint:cyclop // Immutable HF plan binding checks remain explicit at the provider boundary.
 func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations.Adapter) (operations.Plan, error) {
 	envelope, err := s.plans.Get(operation.PlanDigest)
-	if err != nil || envelope.Operation != operation.Operation || envelope.OperationRevision != adapter.Descriptor().OperationRevision ||
-		envelope.ClientID != operation.ClientID || envelope.ClientRequestID != operation.ID || envelope.ExpiresAt.Before(s.utcNow()) {
+	if err != nil || !s.runtimePlanEnvelopeMatches(envelope, operation, adapter) {
 		return operations.Plan{}, errors.New("operation plan binding is invalid")
 	}
 	plan := operations.Plan{Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
 		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Presentation: envelope.Presentation,
 		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs}}
-	input, err := adapter.Decode(plan.Target, plan.Arguments)
-	if err != nil || !operationruntime.EqualJSONObject(input.Target, plan.Target) || !operationruntime.EqualJSONObject(input.Arguments, plan.Arguments) {
-		return operations.Plan{}, errors.New("operation plan payload is invalid")
-	}
-	if bound, ok := adapter.(operations.ClientBoundAdapter); ok {
-		if err := bound.ValidateClient(input, operation.ClientID, operation.IdempotencyKey); err != nil {
-			return operations.Plan{}, errors.New("operation client binding is invalid")
-		}
+	if err := validateRuntimePlanPayload(plan, operation, adapter); err != nil {
+		return operations.Plan{}, err
 	}
 	plan.Policy = adapter.Authorize(plan)
 	plan.Policy.Client = operation.ClientID
@@ -140,6 +144,31 @@ func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations
 		return operations.Plan{}, errors.New("operation policy metadata is invalid")
 	}
 	return plan, nil
+}
+
+func (s *Server) runtimePlanEnvelopeMatches(envelope hfplan.Plan, operation agentv1.Operation, adapter operations.Adapter) bool {
+	return envelope.Operation == operation.Operation &&
+		envelope.OperationRevision == adapter.Descriptor().OperationRevision &&
+		envelope.ClientID == operation.ClientID &&
+		envelope.ClientRequestID == operation.ID &&
+		!envelope.ExpiresAt.Before(s.utcNow())
+}
+
+func validateRuntimePlanPayload(plan operations.Plan, operation agentv1.Operation, adapter operations.Adapter) error {
+	input, err := adapter.Decode(plan.Target, plan.Arguments)
+	if err != nil || !operationruntime.EqualJSONObject(input.Target, plan.Target) || !operationruntime.EqualJSONObject(input.Arguments, plan.Arguments) {
+		return errors.New("operation plan payload is invalid")
+	}
+	return validateRuntimePlanClient(input, operation, adapter)
+}
+
+func validateRuntimePlanClient(input operations.Input, operation agentv1.Operation, adapter operations.Adapter) error {
+	if bound, ok := adapter.(operations.ClientBoundAdapter); ok {
+		if err := bound.ValidateClient(input, operation.ClientID, operation.IdempotencyKey); err != nil {
+			return errors.New("operation client binding is invalid")
+		}
+	}
+	return nil
 }
 
 func (s *Server) recordOperationPolicyRefusal(operation agentv1.Operation, plan operations.Plan, decision corepolicy.Decision, code string) {

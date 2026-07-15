@@ -1,12 +1,14 @@
 package conformance
 
 import (
+	"io"
 	"net"
 	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
@@ -21,6 +23,7 @@ func TestRunOperatorV1(t *testing.T) {
 	runtime, err := controlplane.New(controlplane.Options{
 		Broker: "test-broker", Store: store,
 		ClientSecrets: map[string]string{"bob": clientToken}, OperatorSecrets: map[string]string{"onur": operatorToken},
+		Audit: audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +42,7 @@ func TestOperatorV1MountsOnUnixSocket(t *testing.T) {
 		Broker: "unix-test", Store: store,
 		ClientSecrets:   map[string]string{"bob": "client-secret-abcdefghijklmnopqrstuvwxyz"},
 		OperatorSecrets: map[string]string{"onur": operatorToken},
+		Audit:           audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +58,7 @@ func TestOperatorV1MountsOnUnixSocket(t *testing.T) {
 		_ = listener.Close()
 	})
 	go func() { _ = server.Serve(listener) }()
-	client, err := operatorclient.NewUnix(socketPath, operatorToken)
+	client, err := operatorclient.New("unix://"+socketPath, operatorToken, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +74,7 @@ func TestRunControlPlaneRejectsUnknownClientCredential(t *testing.T) {
 		Broker: "test-broker", Store: store,
 		ClientSecrets:   map[string]string{"bob": "client-secret-abcdefghijklmnopqrstuvwxyz"},
 		OperatorSecrets: map[string]string{"onur": "operator-secret-abcdefghijklmnopqrstuvwxyz"},
+		Audit:           audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)

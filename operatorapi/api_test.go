@@ -29,16 +29,20 @@ func TestOperatorV1DiscoveryAuthAndLegacyCutover(t *testing.T) {
 	if descriptor, err := client.Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
 		t.Fatalf("Discover() = %+v, %v", descriptor, err)
 	}
-	if err := (&operatorclient.Client{BaseURL: server.URL(), HTTPClient: client.HTTPClient}).Health(t.Context()); err != nil {
+	unauthenticated, err := operatorclient.New(strings.Replace(server.URL(), "http://", "tcp://", 1), "", server.HTTPClient())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unauthenticated.Health(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/.well-known/brokerkit-operator", "/api/operator/v1/requests"} {
-		response := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+path, "", "")
+		response := rawRequest(t, server.HTTPClient(), http.MethodGet, server.URL()+path, "", "")
 		if response.status != http.StatusUnauthorized || response.cacheControl != "no-store" {
 			t.Fatalf("%s = %+v", path, response)
 		}
 	}
-	legacy := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+"/api/grants", testOperatorSecret, "")
+	legacy := rawRequest(t, server.HTTPClient(), http.MethodGet, server.URL()+"/api/grants", testOperatorSecret, "")
 	if legacy.status != http.StatusNotFound {
 		t.Fatalf("legacy route = %+v", legacy)
 	}
@@ -101,12 +105,12 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	rejected := errors.New("provider plan invalid")
 	store, server, client := newOperatorServer(t, decision.ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error { return rejected }))
 	grant := requestGrant(t, store, "strict")
-	unknown := rawRequest(t, client.HTTPClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret,
+	unknown := rawRequest(t, server.HTTPClient(), http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret,
 		`{"expected_revision":1,"idempotency_key":"one","operation":"replacement"}`)
 	if unknown.status != http.StatusBadRequest || !strings.Contains(unknown.body, "invalid_request") {
 		t.Fatalf("unknown input = %+v", unknown)
 	}
-	cancel := rawRequest(t, client.HTTPClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/cancel", testOperatorSecret,
+	cancel := rawRequest(t, server.HTTPClient(), http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/cancel", testOperatorSecret,
 		`{"expected_revision":1,"idempotency_key":"cancel"}`)
 	if cancel.status != http.StatusNotFound || !strings.Contains(cancel.body, "not_found") {
 		t.Fatalf("operator cancel = %+v", cancel)
@@ -116,16 +120,16 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 		"zero duration":           `{"expected_revision":1,"idempotency_key":"zero-duration","constraints":{"duration_seconds":0}}`,
 		"zero uses":               `{"expected_revision":1,"idempotency_key":"zero-uses","constraints":{"max_uses":0}}`,
 	} {
-		response := rawRequest(t, client.HTTPClient, http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret, body)
+		response := rawRequest(t, server.HTTPClient(), http.MethodPost, server.URL()+"/api/operator/v1/requests/"+grant.ID+"/approve", testOperatorSecret, body)
 		if response.status != http.StatusBadRequest || !strings.Contains(response.body, "invalid_request") {
 			t.Fatalf("%s = %+v", name, response)
 		}
 	}
-	duplicate := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+"/api/operator/v1/requests?status=pending&status=active", testOperatorSecret, "")
+	duplicate := rawRequest(t, server.HTTPClient(), http.MethodGet, server.URL()+"/api/operator/v1/requests?status=pending&status=active", testOperatorSecret, "")
 	if duplicate.status != http.StatusBadRequest || !strings.Contains(duplicate.body, "invalid_request") {
 		t.Fatalf("duplicate query = %+v", duplicate)
 	}
-	emptyTargetField := rawRequest(t, client.HTTPClient, http.MethodGet, server.URL()+"/api/operator/v1/requests?target.=value", testOperatorSecret, "")
+	emptyTargetField := rawRequest(t, server.HTTPClient(), http.MethodGet, server.URL()+"/api/operator/v1/requests?target.=value", testOperatorSecret, "")
 	if emptyTargetField.status != http.StatusBadRequest || !strings.Contains(emptyTargetField.body, "invalid_request") {
 		t.Fatalf("empty target field = %+v", emptyTargetField)
 	}
@@ -144,7 +148,7 @@ func TestOperatorV1ReadinessChecksDurableState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
 	store := grants.New(path, grants.Options{})
 	server, err := operatorfake.New(operatorfake.Options{
-		Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret},
+		Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret}, Audit: audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -210,6 +214,7 @@ func newOperatorServer(t *testing.T, validator decision.ActivationValidator) (*g
 	store := grants.New(t.TempDir()+"/grants.json", grants.Options{})
 	server, err := operatorfake.New(operatorfake.Options{Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret},
 		ClientSecrets: map[string]string{"bob": "client-secret-with-enough-entropy"}, ActivationValidator: validator,
+		Audit: audit.New(io.Discard),
 		Presenter: operatorinbox.PresenterFunc(func(_ context.Context, grant grants.Grant) (operatorinbox.Presentation, error) {
 			return operatorinbox.Presentation{Risk: operatorinbox.RiskHigh, Title: "Protected write", Target: grant.Target.Kind,
 				Fields: []operatorinbox.DisplayField{{Label: "Repository", Value: "demo"}}, PlanHash: "private-plan-hash"}, nil

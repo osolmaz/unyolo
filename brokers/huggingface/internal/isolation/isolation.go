@@ -35,6 +35,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	runSocketChecks(&report, accessAgent, opts.Socket)
 	runActiveProbeChecks(ctx, &report, accessAgent, opts)
 	report.Status = bkdoctor.OverallStatus(report.Checks)
+	report.Credentials = credentialStatuses(opts)
 	return report, nil
 }
 

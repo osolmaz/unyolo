@@ -179,6 +179,42 @@ func (q *Queries) GetOperationForClient(ctx context.Context, arg GetOperationFor
 	return i, err
 }
 
+const getOperationUsage = `-- name: GetOperationUsage :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN client_id = ?1 AND state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_active,
+    CAST((SELECT COUNT(*) FROM grants WHERE client = ?1 AND status = 'pending') AS INTEGER) AS client_pending,
+    CAST(COALESCE(SUM(CASE WHEN state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_active,
+    CAST(COALESCE(SUM(CASE WHEN state = 'executing' THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_executing
+FROM operations
+`
+
+type GetOperationUsageRow struct {
+	ClientActive    int64
+	ClientPending   int64
+	GlobalActive    int64
+	GlobalExecuting int64
+}
+
+// GetOperationUsage
+//
+//	SELECT
+//	    CAST(COALESCE(SUM(CASE WHEN client_id = ?1 AND state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS client_active,
+//	    CAST((SELECT COUNT(*) FROM grants WHERE client = ?1 AND status = 'pending') AS INTEGER) AS client_pending,
+//	    CAST(COALESCE(SUM(CASE WHEN state NOT IN ('succeeded','failed','denied','expired','canceled') THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_active,
+//	    CAST(COALESCE(SUM(CASE WHEN state = 'executing' THEN 1 ELSE 0 END), 0) AS INTEGER) AS global_executing
+//	FROM operations
+func (q *Queries) GetOperationUsage(ctx context.Context, clientID string) (GetOperationUsageRow, error) {
+	row := q.db.QueryRowContext(ctx, getOperationUsage, clientID)
+	var i GetOperationUsageRow
+	err := row.Scan(
+		&i.ClientActive,
+		&i.ClientPending,
+		&i.GlobalActive,
+		&i.GlobalExecuting,
+	)
+	return i, err
+}
+
 const getPlan = `-- name: GetPlan :one
 SELECT digest, schema_name, canonical, created_at
 FROM plans
@@ -847,6 +883,44 @@ func (q *Queries) ListUnfinishedOperations(ctx context.Context) ([]Operation, er
 		return nil, err
 	}
 	return items, nil
+}
+
+const operationalStats = `-- name: OperationalStats :one
+SELECT
+    CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
+    CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
+    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
+    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
+    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications
+`
+
+type OperationalStatsRow struct {
+	PendingApprovals        int64
+	QueuedOperations        int64
+	ExecutingOperations     int64
+	PendingNotifications    int64
+	UnresolvedNotifications int64
+}
+
+// OperationalStats
+//
+//	SELECT
+//	    CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
+//	    CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
+//	    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
+//	    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
+//	    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications
+func (q *Queries) OperationalStats(ctx context.Context) (OperationalStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, operationalStats)
+	var i OperationalStatsRow
+	err := row.Scan(
+		&i.PendingApprovals,
+		&i.QueuedOperations,
+		&i.ExecutingOperations,
+		&i.PendingNotifications,
+		&i.UnresolvedNotifications,
+	)
+	return i, err
 }
 
 const putPlan = `-- name: PutPlan :exec

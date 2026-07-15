@@ -925,6 +925,22 @@ func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestServerCloseStopsOwnedWorkersWithLiveStartContext(t *testing.T) {
+	server := newTestServer(t)
+	server.notifier = &captureNotifier{}
+	server.Start(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not join lifecycle-owned workers")
+	}
+}
+
 func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -1311,6 +1327,27 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 		if response.Code != tc.want {
 			t.Fatalf("%s status = %d, body = %s, want %d", name, response.Code, response.Body.String(), tc.want)
 		}
+	}
+}
+
+func TestGrantStoreHTTPError(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		err        error
+		wantStatus int
+	}{
+		"idempotency conflict": {err: grants.ErrIdempotencyConflict, wantStatus: http.StatusConflict},
+		"capacity":             {err: grants.ErrCapacity, wantStatus: http.StatusTooManyRequests},
+		"validation":           {err: errors.New("invalid grant"), wantStatus: http.StatusBadRequest},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var httpError *echo.HTTPError
+			if err := grantStoreHTTPError(tc.err); !errors.As(err, &httpError) || httpError.Code != tc.wantStatus {
+				t.Fatalf("grantStoreHTTPError() = %#v, want status %d", err, tc.wantStatus)
+			}
+		})
 	}
 }
 

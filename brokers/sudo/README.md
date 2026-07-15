@@ -14,10 +14,12 @@ The runtime has two processes:
 
 ## Install
 
-Install the latest checksummed release on Linux or macOS:
+Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+Sudo Broker release to its exact commit and installs to `$HOME/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/osolmaz/brokerkit/main/brokers/sudo/install.sh | sh
+BROKERKIT_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
 ```
 
 The frontend is installed in the selected binary directory. The helper is
@@ -32,7 +34,11 @@ Start from [catalog.example.json](catalog.example.json) and
 ```sh
 sudo sudo-broker setup systemd \
   --catalog-file ./catalog.json \
-  --policy-file ./policy.json
+  --policy-file ./policy.json \
+  --client agent-a \
+  --operator operator-a \
+  --agent-user agent-a \
+  --operator-user operator-a
 ```
 
 Setup generates independent client and operator secrets, installs a root helper
@@ -44,16 +50,16 @@ Write a client config for an agent account:
 
 ```sh
 sudo sudo-broker setup client \
-  --client bob \
-  --url http://127.0.0.1:8084 \
+  --client agent-a \
+  --endpoint unix:///run/brokerkit/sudo/agent/broker.sock \
   --secret-file /etc/sudo-broker/secrets \
-  --home-dir /home/bob
+  --home-dir /home/agent-a
 ```
 
 Verify host isolation and helper readiness:
 
 ```sh
-sudo sudo-broker doctor host --agent bob
+sudo sudo-broker doctor host --agent agent-a
 ```
 
 ## Use

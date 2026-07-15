@@ -39,3 +39,11 @@ func executePlan(value plan.Plan) error {
 	argv := append([]string{value.Executable}, value.Arguments...)
 	return syscall.Exec(value.Executable, argv, append([]string(nil), value.Environment...))
 }
+
+func inspectExecutableDescriptor(fd int) (executableDescriptorMetadata, error) {
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		return executableDescriptorMetadata{}, err
+	}
+	return executableDescriptorMetadata{ownerUID: stat.Uid, mode: uint32(stat.Mode), regular: stat.Mode&syscall.S_IFMT == syscall.S_IFREG}, nil
+}

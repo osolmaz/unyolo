@@ -51,34 +51,54 @@ func Metadata() (Provenance, error) {
 	return provenance, nil
 }
 
-//nolint:cyclop // Every pinned artifact and license notice is verified in one audit pass.
 func Validate() error {
 	provenance, err := Metadata()
 	if err != nil {
 		return err
 	}
-	if provenance.Version != 1 || len(provenance.Artifacts) != 11 || provenance.RetrievedAt == "" {
+	if !validProvenance(provenance) {
 		return errors.New("GitHub upstream provenance is incomplete")
 	}
 	seen := map[string]bool{}
 	for _, artifact := range provenance.Artifacts {
-		if artifact.Path == "" || artifact.SourceURL == "" || artifact.SHA256 == "" || artifact.License == "" || artifact.LicenseFile == "" || seen[artifact.Path] {
-			return errors.New("GitHub upstream artifact metadata is invalid")
-		}
-		seen[artifact.Path] = true
-		data, err := Read(artifact.Path)
-		if err != nil {
+		if err := validateArtifact(artifact, seen); err != nil {
 			return err
 		}
-		digest := sha256.Sum256(data)
-		if hex.EncodeToString(digest[:]) != artifact.SHA256 {
-			return fmt.Errorf("GitHub upstream snapshot %q digest drifted", artifact.Path)
-		}
-		if _, err := Read(artifact.LicenseFile); err != nil {
-			return fmt.Errorf("GitHub upstream snapshot %q license notice: %w", artifact.Path, err)
-		}
 	}
-	if !seen["rest-api-2026-03-10.json"] || !seen["graphql-introspection-2026-07-14.json"] || !seen["github-app-permissions-2026-03-10.json"] {
+	return validateRequiredArtifacts(seen)
+}
+
+func validProvenance(provenance Provenance) bool {
+	return provenance.Version == 1 && len(provenance.Artifacts) == 12 && provenance.RetrievedAt != ""
+}
+
+func validateArtifact(artifact Artifact, seen map[string]bool) error {
+	if !validArtifactMetadata(artifact, seen) {
+		return errors.New("GitHub upstream artifact metadata is invalid")
+	}
+	seen[artifact.Path] = true
+	data, err := Read(artifact.Path)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != artifact.SHA256 {
+		return fmt.Errorf("GitHub upstream snapshot %q digest drifted", artifact.Path)
+	}
+	if _, err := Read(artifact.LicenseFile); err != nil {
+		return fmt.Errorf("GitHub upstream snapshot %q license notice: %w", artifact.Path, err)
+	}
+	return nil
+}
+
+func validArtifactMetadata(artifact Artifact, seen map[string]bool) bool {
+	return artifact.Path != "" && artifact.SourceURL != "" && artifact.SHA256 != "" &&
+		artifact.License != "" && artifact.LicenseFile != "" && !seen[artifact.Path]
+}
+
+func validateRequiredArtifacts(seen map[string]bool) error {
+	if !seen["rest-api-2026-03-10.json"] || !seen["graphql-introspection-2026-07-14.json"] ||
+		!seen["github-app-permissions-2026-03-10.json"] || !seen["rest-api-versions-2026-07-15.yml"] {
 		return errors.New("required GitHub upstream snapshots are missing")
 	}
 	return nil

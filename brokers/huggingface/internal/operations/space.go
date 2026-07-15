@@ -95,48 +95,49 @@ func (a *spaceAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, e
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
-//nolint:cyclop // Space operation dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *spaceAdapter) decodeArguments(raw json.RawMessage) (any, error) {
+	if strings.Contains(a.descriptor.Name, ".variable.") {
+		return a.decodeVariableArguments(raw)
+	}
+	return a.decodeRuntimeArguments(raw)
+}
+
+func (a *spaceAdapter) decodeRuntimeArguments(raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "space.restart":
-		var value restartArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil {
-			return nil, errors.New("space restart arguments are invalid")
-		}
-		return value, nil
+		return decodeValidated(raw, maxArgumentsBytes, alwaysValid[restartArguments], "space restart arguments are invalid")
 	case "space.hardware.update":
-		var value hardwareArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidHardwareFlavor(value.Flavor) || value.SleepTimeSeconds != nil && *value.SleepTimeSeconds < -1 {
-			return nil, errors.New("space hardware arguments are invalid")
-		}
-		return value, nil
+		return decodeValidated(raw, maxArgumentsBytes, validHardwareArguments, "space hardware arguments are invalid")
 	case "space.sleep_time.update":
-		var value sleepTimeArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || value.Seconds < -1 {
-			return nil, errors.New("space sleep-time arguments are invalid")
-		}
-		return value, nil
-	case "space.variable.set":
-		var value variableSetArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidVariableKey(value.Key) || len(value.Value) > 16*1024 || len(value.Description) > 1000 {
-			return nil, errors.New("space variable arguments are invalid")
-		}
-		return value, nil
-	case "space.variable.delete":
-		var value variableDeleteArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || !hubclient.ValidVariableKey(value.Key) {
-			return nil, errors.New("space variable arguments are invalid")
-		}
-		return value, nil
+		return decodeValidated(raw, maxArgumentsBytes, validSleepTimeArguments, "space sleep-time arguments are invalid")
 	case "space.pause", "space.dev_mode.enable", "space.dev_mode.disable":
-		var value emptyArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil {
-			return nil, errors.New("space operation arguments must be empty")
-		}
-		return value, nil
+		return decodeValidated(raw, maxArgumentsBytes, alwaysValid[emptyArguments], "space operation arguments must be empty")
 	default:
 		return nil, errors.New("space operation is not implemented")
 	}
+}
+
+func (a *spaceAdapter) decodeVariableArguments(raw json.RawMessage) (any, error) {
+	if a.descriptor.Name == "space.variable.set" {
+		return decodeValidated(raw, maxArgumentsBytes, validVariableSetArguments, "space variable arguments are invalid")
+	}
+	return decodeValidated(raw, maxArgumentsBytes, validVariableDeleteArguments, "space variable arguments are invalid")
+}
+
+func alwaysValid[T any](T) bool { return true }
+
+func validHardwareArguments(value hardwareArguments) bool {
+	return hubclient.ValidHardwareFlavor(value.Flavor) && (value.SleepTimeSeconds == nil || *value.SleepTimeSeconds >= -1)
+}
+
+func validSleepTimeArguments(value sleepTimeArguments) bool { return value.Seconds >= -1 }
+
+func validVariableSetArguments(value variableSetArguments) bool {
+	return hubclient.ValidVariableKey(value.Key) && len(value.Value) <= 16*1024 && len(value.Description) <= 1000
+}
+
+func validVariableDeleteArguments(value variableDeleteArguments) bool {
+	return hubclient.ValidVariableKey(value.Key)
 }
 
 func (a *spaceAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
@@ -162,7 +163,6 @@ func (a *spaceAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentReconstructed(plan, reconstructPlan(plan.Target, plan.Arguments, decodeSpaceTarget, a.presentationAndPolicy))
 }
 
-//nolint:cyclop // Space execution dispatch is explicit and tracked by the exact HF CRAP baseline.
 func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) {
 	target, expected, err := a.decodePlan(plan)
 	if err != nil {
@@ -175,83 +175,131 @@ func (a *spaceAdapter) Execute(ctx context.Context, plan Plan) (Outcome, error) 
 		}
 		return Outcome{}, errors.New("operation_precondition_failed")
 	}
-	space := target.ref()
-	switch a.descriptor.Name {
-	case "space.restart":
-		var arguments restartArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		_, err = a.client.RestartSpace(ctx, space, arguments.FactoryReboot)
-	case "space.pause":
-		_, err = a.client.PauseSpace(ctx, space)
-	case "space.hardware.update":
-		var arguments hardwareArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		_, err = a.client.RequestSpaceHardware(ctx, space, arguments.Flavor, arguments.SleepTimeSeconds)
-	case "space.sleep_time.update":
-		var arguments sleepTimeArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		_, err = a.client.SetSpaceSleepTime(ctx, space, arguments.Seconds)
-	case "space.dev_mode.enable", "space.dev_mode.disable":
-		_, err = a.client.SetSpaceDevMode(ctx, space, strings.HasSuffix(a.descriptor.Name, ".enable"))
-	case "space.variable.set":
-		var arguments variableSetArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.SetSpaceVariable(ctx, space, arguments.Key, arguments.Value, arguments.Description)
-	case "space.variable.delete":
-		var arguments variableDeleteArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		err = a.client.DeleteSpaceVariable(ctx, space, arguments.Key)
-	}
+	err = a.executeUpdate(ctx, target.ref(), plan.Arguments)
 	if err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Proven: true, Result: json.RawMessage(`{"updated":true}`)}, nil
 }
 
-//nolint:cyclop // Space reconciliation is explicit and tracked by the exact HF CRAP baseline.
+func (a *spaceAdapter) executeUpdate(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) error {
+	if strings.Contains(a.descriptor.Name, ".variable.") {
+		return a.executeVariableUpdate(ctx, space, raw)
+	}
+	switch a.descriptor.Name {
+	case "space.restart":
+		var arguments restartArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		_, err := a.client.RestartSpace(ctx, space, arguments.FactoryReboot)
+		return err
+	case "space.pause":
+		_, err := a.client.PauseSpace(ctx, space)
+		return err
+	case "space.hardware.update":
+		var arguments hardwareArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		_, err := a.client.RequestSpaceHardware(ctx, space, arguments.Flavor, arguments.SleepTimeSeconds)
+		return err
+	case "space.sleep_time.update":
+		var arguments sleepTimeArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		_, err := a.client.SetSpaceSleepTime(ctx, space, arguments.Seconds)
+		return err
+	case "space.dev_mode.enable", "space.dev_mode.disable":
+		_, err := a.client.SetSpaceDevMode(ctx, space, strings.HasSuffix(a.descriptor.Name, ".enable"))
+		return err
+	default:
+		return errors.New("space operation is not implemented")
+	}
+}
+
+func (a *spaceAdapter) executeVariableUpdate(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) error {
+	if a.descriptor.Name == "space.variable.set" {
+		var arguments variableSetArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		return a.client.SetSpaceVariable(ctx, space, arguments.Key, arguments.Value, arguments.Description)
+	}
+	var arguments variableDeleteArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	return a.client.DeleteSpaceVariable(ctx, space, arguments.Key)
+}
+
 func (a *spaceAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {
 	target, _, err := a.decodePlan(plan)
 	if err != nil {
 		return Outcome{}, err
 	}
-	space := target.ref()
-	proven := false
-	switch a.descriptor.Name {
-	case "space.restart":
-		// The runtime response to RestartSpace proves acceptance. A later read
-		// cannot distinguish this restart from the pre-existing running state.
+	if a.descriptor.Name == "space.restart" {
+		// A later read cannot distinguish this restart from an existing running state.
 		return Outcome{Proven: false}, nil
-	case "space.pause":
-		runtime, readErr := a.client.SpaceRuntime(ctx, space)
-		err, proven = readErr, readErr == nil && runtime.Stage == "PAUSED"
-	case "space.hardware.update":
-		var arguments hardwareArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		runtime, readErr := a.client.SpaceRuntime(ctx, space)
-		err, proven = readErr, readErr == nil && (runtime.RequestedHardware == arguments.Flavor || runtime.Hardware == arguments.Flavor)
-	case "space.sleep_time.update":
-		var arguments sleepTimeArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		runtime, readErr := a.client.SpaceRuntime(ctx, space)
-		err, proven = readErr, readErr == nil && runtime.SleepTimeSeconds != nil && *runtime.SleepTimeSeconds == arguments.Seconds
-	case "space.dev_mode.enable", "space.dev_mode.disable":
-		runtime, readErr := a.client.SpaceRuntime(ctx, space)
-		want := strings.HasSuffix(a.descriptor.Name, ".enable")
-		err, proven = readErr, readErr == nil && runtime.DevMode == want
-	case "space.variable.set":
-		var arguments variableSetArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		variables, readErr := a.client.SpaceVariables(ctx, space)
-		value, found := variables[arguments.Key]
-		err, proven = readErr, readErr == nil && found && value.Value == arguments.Value && value.Description == arguments.Description
-	case "space.variable.delete":
-		var arguments variableDeleteArguments
-		_ = decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes)
-		variables, readErr := a.client.SpaceVariables(ctx, space)
-		_, found := variables[arguments.Key]
-		err, proven = readErr, readErr == nil && !found
 	}
+	proven, err := a.reconcileUpdate(ctx, target.ref(), plan.Arguments)
 	return Outcome{Proven: proven, Result: json.RawMessage(`{"updated":true}`)}, err
+}
+
+func (a *spaceAdapter) reconcileUpdate(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) (bool, error) {
+	if strings.Contains(a.descriptor.Name, ".variable.") {
+		return a.reconcileVariableUpdate(ctx, space, raw)
+	}
+	if a.descriptor.Name == "space.pause" {
+		return a.reconcileSpacePause(ctx, space)
+	}
+	if strings.HasPrefix(a.descriptor.Name, "space.dev_mode.") {
+		return a.reconcileSpaceDevMode(ctx, space)
+	}
+	return a.reconcileSpaceConfiguration(ctx, space, raw)
+}
+
+func (a *spaceAdapter) reconcileSpaceConfiguration(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) (bool, error) {
+	switch a.descriptor.Name {
+	case "space.hardware.update":
+		return a.reconcileSpaceHardware(ctx, space, raw)
+	case "space.sleep_time.update":
+		return a.reconcileSpaceSleepTime(ctx, space, raw)
+	default:
+		return false, errors.New("space operation is not implemented")
+	}
+}
+
+func (a *spaceAdapter) reconcileSpacePause(ctx context.Context, space hubclient.SpaceRef) (bool, error) {
+	runtime, err := a.client.SpaceRuntime(ctx, space)
+	return err == nil && runtime.Stage == "PAUSED", err
+}
+
+func (a *spaceAdapter) reconcileSpaceHardware(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) (bool, error) {
+	var arguments hardwareArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	runtime, err := a.client.SpaceRuntime(ctx, space)
+	return err == nil && (runtime.RequestedHardware == arguments.Flavor || runtime.Hardware == arguments.Flavor), err
+}
+
+func (a *spaceAdapter) reconcileSpaceSleepTime(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) (bool, error) {
+	var arguments sleepTimeArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	runtime, err := a.client.SpaceRuntime(ctx, space)
+	return err == nil && runtime.SleepTimeSeconds != nil && *runtime.SleepTimeSeconds == arguments.Seconds, err
+}
+
+func (a *spaceAdapter) reconcileSpaceDevMode(ctx context.Context, space hubclient.SpaceRef) (bool, error) {
+	runtime, err := a.client.SpaceRuntime(ctx, space)
+	return err == nil && runtime.DevMode == strings.HasSuffix(a.descriptor.Name, ".enable"), err
+}
+
+func (a *spaceAdapter) reconcileVariableUpdate(ctx context.Context, space hubclient.SpaceRef, raw json.RawMessage) (bool, error) {
+	variables, readErr := a.client.SpaceVariables(ctx, space)
+	if readErr != nil {
+		return false, readErr
+	}
+	if a.descriptor.Name == "space.variable.set" {
+		var arguments variableSetArguments
+		_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+		value, found := variables[arguments.Key]
+		return found && value.Value == arguments.Value && value.Description == arguments.Description, nil
+	}
+	var arguments variableDeleteArguments
+	_ = decodeClosed(raw, &arguments, maxArgumentsBytes)
+	_, found := variables[arguments.Key]
+	return !found, nil
 }
 
 func (a *spaceAdapter) observe(ctx context.Context, target spaceTarget) (json.RawMessage, error) {

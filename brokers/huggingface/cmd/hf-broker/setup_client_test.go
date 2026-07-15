@@ -23,7 +23,7 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 	err = runSetup(context.Background(), &stdout, ioDiscard{}, []string{
 		"client",
 		"--client", "bob",
-		"--url", "http://127.0.0.1:8080",
+		"--endpoint", "unix:///run/hf-broker/agent.sock",
 		"--secret-file", secretFile,
 		"--home-dir", dir,
 	})
@@ -36,8 +36,8 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "HF_BROKER_URL='http://127.0.0.1:8080'") {
-		t.Fatalf("client env missing URL: %q", text)
+	if !strings.Contains(text, "HF_BROKER_ENDPOINT='unix:///run/hf-broker/agent.sock'") {
+		t.Fatalf("client env missing endpoint: %q", text)
 	}
 	if !strings.Contains(text, "HF_BROKER_SHARED_SECRET='"+secret+"'") {
 		t.Fatalf("client env missing secret: %q", text)
@@ -48,7 +48,7 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 }
 
 func TestParseSetupClientValidation(t *testing.T) {
-	_, err := parseSetupClient(ioDiscard{}, []string{"--url", "http://127.0.0.1:8080"})
+	_, err := parseSetupClient(ioDiscard{}, []string{"--client", "agent-a", "--endpoint", "unix:///run/hf-broker/agent.sock"})
 	if err == nil || !strings.Contains(err.Error(), "--secret-file") {
 		t.Fatalf("parseSetupClient() error = %v, want secret-file requirement", err)
 	}

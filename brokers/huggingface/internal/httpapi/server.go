@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/audit"
@@ -31,6 +31,7 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/internal/slicex"
 	bknotify "github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
@@ -96,6 +97,7 @@ type Server struct {
 	grants              *grants.Store
 	plans               *hfplan.Store
 	operations          *agentops.Store
+	admission           *admission.Controller
 	operationRegistry   *operations.Registry
 	operationRuntime    *operations.Runtime
 	hubClient           *hubclient.Client
@@ -180,19 +182,34 @@ func prepareServer(opts Options) (*Server, context.Context, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	clients := map[string]string{}
-	for _, client := range opts.Config.Clients {
-		clients[client.Name] = client.Secret
-	}
-	auditLogger := opts.Audit
-	if auditLogger == nil {
-		auditLogger = audit.New(io.Discard)
+	clients := configClients(opts.Config.Clients)
+	auditLogger, err := prepareAuditRecorders(&opts)
+	if err != nil {
+		return nil, nil, errors.New("audit recorder is required")
 	}
 	server, err := newServer(opts, upstream, routerUpstream, clients, auditLogger)
 	if err != nil {
 		return nil, nil, err
 	}
 	return server, ctx, nil
+}
+
+func configClients(configured []config.Client) map[string]string {
+	clients := map[string]string{}
+	for _, client := range configured {
+		clients[client.Name] = client.Secret
+	}
+	return clients
+}
+
+func prepareAuditRecorders(opts *Options) (audit.Recorder, error) {
+	if opts.Audit == nil {
+		return nil, errors.New("audit recorder is required")
+	}
+	if opts.OperatorAudit == nil {
+		opts.OperatorAudit = opts.Audit
+	}
+	return opts.Audit, nil
 }
 
 func startServer(ctx context.Context, server *Server, opts Options) (*Server, error) {
@@ -293,128 +310,160 @@ func validUpstreamOrigin(upstream *url.URL) bool {
 	return upstream.Path == "" || upstream.Path == "/"
 }
 
-//nolint:cyclop // Dependency validation is explicit and tracked by the exact HF CRAP baseline.
 func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[string]string, auditLogger audit.Recorder) (*Server, error) {
-	inferenceTimeout := opts.Config.HFTimeout
-	if inferenceTimeout <= 0 {
-		inferenceTimeout = config.DefaultHFTimeout
+	resources, err := newServerResources(opts, upstream, clients)
+	if err != nil {
+		return nil, err
 	}
-	inferenceTransport := http.DefaultTransport.(*http.Transport).Clone()
-	inferenceTransport.DialContext = (&net.Dialer{
-		Timeout:   min(inferenceTimeout, 10*time.Second),
-		KeepAlive: 30 * time.Second,
-	}).DialContext
-	inferenceTransport.ResponseHeaderTimeout = min(inferenceTimeout, 30*time.Second)
-	inferenceTransport.TLSHandshakeTimeout = min(inferenceTimeout, 10*time.Second)
+	server := resources.newServer(opts, upstream, routerUpstream, auditLogger)
+	if err := server.attachServices(opts, resources); err != nil {
+		_ = resources.database.Close()
+		return nil, err
+	}
+	server.router = newRouter(server)
+	return server, nil
+}
+
+type serverResources struct {
+	inferenceTimeout    time.Duration
+	inferenceTransport  *http.Transport
+	database            *state.Database
+	sealedPayloadStore  *sealedstore.Store
+	credentialSlots     *credentialstore.Store
+	grantStore          *grants.Store
+	plans               *hfplan.Store
+	planValidator       hfplan.Validator
+	hub                 *hubclient.Client
+	operationRegistry   *operations.Registry
+	control             *controlplane.Runtime
+	operationStore      *agentops.Store
+	admissionController *admission.Controller
+}
+
+func newServerResources(opts Options, upstream *url.URL, clients map[string]string) (*serverResources, error) {
+	resources := &serverResources{}
+	resources.inferenceTimeout, resources.inferenceTransport = inferenceTransport(opts.Config.HFTimeout)
 	database, err := state.Open(context.Background(), opts.Config.StateDir, state.Options{})
 	if err != nil {
 		return nil, err
 	}
-	sealedPayloads, err := sealedstore.Open(opts.Config.StateDir)
-	if err != nil {
+	resources.database = database
+	if err := resources.configureStores(opts); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
-	credentialSlots, err := credentialstore.Open(opts.Config.StateDir)
-	if err != nil {
+	if err := resources.configureOperations(opts, upstream, clients); err != nil {
 		_ = database.Close()
 		return nil, err
 	}
-	store := grants.NewDatabase(database, grants.Options{
+	return resources, nil
+}
+
+func inferenceTransport(timeout time.Duration) (time.Duration, *http.Transport) {
+	if timeout <= 0 {
+		timeout = config.DefaultHFTimeout
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   min(timeout, 10*time.Second),
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	transport.ResponseHeaderTimeout = min(timeout, 30*time.Second)
+	transport.TLSHandshakeTimeout = min(timeout, 10*time.Second)
+	return timeout, transport
+}
+
+func (r *serverResources) configureStores(opts Options) error {
+	var err error
+	r.sealedPayloadStore, err = sealedstore.Open(opts.Config.StateDir)
+	if err != nil {
+		return err
+	}
+	r.credentialSlots, err = credentialstore.Open(opts.Config.StateDir)
+	if err != nil {
+		return err
+	}
+	r.grantStore = grants.NewDatabase(r.database, grants.Options{
 		PendingTimeout: hfgrant.DefaultPendingTimeout, DefaultDuration: hfgrant.DefaultDuration,
 		MaxDuration: hfgrant.MaxDuration, ReservationTimeout: grantReservationTimeout(opts.Config.HFTimeout),
 		Now: opts.Now,
 	})
-	plans, err := hfplan.NewStoreWithClock(database, opts.Now)
+	r.plans, err = hfplan.NewStoreWithClock(r.database, opts.Now)
+	r.planValidator = hfplan.Validator{Store: r.plans}
+	return err
+}
+
+func (r *serverResources) configureOperations(opts Options, upstream *url.URL, clients map[string]string) error {
+	var err error
+	r.hub, err = hubclient.New(upstream.String(), opts.Config.HFToken, hubclient.WithTimeout(opts.Config.HFTimeout))
 	if err != nil {
-		_ = database.Close()
-		return nil, err
+		return err
 	}
-	planValidator := hfplan.Validator{Store: plans}
-	hub, err := hubclient.New(upstream.String(), opts.Config.HFToken, hubclient.WithTimeout(opts.Config.HFTimeout))
+	r.operationRegistry, err = newOperationRegistry(r.hub, upstream.String(), r.sealedPayloadStore, r.credentialSlots)
 	if err != nil {
-		_ = database.Close()
-		return nil, err
+		return err
 	}
-	providerAdapters, err := operations.NewRepositoryAdapters(hub, upstream.String())
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	settingsAdapters, err := operations.NewRepositorySettingsAdapters(hub)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	refsAdapters, err := operations.NewRefsAdapters(hub)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	spaceAdapters, err := operations.NewSpaceAdapters(hub)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	boundAdapters, err := operations.NewBoundAdapters(hub)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	bucketAdapters, err := operations.NewBucketAdapters(hub)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	contentAdapters, err := operations.NewRepositoryContentAdapters(hub)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	sealedAdapters, err := operations.NewSealedBoundAdapters(hub, sealedPayloads)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	credentialAdapters, err := operations.NewCredentialOutputAdapters(hub, sealedPayloads, credentialSlots)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	sandboxAdapters, err := operations.NewSandboxAdapters(hub, sealedPayloads)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	providerAdapters = append(providerAdapters, settingsAdapters...)
-	providerAdapters = append(providerAdapters, refsAdapters...)
-	providerAdapters = append(providerAdapters, spaceAdapters...)
-	providerAdapters = append(providerAdapters, boundAdapters...)
-	providerAdapters = append(providerAdapters, bucketAdapters...)
-	providerAdapters = append(providerAdapters, contentAdapters...)
-	providerAdapters = append(providerAdapters, sealedAdapters...)
-	providerAdapters = append(providerAdapters, credentialAdapters...)
-	providerAdapters = append(providerAdapters, sandboxAdapters...)
-	operationRegistry, err := operations.NewRegistry(providerAdapters...)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	if err := operationRegistry.ValidateCoverage(); err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	runtime, err := controlplane.New(controlplane.Options{
-		Broker: "hf-broker", Store: store, ClientSecrets: clients,
+	r.control, err = controlplane.New(controlplane.Options{
+		Broker: "hf-broker", Store: r.grantStore, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
-		ActivationValidator: planValidator,
+		ActivationValidator: r.planValidator, State: r.database,
 	})
 	if err != nil {
-		_ = database.Close()
+		return err
+	}
+	r.operationStore = agentops.New(r.database)
+	r.admissionController, err = admission.NewConfigured(slicex.Keys(clients), opts.Config.Admission, r.operationStore.AdmissionUsage)
+	if err != nil {
+		return err
+	}
+	r.admissionController.SetObserver(r.control.Metrics)
+	return nil
+}
+
+func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store) (*operations.Registry, error) {
+	providerAdapters, err := providerAdapters(hub, upstream, sealed, credentialSlots)
+	if err != nil {
 		return nil, err
 	}
-	server := &Server{
-		control:        runtime,
+	registry, err := operations.NewRegistry(providerAdapters...)
+	if err != nil {
+		return nil, err
+	}
+	if err := registry.ValidateCoverage(); err != nil {
+		return nil, err
+	}
+	return registry, nil
+}
+
+func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store) ([]operations.Adapter, error) {
+	factories := []func() ([]operations.Adapter, error){
+		func() ([]operations.Adapter, error) { return operations.NewRepositoryAdapters(hub, upstream) },
+		func() ([]operations.Adapter, error) { return operations.NewRepositorySettingsAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewRefsAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewSpaceAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewBoundAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewBucketAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewRepositoryContentAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewSealedBoundAdapters(hub, sealed) },
+		func() ([]operations.Adapter, error) {
+			return operations.NewCredentialOutputAdapters(hub, sealed, credentialSlots)
+		},
+		func() ([]operations.Adapter, error) { return operations.NewSandboxAdapters(hub, sealed) },
+	}
+	var adapters []operations.Adapter
+	for _, factory := range factories {
+		next, err := factory()
+		if err != nil {
+			return nil, err
+		}
+		adapters = append(adapters, next...)
+	}
+	return adapters, nil
+}
+
+func (r *serverResources) newServer(opts Options, upstream, routerUpstream *url.URL, auditLogger audit.Recorder) *Server {
+	return &Server{
+		control:        r.control,
 		policy:         opts.Scope,
 		audit:          auditLogger,
 		mirrors:        mirror.New(opts.Config.StateDir, opts.Config.HFToken, opts.Config.HFTimeout),
@@ -422,58 +471,60 @@ func newServer(opts Options, upstream, routerUpstream *url.URL, clients map[stri
 		routerUpstream: routerUpstream,
 		httpClient:     &http.Client{Timeout: opts.Config.HFTimeout},
 		inferenceHTTPClient: &http.Client{
-			Transport: inferenceTransport,
-			Timeout:   inferenceTimeout,
+			Transport: r.inferenceTransport,
+			Timeout:   r.inferenceTimeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return errors.New("inference upstream redirect refused")
 			},
 		},
 		hfToken:            opts.Config.HFToken,
 		maxBody:            opts.Config.MaxPackBytes,
-		grants:             store,
-		plans:              plans,
-		operations:         agentops.New(database),
-		operationRegistry:  operationRegistry,
-		hubClient:          hub,
-		sealedStore:        sealedPayloads,
-		credentialStore:    credentialSlots,
-		database:           database,
-		planValidator:      planValidator,
+		grants:             r.grantStore,
+		plans:              r.plans,
+		operations:         r.operationStore,
+		admission:          r.admissionController,
+		operationRegistry:  r.operationRegistry,
+		hubClient:          r.hub,
+		sealedStore:        r.sealedPayloadStore,
+		credentialStore:    r.credentialSlots,
+		database:           r.database,
+		planValidator:      r.planValidator,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
 		lfsActions:         map[string]lfsAction{},
 		now:                opts.Now,
 		newLFSActionID:     opts.NewLFSActionID,
 	}
+}
+
+func (s *Server) attachServices(opts Options, resources *serverResources) error {
 	sealedPayloadService, sealedPayloadErr := sealedpayload.New(sealedpayload.Options{
-		Store: sealedPayloads, Descriptor: opcatalog.ByName, Authenticate: server.authenticateAPI,
+		Store: resources.sealedPayloadStore, Descriptor: opcatalog.ByName, Authenticate: s.authenticateAPI,
 		WriteFailure: func(response http.ResponseWriter, status int, reason, message string) {
 			writeJSendFail(response, status, reason, message)
 		},
 		Now: opts.Now,
 	})
-	server.sealedPayloads = sealedPayloadService
+	s.sealedPayloads = sealedPayloadService
 	authorization, authorizationErr := bkauthorization.New(bkauthorization.Options{
-		Registry: policy.AuthorizationRegistry(), Decide: server.policy.DecideAuthorization,
-		Grants: store, ActiveGrants: server.activeAuthorizationGrants, Now: opts.Now,
+		Registry: policy.AuthorizationRegistry(), Decide: s.policy.DecideAuthorization,
+		Grants: resources.grantStore, ActiveGrants: s.activeAuthorizationGrants, Now: opts.Now,
 	})
-	server.authorization = authorization
-	operationRuntime, operationRuntimeErr := server.newOperationRuntime()
-	server.operationRuntime = operationRuntime
+	s.authorization = authorization
+	operationRuntime, operationRuntimeErr := s.newOperationRuntime()
+	s.operationRuntime = operationRuntime
 	agentAPI, agentAPIErr := agentapi.New(agentapi.Options{
-		Store: server.operations, Authenticate: runtime.Clients.AuthenticateHeader,
-		Submit: server.submitAgentOperation, Cancel: server.cancelAgentOperation, Realm: "hf-broker",
+		Store: s.operations, Authenticate: resources.control.Clients.AuthenticateHeader,
+		Submit: s.submitAgentOperation, Cancel: s.cancelAgentOperation, Realm: "hf-broker",
 		AuthFailure: func() {
-			server.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
+			s.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
 		},
 	})
 	if err := errors.Join(sealedPayloadErr, authorizationErr, operationRuntimeErr, agentAPIErr); err != nil {
-		_ = database.Close()
-		return nil, err
+		return err
 	}
-	server.agentAPI = agentAPI
-	server.router = newRouter(server)
-	return server, nil
+	s.agentAPI = agentAPI
+	return nil
 }
 
 func (s *Server) activeAuthorizationGrants(request corepolicy.Request) ([]corepolicy.Grant, error) {

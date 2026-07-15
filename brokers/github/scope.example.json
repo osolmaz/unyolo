@@ -18,58 +18,58 @@
       "targets": [{"kind": "repo", "owner": "*", "name": "*"}]
     },
     {
-      "id": "bob-read-brokerkit",
+      "id": "agent-a-read-brokerkit",
       "effect": "allow",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["git.fetch", "repo.metadata.read", "repo.contents.read"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     },
     {
-      "id": "bob-advertise-push",
+      "id": "agent-a-advertise-push",
       "effect": "allow",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["git.push.advertise"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     },
     {
-      "id": "bob-push-feature-branches",
+      "id": "agent-a-push-feature-branches",
       "effect": "allow",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["git.push.branch_create", "git.push.fast_forward", "git.push.force"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}],
       "attrs": {
-        "refs": ["refs/heads/bob/*", "refs/heads/agent/*"]
+        "refs": ["refs/heads/agent-a/*"]
       }
     },
     {
       "id": "approve-pull-request-create",
       "effect": "request",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["pull_request.create"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}],
       "attrs": {
-        "refs": ["refs/heads/bob/*", "refs/heads/agent/*"],
+        "refs": ["refs/heads/agent-a/*"],
         "base_refs": ["refs/heads/main"]
       }
     },
     {
       "id": "approve-repository-delete",
       "effect": "request",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["repo.delete"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit-e2e-*"}]
     },
     {
       "id": "approve-repository-secret",
       "effect": "request",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["agent_task.create_or_update_repo_secret"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     },
     {
       "id": "approve-collaborator-administration",
       "effect": "request",
-      "clients": ["bob"],
+      "clients": ["agent-a"],
       "operations": ["collaborator.repos_add_collaborator", "collaborator.repos_remove_collaborator"],
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     }

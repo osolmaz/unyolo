@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +68,10 @@ func requestGrant(t *testing.T, fixture Fixture) grants.RequestResult {
 
 func assertOperatorLifecycle(t *testing.T, fixture Fixture, server *httptest.Server, created grants.RequestResult) {
 	t.Helper()
-	client := &operatorclient.Client{BaseURL: server.URL, Token: fixture.OperatorToken, HTTPClient: server.Client()}
+	client, err := operatorclient.New(strings.Replace(server.URL, "http://", "tcp://", 1), fixture.OperatorToken, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if descriptor, err := client.Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
 		t.Fatalf("operator discovery = %+v, %v", descriptor, err)
 	}
@@ -141,7 +145,10 @@ func assertTokenLifecycle(t *testing.T, fixture Fixture) {
 
 func assertTerminalTransitions(t *testing.T, fixture Fixture, server *httptest.Server) {
 	t.Helper()
-	client := &operatorclient.Client{BaseURL: server.URL, Token: fixture.OperatorToken, HTTPClient: server.Client()}
+	client, err := operatorclient.New(strings.Replace(server.URL, "http://", "tcp://", 1), fixture.OperatorToken, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
 	denied := requestGrantWithSuffix(t, fixture, "deny")
 	result, err := client.Decide(t.Context(), denied.Grant.ID, operatorv1.ActionDeny, operatorv1.Decision{
 		ExpectedRevision: denied.Grant.Revision, IdempotencyKey: "conformance-deny",

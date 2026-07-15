@@ -278,17 +278,17 @@ func printHFClientGrant(stdout io.Writer, grant hfClientGrant, jsonOutput bool) 
 }
 
 func loadHFGrantClient(getenv func(string) string) (*hfGrantClient, error) {
-	baseURL := firstEnvironment(getenv, "HF_BROKER_URL", "MLCLAW_HF_BROKER_URL")
+	endpointURI := firstEnvironment(getenv, "HF_BROKER_AGENT_ENDPOINT")
 	secret, err := loadAgentSecret(getenv)
 	if err != nil {
 		return nil, err
 	}
-	return newHFGrantClient(baseURL, secret)
+	return newHFGrantClient(endpointURI, secret)
 }
 
-func newHFGrantClient(baseURL, secret string) (*hfGrantClient, error) {
+func newHFGrantClient(endpointURI, secret string) (*hfGrantClient, error) {
 	return grantclient.New(grantclient.Options[hfClientGrant]{
-		BaseURL: baseURL, Credential: secret,
+		Endpoint: endpointURI, Credential: secret,
 		HTTPClient: &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},

@@ -107,19 +107,13 @@ func newSealedBoundAdapter(descriptor opcatalog.Descriptor, binding opbinding.Bi
 
 func (a *sealedBoundAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
-//nolint:cyclop // Sealed binding checks are explicit and tracked by the exact HF CRAP baseline.
 func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
-	if len(targetRaw) > maxTargetBytes || len(argumentsRaw) > maxArgumentsBytes || a.binding.ValidateTarget(targetRaw) != nil {
-		return Input{}, errors.New("operation target does not match its closed schema")
+	if err := a.validateSealedTarget(targetRaw, argumentsRaw); err != nil {
+		return Input{}, err
 	}
-	var arguments sealedBoundArguments
-	if err := decodeClosed(argumentsRaw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 || arguments.CredentialSlot != "" ||
-		RequiresSealedInput(a.descriptor.Name) && arguments.SealedPayload == nil {
-		return Input{}, errors.New("sealed operation arguments are invalid")
-	}
-	public, err := decodeObject(arguments.Public)
-	if err != nil || containsSecretPath(public, a.paths) || len(a.paths) == 0 && arguments.SealedPayload != nil {
-		return Input{}, errors.New("sealed operation public arguments contain protected fields")
+	arguments, public, err := a.decodeSealedPublicArguments(argumentsRaw)
+	if err != nil {
+		return Input{}, err
 	}
 	canonicalTarget, err := canonicalJSON(targetRaw)
 	if err != nil {
@@ -131,6 +125,47 @@ func (a *sealedBoundAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (In
 	}
 	canonicalArguments, err := canonical(arguments)
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, err
+}
+
+func (a *sealedBoundAdapter) validateSealedTarget(targetRaw, argumentsRaw json.RawMessage) error {
+	if len(targetRaw) > maxTargetBytes || len(argumentsRaw) > maxArgumentsBytes || a.binding.ValidateTarget(targetRaw) != nil {
+		return errors.New("operation target does not match its closed schema")
+	}
+	return nil
+}
+
+func (a *sealedBoundAdapter) decodeSealedPublicArguments(argumentsRaw json.RawMessage) (sealedBoundArguments, map[string]any, error) {
+	arguments, err := decodeSealedEnvelope(argumentsRaw, a.descriptor.Name)
+	if err != nil {
+		return sealedBoundArguments{}, nil, err
+	}
+	public, err := a.decodeProtectedPublic(arguments)
+	if err != nil {
+		return sealedBoundArguments{}, nil, errors.New("sealed operation public arguments contain protected fields")
+	}
+	return arguments, public, nil
+}
+
+func decodeSealedEnvelope(raw json.RawMessage, operation string) (sealedBoundArguments, error) {
+	var arguments sealedBoundArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil || len(arguments.Public) == 0 || arguments.CredentialSlot != "" {
+		return sealedBoundArguments{}, errors.New("sealed operation arguments are invalid")
+	}
+	if RequiresSealedInput(operation) && arguments.SealedPayload == nil {
+		return sealedBoundArguments{}, errors.New("sealed operation arguments are invalid")
+	}
+	return arguments, nil
+}
+
+func (a *sealedBoundAdapter) decodeProtectedPublic(arguments sealedBoundArguments) (map[string]any, error) {
+	public, err := decodeObject(arguments.Public)
+	if err != nil || containsSecretPath(public, a.paths) {
+		return nil, errors.New("sealed operation public arguments contain protected fields")
+	}
+	if len(a.paths) == 0 && arguments.SealedPayload != nil {
+		return nil, errors.New("sealed operation public arguments contain protected fields")
+	}
+	return public, nil
 }
 
 func (a *sealedBoundAdapter) ValidateClient(input Input, client, requestKey string) error {
@@ -243,11 +278,7 @@ func (a *sealedBoundAdapter) reconciliationProven(plan Plan, observed json.RawMe
 }
 
 func (a *sealedBoundAdapter) Cleanup(plan Plan) error {
-	arguments, err := decodeSealedArguments(plan.Arguments)
-	if err != nil || arguments.SealedPayload == nil {
-		return err
-	}
-	return a.store.Delete(*arguments.SealedPayload)
+	return cleanupSealedPayload(a.store, plan.Arguments)
 }
 
 func (a *sealedBoundAdapter) materialize(raw json.RawMessage) (json.RawMessage, sealedBoundArguments, error) {
@@ -259,24 +290,35 @@ func (a *sealedBoundAdapter) materialize(raw json.RawMessage) (json.RawMessage, 
 	if err != nil {
 		return nil, arguments, err
 	}
+	merged, err := a.materializeSealedPayload(arguments, public)
+	return merged, arguments, err
+}
+
+func (a *sealedBoundAdapter) materializeSealedPayload(arguments sealedBoundArguments, public map[string]any) (json.RawMessage, error) {
 	if arguments.SealedPayload == nil {
-		merged, encodeErr := canonical(public)
-		return merged, arguments, encodeErr
+		return canonical(public)
 	}
 	payload, err := a.store.Consume(*arguments.SealedPayload)
 	if err != nil {
-		return nil, arguments, err
+		return nil, err
 	}
 	defer zero(payload)
 	secret, err := decodeObject(payload)
 	if err != nil || !onlySecretPaths(secret, a.paths, "") {
-		return nil, arguments, errors.New("sealed payload contains unsupported fields")
+		return nil, errors.New("sealed payload contains unsupported fields")
 	}
 	if err := mergeObjects(public, secret); err != nil {
-		return nil, arguments, err
+		return nil, err
 	}
-	merged, err := canonical(public)
-	return merged, arguments, err
+	return canonical(public)
+}
+
+func cleanupSealedPayload(store sealedPayloadStore, raw json.RawMessage) error {
+	arguments, err := decodeSealedArguments(raw)
+	if err != nil || arguments.SealedPayload == nil {
+		return err
+	}
+	return store.Delete(*arguments.SealedPayload)
 }
 
 func (a *sealedBoundAdapter) presentationAndPolicy(targetRaw, publicRaw json.RawMessage, preconditions boundPreconditions) (agentv1.Presentation, hfpolicy.Request) {

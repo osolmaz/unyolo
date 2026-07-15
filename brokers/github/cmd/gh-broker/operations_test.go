@@ -38,9 +38,13 @@ func githubTestOperation(state agentv1.State) agentv1.Operation {
 func configureOperationTestClient(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(handler)
-	t.Setenv("GH_BROKER_URL", server.URL)
+	t.Setenv("GH_BROKER_AGENT_ENDPOINT", ghTestEndpoint(server.URL))
 	t.Setenv("GH_BROKER_SHARED_SECRET", operationTestSecret)
 	return server
+}
+
+func ghTestEndpoint(serverURL string) string {
+	return strings.Replace(serverURL, "http://", "tcp://", 1)
 }
 
 func TestOperationsListAndDescribeUseGeneratedCatalog(t *testing.T) {
@@ -306,8 +310,8 @@ func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 	}
 	client, err := loadOperationClient(func(name string) string {
 		switch name {
-		case "GH_BROKER_URL":
-			return "http://127.0.0.1:1"
+		case "GH_BROKER_AGENT_ENDPOINT":
+			return "tcp://127.0.0.1:1"
 		case "GH_BROKER_SHARED_SECRET_FILE":
 			return credential
 		default:
@@ -318,8 +322,8 @@ func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 		t.Fatalf("file client=%#v err=%v", client, err)
 	}
 	if _, err := loadOperationClient(func(name string) string {
-		if name == "GH_BROKER_URL" {
-			return "http://127.0.0.1:1"
+		if name == "GH_BROKER_AGENT_ENDPOINT" {
+			return "tcp://127.0.0.1:1"
 		}
 		if name == "GH_BROKER_SHARED_SECRET_FILE" {
 			return filepath.Join(t.TempDir(), "missing")

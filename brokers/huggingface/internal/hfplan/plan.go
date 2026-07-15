@@ -281,10 +281,23 @@ func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 }
 
 func planMatchesGrant(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
-	return plan.ClientID == grant.Client && plan.ClientRequestID == grant.ClientRequestID && plan.Operation == grant.Operation &&
-		plan.Authorization.Target.Kind == grant.Target.Kind && reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) && reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
-		plan.Authorization.Mode == grant.Metadata["hf_grant_mode"] && plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
-		plan.Authorization.RequestedMaxUses == maxUses && plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
+	return planGrantIdentityMatches(plan, grant) && planGrantAuthorizationMatches(plan, grant, duration, maxUses)
+}
+
+func planGrantIdentityMatches(plan Plan, grant grants.Grant) bool {
+	return plan.ClientID == grant.Client &&
+		plan.ClientRequestID == grant.ClientRequestID &&
+		plan.Operation == grant.Operation
+}
+
+func planGrantAuthorizationMatches(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
+	return plan.Authorization.Target.Kind == grant.Target.Kind &&
+		reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) &&
+		reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
+		plan.Authorization.Mode == grant.Metadata["hf_grant_mode"] &&
+		plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
+		plan.Authorization.RequestedMaxUses == maxUses &&
+		plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
 
 func encode(plan Plan) ([]byte, error) {
@@ -312,23 +325,57 @@ func canonicalize(plan Plan) (Plan, error) {
 	return plan, nil
 }
 
-//nolint:cyclop // Plan invariants are explicit and tracked by the exact HF CRAP baseline.
 func validate(plan Plan) error {
-	if plan.APIVersion != SchemaV1 || plan.OperationRevision != 1 || !hfpolicy.IsOperation(plan.Operation) ||
-		strings.TrimSpace(plan.ClientID) == "" || strings.TrimSpace(plan.ClientRequestID) == "" ||
-		plan.CredentialSelector.Name != "primary" || plan.CreatedAt.IsZero() || !plan.ExpiresAt.After(plan.CreatedAt) {
+	if !validPlanIdentity(plan) {
 		return errors.New("HF plan identity is invalid")
 	}
-	if plan.Presentation.Title == "" || len(plan.Presentation.Title) > 160 || len(plan.Presentation.Summary) > 500 {
+	if !validPlanPresentation(plan.Presentation) {
 		return errors.New("HF plan presentation is invalid")
 	}
-	if plan.Authorization.Mode != "window" && plan.Authorization.Mode != "execution" ||
-		plan.Authorization.RequestedDurationSeconds <= 0 || plan.Authorization.RequestedMaxUses < 0 ||
-		plan.Authorization.Mode == "execution" && plan.Authorization.RequestedMaxUses != 1 ||
-		strings.TrimSpace(plan.Authorization.Target.Kind) == "" || len(plan.Authorization.Target.Fields) == 0 {
+	if !validPlanAuthorization(plan.Authorization) {
 		return errors.New("HF plan authorization is invalid")
 	}
-	for _, value := range []json.RawMessage{plan.Target, plan.Arguments, plan.Preconditions} {
+	if err := validatePlanRawMessages(plan.Target, plan.Arguments, plan.Preconditions); err != nil {
+		return err
+	}
+	if err := validateValues(plan.Authorization.Target.Fields); err != nil {
+		return err
+	}
+	return validateValues(plan.Authorization.Attributes)
+}
+
+func validPlanIdentity(plan Plan) bool {
+	return plan.APIVersion == SchemaV1 &&
+		plan.OperationRevision == 1 &&
+		hfpolicy.IsOperation(plan.Operation) &&
+		strings.TrimSpace(plan.ClientID) != "" &&
+		strings.TrimSpace(plan.ClientRequestID) != "" &&
+		plan.CredentialSelector.Name == "primary" &&
+		!plan.CreatedAt.IsZero() &&
+		plan.ExpiresAt.After(plan.CreatedAt)
+}
+
+func validPlanPresentation(presentation agentv1.Presentation) bool {
+	return presentation.Title != "" &&
+		len(presentation.Title) <= 160 &&
+		len(presentation.Summary) <= 500
+}
+
+func validPlanAuthorization(authorization Authorization) bool {
+	if authorization.Mode != "window" && authorization.Mode != "execution" {
+		return false
+	}
+	if authorization.RequestedDurationSeconds <= 0 || authorization.RequestedMaxUses < 0 {
+		return false
+	}
+	if authorization.Mode == "execution" && authorization.RequestedMaxUses != 1 {
+		return false
+	}
+	return strings.TrimSpace(authorization.Target.Kind) != "" && len(authorization.Target.Fields) > 0
+}
+
+func validatePlanRawMessages(values ...json.RawMessage) error {
+	for _, value := range values {
 		if len(value) == 0 {
 			return errors.New("HF plan contains an empty object")
 		}
@@ -336,10 +383,7 @@ func validate(plan Plan) error {
 			return errors.New("HF plan contains a raw secret field")
 		}
 	}
-	if err := validateValues(plan.Authorization.Target.Fields); err != nil {
-		return err
-	}
-	return validateValues(plan.Authorization.Attributes)
+	return nil
 }
 
 func canonicalObject(value json.RawMessage, maximum int) (json.RawMessage, error) {
@@ -381,13 +425,30 @@ func hasRawSecret(value any) bool {
 	return false
 }
 
-//nolint:cyclop // The closed secret-key vocabulary is tracked by the exact HF CRAP baseline.
+var rawSecretNames = map[string]bool{
+	"authorization": true,
+	"cookie":        true,
+	"password":      true,
+	"private_key":   true,
+	"secret":        true,
+	"token":         true,
+}
+
 func rawSecretKey(key string) bool {
 	normalized := strings.ToLower(strings.NewReplacer("-", "_", ".", "_").Replace(key))
-	if strings.HasSuffix(normalized, "_id") || strings.HasSuffix(normalized, "_ref") || strings.HasSuffix(normalized, "_digest") || strings.HasSuffix(normalized, "_name") {
+	if safeSecretLikeSuffix(normalized) {
 		return false
 	}
-	return normalized == "authorization" || normalized == "cookie" || normalized == "password" || normalized == "private_key" || normalized == "secret" || normalized == "token" || strings.HasSuffix(normalized, "_token")
+	return rawSecretNames[normalized] || strings.HasSuffix(normalized, "_token")
+}
+
+func safeSecretLikeSuffix(value string) bool {
+	for _, suffix := range []string{"_id", "_ref", "_digest", "_name"} {
+		if strings.HasSuffix(value, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateValues(values map[string][]string) error {

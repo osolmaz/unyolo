@@ -138,57 +138,73 @@ func (a *repositoryContentAdapter) Decode(targetRaw, argumentsRaw json.RawMessag
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
-//nolint:cyclop // Content-operation decoding is explicit and tracked by the exact HF CRAP baseline.
 func (a *repositoryContentAdapter) decodeArguments(raw json.RawMessage) (any, error) {
-	switch a.descriptor.Name {
-	case "repo.commit.create", "space.hot_reload.apply":
-		var value commitCreateArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCommitMetadata(value.Summary, value.Description, value.ParentCommit) != nil {
-			return nil, errors.New("commit arguments are invalid")
-		}
-		operations, err := normalizeCommitOperations(value.Operations)
-		if err != nil {
-			return nil, err
-		}
-		value.Operations = operations
-		return value, nil
-	case "repo.file.upload":
-		var value fileUploadArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCommitMetadata(value.Summary, value.Description, value.ParentCommit) != nil {
-			return nil, errors.New("file upload arguments are invalid")
-		}
-		operation := normalizedCommitOperation{Kind: "file", Path: value.Path, ContentBase64: value.ContentBase64, OID: value.OID, Size: value.Size}
-		if value.OID != nil || value.Size != nil {
-			operation.Kind = "lfs_file"
-		}
-		normalized, err := normalizeCommitOperations([]normalizedCommitOperation{operation})
-		if err != nil {
-			return nil, err
-		}
-		value.Path, value.ContentBase64, value.OID, value.Size = normalized[0].Path, normalized[0].ContentBase64, normalized[0].OID, normalized[0].Size
-		return value, nil
-	case "repo.file.delete":
-		var value fileDeleteArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCommitMetadata(value.Summary, value.Description, value.ParentCommit) != nil {
-			return nil, errors.New("file deletion arguments are invalid")
-		}
-		kind := "deleted_file"
-		if value.Folder {
-			kind = "deleted_folder"
-		}
-		if _, err := normalizeCommitOperations([]normalizedCommitOperation{{Kind: kind, Path: value.Path}}); err != nil {
-			return nil, err
-		}
-		return value, nil
-	case "repo.file.copy":
-		var value fileCopyArguments
-		if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCopyArguments(value) != nil {
-			return nil, errors.New("file copy arguments are invalid")
-		}
-		return value, nil
-	default:
-		return nil, errors.New("repository content operation is not implemented")
+	return decodeNamedArguments(a.descriptor.Name, repositoryContentArgumentDecoders, raw, "repository content operation is not implemented")
+}
+
+var repositoryContentArgumentDecoders = map[string]func(json.RawMessage) (any, error){
+	"repo.commit.create":     decodeCommitCreateArguments,
+	"space.hot_reload.apply": decodeCommitCreateArguments,
+	"repo.file.upload":       decodeFileUploadArguments,
+	"repo.file.delete":       decodeFileDeleteArguments,
+	"repo.file.copy":         decodeFileCopyArguments,
+}
+
+func decodeCommitCreateArguments(raw json.RawMessage) (any, error) {
+	var value commitCreateArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCommitMetadata(value.Summary, value.Description, value.ParentCommit) != nil {
+		return nil, errors.New("commit arguments are invalid")
 	}
+	operations, err := normalizeCommitOperations(value.Operations)
+	if err != nil {
+		return nil, err
+	}
+	value.Operations = operations
+	return value, nil
+}
+
+func decodeFileUploadArguments(raw json.RawMessage) (any, error) {
+	var value fileUploadArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCommitMetadata(value.Summary, value.Description, value.ParentCommit) != nil {
+		return nil, errors.New("file upload arguments are invalid")
+	}
+	normalized, err := normalizeCommitOperations([]normalizedCommitOperation{uploadCommitOperation(value)})
+	if err != nil {
+		return nil, err
+	}
+	value.Path, value.ContentBase64, value.OID, value.Size = normalized[0].Path, normalized[0].ContentBase64, normalized[0].OID, normalized[0].Size
+	return value, nil
+}
+
+func uploadCommitOperation(value fileUploadArguments) normalizedCommitOperation {
+	operation := normalizedCommitOperation{Kind: "file", Path: value.Path, ContentBase64: value.ContentBase64, OID: value.OID, Size: value.Size}
+	if value.OID != nil || value.Size != nil {
+		operation.Kind = "lfs_file"
+	}
+	return operation
+}
+
+func decodeFileDeleteArguments(raw json.RawMessage) (any, error) {
+	var value fileDeleteArguments
+	if err := decodeClosed(raw, &value, maxArgumentsBytes); err != nil || validateCommitMetadata(value.Summary, value.Description, value.ParentCommit) != nil {
+		return nil, errors.New("file deletion arguments are invalid")
+	}
+	if _, err := normalizeCommitOperations([]normalizedCommitOperation{deleteCommitOperation(value)}); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func deleteCommitOperation(value fileDeleteArguments) normalizedCommitOperation {
+	kind := "deleted_file"
+	if value.Folder {
+		kind = "deleted_folder"
+	}
+	return normalizedCommitOperation{Kind: kind, Path: value.Path}
+}
+
+func decodeFileCopyArguments(raw json.RawMessage) (any, error) {
+	return decodeValidatedArguments(raw, func(value fileCopyArguments) bool { return validateCopyArguments(value) == nil }, "file copy arguments are invalid")
 }
 
 func (a *repositoryContentAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
@@ -206,24 +222,32 @@ func (a *repositoryContentAdapter) Resolve(ctx context.Context, input Input) (Pl
 	}
 	preconditions := contentPreconditions{CredentialIdentity: identity.Name, TargetDigest: repoInfoDigest(info)}
 	if a.descriptor.Name == "repo.file.copy" {
-		var arguments fileCopyArguments
-		if err := decodeClosed(input.Arguments, &arguments, maxArgumentsBytes); err != nil {
+		source, err := a.resolveCopySource(ctx, input.Arguments)
+		if err != nil {
 			return Plan{}, err
 		}
-		sourceRef := hubclient.RepoRef{Type: hubclient.RepoType(arguments.SourceType), Owner: arguments.SourceOwner, Name: arguments.SourceName}
-		paths, pathsErr := a.client.RepoPathsInfo(ctx, sourceRef, arguments.SourceRevision, []string{arguments.SourcePath})
-		if pathsErr != nil {
-			return Plan{}, pathsErr
-		}
-		if len(paths) != 1 || paths[0].Path != arguments.SourcePath || paths[0].Type != "file" {
-			return Plan{}, errors.New("copy source file does not exist")
-		}
-		preconditions.Source = &contentSourceCondition{Type: arguments.SourceType, Owner: arguments.SourceOwner, Name: arguments.SourceName, Revision: arguments.SourceRevision, Path: arguments.SourcePath, Info: paths[0]}
+		preconditions.Source = source
 	}
 	encoded, _ := canonical(preconditions)
 	presentation, request := a.presentationAndPolicy(target, input.Arguments)
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: input.Target,
 		Arguments: input.Arguments, Preconditions: encoded, Presentation: presentation, Policy: request}, nil
+}
+
+func (a *repositoryContentAdapter) resolveCopySource(ctx context.Context, raw json.RawMessage) (*contentSourceCondition, error) {
+	var arguments fileCopyArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
+		return nil, err
+	}
+	sourceRef := hubclient.RepoRef{Type: hubclient.RepoType(arguments.SourceType), Owner: arguments.SourceOwner, Name: arguments.SourceName}
+	paths, err := a.client.RepoPathsInfo(ctx, sourceRef, arguments.SourceRevision, []string{arguments.SourcePath})
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) != 1 || paths[0].Path != arguments.SourcePath || paths[0].Type != "file" {
+		return nil, errors.New("copy source file does not exist")
+	}
+	return &contentSourceCondition{Type: arguments.SourceType, Owner: arguments.SourceOwner, Name: arguments.SourceName, Revision: arguments.SourceRevision, Path: arguments.SourcePath, Info: paths[0]}, nil
 }
 
 func (a *repositoryContentAdapter) Authorize(plan Plan) hfpolicy.Request {
@@ -262,37 +286,49 @@ func (a *repositoryContentAdapter) commitRequest(ctx context.Context, target rep
 	request := hubclient.CommitRequest{Ref: target.ref(), Revision: target.Revision, HotReload: a.descriptor.Name == "space.hot_reload.apply"}
 	switch a.descriptor.Name {
 	case "repo.commit.create", "space.hot_reload.apply":
-		var arguments commitCreateArguments
-		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
-			return request, err
-		}
-		request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
-		request.Operations, _ = toCommitOperations(arguments.Operations)
+		return commitCreateRequest(request, raw)
 	case "repo.file.upload":
-		var arguments fileUploadArguments
-		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
-			return request, err
-		}
-		operation := normalizedCommitOperation{Kind: "file", Path: arguments.Path, ContentBase64: arguments.ContentBase64, OID: arguments.OID, Size: arguments.Size}
-		if arguments.OID != nil {
-			operation.Kind = "lfs_file"
-		}
-		request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
-		request.Operations, _ = toCommitOperations([]normalizedCommitOperation{operation})
+		return fileUploadRequest(request, raw)
 	case "repo.file.delete":
-		var arguments fileDeleteArguments
-		if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
-			return request, err
-		}
-		kind := hubclient.CommitDeletedFile
-		if arguments.Folder {
-			kind = hubclient.CommitDeletedFolder
-		}
-		request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
-		request.Operations = []hubclient.CommitOperation{{Kind: kind, Path: arguments.Path}}
+		return fileDeleteRequest(request, raw)
 	case "repo.file.copy":
 		return a.copyCommitRequest(ctx, request, raw, preconditions)
 	}
+	return request, nil
+}
+
+func commitCreateRequest(request hubclient.CommitRequest, raw json.RawMessage) (hubclient.CommitRequest, error) {
+	var arguments commitCreateArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
+		return request, err
+	}
+	request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
+	request.Operations, _ = toCommitOperations(arguments.Operations)
+	return request, nil
+}
+
+func fileUploadRequest(request hubclient.CommitRequest, raw json.RawMessage) (hubclient.CommitRequest, error) {
+	var arguments fileUploadArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
+		return request, err
+	}
+	operation := uploadCommitOperation(arguments)
+	if arguments.OID != nil {
+		operation.Kind = "lfs_file"
+	}
+	request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
+	request.Operations, _ = toCommitOperations([]normalizedCommitOperation{operation})
+	return request, nil
+}
+
+func fileDeleteRequest(request hubclient.CommitRequest, raw json.RawMessage) (hubclient.CommitRequest, error) {
+	var arguments fileDeleteArguments
+	if err := decodeClosed(raw, &arguments, maxArgumentsBytes); err != nil {
+		return request, err
+	}
+	operation := deleteCommitOperation(arguments)
+	request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
+	request.Operations = []hubclient.CommitOperation{{Kind: hubclient.CommitOperationKind(operation.Kind), Path: operation.Path}}
 	return request, nil
 }
 
@@ -305,13 +341,7 @@ func (a *repositoryContentAdapter) copyCommitRequest(ctx context.Context, reques
 	sourceRef := hubclient.RepoRef{Type: hubclient.RepoType(source.Type), Owner: source.Owner, Name: source.Name}
 	request.Summary, request.Description, request.ParentCommit, request.CreatePR = arguments.Summary, arguments.Description, arguments.ParentCommit, arguments.CreatePR
 	if source.Info.LFSSHA != "" {
-		if sourceRef != request.Ref {
-			if err := a.client.DuplicateLFSFile(ctx, sourceRef, request.Ref, source.Info); err != nil {
-				return request, err
-			}
-		}
-		request.Operations = []hubclient.CommitOperation{{Kind: hubclient.CommitLFSFile, Path: arguments.Path, OID: source.Info.LFSSHA, Size: source.Info.Size}}
-		return request, nil
+		return a.copyLFSCommitRequest(ctx, request, arguments.Path, sourceRef, source.Info)
 	}
 	content, err := a.client.ReadRepoFile(ctx, sourceRef, source.Revision, source.Path)
 	if err != nil {
@@ -319,6 +349,21 @@ func (a *repositoryContentAdapter) copyCommitRequest(ctx context.Context, reques
 	}
 	request.Operations = []hubclient.CommitOperation{{Kind: hubclient.CommitFile, Path: arguments.Path, Content: content}}
 	return request, nil
+}
+
+func (a *repositoryContentAdapter) copyLFSCommitRequest(ctx context.Context, request hubclient.CommitRequest, path string, sourceRef hubclient.RepoRef, info hubclient.RepoPathInfo) (hubclient.CommitRequest, error) {
+	if err := a.ensureLFSObject(ctx, sourceRef, request.Ref, info); err != nil {
+		return request, err
+	}
+	request.Operations = []hubclient.CommitOperation{{Kind: hubclient.CommitLFSFile, Path: path, OID: info.LFSSHA, Size: info.Size}}
+	return request, nil
+}
+
+func (a *repositoryContentAdapter) ensureLFSObject(ctx context.Context, source, destination hubclient.RepoRef, info hubclient.RepoPathInfo) error {
+	if source == destination {
+		return nil
+	}
+	return a.client.DuplicateLFSFile(ctx, source, destination, info)
 }
 
 func (a *repositoryContentAdapter) decodePlan(plan Plan) (repositoryContentTarget, contentPreconditions, error) {
@@ -341,16 +386,20 @@ func (a *repositoryContentAdapter) checkPreconditions(ctx context.Context, targe
 	if identity.Name != expected.CredentialIdentity || repoInfoDigest(info) != expected.TargetDigest {
 		return errors.New("operation_precondition_failed")
 	}
-	if expected.Source != nil {
-		source := expected.Source
-		ref := hubclient.RepoRef{Type: hubclient.RepoType(source.Type), Owner: source.Owner, Name: source.Name}
-		paths, pathsErr := a.client.RepoPathsInfo(ctx, ref, source.Revision, []string{source.Path})
-		if pathsErr != nil {
-			return pathsErr
-		}
-		if len(paths) != 1 || paths[0] != source.Info {
-			return errors.New("operation_precondition_failed")
-		}
+	if expected.Source == nil {
+		return nil
+	}
+	return a.checkCopySourcePrecondition(ctx, *expected.Source)
+}
+
+func (a *repositoryContentAdapter) checkCopySourcePrecondition(ctx context.Context, source contentSourceCondition) error {
+	ref := hubclient.RepoRef{Type: hubclient.RepoType(source.Type), Owner: source.Owner, Name: source.Name}
+	paths, err := a.client.RepoPathsInfo(ctx, ref, source.Revision, []string{source.Path})
+	if err != nil {
+		return err
+	}
+	if len(paths) != 1 || paths[0] != source.Info {
+		return errors.New("operation_precondition_failed")
 	}
 	return nil
 }
@@ -467,36 +516,57 @@ func normalizeCommitOperations(values []normalizedCommitOperation) ([]normalized
 	return normalized, nil
 }
 
-//nolint:cyclop // Commit-kind conversion is explicit and tracked by the exact HF CRAP baseline.
 func toCommitOperations(values []normalizedCommitOperation) ([]hubclient.CommitOperation, error) {
 	operations := make([]hubclient.CommitOperation, 0, len(values))
 	for _, value := range values {
-		operation := hubclient.CommitOperation{Kind: hubclient.CommitOperationKind(value.Kind), Path: value.Path}
-		switch operation.Kind {
-		case hubclient.CommitFile:
-			if value.ContentBase64 == nil || value.OID != nil || value.Size != nil {
-				return nil, errors.New("regular file content is invalid")
-			}
-			content, err := base64.StdEncoding.Strict().DecodeString(*value.ContentBase64)
-			if err != nil || len(content) > maxInlineCommitContent {
-				return nil, errors.New("regular file content is invalid")
-			}
-			operation.Content = content
-		case hubclient.CommitLFSFile:
-			if value.ContentBase64 != nil || value.OID == nil || value.Size == nil {
-				return nil, errors.New("LFS file reference is invalid")
-			}
-			operation.OID, operation.Size = *value.OID, *value.Size
-		case hubclient.CommitDeletedFile, hubclient.CommitDeletedFolder:
-			if value.ContentBase64 != nil || value.OID != nil || value.Size != nil {
-				return nil, errors.New("delete operation is invalid")
-			}
-		default:
-			return nil, errors.New("commit operation kind is invalid")
+		operation, err := toCommitOperation(value)
+		if err != nil {
+			return nil, err
 		}
 		operations = append(operations, operation)
 	}
 	return operations, nil
+}
+
+func toCommitOperation(value normalizedCommitOperation) (hubclient.CommitOperation, error) {
+	operation := hubclient.CommitOperation{Kind: hubclient.CommitOperationKind(value.Kind), Path: value.Path}
+	switch operation.Kind {
+	case hubclient.CommitFile:
+		return regularFileCommitOperation(value, operation)
+	case hubclient.CommitLFSFile:
+		return lfsFileCommitOperation(value, operation)
+	case hubclient.CommitDeletedFile, hubclient.CommitDeletedFolder:
+		return deletedCommitOperation(value, operation)
+	default:
+		return hubclient.CommitOperation{}, errors.New("commit operation kind is invalid")
+	}
+}
+
+func regularFileCommitOperation(value normalizedCommitOperation, operation hubclient.CommitOperation) (hubclient.CommitOperation, error) {
+	if value.ContentBase64 == nil || value.OID != nil || value.Size != nil {
+		return hubclient.CommitOperation{}, errors.New("regular file content is invalid")
+	}
+	content, err := base64.StdEncoding.Strict().DecodeString(*value.ContentBase64)
+	if err != nil || len(content) > maxInlineCommitContent {
+		return hubclient.CommitOperation{}, errors.New("regular file content is invalid")
+	}
+	operation.Content = content
+	return operation, nil
+}
+
+func lfsFileCommitOperation(value normalizedCommitOperation, operation hubclient.CommitOperation) (hubclient.CommitOperation, error) {
+	if value.ContentBase64 != nil || value.OID == nil || value.Size == nil {
+		return hubclient.CommitOperation{}, errors.New("LFS file reference is invalid")
+	}
+	operation.OID, operation.Size = *value.OID, *value.Size
+	return operation, nil
+}
+
+func deletedCommitOperation(value normalizedCommitOperation, operation hubclient.CommitOperation) (hubclient.CommitOperation, error) {
+	if value.ContentBase64 != nil || value.OID != nil || value.Size != nil {
+		return hubclient.CommitOperation{}, errors.New("delete operation is invalid")
+	}
+	return operation, nil
 }
 
 func validateCopyArguments(value fileCopyArguments) error {

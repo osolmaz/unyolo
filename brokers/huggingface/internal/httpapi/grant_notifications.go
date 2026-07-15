@@ -175,24 +175,44 @@ func (s *Server) sweepPendingGrantApprovals(ctx context.Context) {
 		return
 	}
 	for _, grant := range pending {
-		claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
-		if err != nil || !claimed {
-			continue
-		}
-		ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(claim.Grant, claim.DecisionToken))
-		if err != nil || ref.MessageID <= 0 {
-			_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
-			continue
-		}
-		updated, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
-		if err != nil {
-			_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
-			continue
-		}
-		if !recorded && shouldSupersedeNotifier(updated.Notification, ref) {
-			s.supersedeGrantMessage(ctx, ref)
-		}
+		s.sweepPendingGrantApproval(ctx, grant)
 	}
+}
+
+func (s *Server) sweepPendingGrantApproval(ctx context.Context, grant grants.Grant) {
+	claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
+	if err != nil || !claimed {
+		return
+	}
+	ref, ok := s.sendClaimedGrantApproval(ctx, claim)
+	if !ok {
+		return
+	}
+	s.recordClaimedGrantNotification(ctx, claim, ref)
+}
+
+func (s *Server) sendClaimedGrantApproval(ctx context.Context, claim grants.NotificationClaim) (bknotify.MessageRef, bool) {
+	ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(claim.Grant, claim.DecisionToken))
+	if err != nil || ref.MessageID <= 0 {
+		s.retainGrantNotificationClaim(claim)
+		return bknotify.MessageRef{}, false
+	}
+	return ref, true
+}
+
+func (s *Server) recordClaimedGrantNotification(ctx context.Context, claim grants.NotificationClaim, ref bknotify.MessageRef) {
+	updated, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
+	if err != nil {
+		s.retainGrantNotificationClaim(claim)
+		return
+	}
+	if !recorded && shouldSupersedeNotifier(updated.Notification, ref) {
+		s.supersedeGrantMessage(ctx, ref)
+	}
+}
+
+func (s *Server) retainGrantNotificationClaim(claim grants.NotificationClaim) {
+	_, _, _ = s.grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
 }
 
 func grantStatusUpdateText(update grants.StatusUpdate) string {
