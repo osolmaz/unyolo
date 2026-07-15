@@ -181,7 +181,7 @@ brokerkit should own:
 - explicit approval status edits requested by the broker
 - immediate best-effort terminal edits after a committed callback decision
 - inline approve/deny buttons
-- callback payload parsing without interpreting the decision token
+- compact broker-routed callback payloads without interpreting the decision token
 - configured-chat filtering
 - Telegram operator metadata extraction
 - callback-query answers
@@ -189,6 +189,7 @@ brokerkit should own:
 - offset-preserving callback retry without acknowledgement after durable-store
   failure
 - offset-preserving handoff when a broker sharing the bot does not own a grant
+- bounded foreign-route handoff that closes an unavailable broker's stale callback
 - transport errors
 - shared tests for callback and token safety
 
@@ -206,8 +207,9 @@ domain-specific approval summaries and later lifecycle status wording. A broker
 with extra approval invariants implements the shared decider interface; it does
 not reimplement channel mapping. A retry leaves the callback unanswered and
 does not advance its update offset. This also lets several brokers share one bot:
-a broker that cannot find the referenced grant leaves the update pending for the
-owning broker instead of showing a false failure to the operator.
+the callback route lets a non-owning broker leave the update pending for the
+owner instead of showing a false failure. Foreign handoff is bounded so a stale
+callback cannot block every later bot update indefinitely.
 
 ### Control-Plane Assembly
 

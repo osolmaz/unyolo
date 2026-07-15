@@ -48,13 +48,13 @@ func TestHandleDecisionFailures(t *testing.T) {
 		want  string
 		retry bool
 	}{
-		{name: "not found", err: grants.ErrNotFound, retry: true},
+		{name: "not found", err: grants.ErrNotFound, want: "Grant not found"},
 		{name: "invalid token", err: grants.ErrInvalidDecisionToken, want: "Grant decision token did not match"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			decision := notify.Decision{Action: notify.ActionApprove}
 			got := HandleDecision(t.Context(), fakeDecider{approveErr: test.err}, decision)
-			if got.Answer != test.want || got.Retry != test.retry {
+			if got.Answer != test.want || got.Retry != test.retry || (test.err == grants.ErrNotFound && got.MessageStatus == "") {
 				t.Fatalf("HandleDecision() = %+v, want answer %q", got, test.want)
 			}
 		})
@@ -79,6 +79,42 @@ func TestTerminalResult(t *testing.T) {
 		if got.Answer != test.answer || got.MessageStatus == "" || got.Retry {
 			t.Fatalf("terminalResult(%q) = %+v", test.status, got)
 		}
+	}
+}
+
+func TestStatusUpdateMessage(t *testing.T) {
+	tests := []struct {
+		name   string
+		update grants.StatusUpdate
+		want   string
+	}{
+		{
+			name:   "retained reservation",
+			update: grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation},
+			want:   "Result is ambiguous. Access is closed until an operator reviews the retained use.",
+		},
+		{
+			name:   "used active grant",
+			update: grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: grants.Grant{Status: grants.StatusActive}},
+			want:   "Used. Access remains active until its limit or expiry.",
+		},
+		{
+			name:   "used closed grant",
+			update: grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: grants.Grant{Status: grants.StatusConsumed}},
+			want:   "Used. Access is now closed.",
+		},
+		{
+			name:   "status change",
+			update: grants.StatusUpdate{Status: grants.StatusDenied},
+			want:   "Denied. Access was not granted.",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := StatusUpdateMessage(test.update); got != test.want {
+				t.Fatalf("StatusUpdateMessage() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

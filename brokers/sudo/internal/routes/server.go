@@ -13,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
+	"github.com/osolmaz/brokerkit/approval"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
@@ -77,6 +78,7 @@ type Server struct {
 	lifecycleCancel    context.CancelFunc
 	backgroundWorkers  sync.WaitGroup
 	workerOnce         sync.Once
+	backgroundOnce     sync.Once
 	closeOnce          sync.Once
 	closeErr           error
 }
@@ -206,12 +208,61 @@ func (s *Server) Close() error {
 
 func (s *Server) Start(ctx context.Context) {
 	s.startOperationRuntime(ctx)
-	if s.poller != nil {
-		s.backgroundWorkers.Add(1)
-		go func() {
-			defer s.backgroundWorkers.Done()
-			s.poller.Poll(s.lifecycleContext, s.control.HandleDecision)
-		}()
+	s.backgroundOnce.Do(func() {
+		s.startDecisionPoller()
+		s.startNotificationSweeper()
+	})
+}
+
+func (s *Server) startDecisionPoller() {
+	if s.poller == nil {
+		return
+	}
+	s.backgroundWorkers.Add(1)
+	go func() {
+		defer s.backgroundWorkers.Done()
+		s.poller.Poll(s.lifecycleContext, s.control.HandleDecision)
+	}()
+}
+
+func (s *Server) startNotificationSweeper() {
+	if s.notifier == nil {
+		return
+	}
+	s.backgroundWorkers.Add(1)
+	go func() {
+		defer s.backgroundWorkers.Done()
+		s.runNotificationSweeper(s.lifecycleContext)
+	}()
+}
+
+func (s *Server) runNotificationSweeper(ctx context.Context) {
+	s.deliverNotificationStatusUpdates(ctx)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.deliverNotificationStatusUpdates(ctx)
+		}
+	}
+}
+
+func (s *Server) deliverNotificationStatusUpdates(ctx context.Context) {
+	updates, err := s.grants.StatusUpdatesDue()
+	if err != nil {
+		return
+	}
+	for _, update := range updates {
+		if update.Grant.Notification == nil {
+			continue
+		}
+		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, approval.StatusUpdateMessage(update)); err != nil {
+			continue
+		}
+		_ = s.grants.MarkNotificationStatus(update.Grant.ID, update.NotificationStatusKey())
 	}
 }
 

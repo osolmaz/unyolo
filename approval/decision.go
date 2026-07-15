@@ -57,9 +57,7 @@ func result(grant grants.Grant, err error, success, successStatus string) notify
 	}
 	switch {
 	case errors.Is(err, grants.ErrNotFound):
-		// Several brokers may share one Telegram bot. Leave an unknown grant
-		// unacknowledged so the broker that owns it can consume the update.
-		return notify.DecisionResult{Retry: true}
+		return notify.DecisionResult{Answer: "Grant not found", MessageStatus: "Unavailable. Grant no longer exists."}
 	case errors.Is(err, grants.ErrInvalidDecisionToken):
 		return notify.DecisionResult{Answer: "Grant decision token did not match"}
 	case errors.Is(err, grants.ErrNotPending):
@@ -72,18 +70,53 @@ func result(grant grants.Grant, err error, success, successStatus string) notify
 func terminalResult(status grants.Status) notify.DecisionResult {
 	switch status {
 	case grants.StatusActive:
-		return notify.DecisionResult{Answer: "Grant already approved", MessageStatus: "Approved. Access is active."}
+		return notify.DecisionResult{Answer: "Grant already approved", MessageStatus: StatusMessage(status)}
 	case grants.StatusDenied:
-		return notify.DecisionResult{Answer: "Grant already denied", MessageStatus: "Denied. Access was not granted."}
+		return notify.DecisionResult{Answer: "Grant already denied", MessageStatus: StatusMessage(status)}
 	case grants.StatusExpired:
-		return notify.DecisionResult{Answer: "Grant already expired", MessageStatus: "Expired. Access is closed."}
+		return notify.DecisionResult{Answer: "Grant already expired", MessageStatus: StatusMessage(status)}
 	case grants.StatusConsumed:
-		return notify.DecisionResult{Answer: "Grant already used", MessageStatus: "Used. Access is now closed."}
+		return notify.DecisionResult{Answer: "Grant already used", MessageStatus: StatusMessage(status)}
 	case grants.StatusRevoked:
-		return notify.DecisionResult{Answer: "Grant already revoked", MessageStatus: "Revoked. Access is closed."}
+		return notify.DecisionResult{Answer: "Grant already revoked", MessageStatus: StatusMessage(status)}
 	case grants.StatusCanceled:
-		return notify.DecisionResult{Answer: "Grant already canceled", MessageStatus: "Canceled. Approval request is closed."}
+		return notify.DecisionResult{Answer: "Grant already canceled", MessageStatus: StatusMessage(status)}
 	default:
 		return notify.DecisionResult{Answer: "Grant is no longer pending", MessageStatus: "Closed. Approval request is no longer pending."}
+	}
+}
+
+// StatusMessage returns provider-neutral operator wording for a grant status.
+func StatusMessage(status grants.Status) string {
+	switch status {
+	case grants.StatusActive:
+		return "Approved. Access is active."
+	case grants.StatusDenied:
+		return "Denied. Access was not granted."
+	case grants.StatusExpired:
+		return "Expired. Access is closed."
+	case grants.StatusConsumed:
+		return "Used. Access is now closed."
+	case grants.StatusRevoked:
+		return "Revoked. Access is closed."
+	case grants.StatusCanceled:
+		return "Canceled. Approval request is closed."
+	default:
+		return "Grant status changed."
+	}
+}
+
+// StatusUpdateMessage returns provider-neutral wording for a durable notification update.
+func StatusUpdateMessage(update grants.StatusUpdate) string {
+	switch update.Kind {
+	case grants.StatusUpdateRetainedReservation:
+		return "Result is ambiguous. Access is closed until an operator reviews the retained use."
+	case grants.StatusUpdateUsed, grants.StatusUpdateUsedExpired:
+		if update.Grant.Status == grants.StatusActive {
+			return "Used. Access remains active until its limit or expiry."
+		}
+		return "Used. Access is now closed."
+	default:
+		return StatusMessage(update.Status)
 	}
 }

@@ -88,6 +88,7 @@ func TestSendApprovalUsesBrokerTextAndButtonLabels(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
+		Route:       RouteGitHub,
 		ApproveText: "Yes",
 		DenyText:    "No",
 	})
@@ -107,6 +108,10 @@ func TestSendApprovalUsesBrokerTextAndButtonLabels(t *testing.T) {
 	row := calls[0]["reply_markup"].(map[string]any)["inline_keyboard"].([]any)[0].([]any)
 	if row[0].(map[string]any)["text"] != "Yes" || row[1].(map[string]any)["text"] != "No" {
 		t.Fatalf("button row = %+v", row)
+	}
+	route, action, _, _, ok := parseCallbackData(row[0].(map[string]any)["callback_data"].(string))
+	if !ok || route != RouteGitHub || action != notify.ActionApprove {
+		t.Fatalf("routed callback = %q %q valid=%v", route, action, ok)
 	}
 }
 
@@ -199,6 +204,46 @@ func TestPollOnceCommitsCallbackWhenImmediateEditFails(t *testing.T) {
 	if err != nil || offset != 8 || answers != 1 {
 		t.Fatalf("PollOnce() offset=%d answers=%d err=%v, want committed callback", offset, answers, err)
 	}
+}
+
+func TestPollOnceBoundsForeignBrokerHandoff(t *testing.T) {
+	state := &pollServerState{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":7,"callback_query":{"id":"foreign","from":{"id":2},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, "g1", "t1") + `"}}]}`))
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			payload := decodePayload(t, r)
+			state.answered = append(state.answered, payload["text"].(string))
+			writeOK(w)
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			state.edits = append(state.edits, decodePayload(t, r))
+			writeOK(w)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{Route: RouteHuggingFace, ForeignRetries: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handled := false
+	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
+		handled = true
+		return notify.DecisionResult{}
+	})
+	if !errors.Is(err, ErrDecisionRetry) || offset != 0 || handled || len(state.answered) != 0 {
+		t.Fatalf("first foreign poll offset=%d handled=%v answers=%v err=%v", offset, handled, state.answered, err)
+	}
+	offset, err = client.PollOnce(t.Context(), offset, func(context.Context, notify.Decision) notify.DecisionResult {
+		handled = true
+		return notify.DecisionResult{}
+	})
+	if err != nil || offset != 8 || handled || len(state.answered) != 1 || len(state.edits) != 1 {
+		t.Fatalf("bounded foreign poll offset=%d handled=%v answers=%v edits=%v err=%v", offset, handled, state.answered, state.edits, err)
+	}
+	assertClosedDecisionMessage(t, state.edits[0], "Unavailable. Approval broker did not respond.")
 }
 
 func retryGrantOne(_ context.Context, decision notify.Decision) notify.DecisionResult {
@@ -300,7 +345,43 @@ func TestCallbackData(t *testing.T) {
 	}
 }
 
+func TestRoutedCallbackData(t *testing.T) {
+	data := callbackData(RouteGitHub, notify.ActionDeny, "grant-1", "token-1")
+	route, action, grantID, token, ok := parseCallbackData(data)
+	if !ok || route != RouteGitHub || action != notify.ActionDeny || grantID != "grant-1" || token != "token-1" {
+		t.Fatalf("parseCallbackData() = %q %q %q %q %v", route, action, grantID, token, ok)
+	}
+}
+
+func TestNewRejectsInvalidCallbackRoute(t *testing.T) {
+	if _, err := NewWithOptions("test-token", 123, nil, "", Options{Route: "github"}); err == nil {
+		t.Fatal("multi-character callback route was accepted")
+	}
+}
+
+func TestNormalizeOptions(t *testing.T) {
+	defaults := normalizeOptions(Options{})
+	if defaults.PollTimeoutSeconds != defaultPollTimeoutSeconds || defaults.Route != defaultRoute ||
+		defaults.ForeignRetries != defaultForeignRetries || defaults.IgnoredAnswer != defaultIgnoredAnswer ||
+		defaults.ApproveText != "Approve" || defaults.DenyText != "Deny" {
+		t.Fatalf("normalizeOptions(defaults) = %+v", defaults)
+	}
+	invalid := normalizeOptions(Options{PollTimeoutSeconds: -1, Route: "invalid"})
+	if invalid.PollTimeoutSeconds != defaultPollTimeoutSeconds || invalid.Route != defaultRoute {
+		t.Fatalf("normalizeOptions(invalid) = %+v", invalid)
+	}
+
+	custom := Options{PollTimeoutSeconds: 5, Route: RouteGitHub, ForeignRetries: 2,
+		IgnoredAnswer: "ignored", ApproveText: "yes", DenyText: "no"}
+	if got := normalizeOptions(custom); got != custom {
+		t.Fatalf("normalizeOptions(custom) = %+v, want %+v", got, custom)
+	}
+}
+
 func TestCallbackDataRejectsInvalid(t *testing.T) {
+	if _, _, _, ok := ParseCallbackData(CallbackData(notify.Action("unknown"), "grant", "token")); ok {
+		t.Fatal("CallbackData(unknown action) parsed as valid")
+	}
 	if _, _, _, ok := ParseCallbackData("bad:data"); ok {
 		t.Fatal("ParseCallbackData(bad) ok = true, want false")
 	}
@@ -309,6 +390,22 @@ func TestCallbackDataRejectsInvalid(t *testing.T) {
 	}
 	if _, _, _, ok := ParseCallbackData("bk:approve::token"); ok {
 		t.Fatal("ParseCallbackData(empty grant) ok = true, want false")
+	}
+}
+
+func TestParseCallbackDataRejectsMalformedParts(t *testing.T) {
+	tests := []string{
+		"bk:d:a:Zw:dA:extra",
+		"other:d:a:Zw:dA",
+		"bk:route:a:Zw:dA",
+		"bk:d:x:Zw:dA",
+		"bk:d:a::dA",
+		"bk:d:a:Zw:",
+	}
+	for _, data := range tests {
+		if _, _, _, _, ok := parseCallbackData(data); ok {
+			t.Fatalf("parseCallbackData(%q) ok = true, want false", data)
+		}
 	}
 }
 

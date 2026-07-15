@@ -45,6 +45,7 @@ type MessageRef struct {
 
 // Decision is a parsed operator decision.
 type Decision struct {
+	Route         string
 	Action        Action
 	GrantID       string
 	DecisionToken string

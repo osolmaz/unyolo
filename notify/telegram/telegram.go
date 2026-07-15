@@ -22,6 +22,18 @@ const (
 	callbackPrefix            = "bk"
 	defaultPollTimeoutSeconds = 30
 	defaultIgnoredAnswer      = "Decision ignored"
+	defaultRoute              = "d"
+	defaultForeignRetries     = 30
+	maxForeignCallbacks       = 1024
+)
+
+const (
+	// RouteHuggingFace routes callbacks to hf-broker.
+	RouteHuggingFace = "h"
+	// RouteGitHub routes callbacks to gh-broker.
+	RouteGitHub = "g"
+	// RouteSudo routes callbacks to sudo-broker.
+	RouteSudo = "s"
 )
 
 var errMessageNotModified = errors.New("telegram message is not modified")
@@ -29,6 +41,8 @@ var errMessageNotModified = errors.New("telegram message is not modified")
 // Options configures Telegram approval behavior.
 type Options struct {
 	PollTimeoutSeconds int
+	Route              string
+	ForeignRetries     int
 	IgnoredAnswer      string
 	ApproveText        string
 	DenyText           string
@@ -41,6 +55,9 @@ type Client struct {
 	baseURL            string
 	client             *http.Client
 	pollTimeoutSeconds int
+	route              string
+	foreignRetries     int
+	foreignAttempts    map[string]int
 	retryDelay         time.Duration
 	ignoredAnswer      string
 	approveText        string
@@ -60,6 +77,9 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 	if chatID == 0 {
 		return nil, errors.New("telegram chat id is required")
 	}
+	if opts.Route != "" && !validRoute(opts.Route) {
+		return nil, errors.New("telegram callback route must be one lowercase letter")
+	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -73,6 +93,9 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 		baseURL:            strings.TrimRight(baseURL, "/"),
 		client:             httpClient,
 		pollTimeoutSeconds: opts.PollTimeoutSeconds,
+		route:              opts.Route,
+		foreignRetries:     opts.ForeignRetries,
+		foreignAttempts:    make(map[string]int),
 		retryDelay:         time.Second,
 		ignoredAnswer:      opts.IgnoredAnswer,
 		approveText:        opts.ApproveText,
@@ -81,22 +104,34 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 }
 
 func normalizeOptions(opts Options) Options {
-	if opts.PollTimeoutSeconds < 0 {
-		opts.PollTimeoutSeconds = 0
-	}
-	if opts.PollTimeoutSeconds == 0 {
-		opts.PollTimeoutSeconds = defaultPollTimeoutSeconds
-	}
-	if opts.IgnoredAnswer == "" {
-		opts.IgnoredAnswer = defaultIgnoredAnswer
-	}
-	if opts.ApproveText == "" {
-		opts.ApproveText = "Approve"
-	}
-	if opts.DenyText == "" {
-		opts.DenyText = "Deny"
-	}
+	opts.PollTimeoutSeconds = positiveOrDefault(opts.PollTimeoutSeconds, defaultPollTimeoutSeconds)
+	opts.Route = routeOrDefault(opts.Route)
+	opts.ForeignRetries = positiveOrDefault(opts.ForeignRetries, defaultForeignRetries)
+	opts.IgnoredAnswer = stringOrDefault(opts.IgnoredAnswer, defaultIgnoredAnswer)
+	opts.ApproveText = stringOrDefault(opts.ApproveText, "Approve")
+	opts.DenyText = stringOrDefault(opts.DenyText, "Deny")
 	return opts
+}
+
+func positiveOrDefault(value int, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func routeOrDefault(route string) string {
+	if !validRoute(route) {
+		return defaultRoute
+	}
+	return route
+}
+
+func stringOrDefault(value string, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 // SendApproval sends one approval message with approve/deny buttons.
@@ -107,8 +142,8 @@ func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (
 		"text":    text,
 		"reply_markup": map[string]any{
 			"inline_keyboard": [][]map[string]string{{
-				{"text": c.approveText, "callback_data": CallbackData(notify.ActionApprove, msg.GrantID, msg.DecisionToken)},
-				{"text": c.denyText, "callback_data": CallbackData(notify.ActionDeny, msg.GrantID, msg.DecisionToken)},
+				{"text": c.approveText, "callback_data": callbackData(c.route, notify.ActionApprove, msg.GrantID, msg.DecisionToken)},
+				{"text": c.denyText, "callback_data": callbackData(c.route, notify.ActionDeny, msg.GrantID, msg.DecisionToken)},
 			}},
 		},
 	}
@@ -213,9 +248,23 @@ func RenderApproval(msg notify.ApprovalMessage) string {
 
 // CallbackData encodes one button callback.
 func CallbackData(action notify.Action, grantID string, token string) string {
+	return callbackData(defaultRoute, action, grantID, token)
+}
+
+func callbackData(route string, action notify.Action, grantID string, token string) string {
+	var actionCode string
+	switch action {
+	case notify.ActionApprove:
+		actionCode = "a"
+	case notify.ActionDeny:
+		actionCode = "d"
+	default:
+		actionCode = string(action)
+	}
 	return strings.Join([]string{
 		callbackPrefix,
-		string(action),
+		route,
+		actionCode,
 		encodeCallbackPart(grantID),
 		encodeCallbackPart(token),
 	}, ":")
@@ -223,23 +272,37 @@ func CallbackData(action notify.Action, grantID string, token string) string {
 
 // ParseCallbackData decodes one callback_data value.
 func ParseCallbackData(data string) (notify.Action, string, string, bool) {
+	_, action, grantID, token, ok := parseCallbackData(data)
+	return action, grantID, token, ok
+}
+
+func parseCallbackData(data string) (string, notify.Action, string, string, bool) {
 	parts := strings.Split(data, ":")
-	if len(parts) != 4 || parts[0] != callbackPrefix {
-		return "", "", "", false
+	if len(parts) != 5 || parts[0] != callbackPrefix || !validRoute(parts[1]) {
+		return "", "", "", "", false
 	}
-	action := notify.Action(parts[1])
-	if action != notify.ActionApprove && action != notify.ActionDeny {
-		return "", "", "", false
+	var action notify.Action
+	switch parts[2] {
+	case "a":
+		action = notify.ActionApprove
+	case "d":
+		action = notify.ActionDeny
+	default:
+		return "", "", "", "", false
 	}
-	grantID, ok := decodeCallbackPart(parts[2])
+	grantID, ok := decodeCallbackPart(parts[3])
 	if !ok {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
-	token, ok := decodeCallbackPart(parts[3])
+	token, ok := decodeCallbackPart(parts[4])
 	if !ok {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
-	return action, grantID, token, true
+	return parts[1], action, grantID, token, true
+}
+
+func validRoute(route string) bool {
+	return len(route) == 1 && route[0] >= 'a' && route[0] <= 'z'
 }
 
 func encodeCallbackPart(value string) string {

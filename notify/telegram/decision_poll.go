@@ -42,6 +42,10 @@ func offsetAfterUpdate(offset, updateID int64) int64 {
 func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) bool {
 	result := notify.DecisionResult{Answer: c.ignoredAnswer}
 	if decision.ChatID == c.chatID {
+		if decision.Route != c.route {
+			return c.retryForeignDecision(ctx, decision)
+		}
+		delete(c.foreignAttempts, decision.CallbackID)
 		result = c.normalizeDecisionResult(handler(ctx, decision))
 		if result.Retry {
 			return true
@@ -56,12 +60,28 @@ func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, h
 	return false
 }
 
+func (c *Client) retryForeignDecision(ctx context.Context, decision notify.Decision) bool {
+	if _, exists := c.foreignAttempts[decision.CallbackID]; !exists && len(c.foreignAttempts) >= maxForeignCallbacks {
+		clear(c.foreignAttempts)
+	}
+	attempts := c.foreignAttempts[decision.CallbackID] + 1
+	if attempts <= c.foreignRetries {
+		c.foreignAttempts[decision.CallbackID] = attempts
+		return true
+	}
+	delete(c.foreignAttempts, decision.CallbackID)
+	answer := "Approval broker is unavailable"
+	_ = c.answerCallback(ctx, decision.CallbackID, answer)
+	_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, "Unavailable. Approval broker did not respond.")
+	return false
+}
+
 func parseDecision(update telegramUpdate) (notify.Decision, bool) {
 	if update.CallbackQuery == nil {
 		return notify.Decision{}, false
 	}
 	callback := update.CallbackQuery
-	action, grantID, token, ok := ParseCallbackData(callback.Data)
+	route, action, grantID, token, ok := parseCallbackData(callback.Data)
 	if !ok {
 		return notify.Decision{}, false
 	}
@@ -81,6 +101,7 @@ func parseDecision(update telegramUpdate) (notify.Decision, bool) {
 		return notify.Decision{}, false
 	}
 	return notify.Decision{
+		Route:         route,
 		Action:        action,
 		GrantID:       grantID,
 		DecisionToken: token,

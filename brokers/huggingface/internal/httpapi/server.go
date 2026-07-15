@@ -570,6 +570,7 @@ func (s *Server) startTelegram(ctx context.Context, opts Options) error {
 		return nil
 	}
 	telegram, err := bktelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, bktelegram.Options{
+		Route:         bktelegram.RouteHuggingFace,
 		IgnoredAnswer: "Grant decision ignored",
 		ApproveText:   "✅ Approve",
 		DenyText:      "❌ Deny",

@@ -29,6 +29,7 @@ func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client,
 		return nil, nil, nil
 	}
 	telegram, err := bktelegram.NewWithOptions(cfg.TelegramBotToken, cfg.TelegramChatID, nil, "", bktelegram.Options{
+		Route:         bktelegram.RouteGitHub,
 		IgnoredAnswer: "Grant decision ignored",
 		ApproveText:   "Approve",
 		DenyText:      "Deny",

@@ -380,6 +380,60 @@ func TestSudoTelegramNotificationIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestSudoDeliversDurableNotificationStatus(t *testing.T) {
+	server, _, closeServer := testServer(t)
+	defer closeServer()
+	notifier := &retryStatusNotifier{}
+	server.notifier = notifier
+	resetOperationRuntime(t, server)
+	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("durable-status"))
+	if err != nil || operation.ApprovalID == "" || len(notifier.Messages) != 1 {
+		t.Fatalf("submit = %#v messages=%d err=%v", operation, len(notifier.Messages), err)
+	}
+	grant, err := server.grants.Get(operation.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionDeny, "operator:onur", operatorv1.Decision{
+		ExpectedRevision: grant.Revision,
+		IdempotencyKey:   "durable-status-deny",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.deliverNotificationStatusUpdates(t.Context())
+	server.deliverNotificationStatusUpdates(t.Context())
+	if notifier.attempts != 2 || len(notifier.Statuses) != 1 || notifier.Statuses[0] != "Denied. Access was not granted." {
+		t.Fatalf("notification attempts=%d statuses=%v", notifier.attempts, notifier.Statuses)
+	}
+	stored, err := server.grants.Get(grant.ID)
+	if err != nil || stored.NotificationStatus != string(grants.StatusDenied) {
+		t.Fatalf("stored grant = %#v err=%v", stored, err)
+	}
+}
+
+func TestSudoNotificationSweeperStopsWithContext(t *testing.T) {
+	server, _, closeServer := testServer(t)
+	defer closeServer()
+	server.notifier = &notify.Memory{}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	server.runNotificationSweeper(ctx)
+}
+
+type retryStatusNotifier struct {
+	notify.Memory
+	attempts int
+}
+
+func (n *retryStatusNotifier) UpdateStatus(ctx context.Context, ref notify.MessageRef, status string) error {
+	n.attempts++
+	if n.attempts == 1 {
+		return errors.New("telegram unavailable")
+	}
+	return n.Memory.UpdateStatus(ctx, ref, status)
+}
+
 func TestSudoNotificationFallbackAndPolicyBounds(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()

@@ -303,6 +303,7 @@ func loadTelegramNotifier(opts serveOptions) (*bktelegram.Client, error) {
 		return nil, err
 	}
 	return bktelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", bktelegram.Options{
+		Route:       bktelegram.RouteSudo,
 		ApproveText: "Approve", DenyText: "Deny", IgnoredAnswer: "Request decision ignored",
 	})
 }
