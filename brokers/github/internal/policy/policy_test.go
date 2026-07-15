@@ -52,10 +52,10 @@ func TestScopeExampleSeparatesDirectAndApprovalOperations(t *testing.T) {
 	}
 
 	allowed := []Request{
-		repoRequest(OperationGitFetch, "osolmaz", "brokerkit", nil),
-		repoRequest(Operation("repo.contents.read"), "osolmaz", "brokerkit", nil),
-		repoRequest(OperationGitPushBranchCreate, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/bob/work"}),
-		repoRequest(OperationGitPushForce, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/agent/work"}),
+		exampleRepoRequest(OperationGitFetch, "osolmaz", "brokerkit", nil),
+		exampleRepoRequest(Operation("repo.contents.read"), "osolmaz", "brokerkit", nil),
+		exampleRepoRequest(OperationGitPushBranchCreate, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/agent-a/work"}),
+		exampleRepoRequest(OperationGitPushForce, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/agent-a/work"}),
 	}
 	for _, request := range allowed {
 		if decision := p.Evaluate(request); !decision.Allowed {
@@ -64,9 +64,9 @@ func TestScopeExampleSeparatesDirectAndApprovalOperations(t *testing.T) {
 	}
 
 	denied := []Request{
-		repoRequest(OperationGitPushForce, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/main"}),
-		repoRequest(OperationGitRefDelete, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/bob/work"}),
-		repoRequest(OperationGitFetch, "osolmaz", "other", nil),
+		exampleRepoRequest(OperationGitPushForce, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/main"}),
+		exampleRepoRequest(OperationGitRefDelete, "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/agent-a/work"}),
+		exampleRepoRequest(OperationGitFetch, "osolmaz", "other", nil),
 	}
 	for _, request := range denied {
 		if decision := p.Evaluate(request); decision.Allowed {
@@ -75,10 +75,10 @@ func TestScopeExampleSeparatesDirectAndApprovalOperations(t *testing.T) {
 	}
 
 	requested := []Request{
-		repoRequest(Operation("pull_request.create"), "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/bob/work", "base_ref": "refs/heads/main"}),
-		repoRequest(Operation("repo.delete"), "osolmaz", "brokerkit-e2e-123", nil),
-		repoRequest(Operation("agent_task.create_or_update_repo_secret"), "osolmaz", "brokerkit", nil),
-		repoRequest(Operation("collaborator.repos_add_collaborator"), "osolmaz", "brokerkit", nil),
+		exampleRepoRequest(Operation("pull_request.create"), "osolmaz", "brokerkit", map[string]string{"ref": "refs/heads/agent-a/work", "base_ref": "refs/heads/main"}),
+		exampleRepoRequest(Operation("repo.delete"), "osolmaz", "brokerkit-e2e-123", nil),
+		exampleRepoRequest(Operation("agent_task.create_or_update_repo_secret"), "osolmaz", "brokerkit", nil),
+		exampleRepoRequest(Operation("collaborator.repos_add_collaborator"), "osolmaz", "brokerkit", nil),
 	}
 	for _, request := range requested {
 		if decision := p.Evaluate(request); decision.Effect != EffectRequest || decision.Allowed {
@@ -674,6 +674,12 @@ func testPolicy(t *testing.T) *Policy {
 
 func repoRequest(operation Operation, owner string, name string, attrs map[string]string) Request {
 	return Request{Client: "bob", Operation: operation, Target: Target{Kind: "repo", Owner: owner, Name: name}, Attrs: attrs}
+}
+
+func exampleRepoRequest(operation Operation, owner string, name string, attrs map[string]string) Request {
+	request := repoRequest(operation, owner, name, attrs)
+	request.Client = "agent-a"
+	return request
 }
 
 func writeScopeFile(t *testing.T, body string) string {
