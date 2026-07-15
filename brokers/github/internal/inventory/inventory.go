@@ -77,30 +77,54 @@ func load() {
 	})
 }
 
-//nolint:cyclop // Coverage invariants are explicit so omissions cannot hide in helpers.
 func Validate(rest []RESTRow, graphql []GraphQLRow) error {
 	if len(rest) != RESTCount || len(graphql) != GraphQLRootCount {
 		return fmt.Errorf("GitHub inventory counts are %d REST/%d GraphQL", len(rest), len(graphql))
 	}
 	allowed := []string{"implemented", "protocol", "graphql", "internal", "operator-only", "local", "duplicate", "blocked-credential", "blocked-upstream"}
+	if err := validateRESTRows(rest, allowed); err != nil {
+		return err
+	}
+	if err := validateGraphQLRows(graphql, allowed); err != nil {
+		return err
+	}
+	return validateReviewArtifacts()
+}
+
+func validateRESTRows(rest []RESTRow, allowed []string) error {
 	seen := map[string]bool{}
 	for _, row := range rest {
 		key := row.Method + " " + row.Path
-		if row.UpstreamID == "" || row.Method == "" || row.Path == "" || seen[key] || !slices.Contains(allowed, row.Disposition) || !row.Reviewed {
+		if !validRESTRow(row, key, seen, allowed) {
 			return fmt.Errorf("invalid REST coverage row %q", key)
 		}
 		seen[key] = true
-		if row.Disposition == "blocked-credential" && row.RequiredCredential == "" {
-			return errors.New("blocked REST row has no required credential")
-		}
-		if (row.Disposition == "implemented" || row.Disposition == "protocol" || row.Disposition == "internal" || row.Disposition == "operator-only") != (len(row.CatalogOperations) > 0) {
-			return fmt.Errorf("REST row %q catalog binding drifted", key)
+		if err := validateRESTDisposition(row, key); err != nil {
+			return err
 		}
 	}
-	seen = map[string]bool{}
+	return nil
+}
+
+func validateRESTDisposition(row RESTRow, key string) error {
+	if row.Disposition == "blocked-credential" && row.RequiredCredential == "" {
+		return errors.New("blocked REST row has no required credential")
+	}
+	if (row.Disposition == "implemented" || row.Disposition == "protocol" || row.Disposition == "internal" || row.Disposition == "operator-only") != (len(row.CatalogOperations) > 0) {
+		return fmt.Errorf("REST row %q catalog binding drifted", key)
+	}
+	return nil
+}
+
+func validRESTRow(row RESTRow, key string, seen map[string]bool, allowed []string) bool {
+	return row.UpstreamID != "" && row.Method != "" && row.Path != "" && !seen[key] && slices.Contains(allowed, row.Disposition) && row.Reviewed
+}
+
+func validateGraphQLRows(graphql []GraphQLRow, allowed []string) error {
+	seen := map[string]bool{}
 	for _, row := range graphql {
 		key := row.RootType + "." + row.Field
-		if (row.RootType != "query" && row.RootType != "mutation") || row.Field == "" || seen[key] || !slices.Contains(allowed, row.Disposition) || !row.Reviewed {
+		if !validGraphQLRow(row, key, seen, allowed) {
 			return fmt.Errorf("invalid GraphQL coverage row %q", key)
 		}
 		seen[key] = true
@@ -111,6 +135,14 @@ func Validate(rest []RESTRow, graphql []GraphQLRow) error {
 			return fmt.Errorf("GraphQL deprecation disposition drifted for %q", key)
 		}
 	}
+	return nil
+}
+
+func validGraphQLRow(row GraphQLRow, key string, seen map[string]bool, allowed []string) bool {
+	return (row.RootType == "query" || row.RootType == "mutation") && row.Field != "" && !seen[key] && slices.Contains(allowed, row.Disposition) && row.Reviewed
+}
+
+func validateReviewArtifacts() error {
 	if !json.Valid(reviewRaw) || !strings.Contains(string(reviewRaw), `"enterprise"`) {
 		return errors.New("high-risk review artifact is invalid")
 	}
