@@ -55,13 +55,10 @@ func Serve(ctx context.Context, bindings []Binding) error {
 	if len(bindings) == 0 {
 		return errors.New("at least one HTTP listener is required")
 	}
-	errorsChannel := make(chan error, len(bindings))
-	for _, binding := range bindings {
-		if binding.Server == nil || binding.Listener == nil {
-			return errors.New("HTTP server and listener are required")
-		}
-		go func(value Binding) { errorsChannel <- value.Server.Serve(value.Listener) }(binding)
+	if err := validateBindings(bindings); err != nil {
+		return err
 	}
+	errorsChannel := serveBindings(bindings)
 	select {
 	case err := <-errorsChannel:
 		shutdownErr := Shutdown(bindings)
@@ -72,6 +69,23 @@ func Serve(ctx context.Context, bindings []Binding) error {
 	case <-ctx.Done():
 		return Shutdown(bindings)
 	}
+}
+
+func validateBindings(bindings []Binding) error {
+	for _, binding := range bindings {
+		if binding.Server == nil || binding.Listener == nil {
+			return errors.New("HTTP server and listener are required")
+		}
+	}
+	return nil
+}
+
+func serveBindings(bindings []Binding) <-chan error {
+	errorsChannel := make(chan error, len(bindings))
+	for _, binding := range bindings {
+		go func(value Binding) { errorsChannel <- value.Server.Serve(value.Listener) }(binding)
+	}
+	return errorsChannel
 }
 
 // Shutdown gracefully stops every server and closes every listener.

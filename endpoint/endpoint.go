@@ -82,23 +82,39 @@ func parseTCP(parsed *url.URL, options ParseOptions) (Endpoint, error) {
 	if parsed.Path != "" || parsed.Opaque != "" || parsed.Host == "" {
 		return Endpoint{}, errors.New("tcp endpoint must contain only an explicit host and port")
 	}
-	host, rawPort, err := net.SplitHostPort(parsed.Host)
-	if err != nil || host == "" || rawPort == "" {
-		return Endpoint{}, errors.New("tcp endpoint must contain an explicit unambiguous host and port")
+	host, rawPort, err := splitTCPHostPort(parsed.Host)
+	if err != nil {
+		return Endpoint{}, err
 	}
 	port, err := parseTCPPort(rawPort, options.AllowEphemeralTCP)
 	if err != nil {
 		return Endpoint{}, err
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return Endpoint{}, errors.New("tcp endpoint host must be a literal IP address")
+	ip, err := parseTCPHost(host)
+	if err != nil {
+		return Endpoint{}, err
 	}
 	exposure, err := classifyTCP(ip, options.AllowNetworkTCP)
 	if err != nil {
 		return Endpoint{}, err
 	}
 	return Endpoint{scheme: SchemeTCP, host: ip.String(), port: port, exposure: exposure}, nil
+}
+
+func splitTCPHostPort(address string) (string, string, error) {
+	host, rawPort, err := net.SplitHostPort(address)
+	if err != nil || host == "" || rawPort == "" {
+		return "", "", errors.New("tcp endpoint must contain an explicit unambiguous host and port")
+	}
+	return host, rawPort, nil
+}
+
+func parseTCPHost(host string) (net.IP, error) {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, errors.New("tcp endpoint host must be a literal IP address")
+	}
+	return ip, nil
 }
 
 func parseTCPPort(raw string, allowEphemeral bool) (int, error) {

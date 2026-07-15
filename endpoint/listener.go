@@ -65,8 +65,12 @@ func prepareListenerSet(values []Named) (map[string]net.Listener, []string, map[
 }
 
 func acquireActivatedSet(listeners map[string]net.Listener, names []string, keys map[string]string) error {
+	return acquireActivatedSetWith(listeners, names, keys, activationListeners)
+}
+
+func acquireActivatedSetWith(listeners map[string]net.Listener, names []string, keys map[string]string, activate func([]string) (map[string]net.Listener, error)) error {
 	if len(names) > 0 {
-		activated, err := activationListeners(names)
+		activated, err := activate(names)
 		if err != nil {
 			return closeListeners(listeners, err)
 		}
@@ -114,6 +118,10 @@ func CloseSet(listeners map[string]net.Listener) error {
 
 // Listen acquires and verifies one server listener.
 func Listen(value Endpoint, options ListenOptions) (net.Listener, error) {
+	return listenWith(value, options, activationListeners)
+}
+
+func listenWith(value Endpoint, options ListenOptions, activate func([]string) (map[string]net.Listener, error)) (net.Listener, error) {
 	switch value.scheme {
 	case SchemeTCP:
 		return (&net.ListenConfig{}).Listen(context.Background(), "tcp", value.Address())
@@ -122,7 +130,7 @@ func Listen(value Endpoint, options ListenOptions) (net.Listener, error) {
 	case SchemeFD:
 		return listenerFromFD(value.fd)
 	case SchemeActivation:
-		listeners, err := activationListeners([]string{value.name})
+		listeners, err := activate([]string{value.name})
 		return listeners[value.name], err
 	default:
 		return nil, errors.New("endpoint is not initialized")
@@ -140,21 +148,35 @@ func listenUnix(path string, options ListenOptions) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen on unix endpoint: %w", err)
 	}
-	mode := options.SocketMode.Perm()
-	if mode == 0 {
-		mode = 0o660
-	}
-	if mode&0o007 != 0 {
-		_ = listener.Close()
-		_ = os.Remove(path)
-		return nil, errors.New("unix socket mode must not grant access to other users")
-	}
-	if err := os.Chmod(path, mode); err != nil {
-		_ = listener.Close()
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("set unix socket mode: %w", err)
+	if err := configureUnixSocket(listener, path, options.SocketMode); err != nil {
+		return nil, err
 	}
 	return &removingListener{Listener: listener, path: path}, nil
+}
+
+func configureUnixSocket(listener net.Listener, path string, configured os.FileMode) error {
+	mode := normalizedSocketMode(configured)
+	if mode&0o007 != 0 {
+		return closeAndRemoveSocket(listener, path, errors.New("unix socket mode must not grant access to other users"))
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		return closeAndRemoveSocket(listener, path, fmt.Errorf("set unix socket mode: %w", err))
+	}
+	return nil
+}
+
+func normalizedSocketMode(configured os.FileMode) os.FileMode {
+	mode := configured.Perm()
+	if mode == 0 {
+		return 0o660
+	}
+	return mode
+}
+
+func closeAndRemoveSocket(listener net.Listener, path string, err error) error {
+	_ = listener.Close()
+	_ = os.Remove(path)
+	return err
 }
 
 func validateSocketParent(path string, development bool) error {
@@ -165,18 +187,25 @@ func validateSocketParent(path string, development bool) error {
 	if development {
 		return validateDirectory(path, effectiveUID())
 	}
+	return validateSocketParentChain(clean)
+}
+
+func validateSocketParentChain(clean string) error {
 	current := string(filepath.Separator)
 	for _, component := range strings.Split(strings.TrimPrefix(clean, current), current) {
 		current = filepath.Join(current, component)
-		expectedOwner := uint32(0)
-		if current == clean {
-			expectedOwner = effectiveUID()
-		}
-		if err := validateDirectory(current, expectedOwner); err != nil {
+		if err := validateDirectory(current, expectedSocketParentOwner(current, clean)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func expectedSocketParentOwner(current, final string) uint32 {
+	if current == final {
+		return effectiveUID()
+	}
+	return 0
 }
 
 func validateDirectory(path string, expectedOwner uint32) error {
@@ -184,8 +213,22 @@ func validateDirectory(path string, expectedOwner uint32) error {
 	if err != nil {
 		return fmt.Errorf("inspect unix socket parent: %w", err)
 	}
+	if err := validateDirectoryShape(path, info); err != nil {
+		return err
+	}
+	return validateDirectoryTrust(path, info, expectedOwner)
+}
+
+func validateDirectoryShape(path string, info os.FileInfo) error {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("unix socket parent is not a trusted directory: %s", path)
+	}
+	return nil
+}
+
+func validateDirectoryTrust(path string, info os.FileInfo, expectedOwner uint32) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+	if !ok {
 		return fmt.Errorf("unix socket parent is not a trusted directory: %s", path)
 	}
 	if stat.Uid != expectedOwner {
@@ -205,19 +248,30 @@ func removeStaleSocket(path string) error {
 	if err != nil {
 		return fmt.Errorf("inspect unix socket path: %w", err)
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || info.Mode()&os.ModeSocket == 0 || stat.Uid != effectiveUID() {
+	if !ownedSocket(info) {
 		return errors.New("existing unix endpoint is not an owned socket")
 	}
-	connection, dialErr := (&net.Dialer{Timeout: staleProbeTimeout}).DialContext(context.Background(), "unix", path)
-	if dialErr == nil {
-		_ = connection.Close()
+	if socketAcceptsConnections(path) {
 		return errors.New("unix endpoint is already accepting connections")
 	}
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("remove stale unix endpoint: %w", err)
 	}
 	return nil
+}
+
+func ownedSocket(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && info.Mode()&os.ModeSocket != 0 && stat.Uid == effectiveUID()
+}
+
+func socketAcceptsConnections(path string) bool {
+	connection, dialErr := (&net.Dialer{Timeout: staleProbeTimeout}).DialContext(context.Background(), "unix", path)
+	if dialErr != nil {
+		return false
+	}
+	_ = connection.Close()
+	return true
 }
 
 func effectiveUID() uint32 {
@@ -230,6 +284,10 @@ func listenerFromFD(fd int) (net.Listener, error) {
 	if file == nil {
 		return nil, errors.New("inherited listener descriptor is invalid")
 	}
+	return listenerFromFile(file)
+}
+
+func listenerFromFile(file *os.File) (net.Listener, error) {
 	listener, err := net.FileListener(file)
 	closeErr := file.Close()
 	if err != nil {

@@ -2,6 +2,7 @@ package serverhttp
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"testing"
@@ -47,5 +48,29 @@ func TestServeStopsOnContextCancellation(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Serve did not join shutdown")
+	}
+}
+
+func TestServeRejectsInvalidBindings(t *testing.T) {
+	if err := Serve(t.Context(), nil); err == nil {
+		t.Fatal("Serve(nil) error = nil")
+	}
+	if err := Serve(t.Context(), []Binding{{}}); err == nil {
+		t.Fatal("Serve(empty binding) error = nil")
+	}
+}
+
+func TestServeStopsPeersWhenServerExits(t *testing.T) {
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, _ := New(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), ProfileAPI)
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err = Serve(t.Context(), []Binding{{Server: server, Listener: listener}})
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Serve(closed listener) error = %v", err)
 	}
 }
