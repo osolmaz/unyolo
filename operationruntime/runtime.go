@@ -48,8 +48,9 @@ type Preparation[P, A any] struct {
 
 // Failure is a provider-redacted terminal execution error.
 type Failure struct {
-	Code    string
-	Message string
+	Code            string
+	Message         string
+	ReleaseApproval bool
 }
 
 // Observer receives bounded lifecycle outcomes without provider or target data.
@@ -773,8 +774,9 @@ func (r *Runtime[I, P, A]) executeReserved(ctx context.Context, operation agentv
 	}
 	if r.options.DefinitiveFailure(executionErr) {
 		result = "failed"
-		if r.settleApproval(operation, reserved, false) {
-			errorCode = r.failExecution(operation, plan, executionErr, nil).Code
+		failure := r.options.ExecutionFailure(executionErr, nil)
+		if r.settleApproval(operation, reserved, settlementForFailure(failure)) {
+			errorCode = r.recordExecutionFailure(operation, plan, failure).Code
 		}
 		return
 	}
@@ -795,7 +797,7 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 		return "reconciled", ""
 	}
 	failure := r.options.ExecutionFailure(executionErr, reconcileErr)
-	if r.settleApproval(operation, reserved, true) {
+	if r.settleApproval(operation, reserved, approvalRetain) {
 		failure = r.failExecution(operation, plan, executionErr, reconcileErr)
 	}
 	return "ambiguous", failure.Code
@@ -803,7 +805,7 @@ func (r *Runtime[I, P, A]) reconcileExecution(ctx context.Context, operation age
 
 func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string, upstreamStatus int) {
 	result = NormalizedResult(operation.Operation, result)
-	if !r.settleApproval(operation, reserved, false) {
+	if !r.settleApproval(operation, reserved, approvalCommit) {
 		return
 	}
 	if _, err := r.options.Operations.Succeed(operation.ID, result); err != nil {
@@ -819,23 +821,6 @@ func (r *Runtime[I, P, A]) succeed(operation agentv1.Operation, plan P, result j
 // Succeed records a proven provider result and settles reserved authority.
 func (r *Runtime[I, P, A]) Succeed(operation agentv1.Operation, plan P, result json.RawMessage, reserved bool, detail string) {
 	r.succeed(operation, plan, result, reserved, detail, http.StatusOK)
-}
-
-func (r *Runtime[I, P, A]) settleApproval(operation agentv1.Operation, reserved, retain bool) bool {
-	if !reserved {
-		return true
-	}
-	var err error
-	if retain {
-		_, err = r.options.Grants.RetainUse(operation.ApprovalID)
-	} else {
-		_, err = r.options.Grants.CommitUse(operation.ApprovalID)
-	}
-	if err == nil {
-		return true
-	}
-	r.fail(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
-	return false
 }
 
 func (r *Runtime[I, P, A]) authorizationLock(id string) *sync.Mutex {

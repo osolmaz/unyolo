@@ -248,10 +248,10 @@ func DefinitiveFailure(err error) bool {
 // ExecutionFailure maps helper details to the stable Agent V1 error surface.
 func ExecutionFailure(executionErr, _ error) operationruntime.Failure {
 	if errors.Is(executionErr, errExecutionRejected) {
-		return operationruntime.Failure{Code: "execution_rejected", Message: "Command did not start"}
+		return operationruntime.Failure{Code: "execution_rejected", Message: "Command did not start", ReleaseApproval: true}
 	}
 	if executionErr != nil && !operationruntime.IsPossiblePartial(executionErr) {
-		return operationruntime.Failure{Code: "helper_unavailable", Message: "Privileged helper is unavailable"}
+		return operationruntime.Failure{Code: "helper_unavailable", Message: "Privileged helper is unavailable", ReleaseApproval: true}
 	}
 	return operationruntime.Failure{Code: "execution_result_unknown", Message: "Command result is unknown; it was not retried"}
 }

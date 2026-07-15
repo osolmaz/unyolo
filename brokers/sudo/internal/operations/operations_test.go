@@ -87,14 +87,15 @@ func TestExecutionFailureClassification(t *testing.T) {
 		t.Fatal("dispatch boundary classification drifted")
 	}
 	for _, test := range []struct {
-		err  error
-		code string
+		err     error
+		code    string
+		release bool
 	}{
-		{fmt.Errorf("%w: denied", errExecutionRejected), "execution_rejected"},
-		{errors.New("offline"), "helper_unavailable"},
-		{partial, "execution_result_unknown"},
+		{fmt.Errorf("%w: denied", errExecutionRejected), "execution_rejected", true},
+		{errors.New("offline"), "helper_unavailable", true},
+		{partial, "execution_result_unknown", false},
 	} {
-		if failure := ExecutionFailure(test.err, nil); failure.Code != test.code {
+		if failure := ExecutionFailure(test.err, nil); failure.Code != test.code || failure.ReleaseApproval != test.release {
 			t.Fatalf("failure %v = %+v", test.err, failure)
 		}
 	}

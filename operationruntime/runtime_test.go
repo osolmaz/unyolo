@@ -307,6 +307,30 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	}
 }
 
+func TestRuntimeReleasesApprovalWhenExecutionDidNotStart(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, errors.New("not dispatched"), requestDecision, notifier, true)
+	defer closeRuntime()
+	runtime.options.ExecutionFailure = func(error, error) Failure {
+		return Failure{Code: "provider_unavailable", Message: "Provider was unavailable", ReleaseApproval: true}
+	}
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "release-approval",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.AdvanceAll(t.Context())
+	stored, _ := operations.Get("agent", operation.ID)
+	grant, _ := grantStore.Get(operation.ApprovalID)
+	if stored.State != agentv1.StateFailed || stored.Error == nil || stored.Error.Code != "provider_unavailable" ||
+		grant.UsedCount != 0 || grant.ReservedCount != 0 || grant.ReservationRetained {
+		t.Fatalf("operation = %+v, grant = %+v", stored, grant)
+	}
+}
+
 func TestRuntimeApprovalRequiredAdapterIgnoresDirectAllow(t *testing.T) {
 	notifier := &captureNotifier{}
 	runtime, adapter, _, _, closeRuntime := newRuntime(t, nil, allowThenRequestDecision, notifier, true)

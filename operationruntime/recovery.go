@@ -9,6 +9,41 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 )
 
+type approvalSettlement uint8
+
+const (
+	approvalCommit approvalSettlement = iota
+	approvalRetain
+	approvalRelease
+)
+
+func settlementForFailure(failure Failure) approvalSettlement {
+	if failure.ReleaseApproval {
+		return approvalRelease
+	}
+	return approvalCommit
+}
+
+func (r *Runtime[I, P, A]) settleApproval(operation agentv1.Operation, reserved bool, settlement approvalSettlement) bool {
+	if !reserved {
+		return true
+	}
+	var err error
+	switch settlement {
+	case approvalRetain:
+		_, err = r.options.Grants.RetainUse(operation.ApprovalID)
+	case approvalRelease:
+		_, err = r.options.Grants.ReleaseUse(operation.ApprovalID)
+	default:
+		_, err = r.options.Grants.CommitUse(operation.ApprovalID)
+	}
+	if err == nil {
+		return true
+	}
+	r.fail(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Approval accounting failed")
+	return false
+}
+
 func (r *Runtime[I, P, A]) advancePendingApproval(ctx context.Context, operation agentv1.Operation) agentv1.Operation {
 	if operation.State != agentv1.StatePending {
 		return operation
@@ -154,6 +189,10 @@ func requiresApproval[I, P, A any](adapter Adapter[I, P, A]) bool {
 
 func (r *Runtime[I, P, A]) failExecution(operation agentv1.Operation, plan P, executionErr, reconcileErr error) Failure {
 	failure := r.options.ExecutionFailure(executionErr, reconcileErr)
+	return r.recordExecutionFailure(operation, plan, failure)
+}
+
+func (r *Runtime[I, P, A]) recordExecutionFailure(operation agentv1.Operation, plan P, failure Failure) Failure {
 	r.fail(operation.ID, agentv1.StateFailed, failure.Code, failure.Message)
 	if r.options.RecordOutcome != nil {
 		r.options.RecordOutcome(operation, plan, "refused", failure.Code, 0)
