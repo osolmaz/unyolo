@@ -752,10 +752,7 @@ func (s *Server) audit(c echo.Context, request policy.Request, outcome string, r
 }
 
 func repositoryTarget(owner string, repo string) string {
-	if owner == "" {
-		return repo
-	}
-	return owner + "/" + repo
+	return strings.TrimPrefix(owner+"/"+repo, "/")
 }
 
 func (s *Server) auditAuthorizedReceivePack(c echo.Context, authorized []authorizedReceivePackRequest, outcome string, reason string, status int) {

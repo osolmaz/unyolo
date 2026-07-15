@@ -411,7 +411,8 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 	if a.manager == nil {
 		return Plan{}, errors.New("GitHub credential provider is unavailable")
 	}
-	targetMap, argumentsMap, err := a.resolveInputMaps(input)
+	targetMap, argumentsMap, err := a.decodePublicInputMaps(input.Target, input.Arguments,
+		"GitHub operation target is invalid", "GitHub operation arguments are invalid")
 	if err != nil {
 		return Plan{}, err
 	}
@@ -434,22 +435,6 @@ func (a generatedAdapter) Resolve(ctx context.Context, input Input) (Plan, error
 		Presentation:      presentation,
 		Authorization:     authorization,
 	}, nil
-}
-
-func (a generatedAdapter) resolveInputMaps(input Input) (map[string]any, map[string]any, error) {
-	targetMap, err := decodeObject(input.Target)
-	if err != nil {
-		return nil, nil, errors.New("GitHub operation target is invalid")
-	}
-	publicArguments, err := a.publicArguments(input.Arguments)
-	if err != nil {
-		return nil, nil, err
-	}
-	argumentsMap, err := decodeObject(publicArguments)
-	if err != nil {
-		return nil, nil, errors.New("GitHub operation arguments are invalid")
-	}
-	return targetMap, argumentsMap, nil
 }
 
 func (a generatedAdapter) annotateCredentialOutput(input Input, presentation *agentv1.Presentation, authorization *Authorization) error {
@@ -531,7 +516,8 @@ func (a generatedAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, er
 	if !a.hasAbsenceProofReconciliation() {
 		return Outcome{Proven: false}, nil
 	}
-	target, arguments, err := a.reconciliationInput(plan)
+	target, arguments, err := a.decodePublicInputMaps(plan.Target, plan.Arguments,
+		"GitHub reconciliation target is invalid", "GitHub reconciliation arguments are invalid")
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -549,18 +535,18 @@ func (a generatedAdapter) hasAbsenceProofReconciliation() bool {
 	return a.binding != nil && a.binding.Reconciliation == "absence-proof" && a.reconciliation != nil
 }
 
-func (a generatedAdapter) reconciliationInput(plan Plan) (map[string]any, map[string]any, error) {
-	target, err := decodeObject(plan.Target)
+func (a generatedAdapter) decodePublicInputMaps(targetData, argumentData json.RawMessage, targetError, argumentError string) (map[string]any, map[string]any, error) {
+	target, err := decodeObject(targetData)
 	if err != nil {
-		return nil, nil, errors.New("GitHub reconciliation target is invalid")
+		return nil, nil, errors.New(targetError)
 	}
-	public, err := a.publicArguments(plan.Arguments)
+	public, err := a.publicArguments(argumentData)
 	if err != nil {
 		return nil, nil, err
 	}
 	arguments, err := decodeObject(public)
 	if err != nil {
-		return nil, nil, errors.New("GitHub reconciliation arguments are invalid")
+		return nil, nil, errors.New(argumentError)
 	}
 	return target, arguments, nil
 }
