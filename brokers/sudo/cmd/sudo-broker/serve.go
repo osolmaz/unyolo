@@ -21,6 +21,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/internal/slicex"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
@@ -263,7 +264,7 @@ func loadServeInputs(opts serveOptions) (serveInputs, error) {
 	if err != nil {
 		return serveInputs{}, err
 	}
-	admissionConfig, err := admission.LoadFile(opts.admissionConfig, mapKeys(clients))
+	admissionConfig, err := admission.LoadFile(opts.admissionConfig, slicex.Keys(clients))
 	if err != nil {
 		return serveInputs{}, err
 	}
@@ -311,14 +312,6 @@ func notifierDependencies(notifier *bktelegram.Client) (notify.Notifier, routes.
 		return nil, nil
 	}
 	return notifier, notifier
-}
-
-func mapKeys(values map[string]string) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	return keys
 }
 
 func serverHelperReady(ctx context.Context, server *routes.Server) error {

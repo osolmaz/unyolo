@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
+	"github.com/osolmaz/brokerkit/internal/clockx"
 	"github.com/osolmaz/brokerkit/plandigest"
 )
 
@@ -56,7 +57,7 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := serverClock(cfg.Now)
+	now := clockx.OrNow(cfg.Now)
 	requestTimeout := serverRequestTimeout(cfg.RequestTimeout)
 	maxConnections, err := serverMaxConnections(cfg.MaxConnections)
 	if err != nil {
@@ -65,13 +66,6 @@ func New(cfg Config) (*Server, error) {
 	return &Server{catalog: cfg.Catalog, identities: cfg.Identities, runner: cfg.Runner, state: state,
 		expectedPeerUID: cfg.ExpectedPeerUID, brokerUID: cfg.BrokerUID, peerUID: cfg.PeerUID, now: now, requestTimeout: requestTimeout,
 		connections: make(chan struct{}, maxConnections)}, nil
-}
-
-func serverClock(now func() time.Time) func() time.Time {
-	if now != nil {
-		return now
-	}
-	return time.Now
 }
 
 func serverRequestTimeout(value time.Duration) time.Duration {
@@ -214,25 +208,21 @@ func (s *Server) validateExecutableRequest(request executorprotocol.Request, val
 }
 
 func (s *Server) lookupExistingExecution(request executorprotocol.Request) (executionRecord, bool, string) {
-	record, found, err := s.state.lookup(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID)
-	if errors.Is(err, errExecutionConflict) {
-		return executionRecord{}, false, "execution_id_conflict"
-	}
-	if err != nil {
-		return executionRecord{}, false, "state_unavailable"
-	}
-	return record, found, ""
+	return executionStateResult(s.state.lookup(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID))
 }
 
 func (s *Server) claimExecution(request executorprotocol.Request) (executionRecord, bool, string) {
-	record, claimed, err := s.state.claim(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID)
+	return executionStateResult(s.state.claim(request.ExecutionID, request.PlanDigest, request.GrantID, request.ReservationID))
+}
+
+func executionStateResult(record executionRecord, current bool, err error) (executionRecord, bool, string) {
 	if errors.Is(err, errExecutionConflict) {
 		return executionRecord{}, false, "execution_id_conflict"
 	}
 	if err != nil {
 		return executionRecord{}, false, "state_unavailable"
 	}
-	return record, claimed, ""
+	return record, current, ""
 }
 
 func executionReplayResponse(executionID string, record executionRecord) executorprotocol.Response {

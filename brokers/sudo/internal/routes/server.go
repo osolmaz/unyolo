@@ -24,6 +24,8 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/internal/clockx"
+	"github.com/osolmaz/brokerkit/internal/slicex"
 	"github.com/osolmaz/brokerkit/notify"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
@@ -140,7 +142,7 @@ func newServerParts(opts Options) (serverParts, error) {
 	if err != nil {
 		return serverParts{}, err
 	}
-	now := serverClock(opts.Now)
+	now := clockx.OrNow(opts.Now)
 	grantStore := grants.NewDatabase(opts.Database, grants.Options{Now: now})
 	validator := plan.Validator{Store: plans, Catalog: opts.Catalog, Identities: opts.Identities, Helper: opts.Helper}
 	operationRegistry, err := operations.NewRegistry(opts.Catalog, opts.Helper)
@@ -164,7 +166,7 @@ func newServerParts(opts Options) (serverParts, error) {
 	e.HidePort = true
 	e.Use(middleware.Recover(), noStore)
 	operationStore := agentops.New(opts.Database)
-	admissionController, err := admission.NewConfigured(secretNames(opts.ClientSecrets), opts.Admission, operationStore.AdmissionUsage)
+	admissionController, err := admission.NewConfigured(slicex.Keys(opts.ClientSecrets), opts.Admission, operationStore.AdmissionUsage)
 	if err != nil {
 		return serverParts{}, err
 	}
@@ -173,27 +175,12 @@ func newServerParts(opts Options) (serverParts, error) {
 		authorization: authorization, control: control, operationStore: operationStore, admission: admissionController, now: now}, nil
 }
 
-func serverClock(now func() time.Time) func() time.Time {
-	if now != nil {
-		return now
-	}
-	return time.Now
-}
-
 func assembleServer(opts Options, parts serverParts) *Server {
 	return &Server{echo: parts.echo, control: parts.control, policy: opts.Policy, catalog: opts.Catalog, grants: parts.grantStore, plans: parts.plans,
 		identities: opts.Identities, helper: opts.Helper, validator: parts.validator, notifier: opts.Notifier, poller: opts.Poller,
 		audit: opts.Audit, now: parts.now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
 		database: opts.Database, operations: parts.operationStore, admission: parts.admission, authorization: parts.authorization,
 		operationRegistry: parts.operationRegistry}
-}
-
-func secretNames(values map[string]string) []string {
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	return names
 }
 
 func (s *Server) Handler() http.Handler { return s.echo }

@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/osolmaz/brokerkit/internal/strictjson"
@@ -548,10 +547,7 @@ func validatePrivateDirectoryInfo(info os.FileInfo, err error) error {
 }
 
 func validatePrivateDirectoryOwner(info os.FileInfo) error {
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) { // #nosec G115 -- effective UIDs are non-negative.
-		return errors.New("state directory must be owned by the current user")
-	}
-	return nil
+	return validateCurrentUserOwner(info, "state directory")
 }
 
 func validateMaintenanceDestination(stateDirectory, destination string) error {

@@ -96,22 +96,19 @@ func openTrustedPath(path string, flags int) (int, error) {
 	})
 }
 
-func validateExecutableDescriptor(fd int) error {
+func inspectExecutableDescriptor(fd int) (executableDescriptorMetadata, error) {
 	var stat unix.Stat_t
 	if err := unix.Fstat(fd, &stat); err != nil {
-		return errors.New("inspect executable descriptor")
+		return executableDescriptorMetadata{}, err
 	}
-	if stat.Uid != 0 || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Mode&0o022 != 0 || stat.Mode&0o111 == 0 {
-		return errors.New("executable descriptor is not trusted")
-	}
-	return nil
+	return executableDescriptorMetadata{ownerUID: stat.Uid, mode: stat.Mode, regular: stat.Mode&unix.S_IFMT == unix.S_IFREG}, nil
 }
 
 func dropIdentity(value plan.Plan) error {
 	return firstError(
 		setSupplementaryGroups(value.SupplementaryGIDs),
-		func() error { return setTargetGID(value.TargetGID) },
-		func() error { return setTargetUID(value.TargetUID) },
+		func() error { return setTargetID(value.TargetGID, "gid", syscall.Setgid) },
+		func() error { return setTargetID(value.TargetUID, "uid", syscall.Setuid) },
 	)
 }
 
@@ -133,16 +130,9 @@ func setSupplementaryGroups(values []uint32) func() error {
 	}
 }
 
-func setTargetGID(gid uint32) error {
-	if err := syscall.Setgid(int(gid)); err != nil {
-		return errors.New("drop target gid")
-	}
-	return nil
-}
-
-func setTargetUID(uid uint32) error {
-	if err := syscall.Setuid(int(uid)); err != nil {
-		return errors.New("drop target uid")
+func setTargetID(id uint32, kind string, set func(int) error) error {
+	if err := set(int(id)); err != nil {
+		return errors.New("drop target " + kind)
 	}
 	return nil
 }

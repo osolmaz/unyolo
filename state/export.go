@@ -179,40 +179,47 @@ func (d *Database) redactedExport(ctx context.Context) (redactedExport, error) {
 }
 
 func (d *Database) populateCoreExport(ctx context.Context, value *redactedExport) error {
-	var err error
-	if value.Grants, err = d.exportGrants(ctx); err != nil {
+	if err := loadExport(&value.Grants, func() ([]redactedGrant, error) { return d.exportGrants(ctx) }); err != nil {
 		return err
 	}
-	if value.Operations, err = d.exportOperations(ctx); err != nil {
+	if err := loadExport(&value.Operations, func() ([]redactedOperation, error) { return d.exportOperations(ctx) }); err != nil {
 		return err
 	}
-	if value.Plans, err = exportRows(ctx, d.sql, `SELECT digest, schema_name, created_at FROM plans ORDER BY digest LIMIT ?`, func(rows *sql.Rows) (redactedPlan, error) {
-		var item redactedPlan
-		scanErr := rows.Scan(&item.Digest, &item.SchemaName, &item.CreatedAt)
-		return item, scanErr
-	}); err != nil {
+	if err := loadExport(&value.Plans, func() ([]redactedPlan, error) { return d.exportPlans(ctx) }); err != nil {
 		return err
 	}
-	if value.Notifications, err = d.exportNotifications(ctx); err != nil {
-		return err
-	}
-	return nil
+	return loadExport(&value.Notifications, func() ([]redactedNotification, error) { return d.exportNotifications(ctx) })
 }
 
 func (d *Database) populateAuditExport(ctx context.Context, value *redactedExport) error {
-	var err error
-	if value.AuditRefs, err = d.exportAuditReferences(ctx); err != nil {
+	if err := loadExport(&value.AuditRefs, func() ([]redactedAuditReference, error) { return d.exportAuditReferences(ctx) }); err != nil {
 		return err
 	}
-	if value.Decisions, err = exportRows(ctx, d.sql, `SELECT request_id, action, committed_at FROM decision_records
+	return loadExport(&value.Decisions, func() ([]redactedDecision, error) {
+		return exportRows(ctx, d.sql, `SELECT request_id, action, committed_at FROM decision_records
 		ORDER BY request_id, action, committed_at LIMIT ?`, func(rows *sql.Rows) (redactedDecision, error) {
-		var item redactedDecision
-		scanErr := rows.Scan(&item.RequestID, &item.Action, &item.CommittedAt)
-		return item, scanErr
-	}); err != nil {
+			var item redactedDecision
+			scanErr := rows.Scan(&item.RequestID, &item.Action, &item.CommittedAt)
+			return item, scanErr
+		})
+	})
+}
+
+func loadExport[T any](destination *T, load func() (T, error)) error {
+	value, err := load()
+	if err != nil {
 		return err
 	}
+	*destination = value
 	return nil
+}
+
+func (d *Database) exportPlans(ctx context.Context) ([]redactedPlan, error) {
+	return exportRows(ctx, d.sql, `SELECT digest, schema_name, created_at FROM plans ORDER BY digest LIMIT ?`, func(rows *sql.Rows) (redactedPlan, error) {
+		var item redactedPlan
+		scanErr := rows.Scan(&item.Digest, &item.SchemaName, &item.CreatedAt)
+		return item, scanErr
+	})
 }
 
 func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {

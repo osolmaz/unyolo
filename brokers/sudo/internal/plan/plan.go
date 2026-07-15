@@ -251,11 +251,7 @@ func validateHelperDependencies(snapshot *catalog.Snapshot, identities IdentityR
 }
 
 func validateHelperIdentity(identities IdentityResolver, value Plan) error {
-	identity, err := identities.Lookup(value.TargetUser)
-	if err != nil || !identityMatchesPlan(identity, value) {
-		return errors.New("sudo target identity does not match the execution plan")
-	}
-	return nil
+	return validatePlanIdentity(identities, value, "sudo target identity does not match the execution plan")
 }
 
 func identityMatchesPlan(identity Identity, value Plan) bool {
@@ -369,9 +365,13 @@ func grantSlotsMatch(value Plan, grant grants.Grant) bool {
 }
 
 func validateCurrentIdentity(resolver IdentityResolver, value Plan) error {
+	return validatePlanIdentity(resolver, value, "sudo target identity changed after request")
+}
+
+func validatePlanIdentity(resolver IdentityResolver, value Plan, message string) error {
 	identity, err := resolver.Lookup(value.TargetUser)
 	if err != nil || !identityMatchesPlan(identity, value) {
-		return errors.New("sudo target identity changed after request")
+		return errors.New(message)
 	}
 	return nil
 }

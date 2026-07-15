@@ -153,8 +153,12 @@ func validatePrivateDatabaseMode(info os.FileInfo) error {
 }
 
 func validatePrivateDatabaseOwner(info os.FileInfo) error {
+	return validateCurrentUserOwner(info, "state database")
+}
+
+func validateCurrentUserOwner(info os.FileInfo, subject string) error {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) { // #nosec G115 -- effective UIDs are non-negative.
-		return errors.New("state database must be owned by the current user")
+		return fmt.Errorf("%s must be owned by the current user", subject)
 	}
 	return nil
 }

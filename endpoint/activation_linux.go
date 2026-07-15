@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/setx"
 )
 
 func activationListeners(expected []string) (map[string]net.Listener, error) {
@@ -56,19 +58,11 @@ func parseSystemdActivationEnv() (int, int, error) {
 func expectedActivationNames(expected []string) (map[string]struct{}, error) {
 	wanted := make(map[string]struct{}, len(expected))
 	for _, name := range expected {
-		if err := addActivationName(wanted, name); err != nil {
-			return nil, err
+		if !setx.Add(wanted, name) {
+			return nil, fmt.Errorf("systemd activation listener %q is duplicated", name)
 		}
 	}
 	return wanted, nil
-}
-
-func addActivationName(wanted map[string]struct{}, name string) error {
-	if _, exists := wanted[name]; exists {
-		return fmt.Errorf("systemd activation listener %q is duplicated", name)
-	}
-	wanted[name] = struct{}{}
-	return nil
 }
 
 func acquireSystemdListeners(names []string, wanted map[string]struct{}, open func(int) (net.Listener, error)) (map[string]net.Listener, error) {

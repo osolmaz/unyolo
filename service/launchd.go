@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/internal/setx"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
@@ -159,8 +160,8 @@ func validateLaunchdSocket(socket LaunchdSocket, seenNames, seenPaths map[string
 	if !validName(socket.Name) {
 		return errors.New("launchd socket name is invalid")
 	}
-	if err := rememberLaunchdSocketName(socket.Name, seenNames); err != nil {
-		return err
+	if !setx.Add(seenNames, socket.Name) {
+		return fmt.Errorf("launchd socket %q is duplicated", socket.Name)
 	}
 	if err := rememberLaunchdSocketPath(socket.Path, seenPaths); err != nil {
 		return err
@@ -172,14 +173,6 @@ func validateLaunchdSocket(socket LaunchdSocket, seenNames, seenPaths map[string
 		return err
 	}
 	return validateSocketMode(socket.DirectoryMode, "launchd socket directory")
-}
-
-func rememberLaunchdSocketName(name string, seen map[string]struct{}) error {
-	if _, exists := seen[name]; exists {
-		return fmt.Errorf("launchd socket %q is duplicated", name)
-	}
-	seen[name] = struct{}{}
-	return nil
 }
 
 func rememberLaunchdSocketPath(path string, seen map[string]struct{}) error {
