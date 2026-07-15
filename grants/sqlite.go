@@ -161,9 +161,7 @@ func markApprovalDelivered(record *state.NotificationOutboxRecord, now time.Time
 }
 
 func markApprovalCanceled(record *state.NotificationOutboxRecord) {
-	record.Status = "canceled"
-	record.ClaimedUntil = time.Time{}
-	record.LastErrorCode = ""
+	resetApprovalStatus(record, "canceled")
 }
 
 func markApprovalAmbiguous(record *state.NotificationOutboxRecord, grant Grant) {
@@ -183,7 +181,11 @@ func markApprovalClaimed(record *state.NotificationOutboxRecord, grant Grant) {
 }
 
 func markApprovalPending(record *state.NotificationOutboxRecord) {
-	record.Status = "pending"
+	resetApprovalStatus(record, "pending")
+}
+
+func resetApprovalStatus(record *state.NotificationOutboxRecord, status string) {
+	record.Status = status
 	record.ClaimedUntil = time.Time{}
 	record.LastErrorCode = ""
 }

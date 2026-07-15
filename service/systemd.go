@@ -860,16 +860,7 @@ func validateSystemdPath(name string, value string) error {
 }
 
 func isSystemdPathCharacter(char rune) bool {
-	switch {
-	case char >= 'a' && char <= 'z':
-		return true
-	case char >= 'A' && char <= 'Z':
-		return true
-	case char >= '0' && char <= '9':
-		return true
-	default:
-		return strings.ContainsRune("/._+-", char)
-	}
+	return char == '/' || isPortableManagedFileNameCharacter(char)
 }
 
 func validateRequiredLines(values map[string]string) error {

@@ -72,18 +72,15 @@ func installSystemdForIdentity(ctx context.Context, runner CommandRunner, plan S
 
 func applySystemdInstall(ctx context.Context, runner CommandRunner, roots installRoots, plan SystemdInstallPlan,
 	serviceUID, serviceGID uint64, snapshot *systemdInstallSnapshot) error {
-	if err := writeSystemdInstall(roots, plan, serviceUID, serviceGID); err != nil {
-		return errors.Join(err, snapshot.restore())
-	}
-	if err := startInstalledSystemdUnit(ctx, runner, plan); err != nil {
-		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
-	}
-	if plan.NoStart {
-		return nil
-	}
-	if err := waitForSystemdReady(ctx, plan); err != nil {
-		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
-	}
+	return (installTransaction{
+		write: func() error { return writeSystemdInstall(roots, plan, serviceUID, serviceGID) }, restore: snapshot.restore,
+		start: func() error { return startInstalledSystemdUnit(ctx, runner, plan) }, rollback: func() error { return snapshot.rollback(ctx, runner, plan) },
+		ready: func() error { return waitForSystemdReady(ctx, plan) }, noStart: plan.NoStart,
+		retire: func() error { return retireSystemdCredentials(roots, plan, snapshot) },
+	}).apply()
+}
+
+func retireSystemdCredentials(roots installRoots, plan SystemdInstallPlan, snapshot *systemdInstallSnapshot) error {
 	removed, err := captureSystemdCredentialRemovals(roots, plan.RemoveFiles)
 	if err != nil {
 		return err
@@ -91,34 +88,19 @@ func applySystemdInstall(ctx context.Context, runner CommandRunner, roots instal
 	if err := removeManagedFiles(roots, plan.RemoveFiles); err != nil {
 		return err
 	}
-	return recordSystemdCredentialChanges(plan, snapshot, removed)
-}
-
-func recordSystemdCredentialChanges(plan SystemdInstallPlan, snapshot *systemdInstallSnapshot, removed map[string]string) error {
-	previous := make([]previousManagedCredential, len(plan.Files))
-	for index := range plan.Files {
-		file := snapshot.files[index]
-		previous[index] = previousManagedCredential{existed: file.restorable, data: file.data}
-	}
-	return recordManagedCredentialChanges(plan.Lifecycle, plan.Files, previous, removed)
+	return recordSnapshotCredentialChanges(plan.Lifecycle, plan.Files, snapshot.files, func(file installFileSnapshot) previousManagedCredential {
+		return previousManagedCredential{existed: file.restorable, data: file.data}
+	}, removed)
 }
 
 func captureSystemdCredentialRemovals(roots installRoots, files []ManagedFileRef) (map[string]string, error) {
-	result := make(map[string]string)
-	for _, file := range files {
-		if file.CredentialClass == "" {
-			continue
-		}
+	return captureCredentialRemovals(files, func(file ManagedFileRef) (bool, []byte, error) {
 		snapshot, _, err := captureInstallFile(installTarget{root: managedFileRoot(roots, file.Area), name: file.Name})
 		if err != nil {
-			return nil, err
+			return false, nil, err
 		}
-		if snapshot.restorable {
-			result[file.CredentialClass] = credentialIdentifier(snapshot.data)
-		}
-		clearSecretBytes(snapshot.data)
-	}
-	return result, nil
+		return snapshot.restorable, snapshot.data, nil
+	})
 }
 
 func writeSystemdInstall(roots installRoots, plan SystemdInstallPlan, serviceUID, serviceGID uint64) error {
@@ -191,13 +173,7 @@ func validateAccessGroups(plan SystemdInstallPlan) error {
 }
 
 func validateReadinessSettings(plan SystemdInstallPlan) error {
-	if plan.ReadyTimeout < 0 || plan.ReadyInterval < 0 {
-		return errors.New("readiness timeout and interval must not be negative")
-	}
-	if len(plan.RemoveFiles) > 0 && !plan.NoStart && plan.ReadyCheck == nil {
-		return errors.New("managed file retirement requires a readiness check")
-	}
-	return nil
+	return validateInstallReadiness(plan.ReadyTimeout, plan.ReadyInterval, len(plan.RemoveFiles), plan.NoStart, plan.ReadyCheck)
 }
 
 func validUnitName(name string) bool {
@@ -409,8 +385,8 @@ func validateManagedFilePlacement(file ManagedFile) error {
 	if err := validateManagedFileArea(file.Area, file.Name); err != nil {
 		return err
 	}
-	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
-		return fmt.Errorf("managed file %q has invalid owner %q", file.Name, file.Owner)
+	if err := validateManagedFileOwner(file); err != nil {
+		return err
 	}
 	return nil
 }

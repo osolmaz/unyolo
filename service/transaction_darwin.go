@@ -119,11 +119,7 @@ func (s *launchdInstallSnapshot) rollback(ctx context.Context, runner CommandRun
 }
 
 func (s *launchdInstallSnapshot) restore() error {
-	var restoreErr error
-	for index := len(s.files) - 1; index >= 0; index-- {
-		restoreErr = errors.Join(restoreErr, restoreLaunchdFile(s.files[index], s.preview))
-	}
-	return restoreErr
+	return reverseRestore(s.files, s.preview, restoreLaunchdFile)
 }
 
 func restoreLaunchdFile(file launchdFileSnapshot, preview bool) error {
@@ -165,7 +161,5 @@ func removeCreatedLaunchdFile(path string) error {
 }
 
 func (s *launchdInstallSnapshot) clear() {
-	for index := range s.files {
-		clearSecretBytes(s.files[index].data)
-	}
+	clearSnapshotSecrets(s.files, func(file *launchdFileSnapshot) []byte { return file.data })
 }

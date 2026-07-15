@@ -157,7 +157,7 @@ func validateLaunchdManagedFiles(plan LaunchdInstallPlan) error {
 	}
 	for _, file := range plan.RemoveFiles {
 		key := string(file.Area) + "/" + file.Name
-		if file.Area != ManagedFileConfig || !validLaunchdManagedName(file.Name) {
+		if file.Area != ManagedFileConfig || !validManagedFileName(file.Name) {
 			return fmt.Errorf("retired managed file %q is invalid", key)
 		}
 		if _, exists := seen[key]; exists {
@@ -169,55 +169,22 @@ func validateLaunchdManagedFiles(plan LaunchdInstallPlan) error {
 }
 
 func validateLaunchdManagedFile(plan LaunchdInstallPlan, file ManagedFile) error {
-	if !validLaunchdManagedName(file.Name) || file.Area != ManagedFileConfig && file.Area != ManagedFileState {
+	if !validManagedFileName(file.Name) || file.Area != ManagedFileConfig && file.Area != ManagedFileState {
 		return fmt.Errorf("managed file %q is invalid", file.Name)
 	}
-	if len(file.Data) > maxManagedFileBytes {
-		return fmt.Errorf("managed file %q exceeds %d bytes", file.Name, maxManagedFileBytes)
+	if err := validateManagedFilePayload(file); err != nil {
+		return err
 	}
-	if err := validateLaunchdManagedOwner(file); err != nil {
+	if err := validateManagedFileOwner(file); err != nil {
 		return err
 	}
 	return validateLaunchdManagedPermissions(plan, file)
 }
 
-func validateLaunchdManagedOwner(file ManagedFile) error {
-	if file.Owner != ManagedFileOwnerRoot && file.Owner != ManagedFileOwnerService {
-		return fmt.Errorf("managed file %q has invalid owner", file.Name)
-	}
-	return nil
-}
-
 func validateLaunchdManagedPermissions(plan LaunchdInstallPlan, file ManagedFile) error {
-	if file.Mode == 0 || file.Mode&^os.ModePerm != 0 || file.Mode.Perm()&0o022 != 0 {
-		return fmt.Errorf("managed file %q has unsafe mode", file.Name)
-	}
-	if !launchdManagedFileReadable(plan, file) {
-		return fmt.Errorf("managed file %q is not readable by the service", file.Name)
-	}
-	return nil
-}
-
-func launchdManagedFileReadable(plan LaunchdInstallPlan, file ManagedFile) bool {
-	if file.Owner == ManagedFileOwnerService || plan.User == "root" {
-		return file.Mode.Perm()&0o400 != 0
-	}
-	return file.Mode.Perm()&0o044 != 0
-}
-
-func validLaunchdManagedName(name string) bool {
-	if name == "" || name == "." || filepath.Base(name) != name || validatex.HasParentTraversal(name) {
-		return false
-	}
-	return !strings.ContainsAny(name, "\x00\r\n/:")
+	return validateManagedFileMode(file, managedFileReadable(plan.User, file))
 }
 
 func validateLaunchdReadiness(plan LaunchdInstallPlan) error {
-	if plan.ReadyTimeout < 0 || plan.ReadyInterval < 0 {
-		return errors.New("readiness timeout and interval must not be negative")
-	}
-	if len(plan.RemoveFiles) > 0 && !plan.NoStart && plan.ReadyCheck == nil {
-		return errors.New("managed file retirement requires a readiness check")
-	}
-	return nil
+	return validateInstallReadiness(plan.ReadyTimeout, plan.ReadyInterval, len(plan.RemoveFiles), plan.NoStart, plan.ReadyCheck)
 }

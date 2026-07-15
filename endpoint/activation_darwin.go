@@ -41,11 +41,3 @@ func launchdActivationListener(name string) (interfaceListener, error) {
 	}
 	return listenerFromFD(int(*descriptors))
 }
-
-func closeActivatedListeners(listeners map[string]interfaceListener, cause error) error {
-	values := []error{cause}
-	for _, listener := range listeners {
-		values = append(values, listener.Close())
-	}
-	return errors.Join(values...)
-}

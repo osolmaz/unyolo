@@ -52,18 +52,15 @@ func prepareLaunchdInstall(ctx context.Context, plan LaunchdInstallPlan) (Comman
 
 func applyLaunchdInstall(ctx context.Context, runner CommandRunner, plan LaunchdInstallPlan, uid, gid int,
 	snapshot *launchdInstallSnapshot) error {
-	if err := writeLaunchdInstallation(plan, uid, gid); err != nil {
-		return errors.Join(err, snapshot.restore())
-	}
-	if plan.NoStart {
-		return nil
-	}
-	if err := bootstrapLaunchd(ctx, runner, plan); err != nil {
-		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
-	}
-	if err := waitForLaunchdReady(ctx, plan); err != nil {
-		return errors.Join(err, snapshot.rollback(ctx, runner, plan))
-	}
+	return (installTransaction{
+		write: func() error { return writeLaunchdInstallation(plan, uid, gid) }, restore: snapshot.restore,
+		start: func() error { return bootstrapLaunchd(ctx, runner, plan) }, rollback: func() error { return snapshot.rollback(ctx, runner, plan) },
+		ready: func() error { return waitForLaunchdReady(ctx, plan) }, noStart: plan.NoStart,
+		retire: func() error { return retireLaunchdCredentials(plan, snapshot) },
+	}).apply()
+}
+
+func retireLaunchdCredentials(plan LaunchdInstallPlan, snapshot *launchdInstallSnapshot) error {
 	removed, err := captureLaunchdCredentialRemovals(plan)
 	if err != nil {
 		return err
@@ -71,34 +68,19 @@ func applyLaunchdInstall(ctx context.Context, runner CommandRunner, plan Launchd
 	if err := removeLaunchdManagedFiles(plan); err != nil {
 		return err
 	}
-	return recordLaunchdCredentialChanges(plan, snapshot, removed)
-}
-
-func recordLaunchdCredentialChanges(plan LaunchdInstallPlan, snapshot *launchdInstallSnapshot, removed map[string]string) error {
-	previous := make([]previousManagedCredential, len(plan.Files))
-	for index := range plan.Files {
-		file := snapshot.files[index]
-		previous[index] = previousManagedCredential{existed: file.restorable, data: file.data}
-	}
-	return recordManagedCredentialChanges(plan.Lifecycle, plan.Files, previous, removed)
+	return recordSnapshotCredentialChanges(plan.Lifecycle, plan.Files, snapshot.files, func(file launchdFileSnapshot) previousManagedCredential {
+		return previousManagedCredential{existed: file.restorable, data: file.data}
+	}, removed)
 }
 
 func captureLaunchdCredentialRemovals(plan LaunchdInstallPlan) (map[string]string, error) {
-	result := make(map[string]string)
-	for _, file := range plan.RemoveFiles {
-		if file.CredentialClass == "" {
-			continue
-		}
+	return captureCredentialRemovals(plan.RemoveFiles, func(file ManagedFileRef) (bool, []byte, error) {
 		snapshot, _, err := captureLaunchdFile(launchdManagedPath(plan, file.Area, file.Name))
 		if err != nil {
-			return nil, err
+			return false, nil, err
 		}
-		if snapshot.restorable {
-			result[file.CredentialClass] = credentialIdentifier(snapshot.data)
-		}
-		clearSecretBytes(snapshot.data)
-	}
-	return result, nil
+		return snapshot.restorable, snapshot.data, nil
+	})
 }
 
 func validateLaunchdExecution(plan LaunchdInstallPlan) error {
@@ -329,9 +311,9 @@ func waitForLaunchdReady(ctx context.Context, plan LaunchdInstallPlan) error {
 	if plan.ReadyCheck == nil {
 		return nil
 	}
-	readyContext, cancel := context.WithTimeout(ctx, durationOrLaunchd(plan.ReadyTimeout, defaultReadinessTimeout))
+	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
 	defer cancel()
-	ticker := time.NewTicker(durationOrLaunchd(plan.ReadyInterval, defaultReadinessInterval))
+	ticker := time.NewTicker(durationOr(plan.ReadyInterval, defaultReadinessInterval))
 	defer ticker.Stop()
 	for {
 		if err := plan.ReadyCheck(readyContext); err == nil && readyContext.Err() == nil {
@@ -343,13 +325,6 @@ func waitForLaunchdReady(ctx context.Context, plan LaunchdInstallPlan) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-func durationOrLaunchd(value, fallback time.Duration) time.Duration {
-	if value == 0 {
-		return fallback
-	}
-	return value
 }
 
 func removeLaunchdManagedFiles(plan LaunchdInstallPlan) error {

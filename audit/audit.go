@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/osolmaz/brokerkit/internal/slicex"
 )
 
 const (
@@ -80,10 +82,10 @@ func (w *Writer) Record(event Event) error {
 	}
 	event.Attrs = secretSafeMap(event.Attrs)
 	event.Extensions = secretSafeMap(event.Extensions)
-	event.MatchedDenyRuleIDs = nonNilStrings(event.MatchedDenyRuleIDs)
-	event.MatchedGrantRuleIDs = nonNilStrings(event.MatchedGrantRuleIDs)
-	event.MatchedAllowRuleIDs = nonNilStrings(event.MatchedAllowRuleIDs)
-	event.MatchedRequestRuleIDs = nonNilStrings(event.MatchedRequestRuleIDs)
+	event.MatchedDenyRuleIDs = slicex.NonNil(event.MatchedDenyRuleIDs)
+	event.MatchedGrantRuleIDs = slicex.NonNil(event.MatchedGrantRuleIDs)
+	event.MatchedAllowRuleIDs = slicex.NonNil(event.MatchedAllowRuleIDs)
+	event.MatchedRequestRuleIDs = slicex.NonNil(event.MatchedRequestRuleIDs)
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("encode audit event: %w", err)
@@ -94,13 +96,6 @@ func (w *Writer) Record(event Event) error {
 		return fmt.Errorf("write audit event: %w", err)
 	}
 	return nil
-}
-
-func nonNilStrings(values []string) []string {
-	if values == nil {
-		return []string{}
-	}
-	return values
 }
 
 func secretSafeMap(values map[string]string) map[string]string {

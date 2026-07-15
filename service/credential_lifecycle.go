@@ -16,30 +16,19 @@ type previousManagedCredential struct {
 
 func validateCredentialClasses(files []ManagedFile, removals []ManagedFileRef) error {
 	seen := make(map[string]struct{})
-	if err := validateWrittenCredentialClasses(seen, files); err != nil {
+	if err := validateCredentialClassItems(seen, files, func(file ManagedFile) string { return file.CredentialClass }); err != nil {
 		return err
 	}
-	return validateRetiredCredentialClasses(seen, removals)
+	return validateCredentialClassItems(seen, removals, func(file ManagedFileRef) string { return file.CredentialClass })
 }
 
-func validateWrittenCredentialClasses(seen map[string]struct{}, files []ManagedFile) error {
+func validateCredentialClassItems[T any](seen map[string]struct{}, files []T, classFor func(T) string) error {
 	for _, file := range files {
-		if file.CredentialClass != "" && !credentiallifecycle.ValidIdentifier(file.CredentialClass) {
+		class := classFor(file)
+		if class != "" && !credentiallifecycle.ValidIdentifier(class) {
 			return errors.New("managed credential class is invalid")
 		}
-		if err := addCredentialClass(seen, file.CredentialClass); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateRetiredCredentialClasses(seen map[string]struct{}, removals []ManagedFileRef) error {
-	for _, file := range removals {
-		if file.CredentialClass != "" && !credentiallifecycle.ValidIdentifier(file.CredentialClass) {
-			return errors.New("retired credential class is invalid")
-		}
-		if err := addCredentialClass(seen, file.CredentialClass); err != nil {
+		if err := addCredentialClass(seen, class); err != nil {
 			return err
 		}
 	}

@@ -145,11 +145,7 @@ func (s *systemdInstallSnapshot) rollback(ctx context.Context, runner CommandRun
 }
 
 func (s *systemdInstallSnapshot) restore() error {
-	var restoreErr error
-	for index := len(s.files) - 1; index >= 0; index-- {
-		restoreErr = errors.Join(restoreErr, restoreInstallFile(s.files[index], s.preview))
-	}
-	return restoreErr
+	return reverseRestore(s.files, s.preview, restoreInstallFile)
 }
 
 func restoreInstallFile(file installFileSnapshot, preview bool) error {
@@ -191,7 +187,5 @@ func removeCreatedInstallFile(file installFileSnapshot) error {
 }
 
 func (s *systemdInstallSnapshot) clear() {
-	for index := range s.files {
-		clearSecretBytes(s.files[index].data)
-	}
+	clearSnapshotSecrets(s.files, func(file *installFileSnapshot) []byte { return file.data })
 }

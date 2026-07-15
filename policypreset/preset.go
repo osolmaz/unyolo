@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/internal/slicex"
+
 	"github.com/osolmaz/brokerkit/capability"
 )
 
@@ -298,7 +300,7 @@ func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool,
 			return Profile{}, fmt.Errorf("denied_operations contains unknown operation %q", operation)
 		}
 	}
-	profile.Clients, profile.DeniedOperations = clients, nonNil(kept)
+	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(kept)
 	return profile, nil
 }
 
@@ -320,7 +322,7 @@ func normalizeInstalledForManifest(renderer Renderer, profile Profile, operation
 			return Profile{}, fmt.Errorf("denied_operations contains operation %q absent from the policy manifest", operation)
 		}
 	}
-	profile.DeniedOperations = nonNil(kept)
+	profile.DeniedOperations = slicex.NonNil(kept)
 	return profile, nil
 }
 
@@ -336,7 +338,7 @@ func normalizeProfileFields(renderer Renderer, profile Profile) (Profile, error)
 	if err != nil {
 		return Profile{}, err
 	}
-	profile.Clients, profile.DeniedOperations = clients, nonNil(denied)
+	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(denied)
 	return profile, nil
 }
 
@@ -465,13 +467,6 @@ func validDigest(value string) bool {
 	}
 	_, err := hex.DecodeString(value[len(prefix):])
 	return err == nil
-}
-
-func nonNil[T any](values []T) []T {
-	if values == nil {
-		return []T{}
-	}
-	return values
 }
 
 func (counts *OperationCounts) add(effect Effect) {
