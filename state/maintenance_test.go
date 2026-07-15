@@ -116,6 +116,88 @@ func TestRestoreRejectsTamperingAndActiveState(t *testing.T) {
 	}
 }
 
+func TestReadBackupManifestRejectsMalformedManifest(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, backupManifestFile)
+	if err := os.WriteFile(path, []byte(`{"format":"wrong"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readBackupManifest(directory); err == nil {
+		t.Fatal("malformed backup manifest accepted")
+	}
+}
+
+func TestReadBackupManifestAcceptsCurrentManifest(t *testing.T) {
+	root := t.TempDir()
+	database, err := Open(t.Context(), filepath.Join(root, "state"), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupDirectory := filepath.Join(root, "backup")
+	manifest, err := database.Backup(t.Context(), backupDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	read, err := readBackupManifest(backupDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.SHA256 != manifest.SHA256 || read.DatabaseBytes != manifest.DatabaseBytes {
+		t.Fatalf("manifest = %+v, want %+v", read, manifest)
+	}
+}
+
+func TestBackupRejectsExistingDestination(t *testing.T) {
+	root := t.TempDir()
+	database, err := Open(t.Context(), filepath.Join(root, "state"), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	destination := filepath.Join(root, "backup")
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Backup(t.Context(), destination); err == nil {
+		t.Fatal("backup existing destination accepted")
+	}
+}
+
+func TestRestoreInstallsIntoEmptyStateDirectory(t *testing.T) {
+	root := t.TempDir()
+	source, err := Open(t.Context(), filepath.Join(root, "source"), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupDirectory := filepath.Join(root, "backup")
+	if _, err := source.Backup(t.Context(), backupDirectory); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	targetDirectory := filepath.Join(root, "empty-target")
+	if err := os.Mkdir(targetDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(t.Context(), targetDirectory, backupDirectory); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := OpenExisting(t.Context(), targetDirectory, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restored.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStateExportIsDeterministicAndRedacted(t *testing.T) {
 	root := t.TempDir()
 	directory := filepath.Join(root, "state")

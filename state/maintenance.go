@@ -82,21 +82,15 @@ func (d *Database) Backup(ctx context.Context, destination string) (BackupManife
 	if err := d.ValidateCurrentFormat(ctx); err != nil {
 		return BackupManifest{}, err
 	}
-	if err := validateMaintenanceDestination(d.directory, destination); err != nil {
-		return BackupManifest{}, err
-	}
-	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
-		return BackupManifest{}, errors.New("backup destination already exists or is unavailable")
-	}
-	parent := filepath.Dir(destination)
-	temporary, err := os.MkdirTemp(parent, ".brokerkit-backup-")
+	temporary, err := createBackupStage(d.directory, destination)
 	if err != nil {
 		return BackupManifest{}, err
 	}
 	defer func() { _ = os.RemoveAll(temporary) }()
-	if err := os.Chmod(temporary, 0o700); err != nil {
-		return BackupManifest{}, err
-	}
+	return d.writeBackupFromStage(ctx, temporary, destination)
+}
+
+func (d *Database) writeBackupFromStage(ctx context.Context, temporary, destination string) (BackupManifest, error) {
 	snapshot := filepath.Join(temporary, databaseFile)
 	if err := d.backupSQLite(ctx, snapshot); err != nil {
 		return BackupManifest{}, err
@@ -106,21 +100,43 @@ func (d *Database) Backup(ctx context.Context, destination string) (BackupManife
 		return BackupManifest{}, err
 	}
 	manifest.CreatedAt = time.Now().UTC()
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return BackupManifest{}, err
-	}
-	encoded = append(encoded, '\n')
-	if err := writeSyncedFile(filepath.Join(temporary, backupManifestFile), encoded, 0o600); err != nil {
-		return BackupManifest{}, err
-	}
-	if err := syncDirectory(temporary); err != nil {
+	if err := writeBackupManifest(temporary, manifest); err != nil {
 		return BackupManifest{}, err
 	}
 	if err := publishBackup(temporary, destination); err != nil {
 		return BackupManifest{}, err
 	}
 	return manifest, nil
+}
+
+func writeBackupManifest(temporary string, manifest BackupManifest) error {
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	encoded = append(encoded, '\n')
+	if err := writeSyncedFile(filepath.Join(temporary, backupManifestFile), encoded, 0o600); err != nil {
+		return err
+	}
+	return syncDirectory(temporary)
+}
+
+func createBackupStage(stateDirectory, destination string) (string, error) {
+	if err := validateMaintenanceDestination(stateDirectory, destination); err != nil {
+		return "", err
+	}
+	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
+		return "", errors.New("backup destination already exists or is unavailable")
+	}
+	temporary, err := os.MkdirTemp(filepath.Dir(destination), ".brokerkit-backup-")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Chmod(temporary, 0o700); err != nil {
+		_ = os.RemoveAll(temporary)
+		return "", err
+	}
+	return temporary, nil
 }
 
 func publishBackup(staged, destination string) (resultErr error) {
@@ -133,10 +149,8 @@ func publishBackup(staged, destination string) (resultErr error) {
 			resultErr = errors.Join(resultErr, os.RemoveAll(destination))
 		}
 	}()
-	for _, name := range []string{databaseFile, backupManifestFile} {
-		if err := os.Link(filepath.Join(staged, name), filepath.Join(destination, name)); err != nil {
-			return err
-		}
+	if err := linkBackupFiles(staged, destination); err != nil {
+		return err
 	}
 	if err := syncDirectory(destination); err != nil {
 		return err
@@ -148,42 +162,65 @@ func publishBackup(staged, destination string) (resultErr error) {
 	return nil
 }
 
+func linkBackupFiles(staged, destination string) error {
+	for _, name := range []string{databaseFile, backupManifestFile} {
+		if err := os.Link(filepath.Join(staged, name), filepath.Join(destination, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (d *Database) backupSQLite(ctx context.Context, destination string) error {
 	connection, err := d.sql.Conn(ctx)
 	if err != nil {
 		return err
 	}
 	defer connection.Close()
-	err = connection.Raw(func(driverConnection any) error {
-		backuper, ok := driverConnection.(sqliteBackuper)
-		if !ok {
-			return errors.New("SQLite online backup is unavailable")
-		}
-		backup, err := backuper.NewBackup(destination)
-		if err != nil {
-			return err
-		}
-		finished := false
-		defer func() {
-			if !finished {
-				_ = backup.Finish()
-			}
-		}()
-		for more := true; more; {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			more, err = backup.Step(128)
-			if err != nil {
-				return err
-			}
-		}
-		finished = true
-		return backup.Finish()
-	})
+	err = connection.Raw(func(driverConnection any) error { return runSQLiteBackup(ctx, driverConnection, destination) })
 	if err != nil {
 		return fmt.Errorf("back up state database: %w", err)
 	}
+	return syncBackupSnapshot(destination)
+}
+
+func runSQLiteBackup(ctx context.Context, driverConnection any, destination string) error {
+	backuper, ok := driverConnection.(sqliteBackuper)
+	if !ok {
+		return errors.New("SQLite online backup is unavailable")
+	}
+	backup, err := backuper.NewBackup(destination)
+	if err != nil {
+		return err
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			_ = backup.Finish()
+		}
+	}()
+	if err := stepSQLiteBackup(ctx, backup); err != nil {
+		return err
+	}
+	finished = true
+	return backup.Finish()
+}
+
+func stepSQLiteBackup(ctx context.Context, backup *sqlite.Backup) error {
+	for more := true; more; {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		next, err := backup.Step(128)
+		if err != nil {
+			return err
+		}
+		more = next
+	}
+	return nil
+}
+
+func syncBackupSnapshot(destination string) error {
 	if err := os.Chmod(destination, 0o600); err != nil {
 		return err
 	}
@@ -224,57 +261,90 @@ func Restore(ctx context.Context, stateDirectory, backupDirectory string) error 
 }
 
 func loadBackup(ctx context.Context, directory string) (string, BackupManifest, error) {
-	if info, err := os.Lstat(directory); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", BackupManifest{}, errors.New("backup directory is invalid")
-	}
-	data, err := os.ReadFile(filepath.Join(directory, backupManifestFile)) // #nosec G304 -- operator-selected backup directory.
-	if err != nil || len(data) > 16*1024 {
-		return "", BackupManifest{}, errors.New("backup manifest is unavailable or oversized")
-	}
-	if err := validatePrivateDatabaseFile(filepath.Join(directory, backupManifestFile)); err != nil {
+	manifest, err := readBackupManifest(directory)
+	if err != nil {
 		return "", BackupManifest{}, err
-	}
-	var manifest BackupManifest
-	if err := strictjson.Decode(data, &manifest, true); err != nil || manifest.Format != backupFormat || manifest.SchemaVersion != CurrentSchemaVersion ||
-		manifest.DatabaseFile != databaseFile || manifest.DatabaseBytes < 1 || manifest.DatabaseBytes > maxStateFileBytes || len(manifest.SHA256) != 64 {
-		return "", BackupManifest{}, errors.New("backup manifest is invalid or unsupported")
 	}
 	snapshot := filepath.Join(directory, manifest.DatabaseFile)
-	if err := validatePrivateDatabaseFile(snapshot); err != nil {
+	if err := validateBackupSnapshotFile(snapshot, manifest); err != nil {
 		return "", BackupManifest{}, err
 	}
-	digest, size, err := fileDigest(snapshot, maxStateFileBytes)
-	if err != nil || size != manifest.DatabaseBytes || digest != manifest.SHA256 {
-		return "", BackupManifest{}, errors.New("backup database checksum or size does not match its manifest")
-	}
-	validated, err := validateSnapshot(ctx, snapshot)
-	if err != nil || validated.SHA256 != manifest.SHA256 || validated.DatabaseBytes != manifest.DatabaseBytes {
-		return "", BackupManifest{}, errors.New("backup database validation failed")
+	if err := validateBackupSnapshotContents(ctx, snapshot, manifest); err != nil {
+		return "", BackupManifest{}, err
 	}
 	return snapshot, manifest, nil
 }
 
-func validateSnapshot(ctx context.Context, path string) (BackupManifest, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxStateFileBytes {
-		return BackupManifest{}, errors.New("state snapshot is invalid")
+func readBackupManifest(directory string) (BackupManifest, error) {
+	if err := validateBackupDirectory(directory); err != nil {
+		return BackupManifest{}, err
 	}
-	db, err := openReadOnlySQL(path)
+	manifestPath := filepath.Join(directory, backupManifestFile)
+	if err := validatePrivateDatabaseFile(manifestPath); err != nil {
+		return BackupManifest{}, err
+	}
+	data, err := readBackupManifestFile(manifestPath)
 	if err != nil {
 		return BackupManifest{}, err
 	}
-	value := &Database{sql: db}
-	err = value.ValidateCurrentFormat(ctx)
-	if err == nil {
-		var result string
-		err = db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result)
-		if err == nil && result != "ok" {
-			err = errors.New("SQLite integrity check failed")
-		}
+	return decodeBackupManifest(data)
+}
+
+func validateBackupDirectory(directory string) error {
+	if info, err := os.Lstat(directory); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("backup directory is invalid")
 	}
-	closeErr := db.Close()
-	if err != nil || closeErr != nil {
-		return BackupManifest{}, errors.Join(err, closeErr)
+	return nil
+}
+
+func readBackupManifestFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- operator-selected backup directory.
+	if err != nil || len(data) > 16*1024 {
+		return nil, errors.New("backup manifest is unavailable or oversized")
+	}
+	return data, nil
+}
+
+func decodeBackupManifest(data []byte) (BackupManifest, error) {
+	var manifest BackupManifest
+	if err := strictjson.Decode(data, &manifest, true); err != nil || invalidBackupManifest(manifest) {
+		return BackupManifest{}, errors.New("backup manifest is invalid or unsupported")
+	}
+	return manifest, nil
+}
+
+func invalidBackupManifest(manifest BackupManifest) bool {
+	return manifest.Format != backupFormat || manifest.SchemaVersion != CurrentSchemaVersion ||
+		manifest.DatabaseFile != databaseFile || manifest.DatabaseBytes < 1 ||
+		manifest.DatabaseBytes > maxStateFileBytes || len(manifest.SHA256) != 64
+}
+
+func validateBackupSnapshotFile(snapshot string, manifest BackupManifest) error {
+	if err := validatePrivateDatabaseFile(snapshot); err != nil {
+		return err
+	}
+	digest, size, err := fileDigest(snapshot, maxStateFileBytes)
+	if err != nil || size != manifest.DatabaseBytes || digest != manifest.SHA256 {
+		return errors.New("backup database checksum or size does not match its manifest")
+	}
+	return nil
+}
+
+func validateBackupSnapshotContents(ctx context.Context, snapshot string, manifest BackupManifest) error {
+	validated, err := validateSnapshot(ctx, snapshot)
+	if err != nil || validated.SHA256 != manifest.SHA256 || validated.DatabaseBytes != manifest.DatabaseBytes {
+		return errors.New("backup database validation failed")
+	}
+	return nil
+}
+
+func validateSnapshot(ctx context.Context, path string) (BackupManifest, error) {
+	info, err := os.Stat(path)
+	if invalidSnapshotInfo(info, err) {
+		return BackupManifest{}, errors.New("state snapshot is invalid")
+	}
+	if err := validateSnapshotDatabase(ctx, path); err != nil {
+		return BackupManifest{}, err
 	}
 	digest, size, err := fileDigest(path, maxStateFileBytes)
 	if err != nil {
@@ -282,6 +352,39 @@ func validateSnapshot(ctx context.Context, path string) (BackupManifest, error) 
 	}
 	return BackupManifest{Format: backupFormat, SchemaVersion: CurrentSchemaVersion, DatabaseFile: databaseFile,
 		DatabaseBytes: size, SHA256: digest}, nil
+}
+
+func invalidSnapshotInfo(info os.FileInfo, err error) bool {
+	return err != nil || !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > maxStateFileBytes
+}
+
+func validateSnapshotDatabase(ctx context.Context, path string) error {
+	db, err := openReadOnlySQL(path)
+	if err != nil {
+		return err
+	}
+	value := &Database{sql: db}
+	err = value.ValidateCurrentFormat(ctx)
+	if err == nil {
+		err = validateSQLiteIntegrity(ctx, db)
+	}
+	closeErr := db.Close()
+	if err != nil || closeErr != nil {
+		return errors.Join(err, closeErr)
+	}
+	return nil
+}
+
+func validateSQLiteIntegrity(ctx context.Context, db *sql.DB) error {
+	var result string
+	err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result)
+	if err != nil {
+		return err
+	}
+	if result != "ok" {
+		return errors.New("SQLite integrity check failed")
+	}
+	return nil
 }
 
 func openReadOnlySQL(path string) (*sql.DB, error) {
@@ -324,18 +427,25 @@ func copySnapshot(directory, source string, expectedSize int64) (string, error) 
 	if err := output.Chmod(0o600); err != nil {
 		return "", err
 	}
-	written, err := io.Copy(output, io.LimitReader(input, expectedSize+1))
-	if err != nil || written != expectedSize {
-		return "", errors.New("backup snapshot changed while it was copied")
-	}
-	if err := output.Sync(); err != nil {
-		return "", err
-	}
-	if err := output.Close(); err != nil {
+	if err := copySnapshotData(output, input, expectedSize); err != nil {
 		return "", err
 	}
 	remove = false
 	return path, nil
+}
+
+func copySnapshotData(output io.WriteCloser, input io.Reader, expectedSize int64) error {
+	written, err := io.Copy(output, io.LimitReader(input, expectedSize+1))
+	if err != nil || written != expectedSize {
+		return errors.New("backup snapshot changed while it was copied")
+	}
+	file, ok := output.(*os.File)
+	if ok {
+		if err := file.Sync(); err != nil {
+			return err
+		}
+	}
+	return output.Close()
 }
 
 func installRestoredDatabase(directory, stage string) error {
@@ -344,45 +454,67 @@ func installRestoredDatabase(directory, stage string) error {
 	if _, err := os.Lstat(rollback); err == nil {
 		return errors.New("stale state restore rollback file exists")
 	}
-	hadExisting := false
-	if _, err := os.Lstat(destination); err == nil {
-		if err := validatePrivateDatabaseFile(destination); err != nil {
-			return err
-		}
-		if err := checkpointDatabase(destination); err != nil {
-			return err
-		}
-		if err := os.Rename(destination, rollback); err != nil {
-			return err
-		}
-		hadExisting = true
-	} else if !errors.Is(err, os.ErrNotExist) {
+	hadExisting, err := prepareOptionalDatabaseRollback(destination, rollback)
+	if err != nil {
 		return err
 	}
+	return publishRestoredDatabase(directory, destination, rollback, stage, hadExisting)
+}
+
+func prepareOptionalDatabaseRollback(destination, rollback string) (bool, error) {
+	if _, err := os.Lstat(destination); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, prepareDatabaseRollback(destination, rollback)
+}
+
+func publishRestoredDatabase(directory, destination, rollback, stage string, hadExisting bool) error {
 	if err := os.Rename(stage, destination); err != nil {
-		if hadExisting {
-			_ = os.Rename(rollback, destination)
-		}
+		restoreRollback(destination, rollback, hadExisting)
 		return err
 	}
+	removeSQLiteSidecars(destination)
+	if err := syncDirectory(directory); err != nil {
+		restoreRollback(destination, rollback, hadExisting)
+		return err
+	}
+	return removeRollback(directory, rollback, hadExisting)
+}
+
+func prepareDatabaseRollback(destination, rollback string) error {
+	if err := validatePrivateDatabaseFile(destination); err != nil {
+		return err
+	}
+	if err := checkpointDatabase(destination); err != nil {
+		return err
+	}
+	return os.Rename(destination, rollback)
+}
+
+func restoreRollback(destination, rollback string, hadExisting bool) {
+	_ = os.Remove(destination)
+	if hadExisting {
+		_ = os.Rename(rollback, destination)
+		_ = syncDirectory(filepath.Dir(destination))
+	}
+}
+
+func removeSQLiteSidecars(destination string) {
 	for _, suffix := range []string{"-wal", "-shm"} {
 		_ = os.Remove(destination + suffix)
 	}
-	if err := syncDirectory(directory); err != nil {
-		_ = os.Remove(destination)
-		if hadExisting {
-			_ = os.Rename(rollback, destination)
-			_ = syncDirectory(directory)
-		}
+}
+
+func removeRollback(directory, rollback string, hadExisting bool) error {
+	if !hadExisting {
+		return nil
+	}
+	if err := os.Remove(rollback); err != nil {
 		return err
 	}
-	if hadExisting {
-		if err := os.Remove(rollback); err != nil {
-			return err
-		}
-		return syncDirectory(directory)
-	}
-	return nil
+	return syncDirectory(directory)
 }
 
 func checkpointDatabase(path string) error {
@@ -402,9 +534,20 @@ func ensurePrivateDirectory(path string) error {
 		return err
 	}
 	info, err := os.Lstat(path)
+	if err := validatePrivateDirectoryInfo(info, err); err != nil {
+		return err
+	}
+	return validatePrivateDirectoryOwner(info)
+}
+
+func validatePrivateDirectoryInfo(info os.FileInfo, err error) error {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
 		return errors.New("state directory must be private and cannot be a symlink")
 	}
+	return nil
+}
+
+func validatePrivateDirectoryOwner(info os.FileInfo) error {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) { // #nosec G115 -- effective UIDs are non-negative.
 		return errors.New("state directory must be owned by the current user")
 	}

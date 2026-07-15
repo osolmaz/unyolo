@@ -113,6 +113,10 @@ func (d *Database) Export(ctx context.Context, destination string) error {
 	if err != nil {
 		return err
 	}
+	return writeExportFile(destination, value)
+}
+
+func writeExportFile(destination string, value redactedExport) error {
 	parent := filepath.Dir(destination)
 	file, err := os.CreateTemp(parent, ".brokerkit-state-export-*.json")
 	if err != nil {
@@ -126,6 +130,17 @@ func (d *Database) Export(ctx context.Context, destination string) error {
 			_ = os.Remove(path)
 		}
 	}()
+	if err := encodeExportFile(file, value); err != nil {
+		return err
+	}
+	if err := publishExportFile(path, destination); err != nil {
+		return err
+	}
+	remove = false
+	return syncDirectory(parent)
+}
+
+func encodeExportFile(file *os.File, value redactedExport) error {
 	if err := file.Chmod(0o600); err != nil {
 		return err
 	}
@@ -138,9 +153,10 @@ func (d *Database) Export(ctx context.Context, destination string) error {
 	if err := file.Sync(); err != nil {
 		return err
 	}
-	if err := file.Close(); err != nil {
-		return err
-	}
+	return file.Close()
+}
+
+func publishExportFile(path, destination string) error {
 	if err := os.Link(path, destination); err != nil {
 		return err
 	}
@@ -148,31 +164,45 @@ func (d *Database) Export(ctx context.Context, destination string) error {
 		_ = os.Remove(destination)
 		return err
 	}
-	remove = false
-	return syncDirectory(parent)
+	return nil
 }
 
 func (d *Database) redactedExport(ctx context.Context) (redactedExport, error) {
 	value := redactedExport{Format: exportFormat, SchemaVersion: CurrentSchemaVersion}
-	var err error
-	if value.Grants, err = d.exportGrants(ctx); err != nil {
+	if err := d.populateCoreExport(ctx, &value); err != nil {
 		return redactedExport{}, err
 	}
-	if value.Operations, err = d.exportOperations(ctx); err != nil {
+	if err := d.populateAuditExport(ctx, &value); err != nil {
 		return redactedExport{}, err
+	}
+	return value, nil
+}
+
+func (d *Database) populateCoreExport(ctx context.Context, value *redactedExport) error {
+	var err error
+	if value.Grants, err = d.exportGrants(ctx); err != nil {
+		return err
+	}
+	if value.Operations, err = d.exportOperations(ctx); err != nil {
+		return err
 	}
 	if value.Plans, err = exportRows(ctx, d.sql, `SELECT digest, schema_name, created_at FROM plans ORDER BY digest LIMIT ?`, func(rows *sql.Rows) (redactedPlan, error) {
 		var item redactedPlan
 		scanErr := rows.Scan(&item.Digest, &item.SchemaName, &item.CreatedAt)
 		return item, scanErr
 	}); err != nil {
-		return redactedExport{}, err
+		return err
 	}
 	if value.Notifications, err = d.exportNotifications(ctx); err != nil {
-		return redactedExport{}, err
+		return err
 	}
+	return nil
+}
+
+func (d *Database) populateAuditExport(ctx context.Context, value *redactedExport) error {
+	var err error
 	if value.AuditRefs, err = d.exportAuditReferences(ctx); err != nil {
-		return redactedExport{}, err
+		return err
 	}
 	if value.Decisions, err = exportRows(ctx, d.sql, `SELECT request_id, action, committed_at FROM decision_records
 		ORDER BY request_id, action, committed_at LIMIT ?`, func(rows *sql.Rows) (redactedDecision, error) {
@@ -180,9 +210,9 @@ func (d *Database) redactedExport(ctx context.Context) (redactedExport, error) {
 		scanErr := rows.Scan(&item.RequestID, &item.Action, &item.CommittedAt)
 		return item, scanErr
 	}); err != nil {
-		return redactedExport{}, err
+		return err
 	}
-	return value, nil
+	return nil
 }
 
 func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {

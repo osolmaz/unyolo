@@ -90,20 +90,32 @@ func OpenExisting(ctx context.Context, directory string, options Options) (*Data
 	if directory == "" {
 		return nil, errors.New("state directory is required")
 	}
-	info, err := os.Lstat(directory)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("existing state directory is required")
-	}
-	if err := ensurePrivateDirectory(directory); err != nil {
-		return nil, err
-	}
 	if options.BusyTimeout <= 0 {
 		options.BusyTimeout = 5 * time.Second
+	}
+	if err := validateExistingStateDirectory(directory); err != nil {
+		return nil, err
 	}
 	lock, err := acquireLease(filepath.Join(directory, leaseFile))
 	if err != nil {
 		return nil, err
 	}
+	result, err := openCurrentDatabase(ctx, directory, options, lock)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func validateExistingStateDirectory(directory string) error {
+	info, err := os.Lstat(directory)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("existing state directory is required")
+	}
+	return ensurePrivateDirectory(directory)
+}
+
+func openCurrentDatabase(ctx context.Context, directory string, options Options, lock *lease) (*Database, error) {
 	path := filepath.Join(directory, databaseFile)
 	if err := validatePrivateDatabaseFile(path); err != nil {
 		_ = lock.close()
@@ -127,9 +139,20 @@ func validatePrivateDatabaseFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("read state database metadata: %w", err)
 	}
+	if err := validatePrivateDatabaseMode(info); err != nil {
+		return err
+	}
+	return validatePrivateDatabaseOwner(info)
+}
+
+func validatePrivateDatabaseMode(info os.FileInfo) error {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
 		return errors.New("state database must be a private regular file")
 	}
+	return nil
+}
+
+func validatePrivateDatabaseOwner(info os.FileInfo) error {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) { // #nosec G115 -- effective UIDs are non-negative.
 		return errors.New("state database must be owned by the current user")
 	}
@@ -251,6 +274,13 @@ func (d *Database) ValidateCurrentFormat(ctx context.Context) error {
 	if d == nil || d.sql == nil {
 		return errors.New("state database is unavailable")
 	}
+	if err := d.validateSchemaVersion(ctx); err != nil {
+		return err
+	}
+	return d.validateQuickCheck(ctx)
+}
+
+func (d *Database) validateSchemaVersion(ctx context.Context) error {
 	var version sql.NullInt64
 	if err := d.sql.QueryRowContext(ctx, "SELECT max(version_id) FROM goose_db_version WHERE is_applied = 1").Scan(&version); err != nil {
 		return fmt.Errorf("read state schema version: %w", err)
@@ -258,11 +288,15 @@ func (d *Database) ValidateCurrentFormat(ctx context.Context) error {
 	if !version.Valid || version.Int64 != CurrentSchemaVersion {
 		return fmt.Errorf("state schema version is %d, want %d", version.Int64, CurrentSchemaVersion)
 	}
+	return nil
+}
+
+func (d *Database) validateQuickCheck(ctx context.Context) error {
 	var result string
-	if err := d.sql.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil || result != "ok" {
-		if err != nil {
-			return fmt.Errorf("state quick check failed: %w", err)
-		}
+	if err := d.sql.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil {
+		return fmt.Errorf("state quick check failed: %w", err)
+	}
+	if result != "ok" {
 		return fmt.Errorf("state quick check failed: %s", result)
 	}
 	return nil
