@@ -21,7 +21,7 @@ import (
 )
 
 func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
-	bot := &fakeTelegramBot{failFirstEdit: true}
+	bot := &fakeTelegramBot{failEditAttempts: 2}
 	botAPI := httptest.NewServer(http.HandlerFunc(bot.serveHTTP))
 	defer botAPI.Close()
 
@@ -69,8 +69,8 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if err != nil || offset != 2 {
 		t.Fatalf("PollOnce() offset=%d err=%v", offset, err)
 	}
-	if bot.editAttempts != 0 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" {
-		t.Fatalf("callback performed edit before acknowledgement: edits=%d answers=%+v", bot.editAttempts, bot.answers)
+	if bot.editAttempts != 1 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" {
+		t.Fatalf("callback did not attempt its immediate status edit: edits=%d answers=%+v", bot.editAttempts, bot.answers)
 	}
 	afterDecision, err := store.Get(claimed.Grant.ID)
 	if err != nil {
@@ -81,14 +81,14 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	}
 
 	server.sweepGrantNotifications(context.Background())
-	if bot.editAttempts != 1 {
-		t.Fatalf("first durable sweep edit attempts = %d, want one failed attempt", bot.editAttempts)
+	if bot.editAttempts != 2 {
+		t.Fatalf("first durable sweep edit attempts = %d, want two failed attempts including callback", bot.editAttempts)
 	}
 
 	restartedStore := grants.New(path, grants.Options{})
 	restarted := newTelegramDecisionTestServer(t, restartedStore, client)
 	restarted.sweepGrantNotifications(context.Background())
-	if bot.editAttempts != 2 || !strings.Contains(bot.edits[1], "Status: ✅ Approved. Access is active.") {
+	if bot.editAttempts != 3 || !strings.Contains(bot.edits[2], "Status: ✅ Approved. Access is active.") {
 		t.Fatalf("restart edits = %+v attempts=%d", bot.edits, bot.editAttempts)
 	}
 	delivered, err := restartedStore.Get(claimed.Grant.ID)
@@ -99,10 +99,10 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if _, err := client.PollOnce(context.Background(), 0, restarted.handleTelegramDecision); err != nil {
 		t.Fatalf("replay PollOnce() error = %v", err)
 	}
-	if bot.editAttempts != 2 {
-		t.Fatalf("replay caused an implicit edit: attempts=%d", bot.editAttempts)
+	if bot.editAttempts != 4 || !strings.Contains(bot.edits[3], "Status: Approved. Access is active.") {
+		t.Fatalf("replay did not restore the terminal message state: edits=%+v attempts=%d", bot.edits, bot.editAttempts)
 	}
-	if len(bot.answers) != 2 || bot.answers[0] != "Grant approved" || bot.answers[1] != "Grant is no longer pending" {
+	if len(bot.answers) != 2 || bot.answers[0] != "Grant approved" || bot.answers[1] != "Grant already approved" {
 		t.Fatalf("callback answers = %+v", bot.answers)
 	}
 	if !strings.Contains(bot.sentText, "Approval needed for hf-broker") || strings.Contains(bot.sentText, claimed.DecisionToken) {
@@ -147,11 +147,11 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 	if err != nil || stored.Status != grants.StatusActive || stored.Notification == nil || stored.Notification.MessageID != 7 || stored.Notification.Text != bot.sentText {
 		t.Fatalf("recovered callback grant = %+v err=%v", stored, err)
 	}
-	if bot.editAttempts != 0 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" {
-		t.Fatalf("callback was not acknowledged before edit: edits=%d answers=%+v", bot.editAttempts, bot.answers)
+	if bot.editAttempts != 1 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" || !strings.Contains(bot.edits[0], "Status: Approved. Access is active.") {
+		t.Fatalf("callback did not close the approval message: edits=%+v answers=%+v", bot.edits, bot.answers)
 	}
 	server.sweepGrantNotifications(context.Background())
-	if bot.editAttempts != 1 || !strings.Contains(bot.edits[0], "Status: ✅ Approved. Access is active.") {
+	if bot.editAttempts != 2 || !strings.Contains(bot.edits[1], "Status: ✅ Approved. Access is active.") {
 		t.Fatalf("recovered status edits = %+v attempts=%d", bot.edits, bot.editAttempts)
 	}
 }
@@ -226,12 +226,12 @@ func newTelegramDecisionTestServer(t *testing.T, store *grants.Store, notifier n
 }
 
 type fakeTelegramBot struct {
-	callbackData  string
-	sentText      string
-	answers       []string
-	edits         []string
-	editAttempts  int
-	failFirstEdit bool
+	callbackData     string
+	sentText         string
+	answers          []string
+	edits            []string
+	editAttempts     int
+	failEditAttempts int
 }
 
 func (b *fakeTelegramBot) serveHTTP(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +252,7 @@ func (b *fakeTelegramBot) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		text, _ := payload["text"].(string)
 		b.edits = append(b.edits, text)
 		b.editAttempts++
-		if b.failFirstEdit && b.editAttempts == 1 {
+		if b.editAttempts <= b.failEditAttempts {
 			http.Error(w, "temporary failure", http.StatusBadGateway)
 			return
 		}

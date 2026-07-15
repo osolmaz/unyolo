@@ -1442,8 +1442,8 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 		MessageID:     1,
 		MessageText:   "approval",
 	})
-	if replay.Answer != "Grant is no longer pending" {
-		t.Fatalf("replay decision = %+v, want no longer pending", replay)
+	if replay.Answer != "Grant already denied" || replay.MessageStatus != "Denied. Access was not granted." {
+		t.Fatalf("replay decision = %+v, want already denied", replay)
 	}
 }
 

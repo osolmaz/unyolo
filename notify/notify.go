@@ -61,6 +61,9 @@ type Decision struct {
 type DecisionResult struct {
 	// Answer is the short callback answer shown by the approval channel.
 	Answer string
+	// MessageStatus is the durable status rendered into the approval message.
+	// A non-empty value also closes the message's decision controls.
+	MessageStatus string
 	// Retry leaves the callback unanswered and its update offset uncommitted.
 	// Brokers use it when a durable decision transaction could not be saved.
 	Retry bool

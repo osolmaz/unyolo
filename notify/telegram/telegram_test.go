@@ -122,7 +122,7 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 
 	offset, err := client.PollOnce(context.Background(), 0, func(_ context.Context, decision notify.Decision) notify.DecisionResult {
 		decisions = append(decisions, decision)
-		return notify.DecisionResult{Answer: "handled"}
+		return notify.DecisionResult{Answer: "handled", MessageStatus: "Denied. Access was not granted."}
 	})
 	if err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
@@ -132,8 +132,24 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 	}
 	assertPollDecision(t, decisions)
 	assertPollAnswers(t, state.answered)
-	if len(state.edits) != 0 {
-		t.Fatalf("callback edits = %+v, want broker-owned status lifecycle", state.edits)
+	if len(state.edits) != 1 {
+		t.Fatalf("callback edits = %+v, want one terminal status edit", state.edits)
+	}
+	assertClosedDecisionMessage(t, state.edits[0], "Denied. Access was not granted.")
+}
+
+func assertClosedDecisionMessage(t *testing.T, payload map[string]any, status string) {
+	t.Helper()
+	if text, _ := payload["text"].(string); !strings.Contains(text, "Status: "+status) {
+		t.Fatalf("edited message text = %q, want status %q", text, status)
+	}
+	markup, ok := payload["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("edited message reply markup = %#v", payload["reply_markup"])
+	}
+	keyboard, ok := markup["inline_keyboard"].([]any)
+	if !ok || len(keyboard) != 0 {
+		t.Fatalf("edited message keyboard = %#v, want empty", markup["inline_keyboard"])
 	}
 }
 
@@ -155,6 +171,34 @@ func TestPollOnceLeavesRetriedDecisionPending(t *testing.T) {
 	})
 	assertRetryPollResult(t, offset, answers, err, 6, 2, false)
 	assertRetryPollOffsets(t, offsets)
+}
+
+func TestPollOnceCommitsCallbackWhenImmediateEditFails(t *testing.T) {
+	answers := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":7,"callback_query":{"id":"callback","from":{"id":2},"message":{"message_id":42,"chat":{"id":123},"text":"Approval requested"},"data":"` + CallbackData(notify.ActionApprove, "g1", "t1") + `"}}]}`))
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			answers++
+			writeOK(w)
+		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
+			http.Error(w, "temporary failure", http.StatusBadGateway)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := New("test-token", 123, server.Client(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
+		return notify.DecisionResult{Answer: "Grant approved", MessageStatus: "Approved. Access is active."}
+	})
+	if err != nil || offset != 8 || answers != 1 {
+		t.Fatalf("PollOnce() offset=%d answers=%d err=%v, want committed callback", offset, answers, err)
+	}
 }
 
 func retryGrantOne(_ context.Context, decision notify.Decision) notify.DecisionResult {

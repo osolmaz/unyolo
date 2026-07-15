@@ -46,6 +46,11 @@ func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, h
 		if result.Retry {
 			return true
 		}
+		if result.MessageStatus != "" {
+			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
+			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, result.MessageStatus)
+			return false
+		}
 	}
 	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
 	return false
