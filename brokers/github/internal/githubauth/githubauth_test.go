@@ -274,6 +274,37 @@ func TestAppInstallationPaginationUsesSDKResponseLinks(t *testing.T) {
 	}
 }
 
+func TestAppCheckAndInstallationForAccount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertAppJWT(t, r)
+		switch r.URL.Path {
+		case "/app":
+			_, _ = io.WriteString(w, `{"id":12345}`)
+		case "/app/installations":
+			_, _ = io.WriteString(w, `[
+				{"id":0,"account":{"login":"ignored"}},
+				{"id":41,"account":{"login":"ACME"},"suspended_at":"2026-07-14T02:00:00Z"},
+				{"id":42,"account":{"login":"Acme"}}
+			]`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	manager := newAppTestManager(t, server, time.Now)
+
+	if err := manager.CheckApp(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := manager.InstallationForAccount(t.Context(), " acme ")
+	if err != nil || metadata.Kind != KindInstallation || metadata.InstallationID != 42 || metadata.APIHost == "" {
+		t.Fatalf("account metadata = %+v, %v", metadata, err)
+	}
+	if _, err := manager.InstallationForAccount(t.Context(), "missing"); err == nil {
+		t.Fatal("missing account resolved to an installation")
+	}
+}
+
 func TestTypedDoctorAPIAndDevelopmentCredential(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

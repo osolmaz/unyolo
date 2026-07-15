@@ -205,16 +205,28 @@ func normalizeAPIURL(value *url.URL) (*url.URL, error) {
 }
 
 func validateAPIURL(value url.URL) error {
-	if value.Scheme != "https" && value.Scheme != "http" {
+	if !validAPIScheme(value.Scheme) {
 		return errors.New("GitHub API URL must use HTTP or HTTPS")
 	}
-	if value.Scheme == "http" && !localHostname(value.Hostname()) {
+	if insecureRemoteAPIURL(value) {
 		return errors.New("GitHub API URL must use HTTPS")
 	}
-	if value.Host == "" || value.User != nil || value.RawQuery != "" || value.Fragment != "" {
+	if invalidAPIURLParts(value) {
 		return errors.New("GitHub API URL is invalid")
 	}
 	return nil
+}
+
+func validAPIScheme(scheme string) bool {
+	return scheme == "https" || scheme == "http"
+}
+
+func insecureRemoteAPIURL(value url.URL) bool {
+	return value.Scheme == "http" && !localHostname(value.Hostname())
+}
+
+func invalidAPIURLParts(value url.URL) bool {
+	return value.Host == "" || value.User != nil || value.RawQuery != "" || value.Fragment != ""
 }
 
 func localHostname(hostname string) bool {

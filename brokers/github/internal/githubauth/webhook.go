@@ -26,22 +26,42 @@ type WebhookEvent struct {
 }
 
 func ParseWebhook(header http.Header, body []byte, secret []byte) (WebhookEvent, error) {
-	event := strings.TrimSpace(header.Get("X-GitHub-Event"))
-	delivery := strings.TrimSpace(header.Get("X-GitHub-Delivery"))
-	signature := strings.TrimSpace(header.Get("X-Hub-Signature-256"))
-	if event == "" || delivery == "" || signature == "" || len(body) == 0 || len(secret) == 0 {
-		return WebhookEvent{}, ErrWebhookInvalid
+	envelope, err := webhookEnvelopeFromHeader(header, body, secret)
+	if err != nil {
+		return WebhookEvent{}, err
 	}
-	if err := github.ValidateSignature(signature, body, secret); err != nil {
+	if err := github.ValidateSignature(envelope.signature, body, secret); err != nil {
 		return WebhookEvent{}, ErrWebhookSignature
 	}
-	parsed, err := github.ParseWebHook(event, body)
+	parsed, err := github.ParseWebHook(envelope.event, body)
 	if err != nil {
 		return WebhookEvent{}, ErrWebhookInvalid
 	}
-	result := WebhookEvent{Event: event, Delivery: delivery}
+	result := WebhookEvent{Event: envelope.event, Delivery: envelope.delivery}
 	populateWebhookEvent(&result, parsed)
 	return result, nil
+}
+
+type webhookEnvelope struct {
+	event     string
+	delivery  string
+	signature string
+}
+
+func webhookEnvelopeFromHeader(header http.Header, body []byte, secret []byte) (webhookEnvelope, error) {
+	result := webhookEnvelope{
+		event:     strings.TrimSpace(header.Get("X-GitHub-Event")),
+		delivery:  strings.TrimSpace(header.Get("X-GitHub-Delivery")),
+		signature: strings.TrimSpace(header.Get("X-Hub-Signature-256")),
+	}
+	if invalidWebhookEnvelope(result, body, secret) {
+		return webhookEnvelope{}, ErrWebhookInvalid
+	}
+	return result, nil
+}
+
+func invalidWebhookEnvelope(envelope webhookEnvelope, body []byte, secret []byte) bool {
+	return envelope.event == "" || envelope.delivery == "" || envelope.signature == "" || len(body) == 0 || len(secret) == 0
 }
 
 func populateWebhookEvent(result *WebhookEvent, parsed any) {
