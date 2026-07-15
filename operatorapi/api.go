@@ -284,9 +284,12 @@ func validNotificationDecision(value *operatorwire.NotificationDecision, constra
 	if value == nil {
 		return true
 	}
-	return constraints == nil && value.Kind == operatorwire.NotificationDecisionKind("telegram") &&
-		value.ChatId != 0 && value.MessageId > 0 && value.DecisionToken != "" && len(value.DecisionToken) <= 200 &&
-		value.Text != "" && len(value.Text) <= 4096
+	return constraints == nil && validNotificationFields(value)
+}
+
+func validNotificationFields(value *operatorwire.NotificationDecision) bool {
+	return value.Kind == operatorwire.NotificationDecisionKind("telegram") && value.ChatId != 0 && value.MessageId > 0 &&
+		value.DecisionToken != "" && len(value.DecisionToken) <= 200 && value.Text != "" && len(value.Text) <= 4096
 }
 
 func validDecisionConstraints(value *operatorwire.Constraints) bool {

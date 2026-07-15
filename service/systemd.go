@@ -239,14 +239,14 @@ func RenderSystemd(unit SystemdUnit) (string, error) {
 	after := append([]string{"network-online.target"}, unit.AfterUnits...)
 	var body strings.Builder
 	_, _ = fmt.Fprintf(&body, "[Unit]\nDescription=%s\nAfter=%s\nWants=network-online.target\n", unit.Description, strings.Join(after, " "))
-	writeRequires(&body, unit.RequiresUnits)
+	writeUnitValues(&body, "Requires", unit.RequiresUnits)
 	_, _ = fmt.Fprintf(&body, `
 [Service]
 Type=simple
 User=%s
 Group=%s
 `, unit.User, unit.Group)
-	writeSupplementaryGroups(&body, unit.SupplementaryGroups)
+	writeUnitValues(&body, "SupplementaryGroups", unit.SupplementaryGroups)
 	_, _ = fmt.Fprintf(&body, `
 EnvironmentFile=%s
 ExecStart=%s
@@ -266,12 +266,6 @@ ReadOnlyPaths=%s
 	}
 	body.WriteString("\n[Install]\nWantedBy=multi-user.target\n")
 	return body.String(), nil
-}
-
-func writeSupplementaryGroups(body *strings.Builder, groups []string) {
-	if len(groups) > 0 {
-		_, _ = fmt.Fprintf(body, "SupplementaryGroups=%s\n", strings.Join(groups, " "))
-	}
 }
 
 func normalizedRestartSec(value int) int {
@@ -297,9 +291,9 @@ func systemdProtectionValues(unit SystemdUnit) (string, string, string) {
 	return protectSystem, readWritePaths, noNewPrivileges
 }
 
-func writeRequires(body *strings.Builder, units []string) {
-	if len(units) > 0 {
-		_, _ = fmt.Fprintf(body, "Requires=%s\n", strings.Join(units, " "))
+func writeUnitValues(body *strings.Builder, directive string, values []string) {
+	if len(values) > 0 {
+		_, _ = fmt.Fprintf(body, "%s=%s\n", directive, strings.Join(values, " "))
 	}
 }
 
@@ -332,11 +326,7 @@ func (unit SystemdUnit) validate() error {
 	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
 		return err
 	}
-	groupNames := make(map[string]string, len(unit.SupplementaryGroups))
-	for index, group := range unit.SupplementaryGroups {
-		groupNames[fmt.Sprintf("supplementary group %d", index+1)] = group
-	}
-	if err := validatex.AccountNames(groupNames); err != nil {
+	if err := validateSupplementaryGroups(unit.SupplementaryGroups); err != nil {
 		return err
 	}
 	if err := validateSystemdPolicies(unit); err != nil {
@@ -349,6 +339,14 @@ func (unit SystemdUnit) validate() error {
 		return err
 	}
 	return validateExtraDirectives(unit.ExtraDirectives)
+}
+
+func validateSupplementaryGroups(groups []string) error {
+	values := make(map[string]string, len(groups))
+	for index, group := range groups {
+		values[fmt.Sprintf("supplementary group %d", index+1)] = group
+	}
+	return validatex.AccountNames(values)
 }
 
 func validateUnitDependencies(unit SystemdUnit) error {

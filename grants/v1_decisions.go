@@ -231,14 +231,31 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	if !validOperatorDecisionText(command) || !validOperatorAction(command.Action) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
-	if command.Action != ActionApprove && (command.Constraints.Duration != 0 || constraintUseLimitSpecified(command.Constraints)) {
+	if !validOperatorConstraints(command) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
-	if (command.DecisionToken == "") != (command.Notification == nil) ||
-		(command.Notification != nil && (command.Action == ActionRevoke || validateMessageRef(*command.Notification) != nil)) {
+	if err := validateOperatorNotification(command); err != nil {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
 	return command, nil
+}
+
+func validOperatorConstraints(command OperatorDecision) bool {
+	return command.Action == ActionApprove ||
+		(command.Constraints.Duration == 0 && !constraintUseLimitSpecified(command.Constraints))
+}
+
+func validateOperatorNotification(command OperatorDecision) error {
+	if (command.DecisionToken == "") != (command.Notification == nil) {
+		return ErrInvalidCommand
+	}
+	if command.Notification == nil {
+		return nil
+	}
+	if command.Action == ActionRevoke {
+		return ErrInvalidCommand
+	}
+	return validateMessageRef(*command.Notification)
 }
 
 func constraintUseLimitSpecified(constraints ApprovalConstraints) bool {
