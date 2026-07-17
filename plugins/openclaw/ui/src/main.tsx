@@ -14,8 +14,6 @@ import type { Action, SafeRequest } from "../../src/types.js";
 import {
   BrokerKitUiApi,
   parseUiBootstrap,
-  requestDelegatedTopLevelOpen,
-  takeDelegatedTopLevelLauncher,
   type UiDecisionOptions,
 } from "./api.js";
 import "./styles.css";
@@ -23,24 +21,7 @@ import { useBrokerSnapshot } from "./use-broker-snapshot.js";
 
 const bootstrap = parseUiBootstrap(location.hash.slice(1));
 const api = new BrokerKitUiApi(bootstrap);
-const topLevelLauncher =
-  bootstrap.mode === "delegated-web" && takeDelegatedTopLevelLauncher();
 history.replaceState(null, "", location.pathname);
-
-function DelegatedTopLevelLauncher() {
-  return (
-    <main className="launcher">
-      <ShieldCheck size={32} />
-      <h1>Approvals</h1>
-      <p className="subtle">
-        Open the protected approval surface to review and decide requests.
-      </p>
-      <button className="primary" onClick={requestDelegatedTopLevelOpen}>
-        Open approvals
-      </button>
-    </main>
-  );
-}
 
 export function App() {
   const { snapshot, canDecide, error, setError, reconcile } =
@@ -163,15 +144,6 @@ export function App() {
               </span>
             </div>
             <div className="actions">
-              {!canDecide && (
-                <button
-                  className="primary"
-                  onClick={requestDelegatedTopLevelOpen}
-                >
-                  <ShieldCheck size={16} />
-                  Review securely
-                </button>
-              )}
               {canDecide &&
                 request.request.allowed_actions.includes("revoke") && (
                   <button
@@ -415,6 +387,6 @@ function capitalize(value: string): string {
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {topLevelLauncher ? <DelegatedTopLevelLauncher /> : <App />}
+    <App />
   </React.StrictMode>,
 );

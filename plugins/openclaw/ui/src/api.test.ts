@@ -1,14 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BrokerKitUiApi,
-  DELEGATED_OPEN_REQUEST,
   DELEGATED_SESSION_META,
   DELEGATED_SESSION_REQUEST,
   DELEGATED_SESSION_RESPONSE,
-  DELEGATED_TOP_LEVEL_META,
   parseUiBootstrap,
-  requestDelegatedTopLevelOpen,
-  takeDelegatedTopLevelLauncher,
   browserSessionHeaders,
 } from "./api.js";
 import { BROWSER_SESSION_HEADER } from "../../src/browser-session.js";
@@ -377,31 +373,6 @@ describe("BrokerKitUiApi", () => {
     );
     expect(renewals).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(4);
-  });
-
-  it("recognizes the framed launcher and requests top-level navigation", () => {
-    const meta = { remove: vi.fn() };
-    vi.stubGlobal("document", {
-      querySelector: vi.fn((selector: string) => {
-        expect(selector).toBe(`meta[name="${DELEGATED_TOP_LEVEL_META}"]`);
-        return meta;
-      }),
-    });
-    const parent = { postMessage: vi.fn() };
-    vi.stubGlobal("window", { parent });
-
-    expect(takeDelegatedTopLevelLauncher()).toBe(true);
-    requestDelegatedTopLevelOpen();
-
-    expect(meta.remove).toHaveBeenCalledOnce();
-    expect(parent.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: DELEGATED_OPEN_REQUEST,
-        version: 1,
-        nonce: expect.stringMatching(/^[a-f0-9]{32}$/u),
-      }),
-      "*",
-    );
   });
 
   it("rejects overlong delegated sessions", async () => {

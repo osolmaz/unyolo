@@ -2,7 +2,11 @@
 
 Date: 2026-07-14
 
-Status: correction required
+Status: implemented and verified
+
+Completed: 2026-07-17. The packaged OpenClaw UI now keeps decisions inside
+the Gateway popover, retains read-only sessions as non-actionable viewers, and
+contains no launcher protocol or parent-navigation path.
 
 ## Required Decision UX
 

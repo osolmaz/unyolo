@@ -14,19 +14,6 @@ body {
   letter-spacing: 0;
 }
 
-.launcher {
-  min-height: 100vh;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 0.9rem;
-  text-align: center;
-  padding: 2rem;
-}
-
-.launcher p {
-  max-width: 32rem;
-}
 button {
   font: inherit;
   letter-spacing: 0;
