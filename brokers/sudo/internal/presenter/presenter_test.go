@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
@@ -29,7 +29,7 @@ func TestPresenterUsesSafeCatalogFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presentation.Risk != operatorinbox.RiskHigh || presentation.Title != "Run privileged command" || len(presentation.Fields) != 5 {
+	if presentation.Risk != approvalview.RiskHigh || presentation.Title != "Run privileged command" || len(presentation.Facts) != 5 || len(presentation.Warnings) != 1 {
 		t.Fatalf("presentation = %+v", presentation)
 	}
 	if fmt.Sprintf("%+v", presentation) == "" || contains(fmt.Sprintf("%+v", presentation), "secret-canary") || contains(fmt.Sprintf("%+v", presentation), "/usr/bin/printf") {
@@ -57,11 +57,11 @@ func TestPresenterRejectsUnavailableCommand(t *testing.T) {
 
 func TestRiskMapping(t *testing.T) {
 	t.Parallel()
-	tests := map[string]operatorinbox.Risk{
-		"low":      operatorinbox.RiskLow,
-		"MEDIUM":   operatorinbox.RiskMedium,
-		"high":     operatorinbox.RiskHigh,
-		"critical": operatorinbox.RiskUnknown,
+	tests := map[string]approvalview.Risk{
+		"low":      approvalview.RiskLow,
+		"MEDIUM":   approvalview.RiskMedium,
+		"high":     approvalview.RiskHigh,
+		"critical": approvalview.RiskUnknown,
 	}
 	for value, want := range tests {
 		if got := risk(value); got != want {

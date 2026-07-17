@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
@@ -24,7 +25,7 @@ type Options struct {
 	Store               *grants.Store
 	ClientSecrets       map[string]string
 	OperatorSecrets     map[string]string
-	Presenter           operatorinbox.Presenter
+	Presenter           approvalview.Presenter
 	Audit               operatorapi.AuditRecorder
 	ActivationValidator decision.ActivationValidator
 	NewCorrelationID    func() (string, error)

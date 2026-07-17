@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
 	"github.com/osolmaz/brokerkit/operatorfake"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/usebudget"
@@ -236,9 +236,9 @@ func newOperatorServer(t *testing.T, validator decision.ActivationValidator) (*g
 	server, err := operatorfake.New(operatorfake.Options{Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret},
 		ClientSecrets: map[string]string{"bob": "client-secret-with-enough-entropy"}, ActivationValidator: validator,
 		Audit: audit.New(io.Discard),
-		Presenter: operatorinbox.PresenterFunc(func(_ context.Context, grant grants.Grant) (operatorinbox.Presentation, error) {
-			return operatorinbox.Presentation{Risk: operatorinbox.RiskHigh, Title: "Protected write", Target: grant.Target.Kind,
-				Fields: []operatorinbox.DisplayField{{Label: "Repository", Value: "demo"}}, PlanHash: "private-plan-hash"}, nil
+		Presenter: approvalview.PresenterFunc(func(_ context.Context, grant grants.Grant) (approvalview.Presentation, error) {
+			return approvalview.Presentation{Risk: approvalview.RiskHigh, Title: "Protected write", Target: grant.Target.Kind,
+				Facts: []approvalview.Fact{{Label: "Repository", Value: "demo"}}, PlanHash: "private-plan-hash"}, nil
 		})})
 	if err != nil {
 		t.Fatal(err)

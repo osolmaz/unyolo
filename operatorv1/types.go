@@ -30,11 +30,19 @@ type Fact struct {
 	Value string `json:"value"`
 }
 
+type Warning struct {
+	Severity string `json:"severity"`
+	Text     string `json:"text"`
+}
+
 type Presentation struct {
-	Risk    string `json:"risk"`
-	Title   string `json:"title"`
-	Summary string `json:"summary,omitempty"`
-	Facts   []Fact `json:"facts,omitempty"`
+	Risk     string    `json:"risk"`
+	Title    string    `json:"title"`
+	Summary  string    `json:"summary,omitempty"`
+	Target   string    `json:"target"`
+	Facts    []Fact    `json:"facts,omitempty"`
+	Warnings []Warning `json:"warnings,omitempty"`
+	PlanHash string    `json:"plan_hash,omitempty"`
 }
 
 type ApprovalBounds struct {

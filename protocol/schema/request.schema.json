@@ -143,18 +143,12 @@
       "additionalProperties": false,
       "required": [
         "risk",
-        "title"
+        "title",
+        "target"
       ],
       "properties": {
         "risk": {
-          "type": "string",
-          "enum": [
-            "unknown",
-            "low",
-            "medium",
-            "high",
-            "critical"
-          ]
+          "$ref": "#/$defs/PresentationRisk"
         },
         "title": {
           "type": "string",
@@ -165,12 +159,28 @@
           "type": "string",
           "maxLength": 2000
         },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
         "facts": {
           "type": "array",
           "maxItems": 20,
           "items": {
             "$ref": "#/$defs/Fact"
           }
+        },
+        "warnings": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/Warning"
+          }
+        },
+        "plan_hash": {
+          "type": "string",
+          "maxLength": 128
         }
       }
     },
@@ -200,6 +210,34 @@
           "maxLength": 80
         },
         "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    },
+    "PresentationRisk": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "Warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "text"
+      ],
+      "properties": {
+        "severity": {
+          "$ref": "#/$defs/PresentationRisk"
+        },
+        "text": {
           "type": "string",
           "minLength": 1,
           "maxLength": 500

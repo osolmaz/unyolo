@@ -324,9 +324,13 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 }
 
 func project(item operatorinbox.Item) operatorwire.BrokerRequest {
-	facts := make([]operatorwire.Fact, 0, len(item.Presentation.Fields))
-	for _, fact := range item.Presentation.Fields {
+	facts := make([]operatorwire.Fact, 0, len(item.Presentation.Facts))
+	for _, fact := range item.Presentation.Facts {
 		facts = append(facts, operatorwire.Fact{Label: fact.Label, Value: fact.Value})
+	}
+	warnings := make([]operatorwire.Warning, 0, len(item.Presentation.Warnings))
+	for _, warning := range item.Presentation.Warnings {
+		warnings = append(warnings, operatorwire.Warning{Severity: operatorwire.PresentationRisk(warning.Severity), Text: warning.Text})
 	}
 	request := operatorwire.BrokerRequest{
 		Id: item.ID, Revision: int(item.Revision), Requester: item.Client, Operation: item.Operation, Status: operatorwire.Status(item.Status),
@@ -336,7 +340,8 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 		DecidedAt: item.DecidedAt, DecidedBy: optional.NonZero(item.DecidedBy), DecidedOnBehalfOf: optional.NonZero(item.DecidedOnBehalfOf),
 		PresentationUnavailable: optional.NonZero(item.PresentationUnavailable),
 		Presentation: operatorwire.Presentation{Risk: operatorwire.PresentationRisk(item.Presentation.Risk), Title: item.Presentation.Title,
-			Summary: optional.NonZero(item.Presentation.Summary), Facts: &facts},
+			Summary: optional.NonZero(item.Presentation.Summary), Target: item.Presentation.Target, Facts: &facts,
+			Warnings: &warnings, PlanHash: optional.NonZero(item.Presentation.PlanHash)},
 		AllowedActions: allowedActions(item),
 	}
 	if item.Status == grants.StatusPending {

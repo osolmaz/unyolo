@@ -413,13 +413,16 @@ type NotificationDecisionKind string
 
 // Presentation defines model for Presentation.
 type Presentation struct {
-	Facts   *[]Fact          `json:"facts,omitempty"`
-	Risk    PresentationRisk `json:"risk"`
-	Summary *string          `json:"summary,omitempty"`
-	Title   string           `json:"title"`
+	Facts    *[]Fact          `json:"facts,omitempty"`
+	PlanHash *string          `json:"plan_hash,omitempty"`
+	Risk     PresentationRisk `json:"risk"`
+	Summary  *string          `json:"summary,omitempty"`
+	Target   string           `json:"target"`
+	Title    string           `json:"title"`
+	Warnings *[]Warning       `json:"warnings,omitempty"`
 }
 
-// PresentationRisk defines model for Presentation.Risk.
+// PresentationRisk defines model for PresentationRisk.
 type PresentationRisk string
 
 // RequestPage defines model for RequestPage.
@@ -485,6 +488,12 @@ type UISummary struct {
 
 // UISummaryApiVersion defines model for UISummary.ApiVersion.
 type UISummaryApiVersion string
+
+// Warning defines model for Warning.
+type Warning struct {
+	Severity PresentationRisk `json:"severity"`
+	Text     string           `json:"text"`
+}
 
 // RequestID defines model for RequestID.
 type RequestID = string
