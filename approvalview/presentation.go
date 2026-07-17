@@ -26,19 +26,34 @@ const (
 	maxWarningBytes  = 500
 )
 
-// BoundedTitle truncates a trusted single-line title to the canonical title
-// bound without splitting UTF-8. Validation still rejects unsafe text.
-func BoundedTitle(value string) string {
-	if len(value) <= maxTitleBytes {
+// BoundedLine returns one safe single-line display value, truncated without
+// splitting UTF-8. Unsafe input returns an empty string.
+func BoundedLine(value string, maxBytes int) string {
+	if maxBytes <= 0 || !utf8.ValidString(value) {
+		return ""
+	}
+	for _, char := range value {
+		if unicode.IsControl(char) {
+			return ""
+		}
+	}
+	if len(value) <= maxBytes {
 		return value
 	}
 	const marker = "…"
-	limit := maxTitleBytes - len(marker)
+	if maxBytes <= len(marker) {
+		return ""
+	}
+	limit := maxBytes - len(marker)
 	for limit > 0 && !utf8.RuneStart(value[limit]) {
 		limit--
 	}
 	return value[:limit] + marker
 }
+
+// BoundedTitle truncates a trusted single-line title to the canonical title
+// bound without splitting UTF-8. Validation still rejects unsafe text.
+func BoundedTitle(value string) string { return BoundedLine(value, maxTitleBytes) }
 
 // SafeOrEmpty returns a bounded safe display value or an empty string. It is
 // intended for canonical fields projected alongside a Presentation.

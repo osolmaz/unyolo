@@ -479,6 +479,11 @@ Completed on 2026-07-17.
   and SHA-256 bindings needed for atomic callback recovery.
 - JSON and SQLite stores reject incomplete or digest-invalid Telegram records;
   no old notification-shape reader or migration was added.
+- Canonical snapshots avoid transport-only HTML expansion, escaped Telegram
+  callbacks share the durable 32 KiB bound, and requester labels are safely
+  projected into the Operator V1 display contract.
+- The OpenClaw approval cards and decision dialogs show canonical targets and
+  provider warnings before an operator can decide.
 - Catalog-wide presentation tests cover every requestable HF and GitHub
   operation and the complete sudo command catalog fixture.
 - Protocol drift, architecture, generated GitHub surfaces, SQL, migrations,

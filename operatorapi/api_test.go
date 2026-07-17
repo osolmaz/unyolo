@@ -123,6 +123,22 @@ func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 	}
 }
 
+func TestOperatorV1AcceptsBoundedEscapedTelegramText(t *testing.T) {
+	store, _, client := newOperatorServer(t, nil)
+	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
+		Target: policy.Target{Kind: "repository"}, Reason: "test", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-escaped",
+		OnBehalfOf: "telegram:42", Notification: testNotificationDecision(result.DecisionToken)}
+	command.Notification.Text = strings.Repeat("&amp;", 1_000)
+	command.Notification.RenderedDigest = notificationDigest(command.Notification.Text)
+	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); err != nil {
+		t.Fatalf("escaped Telegram notification = %v", err)
+	}
+}
+
 func testNotificationDecision(token string) *operatorv1.NotificationDecision {
 	presentation := `{"grant_id":"test","presentation":{"title":"Test approval","target":"test"}}`
 	text := "<b>Test approval</b>"

@@ -299,7 +299,7 @@ func validNotificationIdentity(value *operatorwire.NotificationDecision) bool {
 }
 
 func validNotificationPayload(value *operatorwire.NotificationDecision) bool {
-	return value.Renderer != "" && len(value.Renderer) <= 64 && value.Text != "" && len(value.Text) <= 4096 &&
+	return value.Renderer != "" && len(value.Renderer) <= 64 && value.Text != "" && len(value.Text) <= 32*1024 &&
 		value.PresentationJson != "" && len(value.PresentationJson) <= 64*1024 &&
 		validNotificationDigest(value.PresentationDigest) && validNotificationDigest(value.RenderedDigest)
 }

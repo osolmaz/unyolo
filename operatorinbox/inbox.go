@@ -91,6 +91,10 @@ func (s *Service) Project(ctx context.Context, grant grants.Grant) Item {
 
 func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 	presentation, unavailable := approvalview.Project(ctx, s.presenter, grant)
+	requester := approvalview.BoundedLine(grant.Client, maxLabelBytes)
+	if requester == "" {
+		requester = "Unknown requester"
+	}
 	requestedDuration := grant.RequestedDuration
 	if requestedDuration <= 0 {
 		requestedDuration = grant.Duration
@@ -100,7 +104,7 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 		requestedMaxUses = grant.MaxUses
 	}
 	item := Item{
-		ID: grant.ID, Revision: grant.Revision, Client: approvalview.SafeOrEmpty(grant.Client, maxLabelBytes, false),
+		ID: grant.ID, Revision: grant.Revision, Client: requester,
 		Operation: approvalview.SafeOrEmpty(grant.Operation, maxTargetBytes, false), Status: grant.Status,
 		RequestedAt: grant.CreatedAt, PendingExpiresAt: grant.PendingExpiresAt,
 		RequestedDurationSeconds: int64(requestedDuration / time.Second), RequestedMaxUses: requestedMaxUses, MaxUses: grant.MaxUses,

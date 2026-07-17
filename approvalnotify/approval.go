@@ -3,6 +3,7 @@
 package approvalnotify
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -33,12 +34,16 @@ type Approval struct {
 // Project creates one semantic approval from the canonical grant and provider presenter.
 func Project(ctx context.Context, broker string, presenter approvalview.Presenter, grant grants.Grant, decisionToken string) Approval {
 	presentation, unavailable := approvalview.Project(ctx, presenter, grant)
+	requester := approvalview.BoundedLine(grant.Client, 80)
+	if requester == "" {
+		requester = "Unknown requester"
+	}
 	duration := grant.RequestedDuration
 	if duration <= 0 {
 		duration = grant.Duration
 	}
 	return Approval{
-		GrantID: grant.ID, DecisionToken: decisionToken, Broker: broker, Requester: grant.Client,
+		GrantID: grant.ID, DecisionToken: decisionToken, Broker: broker, Requester: requester,
 		Operation: grant.Operation, Reason: grant.Reason, RequestedDurationSeconds: int64(duration / time.Second),
 		MaxUses: grant.MaxUses, PendingExpiresAt: grant.PendingExpiresAt,
 		Presentation: presentation, PresentationUnavailable: unavailable,
@@ -62,11 +67,14 @@ func SnapshotJSON(approval Approval) string {
 	}{approval.GrantID, approval.Broker, approval.Requester, approval.Operation, approval.Reason,
 		approval.RequestedDurationSeconds, approval.MaxUses, approval.PendingExpiresAt.UTC(), approval.Presentation,
 		approval.PresentationUnavailable}
-	encoded, err := json.Marshal(value)
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(value)
 	if err != nil {
 		return ""
 	}
-	return string(encoded)
+	return string(bytes.TrimSuffix(encoded.Bytes(), []byte{'\n'}))
 }
 
 // PresentationDigest binds the normalized semantic presentation without secrets.

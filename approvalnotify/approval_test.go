@@ -46,3 +46,21 @@ func TestPresentationDigestIsStableAndSecretFree(t *testing.T) {
 		t.Fatal("semantic snapshot retained the decision token")
 	}
 }
+
+func TestSnapshotAvoidsHTMLExpansionAndProjectBoundsRequester(t *testing.T) {
+	facts := make([]approvalview.Fact, 20)
+	for index := range facts {
+		facts[index] = approvalview.Fact{Label: "Detail", Value: strings.Repeat("&", 500)}
+	}
+	approval := Approval{Broker: "GitHub", Requester: "agent", Operation: "repo.delete", Reason: strings.Repeat("&", 2_000),
+		Presentation: approvalview.Presentation{Risk: approvalview.RiskHigh, Title: "Delete", Target: "example/repo", Facts: facts}}
+	snapshot := SnapshotJSON(approval)
+	if len(snapshot) > 64*1024 || strings.Contains(snapshot, `\u0026`) {
+		t.Fatalf("SnapshotJSON() length=%d contains escaped HTML=%v", len(snapshot), strings.Contains(snapshot, `\u0026`))
+	}
+
+	projected := Project(t.Context(), "GitHub", nil, grants.Grant{Client: strings.Repeat("a", 200)}, "token")
+	if len(projected.Requester) > 80 || !strings.HasSuffix(projected.Requester, "…") {
+		t.Fatalf("Project() requester = %q (%d bytes)", projected.Requester, len(projected.Requester))
+	}
+}

@@ -80,6 +80,18 @@ func TestBoundedTitlePreservesUTF8AndCanonicalBound(t *testing.T) {
 	}
 }
 
+func TestBoundedLineRejectsUnsafeTextAndTruncates(t *testing.T) {
+	bounded := BoundedLine(strings.Repeat("界", 30), 80)
+	if !utf8.ValidString(bounded) || len(bounded) > 80 || !strings.HasSuffix(bounded, "…") {
+		t.Fatalf("BoundedLine() = %q (%d bytes)", bounded, len(bounded))
+	}
+	for _, value := range []string{"bad\nline", "bad\x00line", string([]byte{0xff})} {
+		if got := BoundedLine(value, 80); got != "" {
+			t.Fatalf("BoundedLine(%q) = %q", value, got)
+		}
+	}
+}
+
 func TestSafeOrEmpty(t *testing.T) {
 	if got := SafeOrEmpty("line\nvalue", 20, true); got != "line\nvalue" {
 		t.Fatalf("SafeOrEmpty(multiline) = %q", got)

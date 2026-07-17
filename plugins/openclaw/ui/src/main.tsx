@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Check,
   CircleX,
+  MapPin,
   RefreshCw,
   ShieldCheck,
   X,
@@ -137,6 +138,7 @@ export function App() {
               </div>
               <code>{request.handle.slice(0, 8)}</code>
             </div>
+            <PresentationSafety presentation={request.request.presentation} />
             {request.request.presentation.summary && (
               <p>{request.request.presentation.summary}</p>
             )}
@@ -227,6 +229,36 @@ export function App() {
   );
 }
 
+function PresentationSafety({
+  presentation,
+  compact = false,
+}: {
+  presentation: SafeRequest["request"]["presentation"];
+  compact?: boolean;
+}) {
+  return (
+    <div className={`presentation-safety${compact ? " compact" : ""}`}>
+      <div className="request-target">
+        <MapPin size={15} aria-hidden="true" />
+        <span>{presentation.target}</span>
+      </div>
+      {presentation.warnings && presentation.warnings.length > 0 && (
+        <ul className="request-warnings" aria-label="Request warnings">
+          {presentation.warnings.map((warning) => (
+            <li
+              className={`request-warning ${warning.severity}`}
+              key={`${warning.severity}-${warning.text}`}
+            >
+              <AlertTriangle size={15} aria-hidden="true" />
+              <span>{warning.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function DecisionDialog({
   decision,
   busy,
@@ -281,6 +313,10 @@ function DecisionDialog({
             {request.request.presentation.title} at revision{" "}
             {request.request.revision}
           </Dialog.Description>
+          <PresentationSafety
+            presentation={request.request.presentation}
+            compact
+          />
           {approve && bounds && (
             <div className="decision-bounds">
               <label>

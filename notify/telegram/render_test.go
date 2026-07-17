@@ -121,6 +121,9 @@ func TestRenderApprovalEscapesMarkupAndReservesTerminalSpace(t *testing.T) {
 	if visibleLength(first) > maxTelegramText-terminalReserve || visibleLength(withDecisionStatus(first, notify.Status{Kind: notify.StatusRetained})) > maxTelegramText {
 		t.Fatalf("rendered message lengths pending=%d terminal=%d", visibleLength(first), visibleLength(withDecisionStatus(first, notify.Status{Kind: notify.StatusRetained})))
 	}
+	if len(first) > 32*1024 {
+		t.Fatalf("raw rendered message length = %d", len(first))
+	}
 	if !strings.Contains(first, "…") || !utf8.ValidString(first) {
 		t.Fatalf("bounded rendering did not truncate safely: %q", first)
 	}
