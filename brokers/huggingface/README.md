@@ -43,6 +43,18 @@ declared by the root module:
 go install ./brokers/huggingface/cmd/hf-broker
 ```
 
+HF Broker owns the versioned upstream credential ceiling for its complete
+operation surface. Consumers can print the canonical, secret-free requirements
+document from the same pinned binary they deploy:
+
+```sh
+hf-broker credential requirements
+```
+
+The document drives fine-grained token setup and verification. It is an
+upstream capability ceiling, not an authorization policy: BrokerKit policy and
+operator approval still gate every protected operation.
+
 ## Run in development
 
 Foreground development requires an explicit endpoint and development mode. A

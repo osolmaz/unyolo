@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -21,6 +22,26 @@ func TestRunFailsClosedWhenRequiredEnvMissing(t *testing.T) {
 	err := runWithContext(context.Background(), os.Getenv, ioDiscard{}, ioDiscard{})
 	if err == nil || !strings.Contains(err.Error(), "HF_BROKER_HF_TOKEN") {
 		t.Fatalf("run() error = %v, want missing token", err)
+	}
+}
+
+func TestCredentialRequirementsCommand(t *testing.T) {
+	var stdout, stderr strings.Builder
+	if err := runWithArgs(context.Background(), os.Getenv, &stdout, &stderr, []string{"credential", "requirements"}); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+	var profile struct {
+		Version   int    `json:"version"`
+		ProfileID string `json:"profile_id"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if profile.Version != 1 || profile.ProfileID != "hf-broker-complete-v1" {
+		t.Fatalf("unexpected profile: %+v", profile)
 	}
 }
 
