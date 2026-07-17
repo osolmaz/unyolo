@@ -85,6 +85,40 @@ func TestInstallWrapperResolvesReleaseToImmutableCommit(t *testing.T) {
 	}
 }
 
+func TestInstallWrapperPeelsAnnotatedTagToImmutableCommit(t *testing.T) {
+	const tagRevision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const commitRevision = "0123456789abcdef0123456789abcdef01234567"
+	requested := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/refs/hf-broker/v1.2.3":
+			_, _ = w.Write([]byte("{\n  \"object\": {\n    \"sha\": \"" + tagRevision + "\",\n    \"type\": \"tag\"\n  }\n}"))
+		case "/tags/" + tagRevision:
+			_, _ = w.Write([]byte("{\n  \"sha\": \"" + tagRevision + "\",\n  \"object\": {\n    \"sha\": \"" + commitRevision + "\",\n    \"type\": \"commit\"\n  }\n}"))
+		case "/raw/" + commitRevision + "/installer/install.sh":
+			requested <- r.URL.Path
+			_, _ = w.Write([]byte("#!/bin/sh\nprintf '%s' \"$VERSION\"\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
+	command.Env = append(os.Environ(),
+		"VERSION=v1.2.3",
+		"BROKERKIT_REF_URL_BASE="+server.URL+"/refs",
+		"BROKERKIT_TAG_URL_BASE="+server.URL+"/tags",
+		"BROKERKIT_RAW_URL_BASE="+server.URL+"/raw",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "hf-broker/v1.2.3" {
+		t.Fatalf("annotated wrapper err=%v output=%s", err, output)
+	}
+	if path := <-requested; !strings.Contains(path, commitRevision) {
+		t.Fatalf("installer path = %q", path)
+	}
+}
+
 func TestInstallWrapperRejectsMutableRevision(t *testing.T) {
 	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
 	command.Env = append(os.Environ(), "BROKERKIT_INSTALLER_REV=main")

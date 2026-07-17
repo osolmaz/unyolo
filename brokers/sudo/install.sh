@@ -31,6 +31,20 @@ resolve_tag() {
     awk -v prefix="$TAG_PREFIX" 'index($0, prefix) == 1 { print; exit }'
 }
 
+referenced_object_sha() {
+  tr '{},' '\n' |
+    awk '
+      found && /"sha"[[:space:]]*:/ {
+        value = $0
+        sub(/^.*"sha"[[:space:]]*:[[:space:]]*"/, "", value)
+        sub(/".*$/, "", value)
+        print value
+        exit
+      }
+      /"object"[[:space:]]*:/ { found = 1 }
+    '
+}
+
 resolve_installer_revision() {
   if [ -n "${BROKERKIT_INSTALLER_REV:-}" ]; then
     printf '%s\n' "$BROKERKIT_INSTALLER_REV"
@@ -39,11 +53,11 @@ resolve_installer_revision() {
   tag="$SELECTED_TAG"
   [ -n "$tag" ] || { echo "$BROKER install: could not resolve release tag" >&2; exit 1; }
   ref="$(curl -fsSL "${BROKERKIT_REF_URL_BASE:-https://api.github.com/repos/${REPO}/git/ref/tags}/${tag}")"
-  sha="$(printf '%s' "$ref" | sed -n 's/.*"sha":[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1)"
+  sha="$(printf '%s' "$ref" | referenced_object_sha)"
   type="$(printf '%s' "$ref" | sed -n 's/.*"type":[[:space:]]*"\([a-z]*\)".*/\1/p' | head -n 1)"
   if [ "$type" = tag ]; then
     object="$(curl -fsSL "${BROKERKIT_TAG_URL_BASE:-https://api.github.com/repos/${REPO}/git/tags}/${sha}")"
-    sha="$(printf '%s' "$object" | sed -n 's/.*"sha":[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1)"
+    sha="$(printf '%s' "$object" | referenced_object_sha)"
   fi
   printf '%s\n' "$sha"
 }
