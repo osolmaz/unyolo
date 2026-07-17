@@ -290,6 +290,6 @@ The policy core does not:
 - decide whether a Git push is a fast-forward
 - inspect shell commands
 - write audit logs by itself
-- compose provider-specific approval messages
+- project provider-specific approval semantics for the shared presentation model
 
 Those responsibilities stay with the broker using brokerkit.

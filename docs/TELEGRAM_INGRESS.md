@@ -1,15 +1,16 @@
 # Telegram approval ingress
 
 BrokerKit uses one `brokerkit-telegram` ingress process for each Telegram bot
-token. Provider brokers send approval messages and durable status updates, but
-they do not call `getUpdates`. The ingress owns the bot update offset and routes
-button decisions to the owning broker over its authenticated Operator V1 Unix
-socket.
+token. Provider brokers supply bounded semantic approval data and send durable
+status updates, but they do not format Telegram HTML or call `getUpdates`. The
+shared Telegram renderer owns layout, escaping, emoji, fixed Approve and Deny
+buttons, terminal wording, and message limits. The ingress owns the bot update
+offset and routes button decisions to the owning broker over its authenticated
+Operator V1 Unix socket.
 
 This boundary is required when several brokers share one bot. Telegram permits
 only one long poller per bot token; running a poller in every broker races
-callbacks and can produce false `Grant not found` or `Grant no longer pending`
-answers.
+callbacks and loses deterministic ownership of each update.
 
 ## Linux setup
 
@@ -58,13 +59,22 @@ secret paths, and malformed endpoints.
 ## Decision behavior
 
 An accepted button tap is committed through the owning broker's Operator V1
-API. The ingress immediately answers the callback and removes both buttons
-without replacing the message text. The broker's durable notification outbox
-then writes the authoritative terminal status. Repeated taps return the current
-terminal state and cannot create a second decision.
+API. The ingress immediately answers the callback, renders the typed terminal
+state, and removes both buttons in the same edit where possible. The broker's
+durable notification outbox then reconciles the authoritative terminal render
+from the exact stored pending message. Repeated or concurrent taps return the
+current terminal state and cannot create a second decision.
+
+Every pending notification stores the normalized semantic snapshot, exact
+rendered HTML, renderer identity, and separate SHA-256 digests. The opaque
+decision token is used only in the callback payload and is not retained in the
+semantic snapshot. Dynamic provider values are HTML-escaped, bounded without
+splitting UTF-8, and cannot supply markup, button labels, callback answers, or
+status prose.
 
 Transient broker or socket failures leave that message's buttons available and
 ask the operator to try again. The update is acknowledged so an unavailable
-broker cannot block callbacks for healthy brokers sharing the bot. A wrong chat
-cannot decide a grant. Provider credentials and agent credentials are never
-available to the ingress.
+broker cannot block callbacks for healthy brokers sharing the bot. A durable
+decision followed by a Telegram edit failure remains committed and converges
+through the status outbox. A wrong chat cannot decide a grant. Provider
+credentials and agent credentials are never available to the ingress.

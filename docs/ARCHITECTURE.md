@@ -40,7 +40,9 @@ brokerkit/
 ├── grants/     # Durable short-lived grant records.
 ├── audit/      # Secret-safe audit event helpers.
 ├── httpx/      # Header filtering and body-limit helpers.
-├── notify/     # Approval notification interfaces and adapters.
+├── approvalview/   # Bounded channel-neutral operator presentation.
+├── approvalnotify/ # Semantic approval notification projection.
+├── notify/         # Typed notification lifecycle and channel adapters.
 ├── store/      # Atomic local stores and locks.
 └── gitx/       # Generic Git smart-HTTP parsing helpers.
 ```
@@ -62,8 +64,8 @@ brokerkit may contain:
 - pending, active, expired, consumed, denied, and revoked grant states
 - grant idempotency, expiry, use budgets, and reservations
 - approval request, decision-token, callback, and revocation workflow
-- approval notifier interfaces
-- reusable Telegram transport and callback handling
+- bounded semantic approval presentation and notifier interfaces
+- reusable canonical Telegram rendering, transport, and callback handling
 - safe audit field helpers
 - strict config decoding helpers
 - atomic file storage and lock helpers

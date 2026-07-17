@@ -159,15 +159,15 @@ browser sessions, frontend components, or provider execution plans.
 
 ### Notifications
 
-- generic notifier interfaces
-- generic approval message model
-- generic status update model
+- bounded semantic approval envelope and projector
+- shared provider-neutral approval presentation model and risk vocabulary
+- typed lifecycle status and callback-answer model
 - retry/error contracts
 - reusable adapters for common approval channels
 
-Broker-specific text is not part of the shared notifier. Brokers prepare a
-domain-specific approval summary, then pass it to brokerkit notification
-adapters.
+Providers supply only bounded semantic titles, summaries, targets, facts,
+warnings, risk, and plan identity. They do not supply transport markup, button
+labels, callback answers, layout, or terminal prose.
 
 ### Telegram Adapter
 
@@ -178,8 +178,10 @@ in brokerkit.
 brokerkit should own:
 
 - Bot API client
-- sending approval messages
-- explicit approval status edits requested by the broker
+- canonical bounded HTML rendering and strict dynamic-value escaping
+- fixed emoji, layout, Approve/Deny controls, callback answers, and terminal
+  status wording
+- sending approval messages and typed lifecycle status edits
 - immediate callback acknowledgement and decision-control removal
 - inline approve/deny buttons
 - compact broker-routed callback payloads that carry the one-time decision token
@@ -194,16 +196,16 @@ brokerkit should own:
 - transport errors
 - shared tests for callback and token safety
 
-Status: brokerkit now owns the reusable Telegram client, inline callback data,
-long polling, configured-chat filtering, callback answering, and status edits.
-The single ingress owns the bot update offset. After the owning broker durably
-commits a callback decision through Operator V1, the ingress acknowledges the
-callback and removes its inline keyboard without replacing status text. The
-broker's durable status outbox writes the authoritative text and retries after
-transport failures or restart. The store owns durable delivery claims,
-notification references, expiry, due status updates, atomic approve/deny
-transitions, channel actor naming, and retry classification. Brokers own
-domain-specific approval summaries and later lifecycle status wording. A retry
+Status: brokerkit owns the reusable Telegram client and renderer, inline
+callback data, long polling, configured-chat filtering, callback answering,
+and typed status edits. The single ingress owns the bot update offset. After
+the owning broker durably commits a callback decision through Operator V1, the
+ingress acknowledges it, writes the terminal status, and removes the inline
+keyboard. The broker's durable status outbox reconciles the authoritative text
+and retries after transport failures or restart. The store owns durable
+delivery claims, notification references and presentation/render digests,
+expiry, due status updates, atomic approve/deny transitions, channel actor
+naming, and retry classification. Brokers own only provider semantics. A retry
 leaves the callback unanswered and does not advance its update offset. Several
 brokers can share one bot because broker processes only send and update
 messages; they never run competing `getUpdates` loops.

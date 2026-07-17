@@ -332,7 +332,10 @@ POST /api/operator/v1/requests/{id}/revoke
 Authenticate the operator listener with the separate credential from
 `/etc/gh-broker/operator-secrets`. Agent credentials cannot use it. Telegram
 is an optional notification view over the same durable request, so a decision
-through either path closes the same state exactly once.
+through either path closes the same state exactly once. GitHub supplies the
+bounded operation, target, risk, warning, and generated projection facts;
+BrokerKit renders the shared Telegram HTML, controls, callback answers, and
+terminal states.
 
 ## Security model
 
