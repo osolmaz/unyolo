@@ -290,9 +290,17 @@ func validNotificationDecision(value *operatorwire.NotificationDecision, constra
 }
 
 func validNotificationFields(value *operatorwire.NotificationDecision) bool {
+	return validNotificationIdentity(value) && validNotificationPayload(value)
+}
+
+func validNotificationIdentity(value *operatorwire.NotificationDecision) bool {
 	return value.Kind == operatorwire.NotificationDecisionKind("telegram") && value.ChatId != 0 && value.MessageId > 0 &&
-		value.DecisionToken != "" && len(value.DecisionToken) <= 200 && value.Renderer != "" && len(value.Renderer) <= 64 &&
-		value.Text != "" && len(value.Text) <= 4096 && value.PresentationJson != "" && len(value.PresentationJson) <= 64*1024 &&
+		value.DecisionToken != "" && len(value.DecisionToken) <= 200
+}
+
+func validNotificationPayload(value *operatorwire.NotificationDecision) bool {
+	return value.Renderer != "" && len(value.Renderer) <= 64 && value.Text != "" && len(value.Text) <= 4096 &&
+		value.PresentationJson != "" && len(value.PresentationJson) <= 64*1024 &&
 		validNotificationDigest(value.PresentationDigest) && validNotificationDigest(value.RenderedDigest)
 }
 

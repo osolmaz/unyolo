@@ -312,7 +312,7 @@ func validateMessageRef(ref MessageRef) error {
 	if ref.MessageID <= 0 {
 		return errors.New("notification message id must be positive")
 	}
-	if len(ref.Kind) > 32 || len(ref.Renderer) > 64 || len(ref.Text) > 32*1024 || len(ref.PresentationJSON) > 64*1024 {
+	if notificationReferenceExceedsBounds(ref) {
 		return errors.New("notification reference exceeds bounds")
 	}
 	if err := validatePresentationSnapshot(ref); err != nil {
@@ -321,10 +321,18 @@ func validateMessageRef(ref MessageRef) error {
 	if err := validateRenderedSnapshot(ref); err != nil {
 		return err
 	}
-	if ref.Kind == "telegram" && (ref.ChatID == 0 || ref.Renderer == "" || ref.Text == "" || ref.PresentationJSON == "" || ref.RenderedDigest == "") {
+	if ref.Kind == "telegram" && telegramReferenceIncomplete(ref) {
 		return errors.New("telegram notification reference is incomplete")
 	}
 	return nil
+}
+
+func notificationReferenceExceedsBounds(ref MessageRef) bool {
+	return len(ref.Kind) > 32 || len(ref.Renderer) > 64 || len(ref.Text) > 32*1024 || len(ref.PresentationJSON) > 64*1024
+}
+
+func telegramReferenceIncomplete(ref MessageRef) bool {
+	return ref.ChatID == 0 || ref.Renderer == "" || ref.Text == "" || ref.PresentationJSON == "" || ref.RenderedDigest == ""
 }
 
 func validatePresentationSnapshot(ref MessageRef) error {
