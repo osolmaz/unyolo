@@ -28,6 +28,7 @@ component documentation.
 
 ## Implementation Records
 
+- [Approval presentation cutover](2026-07-17-approval-presentation-cutover-plan.md)
 - [Production-readiness cutover](2026-07-14-production-readiness-cutover-plan.md)
 - [Listener endpoint architecture](2026-07-14-listener-endpoint-architecture-plan.md)
 - [Provider-neutral policy presets](2026-07-14-provider-neutral-policy-presets-plan.md)
