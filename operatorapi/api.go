@@ -4,7 +4,9 @@ package operatorapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +32,7 @@ import (
 )
 
 const (
-	maxDecisionBodyBytes = 16 * 1024
+	maxDecisionBodyBytes = 96 * 1024
 	eventHeartbeat       = 15 * time.Second
 )
 
@@ -289,7 +291,17 @@ func validNotificationDecision(value *operatorwire.NotificationDecision, constra
 
 func validNotificationFields(value *operatorwire.NotificationDecision) bool {
 	return value.Kind == operatorwire.NotificationDecisionKind("telegram") && value.ChatId != 0 && value.MessageId > 0 &&
-		value.DecisionToken != "" && len(value.DecisionToken) <= 200 && value.Text != "" && len(value.Text) <= 4096
+		value.DecisionToken != "" && len(value.DecisionToken) <= 200 && value.Renderer != "" && len(value.Renderer) <= 64 &&
+		value.Text != "" && len(value.Text) <= 4096 && value.PresentationJson != "" && len(value.PresentationJson) <= 64*1024 &&
+		validNotificationDigest(value.PresentationDigest) && validNotificationDigest(value.RenderedDigest)
+}
+
+func validNotificationDigest(value string) bool {
+	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil
 }
 
 func validDecisionConstraints(value *operatorwire.Constraints) bool {
@@ -307,8 +319,10 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 	}
 	if input.Notification != nil {
 		result.Notification = &operatorv1.NotificationDecision{Kind: string(input.Notification.Kind),
-			DecisionToken: input.Notification.DecisionToken, ChatID: int64(input.Notification.ChatId),
-			MessageID: input.Notification.MessageId, Text: input.Notification.Text}
+			Renderer: input.Notification.Renderer, DecisionToken: input.Notification.DecisionToken,
+			ChatID: int64(input.Notification.ChatId), MessageID: input.Notification.MessageId, Text: input.Notification.Text,
+			PresentationJSON: input.Notification.PresentationJson, PresentationDigest: input.Notification.PresentationDigest,
+			RenderedDigest: input.Notification.RenderedDigest}
 	}
 	if input.Constraints == nil {
 		return result

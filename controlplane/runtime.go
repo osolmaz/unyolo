@@ -7,11 +7,13 @@ import (
 	"net/http"
 
 	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/auth"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/observability"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/operatorauth"
@@ -22,6 +24,7 @@ import (
 // Options provides broker-owned policy vocabulary and presentation to the shared runtime.
 type Options struct {
 	Broker              string
+	ApprovalBroker      string
 	Store               *grants.Store
 	ClientSecrets       map[string]string
 	OperatorSecrets     map[string]string
@@ -34,6 +37,15 @@ type Options struct {
 
 // HandleDecision applies one approval-channel callback through the configured decider.
 func (r *Runtime) HandleDecision(ctx context.Context, decision notify.Decision) notify.DecisionResult {
+	grant, err := r.Store.Get(decision.GrantID)
+	if err == nil && grant.Notification == nil {
+		message := approvalnotify.Project(ctx, r.approvalBroker, r.presenter, grant, decision.DecisionToken)
+		ref, referenceErr := telegram.ApprovalReference(message, decision.ChatID, decision.MessageID)
+		if referenceErr != nil {
+			return notify.DecisionResult{Answer: notify.AnswerUnavailable, Retry: true}
+		}
+		decision.Notification = &ref
+	}
 	return approval.HandleDecision(ctx, r.Decider, decision)
 }
 
@@ -46,6 +58,8 @@ type Runtime struct {
 	Decisions       *decision.Service
 	Metrics         *observability.Metrics
 	Diagnostics     *observability.Diagnostics
+	approvalBroker  string
+	presenter       approvalview.Presenter
 }
 
 // New validates and assembles one broker control plane.
@@ -76,7 +90,12 @@ func New(options Options) (*Runtime, error) {
 		return nil, err
 	}
 	decider := channelDecider{service: decisions}
-	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions, Metrics: metrics, Diagnostics: diagnostics}, nil
+	approvalBroker := options.ApprovalBroker
+	if approvalBroker == "" {
+		approvalBroker = options.Broker
+	}
+	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions,
+		Metrics: metrics, Diagnostics: diagnostics, approvalBroker: approvalBroker, presenter: options.Presenter}, nil
 }
 
 func operatorHandler(options Options, decisions *decision.Service, metrics *observability.Metrics) (http.Handler, error) {

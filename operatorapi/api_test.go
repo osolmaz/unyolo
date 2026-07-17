@@ -2,6 +2,8 @@ package operatorapi_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -109,8 +111,7 @@ func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-stale",
-		OnBehalfOf: "telegram:42", Notification: &operatorv1.NotificationDecision{Kind: "telegram",
-			DecisionToken: "wrong", ChatID: 7, MessageID: 8, Text: "approval"}}
+		OnBehalfOf: "telegram:42", Notification: testNotificationDecision("wrong")}
 	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); !hasCode(err, "invalid_decision_token") {
 		t.Fatalf("stale token error = %v", err)
 	}
@@ -120,6 +121,20 @@ func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 	if err != nil || approved.Status != grants.StatusActive || approved.DecidedOnBehalfOf != "telegram:42" {
 		t.Fatalf("notification approval = %+v, %v", approved, err)
 	}
+}
+
+func testNotificationDecision(token string) *operatorv1.NotificationDecision {
+	presentation := `{"grant_id":"test","presentation":{"title":"Test approval","target":"test"}}`
+	text := "<b>Test approval</b>"
+	return &operatorv1.NotificationDecision{
+		Kind: "telegram", Renderer: "telegram-html-v1", DecisionToken: token, ChatID: 7, MessageID: 8, Text: text,
+		PresentationJSON: presentation, PresentationDigest: notificationDigest(presentation), RenderedDigest: notificationDigest(text),
+	}
+}
+
+func notificationDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {

@@ -774,6 +774,11 @@ func validateLoadedGrants(items []Grant) error {
 		if err := validateLoadedGrantMaps(grant); err != nil {
 			return err
 		}
+		if grant.Notification != nil {
+			if err := validateMessageRef(*grant.Notification); err != nil {
+				return fmt.Errorf("%w: invalid grant notification: %w", ErrUnsupportedState, err)
+			}
+		}
 	}
 	return nil
 }

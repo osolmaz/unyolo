@@ -2,7 +2,7 @@
 import type { components } from "./openapi-operator-v1.js";
 
 export const OPERATOR_V1_SCHEMA_SHA256 =
-  "274becde461271c18ebc43c3de456ec64bc179a15f1eaa7b951a128e5927dd66";
+  "18f3ee194a6f2b17e32849a5a375c6330ae6ec77903a2190ba3586069d4d64c4";
 export const operatorV1 = {
   apiVersion: "brokerkit.io/operator/v1",
   statuses: [

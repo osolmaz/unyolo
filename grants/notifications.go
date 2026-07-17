@@ -318,7 +318,13 @@ func validateMessageRef(ref MessageRef) error {
 	if err := validatePresentationSnapshot(ref); err != nil {
 		return err
 	}
-	return validateRenderedSnapshot(ref)
+	if err := validateRenderedSnapshot(ref); err != nil {
+		return err
+	}
+	if ref.Kind == "telegram" && (ref.ChatID == 0 || ref.Renderer == "" || ref.Text == "" || ref.PresentationJSON == "" || ref.RenderedDigest == "") {
+		return errors.New("telegram notification reference is incomplete")
+	}
+	return nil
 }
 
 func validatePresentationSnapshot(ref MessageRef) error {

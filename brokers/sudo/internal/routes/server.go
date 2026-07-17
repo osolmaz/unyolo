@@ -158,7 +158,7 @@ func newServerParts(opts Options) (serverParts, error) {
 		return serverParts{}, err
 	}
 	control, err := controlplane.New(controlplane.Options{
-		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
+		Broker: "sudo-broker", ApprovalBroker: "sudo", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
 		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit, State: opts.Database,
 	})
 	if err != nil {

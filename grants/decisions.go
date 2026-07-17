@@ -71,9 +71,6 @@ func (s *Store) decide(id string, token string, approver string, status Status) 
 }
 
 func (s *Store) decideWithNotification(ctx context.Context, id string, token string, approver string, status Status, ref MessageRef, validate ActivationCheck) (TokenDecisionResult, error) {
-	if err := validateMessageRef(ref); err != nil {
-		return TokenDecisionResult{}, err
-	}
 	return s.decideAndNotify(ctx, id, token, approver, status, &ref, validate)
 }
 
@@ -107,6 +104,11 @@ func (s *Store) decisionCandidate(ctx context.Context, grant Grant, token, appro
 	ref *MessageRef, validate ActivationCheck) (Grant, bool, error) {
 	if !decisionTokenMatches(grant.DecisionTokenVerifier, token) {
 		return grant, false, ErrInvalidDecisionToken
+	}
+	if ref != nil && grant.Notification == nil {
+		if err := validateMessageRef(*ref); err != nil {
+			return grant, false, err
+		}
 	}
 	if err := s.validateTokenDecision(ctx, grant, status, validate); err != nil {
 		return grant, false, err

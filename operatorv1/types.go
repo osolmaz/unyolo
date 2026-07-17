@@ -94,11 +94,15 @@ type Constraints struct {
 }
 
 type NotificationDecision struct {
-	Kind          string `json:"kind"`
-	DecisionToken string `json:"decision_token"`
-	ChatID        int64  `json:"chat_id"`
-	MessageID     int    `json:"message_id"`
-	Text          string `json:"text"`
+	Kind               string `json:"kind"`
+	Renderer           string `json:"renderer"`
+	DecisionToken      string `json:"decision_token"`
+	ChatID             int64  `json:"chat_id"`
+	MessageID          int    `json:"message_id"`
+	Text               string `json:"text"`
+	PresentationJSON   string `json:"presentation_json"`
+	PresentationDigest string `json:"presentation_digest"`
+	RenderedDigest     string `json:"rendered_digest"`
 }
 
 type Decision struct {

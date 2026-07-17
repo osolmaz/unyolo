@@ -171,10 +171,14 @@ export interface components {
     NotificationDecision: {
       /** @constant */
       kind: "telegram";
+      renderer: string;
       decision_token: string;
       chat_id: number;
       message_id: number;
       text: string;
+      presentation_json: string;
+      presentation_digest: string;
+      rendered_digest: string;
     };
     Decision: {
       expected_revision: number;

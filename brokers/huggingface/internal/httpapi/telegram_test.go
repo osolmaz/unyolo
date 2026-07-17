@@ -14,6 +14,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
+	hfapproval "github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/grants"
@@ -212,10 +213,12 @@ func approvalTextForTest(claim grants.NotificationClaim) string {
 func newTelegramDecisionTestServer(t *testing.T, store *grants.Store, notifier approvalnotify.Notifier) *Server {
 	t.Helper()
 	runtime, err := controlplane.New(controlplane.Options{
-		Broker:        "hf-broker",
-		Store:         store,
-		ClientSecrets: map[string]string{"agent": testSecret},
-		Audit:         audit.New(io.Discard),
+		Broker:         "hf-broker",
+		ApprovalBroker: "Hugging Face",
+		Store:          store,
+		ClientSecrets:  map[string]string{"agent": testSecret},
+		Presenter:      hfapproval.Presenter{},
+		Audit:          audit.New(io.Discard),
 	})
 	if err != nil {
 		t.Fatal(err)

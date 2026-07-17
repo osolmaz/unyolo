@@ -134,9 +134,26 @@ func (c *Client) SendApproval(ctx context.Context, approval approvalnotify.Appro
 	if chatID == 0 {
 		chatID = c.chatID
 	}
-	return notify.MessageRef{Kind: "telegram", Renderer: rendererID, ChatID: chatID, MessageID: response.Result.MessageID, Text: text,
+	return approvalReference(approval, chatID, response.Result.MessageID, text), nil
+}
+
+// ApprovalReference reconstructs the canonical durable reference for a sent
+// approval after an ambiguous notification delivery.
+func ApprovalReference(approval approvalnotify.Approval, chatID int64, messageID int) (notify.MessageRef, error) {
+	text, err := RenderApproval(approval)
+	if err != nil {
+		return notify.MessageRef{}, err
+	}
+	if chatID == 0 || messageID <= 0 {
+		return notify.MessageRef{}, errors.New("telegram message identity is invalid")
+	}
+	return approvalReference(approval, chatID, messageID, text), nil
+}
+
+func approvalReference(approval approvalnotify.Approval, chatID int64, messageID int, text string) notify.MessageRef {
+	return notify.MessageRef{Kind: "telegram", Renderer: rendererID, ChatID: chatID, MessageID: messageID, Text: text,
 		PresentationJSON: approvalnotify.SnapshotJSON(approval), PresentationDigest: approvalnotify.PresentationDigest(approval),
-		RenderedDigest: renderedDigest(text)}, nil
+		RenderedDigest: renderedDigest(text)}
 }
 
 // UpdateStatus edits an existing approval message status.

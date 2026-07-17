@@ -23,6 +23,9 @@ func HandleDecision(ctx context.Context, decider Decider, decision notify.Decisi
 	}
 	actor := Actor(decision)
 	ref := notify.MessageRef{Kind: "telegram", ChatID: decision.ChatID, MessageID: decision.MessageID, Text: decision.MessageText}
+	if decision.Notification != nil {
+		ref = *decision.Notification
+	}
 	var grant grants.Grant
 	var err error
 	switch decision.Action {

@@ -25,7 +25,7 @@ func TestNotificationClaimAndDeliveryLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertNoRawDecisionToken(t, string(state), claim.DecisionToken)
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 	setClaimedNotification(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
 	assertNotifiedRetryHasNoToken(t, store, "notification-lifecycle")
 
@@ -51,24 +51,37 @@ func TestNotificationClaimAndDeliveryLifecycle(t *testing.T) {
 func TestValidateMessageRefBindsDurableNotificationSnapshots(t *testing.T) {
 	presentation := `{"grant_id":"grant-1","presentation":{"title":"Delete"}}`
 	rendered := "<b>Delete</b>"
-	digest := func(value string) string {
-		sum := sha256.Sum256([]byte(value))
-		return "sha256:" + hex.EncodeToString(sum[:])
-	}
-	valid := MessageRef{MessageID: 1, PresentationJSON: presentation, PresentationDigest: digest(presentation),
-		Text: rendered, RenderedDigest: digest(rendered)}
+	valid := MessageRef{MessageID: 1, PresentationJSON: presentation, PresentationDigest: testNotificationDigest(presentation),
+		Text: rendered, RenderedDigest: testNotificationDigest(rendered)}
 	if err := validateMessageRef(valid); err != nil {
 		t.Fatalf("validateMessageRef() error = %v", err)
 	}
 	for _, invalid := range []MessageRef{
-		{MessageID: 1, PresentationDigest: digest(presentation)},
-		{MessageID: 1, PresentationJSON: presentation, PresentationDigest: digest("different")},
-		{MessageID: 1, PresentationJSON: `{"grant_id":"one","grant_id":"two"}`, PresentationDigest: digest(`{"grant_id":"one","grant_id":"two"}`)},
-		{MessageID: 1, Text: rendered, RenderedDigest: digest("different")},
+		{MessageID: 1, PresentationDigest: testNotificationDigest(presentation)},
+		{MessageID: 1, PresentationJSON: presentation, PresentationDigest: testNotificationDigest("different")},
+		{MessageID: 1, PresentationJSON: `{"grant_id":"one","grant_id":"two"}`, PresentationDigest: testNotificationDigest(`{"grant_id":"one","grant_id":"two"}`)},
+		{MessageID: 1, Text: rendered, RenderedDigest: testNotificationDigest("different")},
 	} {
 		if err := validateMessageRef(invalid); err == nil {
 			t.Fatalf("validateMessageRef(%+v) accepted an invalid reference", invalid)
 		}
+	}
+}
+
+func TestJSONStoreRejectsIncompletePersistedTelegramReference(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grants.json")
+	store := New(path, Options{})
+	result := requestTestGrant(t, store, "incomplete-persisted-reference", 1)
+	data, err := store.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.Grants[0].Notification = &notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "old reference"}
+	if err := store.save(data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Get(result.Grant.ID); !errors.Is(err, ErrUnsupportedState) {
+		t.Fatalf("Get() error = %v, want ErrUnsupportedState", err)
 	}
 }
 
@@ -139,7 +152,7 @@ func TestNotificationReferenceRecoveredFromCallback(t *testing.T) {
 	}
 	assertNotificationClaimResolved(t, approved, claim.Grant.NotificationClaimedAt)
 
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 	recovered, recorded, err := store.SetNotificationIfMissing(result.Grant.ID, ref)
 	if err != nil || !recorded || recovered.Notification == nil || *recovered.Notification != ref {
 		t.Fatalf("SetNotificationIfMissing() = %+v recorded=%v err=%v", recovered, recorded, err)
@@ -153,7 +166,7 @@ func TestDecisionWithNotificationIsAtomic(t *testing.T) {
 	result := requestTestGrant(t, store, "atomic-callback", 1)
 	claim := claimNotification(t, store, result.Grant.ID)
 	retainNotificationClaim(t, store, result.Grant.ID, claim.Grant.NotificationClaimedAt)
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 
 	approved, err := store.ApproveWithNotification(result.Grant.ID, claim.DecisionToken, "operator", ref)
 	if err != nil || approved.Status != StatusActive || approved.Notification == nil || *approved.Notification != ref {
@@ -166,8 +179,8 @@ func TestDecisionWithNotificationIsAtomic(t *testing.T) {
 func TestDecisionWithNotificationPreservesExistingReference(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "atomic-existing", 1)
-	storedRef := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
-	callbackRef := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 8, Text: "duplicate"}
+	storedRef := testTelegramMessageRef(7, "request")
+	callbackRef := testTelegramMessageRef(8, "duplicate")
 	if _, err := store.SetNotification(result.Grant.ID, storedRef); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +196,7 @@ func TestTerminalDecisionRecoversMissingNotification(t *testing.T) {
 	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 	recovered, err := store.DenyWithNotification(result.Grant.ID, result.DecisionToken, "operator", ref)
 	if !errors.Is(err, ErrNotPending) || recovered.Status != StatusActive || recovered.Notification == nil || *recovered.Notification != ref {
 		t.Fatalf("DenyWithNotification(replay) = %+v err=%v", recovered, err)
@@ -194,7 +207,7 @@ func TestTerminalDecisionRecoversMissingNotification(t *testing.T) {
 func TestDecisionWithNotificationRejectsInvalidInputWithoutMutation(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "invalid-atomic-callback", 1)
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 	if _, err := store.ApproveWithNotification(result.Grant.ID, "wrong", "operator", ref); !errors.Is(err, ErrInvalidDecisionToken) {
 		t.Fatalf("ApproveWithNotification(wrong token) error = %v", err)
 	}
@@ -214,7 +227,7 @@ func TestDecisionWithNotificationWriteFailureIsAtomic(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- test makes its temp directory intentionally read-only.
 		t.Fatal(err)
 	}
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 	_, decisionErr := store.ApproveWithNotification(result.Grant.ID, result.DecisionToken, "operator", ref)
 	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- test restores access to its private temp directory.
 		t.Fatal(err)
@@ -231,11 +244,11 @@ func TestDecisionWithNotificationWriteFailureIsAtomic(t *testing.T) {
 func TestNotificationReferenceRecoveryPreservesExisting(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "callback-existing", 1)
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Text: "request"}
+	ref := testTelegramMessageRef(7, "request")
 	if _, err := store.SetNotification(result.Grant.ID, ref); err != nil {
 		t.Fatal(err)
 	}
-	other := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 8, Text: "duplicate"}
+	other := testTelegramMessageRef(8, "duplicate")
 	unchanged, recorded, err := store.SetNotificationIfMissing(result.Grant.ID, other)
 	if err != nil || recorded || unchanged.Notification == nil || *unchanged.Notification != ref {
 		t.Fatalf("SetNotificationIfMissing(existing) = %+v recorded=%v err=%v", unchanged, recorded, err)
@@ -245,8 +258,8 @@ func TestNotificationReferenceRecoveryPreservesExisting(t *testing.T) {
 func TestSetNotificationOverwritesExisting(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "notification-overwrite", 1)
-	first := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7}
-	second := notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 8}
+	first := testTelegramMessageRef(7, "")
+	second := testTelegramMessageRef(8, "")
 	if _, err := store.SetNotification(result.Grant.ID, first); err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +331,7 @@ func TestNotificationClaimRejectsTerminalAndNotifiedGrants(t *testing.T) {
 	assertGrantCannotClaimNotification(t, store, terminal.Grant.ID)
 
 	notified := requestTestGrant(t, store, "notified-claim", 1)
-	if _, err := store.SetNotification(notified.Grant.ID, notify.MessageRef{Kind: "telegram", MessageID: 1}); err != nil {
+	if _, err := store.SetNotification(notified.Grant.ID, testTelegramMessageRef(1, "")); err != nil {
 		t.Fatal(err)
 	}
 	assertGrantCannotClaimNotification(t, store, notified.Grant.ID)
@@ -418,7 +431,7 @@ func TestPendingExitClearsNotificationClaim(t *testing.T) {
 			stored, recorded, err := store.SetNotificationIfClaimed(
 				result.Grant.ID,
 				claim.Grant.NotificationClaimedAt,
-				notify.MessageRef{Kind: "telegram", MessageID: 7},
+				testTelegramMessageRef(7, ""),
 			)
 			if err != nil || !recorded || stored.Notification == nil {
 				t.Fatalf("SetNotificationIfClaimed(after %s) = %+v recorded=%v err=%v", grant.Status, stored, recorded, err)
@@ -557,7 +570,7 @@ func reclaimNotification(t *testing.T, store *Store, id string, oldToken string)
 
 func assertSetNotificationClearsUnresolved(t *testing.T, store *Store, id string, claimedAt time.Time) {
 	t.Helper()
-	grant, recorded, err := store.SetNotificationIfClaimed(id, claimedAt, notify.MessageRef{Kind: "telegram", MessageID: 7})
+	grant, recorded, err := store.SetNotificationIfClaimed(id, claimedAt, testTelegramMessageRef(7, ""))
 	if err != nil || !recorded || grant.NotificationDeliveryUnresolved {
 		t.Fatalf("SetNotificationIfClaimed(after unresolved) = %+v recorded=%v err=%v", grant, recorded, err)
 	}
@@ -894,6 +907,28 @@ func requestTestGrant(t *testing.T, store *Store, requestID string, maxUses int)
 	return result
 }
 
+func testTelegramMessageRef(messageID int, text string) notify.MessageRef {
+	if text == "" {
+		text = "approval request"
+	}
+	presentation := `{"grant_id":"test-grant","presentation":{"title":"Test approval","target":"repository demo"}}`
+	return notify.MessageRef{
+		Kind:               "telegram",
+		ChatID:             42,
+		MessageID:          messageID,
+		Renderer:           "telegram-html-v1",
+		Text:               text,
+		PresentationJSON:   presentation,
+		PresentationDigest: testNotificationDigest(presentation),
+		RenderedDigest:     testNotificationDigest(text),
+	}
+}
+
+func testNotificationDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 func testGrantRequest(requestID string, maxUses int) Request {
 	return Request{
 		Client:          "bob",
@@ -908,7 +943,7 @@ func testGrantRequest(requestID string, maxUses int) Request {
 
 func setTestNotification(t *testing.T, store *Store, id string) {
 	t.Helper()
-	if _, err := store.SetNotification(id, notify.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7}); err != nil {
+	if _, err := store.SetNotification(id, testTelegramMessageRef(7, "")); err != nil {
 		t.Fatal(err)
 	}
 }

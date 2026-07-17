@@ -78,8 +78,10 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 	}
 	if command.Notification != nil {
 		decision.DecisionToken = command.Notification.DecisionToken
-		decision.Notification = &notify.MessageRef{Kind: command.Notification.Kind, ChatID: command.Notification.ChatID,
-			MessageID: command.Notification.MessageID, Text: command.Notification.Text}
+		decision.Notification = &notify.MessageRef{Kind: command.Notification.Kind, Renderer: command.Notification.Renderer,
+			ChatID: command.Notification.ChatID, MessageID: command.Notification.MessageID, Text: command.Notification.Text,
+			PresentationJSON: command.Notification.PresentationJSON, PresentationDigest: command.Notification.PresentationDigest,
+			RenderedDigest: command.Notification.RenderedDigest}
 	}
 	result, decisionErr := s.store.ApplyOperatorDecision(ctx, decision, s.validate)
 	auditPrevious, auditCurrent := result.Previous, result.Grant

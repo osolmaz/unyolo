@@ -107,7 +107,9 @@ func TestApplyOperatorDecisionValidatesNotificationTokenAtomically(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := &MessageRef{Kind: "telegram", ChatID: 7, MessageID: 8, Text: "approval"}
+	refValue := testTelegramMessageRef(8, "approval")
+	refValue.ChatID = 7
+	ref := &refValue
 	command := OperatorDecision{ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
 		OnBehalfOf: "telegram:42", ExpectedRevision: created.Grant.Revision, IdempotencyKey: "telegram-one",
 		DecisionToken: "wrong", Notification: ref}

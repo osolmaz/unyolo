@@ -21,11 +21,13 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
 func testAuditRecorder() audit.Recorder { return audit.New(io.Discard) }
@@ -99,6 +101,11 @@ type callbackDuringSendNotifier struct {
 }
 
 func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
+	ref, err := bktelegram.ApprovalReference(msg, n.ref.ChatID, n.ref.MessageID)
+	if err != nil {
+		return notify.MessageRef{}, err
+	}
+	n.ref = ref
 	result := n.server.handleTelegramDecision(ctx, notify.Decision{
 		Action: notify.ActionApprove, GrantID: msg.GrantID, DecisionToken: msg.DecisionToken,
 		ChatID: n.ref.ChatID, MessageID: n.ref.MessageID, MessageText: n.ref.Text,
@@ -108,6 +115,19 @@ func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg appro
 	n.result = result
 	n.mu.Unlock()
 	return n.ref, nil
+}
+
+func testTelegramReference(t *testing.T, grantID string) notify.MessageRef {
+	t.Helper()
+	ref, err := bktelegram.ApprovalReference(approvalnotify.Approval{
+		GrantID: grantID, DecisionToken: "test-token", Broker: "Hugging Face", Requester: "agent", Operation: "test.operation",
+		Reason: "test notification", RequestedDurationSeconds: 60, MaxUses: 1, PendingExpiresAt: time.Now().Add(time.Minute),
+		Presentation: approvalview.Presentation{Risk: approvalview.RiskLow, Title: "Test approval", Target: "test/repository"},
+	}, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ref
 }
 
 func (n *callbackDuringSendNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {

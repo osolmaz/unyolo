@@ -147,7 +147,11 @@ type callbackDuringSendNotifier struct {
 }
 
 func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, message approvalnotify.Approval) (notify.MessageRef, error) {
-	n.ref = notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 7, Text: message.Presentation.Title}
+	var err error
+	n.ref, err = bktelegram.ApprovalReference(message, 1, 7)
+	if err != nil {
+		return notify.MessageRef{}, err
+	}
 	n.result = n.server.control.HandleDecision(ctx, notify.Decision{
 		Action: notify.ActionApprove, GrantID: message.GrantID, DecisionToken: message.DecisionToken,
 		ChatID: n.ref.ChatID, MessageID: n.ref.MessageID, MessageText: n.ref.Text, OperatorID: 42,

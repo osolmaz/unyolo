@@ -82,6 +82,7 @@ type Decision struct {
 	CallbackID    string
 	MessageID     int
 	MessageText   string
+	Notification  *MessageRef
 	OperatorID    int64
 	OperatorTag   string
 }

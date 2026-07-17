@@ -401,11 +401,15 @@ type Health struct {
 
 // NotificationDecision defines model for NotificationDecision.
 type NotificationDecision struct {
-	ChatId        int                      `json:"chat_id"`
-	DecisionToken string                   `json:"decision_token"`
-	Kind          NotificationDecisionKind `json:"kind"`
-	MessageId     int                      `json:"message_id"`
-	Text          string                   `json:"text"`
+	ChatId             int                      `json:"chat_id"`
+	DecisionToken      string                   `json:"decision_token"`
+	Kind               NotificationDecisionKind `json:"kind"`
+	MessageId          int                      `json:"message_id"`
+	PresentationDigest string                   `json:"presentation_digest"`
+	PresentationJson   string                   `json:"presentation_json"`
+	RenderedDigest     string                   `json:"rendered_digest"`
+	Renderer           string                   `json:"renderer"`
+	Text               string                   `json:"text"`
 }
 
 // NotificationDecisionKind defines model for NotificationDecision.Kind.

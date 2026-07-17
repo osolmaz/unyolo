@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorclient"
@@ -33,6 +35,12 @@ var terminalDecisionAnswers = map[grants.Status]notify.Answer{
 	grants.StatusConsumed: notify.AnswerAlreadyConsumed,
 	grants.StatusRevoked:  notify.AnswerAlreadyRevoked,
 	grants.StatusCanceled: notify.AnswerAlreadyCanceled,
+}
+
+var routeBrokerNames = map[string]string{
+	RouteHuggingFace: "Hugging Face",
+	RouteGitHub:      "GitHub",
+	RouteSudo:        "sudo",
 }
 
 const operatorDecisionTimeout = 15 * time.Second
@@ -71,17 +79,61 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	if !ok {
 		return notify.DecisionResult{Answer: notify.AnswerIgnored}
 	}
+	notification, err := notificationDecision(current, decision)
+	if err != nil {
+		return notify.DecisionResult{Answer: notify.AnswerUnavailable}
+	}
 	updated, err := source.Decide(ctx, current.ID, action, operatorv1.Decision{
 		ExpectedRevision: current.Revision,
 		IdempotencyKey:   callbackIdempotencyKey(decision),
 		OnBehalfOf:       approval.Actor(decision),
-		Notification: &operatorv1.NotificationDecision{Kind: "telegram", DecisionToken: decision.DecisionToken,
-			ChatID: decision.ChatID, MessageID: decision.MessageID, Text: decision.MessageText},
+		Notification:     notification,
 	})
 	if err != nil {
 		return dispatcherErrorResult(err)
 	}
 	return completedDecisionResult(updated)
+}
+
+func notificationDecision(request operatorv1.Request, decision notify.Decision) (*operatorv1.NotificationDecision, error) {
+	semantic, err := semanticApproval(request, decision.Route, decision.DecisionToken)
+	if err != nil {
+		return nil, err
+	}
+	text, err := RenderApproval(semantic)
+	if err != nil {
+		return nil, err
+	}
+	return &operatorv1.NotificationDecision{
+		Kind: "telegram", Renderer: rendererID, DecisionToken: decision.DecisionToken,
+		ChatID: decision.ChatID, MessageID: decision.MessageID, Text: text,
+		PresentationJSON: approvalnotify.SnapshotJSON(semantic), PresentationDigest: approvalnotify.PresentationDigest(semantic),
+		RenderedDigest: renderedDigest(text),
+	}, nil
+}
+
+func semanticApproval(request operatorv1.Request, route, token string) (approvalnotify.Approval, error) {
+	broker := routeBrokerNames[route]
+	if broker == "" || request.PendingExpiresAt == nil {
+		return approvalnotify.Approval{}, errors.New("pending notification presentation is unavailable")
+	}
+	facts := make([]approvalview.Fact, len(request.Presentation.Facts))
+	for index, fact := range request.Presentation.Facts {
+		facts[index] = approvalview.Fact{Label: fact.Label, Value: fact.Value}
+	}
+	warnings := make([]approvalview.Warning, len(request.Presentation.Warnings))
+	for index, warning := range request.Presentation.Warnings {
+		warnings[index] = approvalview.Warning{Severity: approvalview.Risk(warning.Severity), Text: warning.Text}
+	}
+	return approvalnotify.Approval{
+		GrantID: request.ID, DecisionToken: token, Broker: broker, Requester: request.Requester,
+		Operation: request.Operation, Reason: request.RequestReason, RequestedDurationSeconds: request.RequestedDurationSeconds,
+		MaxUses: request.GrantedMaxUses, PendingExpiresAt: *request.PendingExpiresAt,
+		Presentation: approvalview.Presentation{Risk: approvalview.Risk(request.Presentation.Risk), Title: request.Presentation.Title,
+			Summary: request.Presentation.Summary, Target: request.Presentation.Target, Facts: facts, Warnings: warnings,
+			PlanHash: request.Presentation.PlanHash},
+		PresentationUnavailable: request.PresentationUnavailable,
+	}, nil
 }
 
 func operatorAction(action notify.Action) (operatorv1.Action, bool) {

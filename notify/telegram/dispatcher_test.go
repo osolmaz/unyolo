@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
@@ -39,7 +40,7 @@ func (s *dispatcherSource) Decide(_ context.Context, _ string, action operatorv1
 }
 
 func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
-	source := &dispatcherSource{request: operatorv1.Request{ID: "grant-1", Revision: 3, Status: grants.StatusPending}}
+	source := &dispatcherSource{request: pendingOperatorRequest()}
 	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteHuggingFace: source})
 	if err != nil {
 		t.Fatal(err)
@@ -52,8 +53,19 @@ func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
 	}
 	if source.action != operatorv1.ActionApprove || source.decision.ExpectedRevision != 3 ||
 		source.decision.OnBehalfOf != "telegram:42" || !strings.HasPrefix(source.decision.IdempotencyKey, "telegram-") ||
-		source.decision.Notification == nil || source.decision.Notification.DecisionToken != "token" || source.decision.Notification.MessageID != 8 {
+		source.decision.Notification == nil || source.decision.Notification.DecisionToken != "token" || source.decision.Notification.MessageID != 8 ||
+		source.decision.Notification.Renderer != rendererID || source.decision.Notification.PresentationJSON == "" ||
+		source.decision.Notification.PresentationDigest == "" || source.decision.Notification.RenderedDigest == "" {
 		t.Fatalf("operator decision = %+v action=%q", source.decision, source.action)
+	}
+}
+
+func pendingOperatorRequest() operatorv1.Request {
+	expires := time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC)
+	return operatorv1.Request{
+		ID: "grant-1", Revision: 3, Requester: "agent-a", Operation: "repo.delete", Status: grants.StatusPending,
+		PendingExpiresAt: &expires, RequestedDurationSeconds: 300, GrantedMaxUses: 1, RequestReason: "cleanup",
+		Presentation: operatorv1.Presentation{Risk: "critical", Title: "Delete repository", Target: "example/project"},
 	}
 }
 

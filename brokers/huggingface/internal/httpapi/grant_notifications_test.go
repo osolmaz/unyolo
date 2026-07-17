@@ -488,7 +488,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetNotification(grant.ID, grants.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+	if _, err := store.SetNotification(grant.ID, testTelegramReference(t, grant.ID)); err != nil {
 		t.Fatalf("SetNotification() error = %v", err)
 	}
 	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
@@ -533,7 +533,7 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetNotification(grant.ID, grants.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+	if _, err := store.SetNotification(grant.ID, testTelegramReference(t, grant.ID)); err != nil {
 		t.Fatalf("SetNotification() error = %v", err)
 	}
 	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")

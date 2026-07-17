@@ -405,7 +405,7 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 		return err
 	}
 	r.control, err = controlplane.New(controlplane.Options{
-		Broker: "hf-broker", Store: r.grantStore, ClientSecrets: clients,
+		Broker: "hf-broker", ApprovalBroker: "Hugging Face", Store: r.grantStore, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
 		ActivationValidator: r.planValidator, State: r.database,
 	})
