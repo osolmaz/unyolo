@@ -12,6 +12,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialprofile"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/endpoint"
@@ -60,7 +61,7 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
 	run, found := commandRunners[args[0]]
 	if !found {
-		return exitError{code: 64, message: "usage: hf-broker [--version|version|doctor|setup|policy|client|mcp|state]"}
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|credential|doctor|setup|policy|client|mcp|state]"}
 	}
 	return run(commandContext{ctx: ctx, getenv: getenv, stdout: stdout, stderr: stderr}, args[1:])
 }
@@ -74,6 +75,7 @@ type commandContext struct {
 var commandRunners = map[string]func(commandContext, []string) error{
 	"--version":                runVersionCommand,
 	"version":                  runVersionCommand,
+	"credential":               runCredentialCommand,
 	"doctor":                   runDoctorCommand,
 	"setup":                    runSetupCommand,
 	"policy":                   runPolicyCommand,
@@ -85,6 +87,18 @@ var commandRunners = map[string]func(commandContext, []string) error{
 
 func runVersionCommand(command commandContext, _ []string) error {
 	_, err := fmt.Fprintln(command.stdout, version)
+	return err
+}
+
+func runCredentialCommand(command commandContext, args []string) error {
+	if len(args) != 1 || args[0] != "requirements" {
+		return exitError{code: 64, message: "usage: hf-broker credential requirements"}
+	}
+	raw, err := credentialprofile.JSON()
+	if err != nil {
+		return err
+	}
+	_, err = command.stdout.Write(raw)
 	return err
 }
 
