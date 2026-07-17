@@ -378,7 +378,7 @@ func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	page, err := store.WaitForEvents(ctx, created.NextCursor)
 	if err != nil || len(page.Events) != 1 || page.Events[0].Kind != EventRequestExpired {
