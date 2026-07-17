@@ -7,19 +7,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/openapidrift"
 )
-
-var restMethods = map[string]bool{
-	"delete": true, "get": true, "head": true, "patch": true,
-	"post": true, "put": true,
-}
-
-type restOperation struct {
-	ID         string
-	Schema     string
-	Auth       string
-	Deprecated bool
-}
 
 type graphSurface struct {
 	Operations   map[string]string
@@ -29,13 +19,9 @@ type graphSurface struct {
 
 // Analyze classifies structural upstream drift without producing generated artifacts.
 func Analyze(pinned, current SnapshotSet) (Report, error) {
-	pinnedREST, err := parseREST(pinned.REST)
+	restChanges, err := openapidrift.Analyze(pinned.REST, current.REST)
 	if err != nil {
-		return Report{}, fmt.Errorf("parse pinned REST metadata: %w", err)
-	}
-	currentREST, err := parseREST(current.REST)
-	if err != nil {
-		return Report{}, fmt.Errorf("parse current REST metadata: %w", err)
+		return Report{}, fmt.Errorf("analyze REST metadata: %w", err)
 	}
 	pinnedPermissions, err := parsePermissions(pinned.Permissions)
 	if err != nil {
@@ -55,89 +41,15 @@ func Analyze(pinned, current SnapshotSet) (Report, error) {
 	}
 
 	changes := compareVersions(pinned.APIVersions, current.APIVersions)
-	changes = append(changes, compareREST(pinnedREST, currentREST)...)
+	for _, change := range restChanges {
+		changes = append(changes, Change(change))
+	}
 	changes = append(changes, compareMaps(CategoryPermission, pinnedPermissions, currentPermissions)...)
 	changes = append(changes, compareMaps(CategoryOperation, pinnedGraphQL.Operations, currentGraphQL.Operations)...)
 	changes = append(changes, compareMaps(CategorySchema, pinnedGraphQL.Schemas, currentGraphQL.Schemas)...)
 	changes = append(changes, compareMaps(CategoryDeprecation, pinnedGraphQL.Deprecations, currentGraphQL.Deprecations)...)
 	slices.SortFunc(changes, compareChanges)
 	return Report{RetrievedAt: latestRetrieval(current.Sources), Sources: slices.Clone(current.Sources), Changes: changes}, nil
-}
-
-func parseREST(data []byte) (map[string]restOperation, error) {
-	var document struct {
-		Security json.RawMessage                       `json:"security"`
-		Paths    map[string]map[string]json.RawMessage `json:"paths"`
-	}
-	if err := json.Unmarshal(data, &document); err != nil || len(document.Paths) == 0 {
-		return nil, fmt.Errorf("invalid OpenAPI document")
-	}
-	result := make(map[string]restOperation)
-	for path, item := range document.Paths {
-		for method, raw := range item {
-			if !restMethods[strings.ToLower(method)] {
-				continue
-			}
-			operation, err := decodeRESTOperation(raw, document.Security)
-			if err != nil {
-				return nil, fmt.Errorf("%s %s: %w", method, path, err)
-			}
-			result[strings.ToUpper(method)+" "+path] = operation
-		}
-	}
-	return result, nil
-}
-
-func decodeRESTOperation(raw, inheritedSecurity json.RawMessage) (restOperation, error) {
-	var value map[string]any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return restOperation{}, err
-	}
-	security := value["security"]
-	if security == nil && len(inheritedSecurity) != 0 {
-		if err := json.Unmarshal(inheritedSecurity, &security); err != nil {
-			return restOperation{}, err
-		}
-	}
-	operation := restOperation{
-		ID:         stringValue(value["operationId"]),
-		Auth:       digestValue(security),
-		Deprecated: boolValue(value["deprecated"]),
-	}
-	delete(value, "description")
-	delete(value, "summary")
-	delete(value, "externalDocs")
-	delete(value, "tags")
-	delete(value, "security")
-	delete(value, "deprecated")
-	delete(value, "operationId")
-	operation.Schema = digestValue(stripDescriptions(value))
-	return operation, nil
-}
-
-func compareREST(before, after map[string]restOperation) []Change {
-	changes := make([]Change, 0)
-	for _, key := range unionKeys(before, after) {
-		left, leftOK := before[key]
-		right, rightOK := after[key]
-		if !leftOK || !rightOK {
-			changes = append(changes, presenceChange(CategoryOperation, key, leftOK, rightOK))
-			continue
-		}
-		if left.ID != right.ID {
-			changes = append(changes, Change{Category: CategoryOperation, Kind: "changed", Key: key, Before: left.ID, After: right.ID})
-		}
-		if left.Schema != right.Schema {
-			changes = append(changes, Change{Category: CategorySchema, Kind: "changed", Key: key, Before: left.Schema, After: right.Schema})
-		}
-		if left.Auth != right.Auth {
-			changes = append(changes, Change{Category: CategoryAuthentication, Kind: "changed", Key: key, Before: left.Auth, After: right.Auth})
-		}
-		if left.Deprecated != right.Deprecated {
-			changes = append(changes, Change{Category: CategoryDeprecation, Kind: "changed", Key: key, Before: fmt.Sprint(left.Deprecated), After: fmt.Sprint(right.Deprecated)})
-		}
-	}
-	return changes
 }
 
 func parsePermissions(data []byte) (map[string]string, error) {

@@ -79,7 +79,6 @@ func TestWriteMarkdownBoundsDetailsAndEscapesValues(t *testing.T) {
 
 func TestParsingRejectsInvalidInputs(t *testing.T) {
 	for name, test := range map[string]func() error{
-		"rest":        func() error { _, err := parseREST([]byte(`{}`)); return err },
 		"permissions": func() error { _, err := parsePermissions([]byte(`{}`)); return err },
 		"graphql":     func() error { _, err := parseGraphQL([]byte(`{}`)); return err },
 	} {

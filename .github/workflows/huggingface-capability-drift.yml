@@ -1,0 +1,53 @@
+name: Hugging Face capability drift
+
+on:
+  schedule:
+    - cron: "31 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: huggingface-capability-drift
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - name: Compare reviewed snapshot with official metadata
+        run: |
+          go run ./brokers/huggingface/cmd/check-hf-drift \
+            -output "$RUNNER_TEMP/huggingface-capability-drift.md" \
+            -status-output "$RUNNER_TEMP/huggingface-capability-drift.status"
+      - name: Maintain one actionable drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="chore: review Hugging Face capability drift"
+          mapfile -t issues < <(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "chore: review Hugging Face capability drift") | .number')
+          status=$(cat "$RUNNER_TEMP/huggingface-capability-drift.status")
+          if [ "$status" = drift ]; then
+            if [ "${#issues[@]}" -eq 0 ]; then
+              gh issue create --title "$title" --body-file "$RUNNER_TEMP/huggingface-capability-drift.md"
+            else
+              gh issue edit "${issues[0]}" --body-file "$RUNNER_TEMP/huggingface-capability-drift.md"
+            fi
+          elif [ "${#issues[@]}" -gt 0 ]; then
+            gh issue close "${issues[0]}" --comment "The scheduled monitor no longer detects structural drift against the reviewed snapshot."
+          fi
+          if [ "${#issues[@]}" -gt 1 ]; then
+            for duplicate in "${issues[@]:1}"; do
+              gh issue close "$duplicate" --comment "Closing duplicate capability-drift tracker."
+            done
+          fi
