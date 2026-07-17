@@ -41,8 +41,6 @@ export const DELEGATED_SESSION_REQUEST =
 export const DELEGATED_SESSION_RESPONSE =
   "brokerkit.delegated-web.session.response";
 export const DELEGATED_SESSION_META = "brokerkit-delegated-session";
-export const DELEGATED_TOP_LEVEL_META = "brokerkit-delegated-top-level";
-export const DELEGATED_OPEN_REQUEST = "brokerkit.delegated-web.open";
 
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
@@ -211,24 +209,6 @@ export function browserSessionHeaders(
   headers.delete(BROWSER_SESSION_HEADER);
   headers.set(BROWSER_SESSION_HEADER, session);
   return headers;
-}
-
-export function takeDelegatedTopLevelLauncher(): boolean {
-  if (typeof document === "undefined") return false;
-  const element = document.querySelector(
-    `meta[name="${DELEGATED_TOP_LEVEL_META}"]`,
-  );
-  if (!element) return false;
-  element.remove();
-  return true;
-}
-
-export function requestDelegatedTopLevelOpen(): void {
-  if (typeof window === "undefined" || window.parent === window) return;
-  window.parent.postMessage(
-    { type: DELEGATED_OPEN_REQUEST, version: 1, nonce: randomNonce() },
-    "*",
-  );
 }
 
 function embeddedDelegatedSession(): Record<string, unknown> | undefined {

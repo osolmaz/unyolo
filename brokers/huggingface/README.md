@@ -179,6 +179,11 @@ return immediately; recover interrupted calls with `hf_operation_get`,
 `hf_operation_wait`, or `hf_operation_list`, and use the `hf_grant_*` tools
 for temporary-grant lifecycles.
 
+The checked-in OpenAPI snapshot is monitored against the official Hub schema
+without automatic updates. See
+[capability maintenance](../../docs/HUGGING_FACE_CAPABILITY_MAINTENANCE.md) for
+the review and regeneration procedure.
+
 ## Temporary grants
 
 Request an exact temporary capability when the policy marks an operation as

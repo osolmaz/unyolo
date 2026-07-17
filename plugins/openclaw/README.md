@@ -120,10 +120,9 @@ When OpenClaw is outside the credential trust boundary, the trusted backend
 must serve the packaged `dist/ui` files at the registered UI path itself. A
 framed popover may receive a server-enforced `read` or `decide` session: a
 `read` session shows requests without action controls, and a `decide` session
-lets the operator act directly in the frame. Hosts that use framed decisions
-accept that the surrounding application controls the iframe's placement and
-can attempt UI redressing; use the navigation-only launcher below when that
-threat must remain out of scope.
+lets the operator act directly in the frame. The OpenClaw Gateway approvals
+popover is an actionable surface and must receive `decide`; the trusted host
+must retain decision authority and validate that access on every request.
 
 ### Session injection
 
@@ -148,7 +147,7 @@ this closed payload:
   "api_version": "brokerkit.io/delegated-web/v1",
   "token": "opaque-short-lived-browser-session",
   "expires_at": "<no more than five minutes from issue time, RFC3339>",
-  "access": "read",
+  "access": "decide",
   "renewal_transport": "direct"
 }
 ```
@@ -191,29 +190,6 @@ return `Access-Control-Allow-Origin: null`, allow `BrokerKit-Session` and
 and set `Vary: Origin` plus `Cache-Control: no-store`. It must not return
 `Access-Control-Allow-Credentials: true`; delegated API requests deliberately
 omit cookies.
-
-### Secure-navigation launcher
-
-With `access: "read"`, each actionable request renders a **Review securely**
-button instead of decision controls. The button posts this navigation-only
-message:
-
-```text
-{ type: "brokerkit.delegated-web.open", version: 1, nonce }
-```
-
-The host verifies the exact opaque-origin frame source and navigates the
-whole browser tab to the trusted UI URL. The top-level response is
-unframeable and contains a server-enforced decision session, so approval,
-denial, and revocation require a second explicit action in the trusted
-document.
-
-A host that does not provide a framed inbox can inject this marker so the UI
-renders only the secure-navigation launcher:
-
-```html
-<meta name="brokerkit-delegated-top-level" />
-```
 
 ### Parent session bridge
 
