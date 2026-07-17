@@ -70,8 +70,7 @@ func validateProfileIdentity(profile Requirements) error {
 	return firstError(
 		validateVersion(profile.Version),
 		validateProfileID(profile.ProfileID),
-		validateTokenFormURL(profile.TokenFormURL),
-		validateTokenType(profile.TokenType),
+		validateExactProfileFields(profile),
 		validateGatedRepositories(profile.RequiresGatedRepositories),
 	)
 }
@@ -90,15 +89,11 @@ func validateProfileID(profileID string) error {
 	return nil
 }
 
-func validateTokenFormURL(endpoint string) error {
-	if endpoint != "https://huggingface.co/settings/tokens/new" {
+func validateExactProfileFields(profile Requirements) error {
+	if profile.TokenFormURL != "https://huggingface.co/settings/tokens/new" {
 		return fmt.Errorf("credential requirements token_form_url must be the Hugging Face HTTPS token form")
 	}
-	return nil
-}
-
-func validateTokenType(tokenType string) error {
-	if tokenType != "fineGrained" {
+	if profile.TokenType != "fineGrained" {
 		return fmt.Errorf("credential requirements token_type must be fineGrained")
 	}
 	return nil
