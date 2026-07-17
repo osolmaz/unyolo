@@ -54,54 +54,86 @@ func Analyze(pinned, current []byte) ([]Change, error) {
 }
 
 func parse(data []byte) (map[string]operation, error) {
-	var document struct {
-		Security json.RawMessage                       `json:"security"`
-		Paths    map[string]map[string]json.RawMessage `json:"paths"`
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		return nil, fmt.Errorf("invalid OpenAPI document")
 	}
-	if err := json.Unmarshal(data, &document); err != nil || len(document.Paths) == 0 {
+	paths, ok := document["paths"].(map[string]any)
+	if !ok || len(paths) == 0 {
 		return nil, fmt.Errorf("invalid OpenAPI document")
 	}
 	result := make(map[string]operation)
-	for path, item := range document.Paths {
-		for method, raw := range item {
-			if !methods[strings.ToLower(method)] {
-				continue
-			}
-			value, err := decodeOperation(raw, document.Security)
-			if err != nil {
-				return nil, fmt.Errorf("%s %s: %w", method, path, err)
-			}
-			result[strings.ToUpper(method)+" "+path] = value
+	for path, rawItem := range paths {
+		values, err := parsePath(path, rawItem, document)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range values {
+			result[key] = value
 		}
 	}
 	return result, nil
 }
 
-func decodeOperation(raw, inheritedSecurity json.RawMessage) (operation, error) {
-	var value map[string]any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return operation{}, err
+func parsePath(path string, rawItem any, document map[string]any) (map[string]operation, error) {
+	item, ok := rawItem.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("path %s is invalid", path)
 	}
-	security := value["security"]
-	if security == nil && len(inheritedSecurity) != 0 {
-		if err := json.Unmarshal(inheritedSecurity, &security); err != nil {
-			return operation{}, err
+	result := make(map[string]operation)
+	for method, raw := range item {
+		if !methods[strings.ToLower(method)] {
+			continue
 		}
+		value, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%s %s: invalid operation", method, path)
+		}
+		decoded, err := decodeOperation(value, document["security"], item["parameters"], document)
+		if err != nil {
+			return nil, fmt.Errorf("%s %s: %w", method, path, err)
+		}
+		result[strings.ToUpper(method)+" "+path] = decoded
+	}
+	return result, nil
+}
+
+func decodeOperation(value map[string]any, inheritedSecurity, pathParameters any, root map[string]any) (operation, error) {
+	security := value["security"]
+	if security == nil {
+		security = inheritedSecurity
+	}
+	references, err := referencedComponents(root, []any{value, pathParameters})
+	if err != nil {
+		return operation{}, err
 	}
 	result := operation{
 		ID:         stringValue(value["operationId"]),
-		Auth:       digestValue(security),
+		Auth:       digestValue(effectiveSecurity(root, security)),
 		Deprecated: boolValue(value["deprecated"]),
 	}
-	delete(value, "description")
-	delete(value, "summary")
-	delete(value, "externalDocs")
-	delete(value, "tags")
-	delete(value, "security")
-	delete(value, "deprecated")
-	delete(value, "operationId")
-	result.Schema = digestValue(stripDescriptions(value))
+	structural := cloneMap(value)
+	delete(structural, "description")
+	delete(structural, "summary")
+	delete(structural, "externalDocs")
+	delete(structural, "tags")
+	delete(structural, "security")
+	delete(structural, "deprecated")
+	delete(structural, "operationId")
+	result.Schema = digestValue(stripDescriptions(map[string]any{
+		"operation":       structural,
+		"path_parameters": pathParameters,
+		"references":      references,
+	}))
 	return result, nil
+}
+
+func cloneMap(value map[string]any) map[string]any {
+	result := make(map[string]any, len(value))
+	for key, child := range value {
+		result[key] = child
+	}
+	return result
 }
 
 func compare(before, after map[string]operation) []Change {

@@ -35,9 +35,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           title="chore: review GitHub capability drift"
-          mapfile -t issues < <(gh issue list --state open --limit 100 --json number,title \
+          issue_numbers=$(gh issue list --state open --limit 100 --json number,title \
             --jq '.[] | select(.title == "chore: review GitHub capability drift") | .number')
+          issues=()
+          if [[ -n "$issue_numbers" ]]; then
+            mapfile -t issues <<< "$issue_numbers"
+          fi
           status=$(cat "$RUNNER_TEMP/github-capability-drift.status")
           if [ "$status" = drift ]; then
             if [ "${#issues[@]}" -eq 0 ]; then
