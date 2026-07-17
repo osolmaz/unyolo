@@ -76,9 +76,9 @@ func parse(data []byte) (map[string]operation, error) {
 }
 
 func parsePath(path string, rawItem any, document map[string]any) (map[string]operation, error) {
-	item, ok := rawItem.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("path %s is invalid", path)
+	item, err := resolvePathItem(document, rawItem)
+	if err != nil {
+		return nil, fmt.Errorf("path %s is invalid: %w", path, err)
 	}
 	result := make(map[string]operation)
 	for method, raw := range item {
@@ -103,13 +103,17 @@ func decodeOperation(value map[string]any, inheritedSecurity, pathParameters any
 	if security == nil {
 		security = inheritedSecurity
 	}
+	effectiveAuth, err := effectiveSecurity(root, security)
+	if err != nil {
+		return operation{}, err
+	}
 	references, err := referencedComponents(root, []any{value, pathParameters})
 	if err != nil {
 		return operation{}, err
 	}
 	result := operation{
 		ID:         stringValue(value["operationId"]),
-		Auth:       digestValue(effectiveSecurity(root, security)),
+		Auth:       digestValue(effectiveAuth),
 		Deprecated: boolValue(value["deprecated"]),
 	}
 	structural := cloneMap(value)
@@ -201,11 +205,24 @@ func stripDescriptions(value any) any {
 func stripDescriptionMap(value map[string]any) map[string]any {
 	result := make(map[string]any, len(value))
 	for key, child := range value {
-		if key != "description" && key != "summary" && key != "externalDocs" {
+		if !proseField(key, child) {
 			result[key] = stripDescriptions(child)
 		}
 	}
 	return result
+}
+
+func proseField(key string, value any) bool {
+	if key == "description" || key == "summary" {
+		_, isText := value.(string)
+		return isText
+	}
+	if key != "externalDocs" {
+		return false
+	}
+	document, isDocument := value.(map[string]any)
+	_, hasURL := document["url"].(string)
+	return isDocument && hasURL
 }
 
 func stripDescriptionSlice(value []any) []any {

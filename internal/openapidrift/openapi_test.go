@@ -37,6 +37,15 @@ func TestAnalyzeIgnoresDocumentationChanges(t *testing.T) {
 	}
 }
 
+func TestAnalyzePreservesSchemaFieldsNamedLikeProse(t *testing.T) {
+	pinned := []byte(`{"paths":{"/repos":{"get":{"responses":{"200":{"content":{"application/json":{"schema":{"type":"object","properties":{"description":{"type":"string"},"summary":{"type":"string"},"externalDocs":{"type":"string"}}}}}}}}}}}`)
+	current := []byte(strings.Replace(string(pinned), `"description":{"type":"string"}`, `"description":{"type":"integer"}`, 1))
+	changes, err := Analyze(pinned, current)
+	if err != nil || len(changes) != 1 || changes[0].Category != CategorySchema {
+		t.Fatalf("Analyze() = %#v, %v", changes, err)
+	}
+}
+
 func TestAnalyzeRejectsInvalidDocuments(t *testing.T) {
 	for _, value := range [][]byte{nil, []byte(`{}`), []byte(`{"paths":{"/repos":false}}`), []byte(`{"paths":{"/repos":{"get":false}}}`)} {
 		if _, err := Analyze(value, []byte(`{"paths":{"/ok":{"get":{}}}}`)); err == nil {
@@ -90,5 +99,35 @@ func TestAnalyzeHandlesCyclesAndRejectsMissingReferences(t *testing.T) {
 	missing := []byte(`{"paths":{"/node":{"get":{"responses":{"200":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Missing"}}}}}}}}}`)
 	if _, err := Analyze(missing, missing); err == nil {
 		t.Fatal("unresolved local reference accepted")
+	}
+}
+
+func TestAnalyzeResolvesReferencedPathItems(t *testing.T) {
+	pinned := []byte(`{"components":{"pathItems":{"Repos":{"get":{"operationId":"repos/list","responses":{"200":{}}}}}},"paths":{"/repos":{"$ref":"#/components/pathItems/Repos","summary":"Local documentation"}}}`)
+	current := []byte(`{"components":{"pathItems":{"Repos":{"get":{"operationId":"repos/list","responses":{"200":{}}},"post":{"operationId":"repos/create","responses":{"201":{}}}}}},"paths":{"/repos":{"$ref":"#/components/pathItems/Repos"}}}`)
+	changes, err := Analyze(pinned, current)
+	if err != nil || len(changes) != 1 || changes[0].Kind != "added" || changes[0].Key != "POST /repos" {
+		t.Fatalf("Analyze() = %#v, %v", changes, err)
+	}
+	cyclic := []byte(`{"components":{"pathItems":{"Repos":{"$ref":"#/components/pathItems/Repos"}}},"paths":{"/repos":{"$ref":"#/components/pathItems/Repos"}}}`)
+	if _, err := Analyze(cyclic, cyclic); err == nil {
+		t.Fatal("cyclic Path Item accepted")
+	}
+	for _, invalid := range [][]byte{
+		[]byte(`{"paths":{"/repos":{"$ref":"#/components/pathItems/Missing"}}}`),
+		[]byte(`{"components":{"pathItems":{"Repos":"invalid"}},"paths":{"/repos":{"$ref":"#/components/pathItems/Repos"}}}`),
+	} {
+		if _, err := Analyze(invalid, invalid); err == nil {
+			t.Fatalf("invalid Path Item reference accepted: %s", invalid)
+		}
+	}
+}
+
+func TestAnalyzeResolvesReferencedSecuritySchemes(t *testing.T) {
+	pinned := []byte(`{"security":[{"bearer":[]}],"components":{"securitySchemes":{"bearer":{"$ref":"#/components/securitySchemes/base"},"base":{"type":"http","scheme":"bearer"}}},"paths":{"/repos":{"get":{"responses":{"200":{}}}}}}`)
+	current := []byte(strings.Replace(string(pinned), `"type":"http","scheme":"bearer"`, `"type":"apiKey","in":"header","name":"authorization"`, 1))
+	changes, err := Analyze(pinned, current)
+	if err != nil || len(changes) != 1 || changes[0].Category != CategoryAuthentication {
+		t.Fatalf("Analyze() = %#v, %v", changes, err)
 	}
 }

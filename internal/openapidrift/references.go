@@ -86,6 +86,43 @@ func pointerChild(current any, token string) (any, bool) {
 	}
 }
 
+func resolvePathItem(root map[string]any, raw any) (map[string]any, error) {
+	item, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected object")
+	}
+	return resolvePathItemReferences(root, item, map[string]bool{})
+}
+
+func resolvePathItemReferences(root, item map[string]any, seen map[string]bool) (map[string]any, error) {
+	reference, _ := item["$ref"].(string)
+	if !strings.HasPrefix(reference, "#/") {
+		return cloneMap(item), nil
+	}
+	if seen[reference] {
+		return nil, fmt.Errorf("cyclic Path Item reference %q", reference)
+	}
+	seen[reference] = true
+	resolved, err := resolvePointer(root, reference)
+	if err != nil {
+		return nil, err
+	}
+	target, ok := resolved.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("path item reference %q is not an object", reference)
+	}
+	result, err := resolvePathItemReferences(root, target, seen)
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range item {
+		if key != "$ref" {
+			result[key] = value
+		}
+	}
+	return result, nil
+}
+
 func slicePointerChild(current []any, token string) (any, bool) {
 	index, err := strconv.Atoi(token)
 	if err != nil || index < 0 || index >= len(current) {
@@ -94,11 +131,17 @@ func slicePointerChild(current []any, token string) (any, bool) {
 	return current[index], true
 }
 
-func effectiveSecurity(root map[string]any, requirements any) any {
+func effectiveSecurity(root map[string]any, requirements any) (any, error) {
+	schemes := selectedSecuritySchemes(root, requirements)
+	references, err := referencedComponents(root, []any{schemes})
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"requirements": requirements,
-		"schemes":      selectedSecuritySchemes(root, requirements),
-	}
+		"schemes":      schemes,
+		"references":   references,
+	}, nil
 }
 
 func selectedSecuritySchemes(root map[string]any, requirements any) map[string]any {
