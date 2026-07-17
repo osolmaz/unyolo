@@ -160,7 +160,11 @@ func renderAccess(approval approvalnotify.Approval, reasonLimit int) string {
 func renderWarnings(warnings []approvalview.Warning, count, textLimit int) string {
 	lines := make([]string, 0, count)
 	for _, warning := range warnings[:count] {
-		lines = append(lines, riskEmoji(warning.Severity)+" <b>"+warningLabel(warning.Severity)+":</b> "+escaped(warning.Text, textLimit))
+		label := "Warning"
+		if warning.Severity == approvalview.RiskCritical {
+			label = "Critical warning"
+		}
+		lines = append(lines, riskEmoji(warning.Severity)+" <b>"+label+":</b> "+escaped(warning.Text, textLimit))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -209,13 +213,6 @@ func riskEmoji(risk approvalview.Risk) string {
 		return "⚠️"
 	}
 	return "ℹ️"
-}
-
-func warningLabel(risk approvalview.Risk) string {
-	if risk == approvalview.RiskCritical {
-		return "Critical warning"
-	}
-	return "Warning"
 }
 
 func escaped(value string, maximum int) string {

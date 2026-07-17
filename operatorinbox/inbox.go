@@ -4,10 +4,7 @@ package operatorinbox
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/grants"
@@ -103,13 +100,13 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 		requestedMaxUses = grant.MaxUses
 	}
 	item := Item{
-		ID: grant.ID, Revision: grant.Revision, Client: safeOrEmpty(grant.Client, maxLabelBytes, false),
-		Operation: safeOrEmpty(grant.Operation, maxTargetBytes, false), Status: grant.Status,
+		ID: grant.ID, Revision: grant.Revision, Client: approvalview.SafeOrEmpty(grant.Client, maxLabelBytes, false),
+		Operation: approvalview.SafeOrEmpty(grant.Operation, maxTargetBytes, false), Status: grant.Status,
 		RequestedAt: grant.CreatedAt, PendingExpiresAt: grant.PendingExpiresAt,
 		RequestedDurationSeconds: int64(requestedDuration / time.Second), RequestedMaxUses: requestedMaxUses, MaxUses: grant.MaxUses,
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
-		Reason: safeOrEmpty(grant.Reason, maxReasonBytes, true), DecidedBy: safeOrEmpty(grant.DecidedBy, maxLabelBytes, false),
-		DecidedOnBehalfOf: safeOrEmpty(grant.DecidedOnBehalfOf, maxLabelBytes, false),
+		Reason: approvalview.SafeOrEmpty(grant.Reason, maxReasonBytes, true), DecidedBy: approvalview.SafeOrEmpty(grant.DecidedBy, maxLabelBytes, false),
+		DecidedOnBehalfOf: approvalview.SafeOrEmpty(grant.DecidedOnBehalfOf, maxLabelBytes, false),
 		Presentation:      presentation, PresentationUnavailable: unavailable,
 	}
 	if !grant.ExpiresAt.IsZero() {
@@ -121,49 +118,6 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 		item.DecidedAt = &decided
 	}
 	return item
-}
-
-func safeOrEmpty(value string, maxBytes int, multiline bool) string {
-	validator := safeSingleLineText
-	if multiline {
-		validator = safeText
-	}
-	if !validator(value, maxBytes, false) {
-		return ""
-	}
-	return value
-}
-
-func safeSingleLineText(value string, maxBytes int, required bool) bool {
-	if !validTextSize(value, maxBytes, required) {
-		return false
-	}
-	for _, char := range value {
-		if unicode.IsControl(char) {
-			return false
-		}
-	}
-	return true
-}
-
-func safeText(value string, maxBytes int, required bool) bool {
-	if !validTextSize(value, maxBytes, required) {
-		return false
-	}
-	for _, char := range value {
-		if !supportedTextRune(char) {
-			return false
-		}
-	}
-	return true
-}
-
-func validTextSize(value string, maxBytes int, required bool) bool {
-	return (!required || strings.TrimSpace(value) != "") && len(value) <= maxBytes && utf8.ValidString(value)
-}
-
-func supportedTextRune(char rune) bool {
-	return !unicode.IsControl(char) || char == '\n' || char == '\t'
 }
 
 // Store exposes the durable store to the shared HTTP transport.

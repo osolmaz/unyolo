@@ -40,6 +40,18 @@ func BoundedTitle(value string) string {
 	return value[:limit] + marker
 }
 
+// SafeOrEmpty returns a bounded safe display value or an empty string. It is
+// intended for canonical fields projected alongside a Presentation.
+func SafeOrEmpty(value string, maxBytes int, multiline bool) string {
+	if multiline && safeText(value, maxBytes, false) {
+		return value
+	}
+	if !multiline && safeSingleLineText(value, maxBytes, false) {
+		return value
+	}
+	return ""
+}
+
 // Risk is a provider-supplied display classification with a fixed vocabulary.
 type Risk string
 

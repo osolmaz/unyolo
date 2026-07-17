@@ -79,3 +79,18 @@ func TestBoundedTitlePreservesUTF8AndCanonicalBound(t *testing.T) {
 		t.Fatalf("BoundedTitle(short) = %q", got)
 	}
 }
+
+func TestSafeOrEmpty(t *testing.T) {
+	if got := SafeOrEmpty("line\nvalue", 20, true); got != "line\nvalue" {
+		t.Fatalf("SafeOrEmpty(multiline) = %q", got)
+	}
+	for _, got := range []string{
+		SafeOrEmpty("line\nvalue", 20, false),
+		SafeOrEmpty("bad\x00value", 20, true),
+		SafeOrEmpty(strings.Repeat("x", 21), 20, false),
+	} {
+		if got != "" {
+			t.Fatalf("SafeOrEmpty(unsafe) = %q", got)
+		}
+	}
+}
