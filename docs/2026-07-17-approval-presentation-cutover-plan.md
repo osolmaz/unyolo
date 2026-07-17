@@ -2,7 +2,7 @@
 
 Date: 2026-07-17
 
-Status: ready for implementation
+Status: implemented
 
 ## Objective
 
@@ -462,3 +462,30 @@ The cutover is ready to merge only when:
    broker text remains.
 10. Go, Slophammer, protocol-generation, OpenClaw plugin, packed-install,
     browser, and real Telegram smoke-test gates pass.
+
+## Implementation Report
+
+Completed on 2026-07-17.
+
+- `approvalview` now owns the bounded provider-neutral presentation model,
+  validation, safe fallback, and provider presenter contract.
+- `approvalnotify` projects one semantic approval used by the operator inbox,
+  Telegram, provider notification outboxes, and recovery paths.
+- `notify/telegram` owns the canonical escaped HTML layout, fixed controls,
+  typed lifecycle rendering, callback answers, and durable reference builder.
+- HF, GitHub, and sudo retain only operation-specific presentation semantics;
+  their handwritten Telegram layouts and status wording were deleted.
+- Operator V1 carries the exact renderer, semantic snapshot, rendered message,
+  and SHA-256 bindings needed for atomic callback recovery.
+- JSON and SQLite stores reject incomplete or digest-invalid Telegram records;
+  no old notification-shape reader or migration was added.
+- Catalog-wide presentation tests cover every requestable HF and GitHub
+  operation and the complete sudo command catalog fixture.
+- Protocol drift, architecture, generated GitHub surfaces, SQL, migrations,
+  formatting, vet, all Go tests, race tests, aggregate coverage, golangci-lint,
+  Slophammer, vulnerability, and secret scans pass.
+- The OpenClaw package passes 53 unit tests, production build, packed-install
+  verification, and 54 browser tests across desktop and mobile Chromium,
+  Firefox, and WebKit.
+- Live Telegram delivery smokes pass for HF, GitHub, and sudo using the shared
+  renderer and fixed inactive test controls.
