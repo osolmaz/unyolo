@@ -3,6 +3,7 @@ package credentialprofile
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,12 @@ func TestEmbeddedRequirementsAreCanonicalAndValid(t *testing.T) {
 	}
 	if err := Validate(decoded); err != nil {
 		t.Fatal(err)
+	}
+	if slices.Contains(decoded.PersonalPermissions, "resourceGroup.write") {
+		t.Fatal("resourceGroup.write is organization-scoped and must not be requested for a user")
+	}
+	if !slices.Contains(decoded.OrganizationPermissions, "resourceGroup.write") {
+		t.Fatal("organization permissions must include resourceGroup.write")
 	}
 }
 
