@@ -15,7 +15,6 @@
     "repo.access.read",
     "repo.content.read",
     "repo.write",
-    "resourceGroup.write",
     "sql-console.embed.write",
     "user.billing.read",
     "user.mcp.read",
