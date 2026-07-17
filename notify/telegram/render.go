@@ -54,24 +54,32 @@ func RenderApproval(approval approvalnotify.Approval) (string, error) {
 }
 
 func (limits *renderLimits) shrink() bool {
-	switch {
-	case limits.facts > 0:
+	if limits.facts > 0 {
 		limits.facts--
-	case limits.includeSummary:
-		limits.includeSummary = false
-	case limits.warnings > 1:
-		limits.warnings--
-	case reduceLimit(&limits.reason, 700, 120):
-	case reduceLimit(&limits.target, 240, 80):
-	case reduceLimit(&limits.title, 180, 80):
-	case reduceLimit(&limits.operation, 180, 80):
-	case reduceLimit(&limits.warning, 240, 100):
-	case reduceLimit(&limits.requester, 80, 40):
-	case reduceLimit(&limits.broker, 100, 40):
-	default:
-		return false
+		return true
 	}
-	return true
+	if limits.includeSummary {
+		limits.includeSummary = false
+		return true
+	}
+	if limits.warnings > 1 {
+		limits.warnings--
+		return true
+	}
+	values := []struct {
+		value         *int
+		step, minimum int
+	}{
+		{&limits.reason, 700, 120}, {&limits.target, 240, 80}, {&limits.title, 180, 80},
+		{&limits.operation, 180, 80}, {&limits.warning, 240, 100}, {&limits.requester, 80, 40},
+		{&limits.broker, 100, 40},
+	}
+	for _, value := range values {
+		if reduceLimit(value.value, value.step, value.minimum) {
+			return true
+		}
+	}
+	return false
 }
 
 func reduceLimit(value *int, step, minimum int) bool {
@@ -108,38 +116,53 @@ func renderPending(approval approvalnotify.Approval, limits renderLimits) string
 	}
 	sections = append(sections, title)
 
-	if limits.facts > 0 || approval.Presentation.PlanHash != "" {
-		lines := []string{"<b>Details</b>"}
-		for _, fact := range approval.Presentation.Facts[:limits.facts] {
-			lines = append(lines, "• <b>"+escaped(fact.Label, 60)+":</b> "+escaped(fact.Value, 220))
-		}
-		if approval.Presentation.PlanHash != "" && !hasPlanHashFact(approval.Presentation.Facts[:limits.facts]) {
-			lines = append(lines, "• <b>Plan digest:</b> "+escaped(approval.Presentation.PlanHash, 128))
-		}
-		if limits.facts < len(approval.Presentation.Facts) {
-			lines = append(lines, "• <i>Additional bounded details are available in the operator inbox.</i>")
-		}
-		sections = append(sections, strings.Join(lines, "\n"))
+	if details := renderDetails(approval, limits.facts); details != "" {
+		sections = append(sections, details)
 	}
 
-	sections = append(sections, strings.Join([]string{
-		"📝 <b>Reason:</b> " + escaped(approval.Reason, limits.reason),
-		"⏱️ <b>Access:</b> " + durationText(approval.RequestedDurationSeconds),
-		"🔁 <b>Uses:</b> " + usesText(approval.MaxUses),
-		"⌛ <b>Request expires:</b> " + approval.PendingExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
-	}, "\n"))
+	sections = append(sections, renderAccess(approval, limits.reason))
 
-	if limits.warnings > 0 {
-		lines := make([]string, 0, limits.warnings)
-		for _, warning := range approval.Presentation.Warnings[:limits.warnings] {
-			lines = append(lines, riskEmoji(warning.Severity)+" <b>"+warningLabel(warning.Severity)+":</b> "+escaped(warning.Text, limits.warning))
-		}
-		sections = append(sections, strings.Join(lines, "\n"))
+	if warnings := renderWarnings(approval.Presentation.Warnings, limits.warnings, limits.warning); warnings != "" {
+		sections = append(sections, warnings)
 	}
 	if approval.PresentationUnavailable {
 		sections = append(sections, "⚠️ <b>Presentation unavailable:</b> Review the canonical request in the operator inbox before deciding.")
 	}
 	return strings.Join(sections, "\n\n")
+}
+
+func renderDetails(approval approvalnotify.Approval, factCount int) string {
+	if factCount == 0 && approval.Presentation.PlanHash == "" {
+		return ""
+	}
+	lines := []string{"<b>Details</b>"}
+	for _, fact := range approval.Presentation.Facts[:factCount] {
+		lines = append(lines, "• <b>"+escaped(fact.Label, 60)+":</b> "+escaped(fact.Value, 220))
+	}
+	if approval.Presentation.PlanHash != "" && !hasPlanHashFact(approval.Presentation.Facts[:factCount]) {
+		lines = append(lines, "• <b>Plan digest:</b> "+escaped(approval.Presentation.PlanHash, 128))
+	}
+	if factCount < len(approval.Presentation.Facts) {
+		lines = append(lines, "• <i>Additional bounded details are available in the operator inbox.</i>")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderAccess(approval approvalnotify.Approval, reasonLimit int) string {
+	return strings.Join([]string{
+		"📝 <b>Reason:</b> " + escaped(approval.Reason, reasonLimit),
+		"⏱️ <b>Access:</b> " + durationText(approval.RequestedDurationSeconds),
+		"🔁 <b>Uses:</b> " + usesText(approval.MaxUses),
+		"⌛ <b>Request expires:</b> " + approval.PendingExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
+	}, "\n")
+}
+
+func renderWarnings(warnings []approvalview.Warning, count, textLimit int) string {
+	lines := make([]string, 0, count)
+	for _, warning := range warnings[:count] {
+		lines = append(lines, riskEmoji(warning.Severity)+" <b>"+warningLabel(warning.Severity)+":</b> "+escaped(warning.Text, textLimit))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func visibleLength(text string) int {
@@ -239,37 +262,31 @@ func renderedDigest(text string) string {
 	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
+var terminalStatusText = map[notify.StatusKind]string{
+	notify.StatusActive:         "✅ Approved. Access is active.",
+	notify.StatusDenied:         "❌ Denied. Access was not granted.",
+	notify.StatusPendingExpired: "⌛ Expired. The request was not approved in time.",
+	notify.StatusActiveExpired:  "⌛ Expired. Access is closed.",
+	notify.StatusConsumed:       "✅ Used. Access is now closed.",
+	notify.StatusRevoked:        "🚫 Revoked. Access is closed.",
+	notify.StatusCanceled:       "🚫 Canceled. The approval request is closed.",
+	notify.StatusRetained:       "⚠️ Result is ambiguous. Access is closed pending operator review.",
+	notify.StatusSuperseded:     "⚠️ Superseded. Use the latest approval message.",
+	notify.StatusUnavailable:    "⚠️ Unavailable. The approval request no longer exists.",
+}
+
 func renderStatus(status notify.Status) string {
-	switch status.Kind {
-	case notify.StatusActive:
-		return "✅ Approved. Access is active."
-	case notify.StatusDenied:
-		return "❌ Denied. Access was not granted."
-	case notify.StatusPendingExpired:
-		return "⌛ Expired. The request was not approved in time."
-	case notify.StatusActiveExpired:
-		return "⌛ Expired. Access is closed."
-	case notify.StatusConsumed:
-		return "✅ Used. Access is now closed."
-	case notify.StatusRevoked:
-		return "🚫 Revoked. Access is closed."
-	case notify.StatusCanceled:
-		return "🚫 Canceled. The approval request is closed."
-	case notify.StatusRetained:
-		return "⚠️ Result is ambiguous. Access is closed pending operator review."
-	case notify.StatusUsedActive:
+	if status.Kind == notify.StatusUsedActive {
 		remaining, finite := status.MaxUses.Remaining(status.UsedCount, status.ReservedCount)
 		if !finite {
 			return "✅ Used. Access remains active until expiry."
 		}
 		return fmt.Sprintf("✅ Used %d time(s). %d use(s) remain.", status.UsedCount, remaining)
-	case notify.StatusSuperseded:
-		return "⚠️ Superseded. Use the latest approval message."
-	case notify.StatusUnavailable:
-		return "⚠️ Unavailable. The approval request no longer exists."
-	default:
-		return "🚫 Closed. The approval request is no longer pending."
 	}
+	if text := terminalStatusText[status.Kind]; text != "" {
+		return text
+	}
+	return "🚫 Closed. The approval request is no longer pending."
 }
 
 func answerText(answer notify.Answer) string {

@@ -315,6 +315,13 @@ func validateMessageRef(ref MessageRef) error {
 	if len(ref.Kind) > 32 || len(ref.Renderer) > 64 || len(ref.Text) > 32*1024 || len(ref.PresentationJSON) > 64*1024 {
 		return errors.New("notification reference exceeds bounds")
 	}
+	if err := validatePresentationSnapshot(ref); err != nil {
+		return err
+	}
+	return validateRenderedSnapshot(ref)
+}
+
+func validatePresentationSnapshot(ref MessageRef) error {
 	if ref.PresentationJSON != "" {
 		var snapshot any
 		if err := strictjson.Decode([]byte(ref.PresentationJSON), &snapshot, false); err != nil {
@@ -326,6 +333,10 @@ func validateMessageRef(ref MessageRef) error {
 	} else if ref.PresentationDigest != "" {
 		return errors.New("notification presentation snapshot is missing")
 	}
+	return nil
+}
+
+func validateRenderedSnapshot(ref MessageRef) error {
 	if ref.RenderedDigest != "" && !matchesDigest(ref.Text, ref.RenderedDigest) {
 		return errors.New("notification rendered digest does not match")
 	}

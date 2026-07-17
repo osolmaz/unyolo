@@ -109,11 +109,8 @@ func Validate(value Presentation) error {
 	if !validRisk(value.Risk) {
 		return errors.New("invalid presentation risk")
 	}
-	if !safeSingleLineText(value.Title, maxTitleBytes, true) || !safeSingleLineText(value.Target, maxTargetBytes, true) {
-		return errors.New("invalid presentation text")
-	}
-	if !safeText(value.Summary, maxSummaryBytes, false) || !safeSingleLineText(value.PlanHash, maxPlanHashBytes, false) {
-		return errors.New("invalid presentation details")
+	if err := validatePresentationText(value); err != nil {
+		return err
 	}
 	if err := validateFacts(value.Facts, maxFacts, "presentation"); err != nil {
 		return err
@@ -121,10 +118,24 @@ func Validate(value Presentation) error {
 	if err := validateFacts(value.Audit, maxAudits, "audit"); err != nil {
 		return err
 	}
-	if len(value.Warnings) > maxWarnings {
+	return validateWarnings(value.Warnings)
+}
+
+func validatePresentationText(value Presentation) error {
+	if !safeSingleLineText(value.Title, maxTitleBytes, true) || !safeSingleLineText(value.Target, maxTargetBytes, true) {
+		return errors.New("invalid presentation text")
+	}
+	if !safeText(value.Summary, maxSummaryBytes, false) || !safeSingleLineText(value.PlanHash, maxPlanHashBytes, false) {
+		return errors.New("invalid presentation details")
+	}
+	return nil
+}
+
+func validateWarnings(warnings []Warning) error {
+	if len(warnings) > maxWarnings {
 		return errors.New("too many presentation warnings")
 	}
-	for _, warning := range value.Warnings {
+	for _, warning := range warnings {
 		if !validRisk(warning.Severity) || !safeText(warning.Text, maxWarningBytes, true) {
 			return errors.New("invalid presentation warning")
 		}
