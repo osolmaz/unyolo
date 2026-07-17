@@ -18,17 +18,35 @@ type Presenter struct{ Catalog *catalog.Snapshot }
 
 func (p Presenter) Present(_ context.Context, grant grants.Grant) (approvalview.Presentation, error) {
 	commandID := corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID])
-	if p.Catalog == nil {
-		return approvalview.Presentation{}, fmt.Errorf("sudo command %q is unavailable", commandID)
-	}
-	command, ok := p.Catalog.Command(commandID)
-	if !ok {
-		return approvalview.Presentation{}, fmt.Errorf("sudo command %q is unavailable", commandID)
+	command, err := resolveCommand(p.Catalog, commandID)
+	if err != nil {
+		return approvalview.Presentation{}, err
 	}
 	target := corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName])
 	if target == "" {
 		return approvalview.Presentation{}, errorsNewTarget()
 	}
+	facts := commandFacts(command, target, grant.Attrs)
+	presentationRisk := risk(command.Risk)
+	return approvalview.Presentation{
+		Risk: presentationRisk, Title: "Run privileged command", Summary: commandSummary(command, target, len(facts) > 4),
+		Target: target, Facts: facts,
+		Warnings: []approvalview.Warning{{Severity: presentationRisk, Text: "This command runs with another user's privileges on the host. Review the target user and bounded arguments carefully."}},
+	}, nil
+}
+
+func resolveCommand(snapshot *catalog.Snapshot, commandID string) (catalog.Command, error) {
+	if snapshot == nil {
+		return catalog.Command{}, fmt.Errorf("sudo command %q is unavailable", commandID)
+	}
+	command, ok := snapshot.Command(commandID)
+	if !ok {
+		return catalog.Command{}, fmt.Errorf("sudo command %q is unavailable", commandID)
+	}
+	return command, nil
+}
+
+func commandFacts(command catalog.Command, target string, attrs map[string][]string) []approvalview.Fact {
 	facts := []approvalview.Fact{
 		{Label: "Command", Value: command.ID},
 		{Label: "Target user", Value: target},
@@ -39,24 +57,23 @@ func (p Presenter) Present(_ context.Context, grant grants.Grant) (approvalview.
 		if argument.Slot == "" {
 			continue
 		}
-		if value := corepolicy.FirstValue(grant.Attrs[sudopolicy.ArgumentPrefix+argument.Slot]); value != "" {
+		if value := corepolicy.FirstValue(attrs[sudopolicy.ArgumentPrefix+argument.Slot]); value != "" {
 			facts = append(facts, approvalview.Fact{Label: "Argument " + argument.Slot, Value: value})
 		}
 	}
+	return facts
+}
+
+func commandSummary(command catalog.Command, target string, bounded bool) string {
 	argumentSummary := "Arguments are fixed by the catalog."
-	if len(facts) > 4 {
+	if bounded {
 		argumentSummary = "Arguments are fixed or bounded by the catalog."
 	}
 	summary := fmt.Sprintf("Run %s once as %s. %s", command.ID, target, argumentSummary)
 	if command.Description != "" {
 		summary = command.Description + " " + summary
 	}
-	presentationRisk := risk(command.Risk)
-	return approvalview.Presentation{
-		Risk: risk(command.Risk), Title: "Run privileged command", Summary: summary,
-		Target: target, Facts: facts,
-		Warnings: []approvalview.Warning{{Severity: presentationRisk, Text: "This command runs with another user's privileges on the host. Review the target user and bounded arguments carefully."}},
-	}, nil
+	return summary
 }
 
 func risk(value string) approvalview.Risk {

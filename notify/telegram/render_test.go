@@ -138,3 +138,17 @@ func TestRenderApprovalRejectsInvalidSemanticEnvelope(t *testing.T) {
 		t.Fatal("RenderApproval() accepted an invalid warning")
 	}
 }
+
+func TestRenderLimitsExhaustDeterministicReductionOrder(t *testing.T) {
+	limits := renderLimits{facts: 1, warnings: 2, broker: 41, requester: 41, operation: 81, target: 81, title: 81,
+		summary: 600, reason: 121, warning: 101, includeSummary: true}
+	steps := 0
+	for limits.shrink() {
+		steps++
+	}
+	if steps != 10 || limits.facts != 0 || limits.warnings != 1 || limits.includeSummary ||
+		limits.reason != 120 || limits.target != 80 || limits.title != 80 || limits.operation != 80 ||
+		limits.warning != 100 || limits.requester != 40 || limits.broker != 40 {
+		t.Fatalf("exhausted limits = %+v after %d steps", limits, steps)
+	}
+}

@@ -129,24 +129,20 @@ func completedDecisionResult(request operatorv1.Request) notify.DecisionResult {
 
 func statusForRequest(request operatorv1.Request) notify.Status {
 	status := notify.Status{UsedCount: request.UsedCount, MaxUses: request.GrantedMaxUses}
-	switch request.Status {
-	case grants.StatusActive:
-		status.Kind = notify.StatusActive
-	case grants.StatusDenied:
-		status.Kind = notify.StatusDenied
-	case grants.StatusExpired:
+	if request.Status == grants.StatusExpired {
 		if request.ActiveExpiresAt == nil {
 			status.Kind = notify.StatusPendingExpired
 		} else {
 			status.Kind = notify.StatusActiveExpired
 		}
-	case grants.StatusConsumed:
-		status.Kind = notify.StatusConsumed
-	case grants.StatusRevoked:
-		status.Kind = notify.StatusRevoked
-	case grants.StatusCanceled:
-		status.Kind = notify.StatusCanceled
-	default:
+		return status
+	}
+	status.Kind = map[grants.Status]notify.StatusKind{
+		grants.StatusActive: notify.StatusActive, grants.StatusDenied: notify.StatusDenied,
+		grants.StatusConsumed: notify.StatusConsumed, grants.StatusRevoked: notify.StatusRevoked,
+		grants.StatusCanceled: notify.StatusCanceled,
+	}[request.Status]
+	if status.Kind == "" {
 		status.Kind = notify.StatusClosed
 	}
 	return status

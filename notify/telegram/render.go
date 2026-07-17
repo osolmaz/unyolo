@@ -54,32 +54,40 @@ func RenderApproval(approval approvalnotify.Approval) (string, error) {
 }
 
 func (limits *renderLimits) shrink() bool {
-	if limits.facts > 0 {
-		limits.facts--
-		return true
+	steps := []func() bool{
+		func() bool { return decrement(&limits.facts, 0) },
+		func() bool { return disable(&limits.includeSummary) },
+		func() bool { return decrement(&limits.warnings, 1) },
+		func() bool { return reduceLimit(&limits.reason, 700, 120) },
+		func() bool { return reduceLimit(&limits.target, 240, 80) },
+		func() bool { return reduceLimit(&limits.title, 180, 80) },
+		func() bool { return reduceLimit(&limits.operation, 180, 80) },
+		func() bool { return reduceLimit(&limits.warning, 240, 100) },
+		func() bool { return reduceLimit(&limits.requester, 80, 40) },
+		func() bool { return reduceLimit(&limits.broker, 100, 40) },
 	}
-	if limits.includeSummary {
-		limits.includeSummary = false
-		return true
-	}
-	if limits.warnings > 1 {
-		limits.warnings--
-		return true
-	}
-	values := []struct {
-		value         *int
-		step, minimum int
-	}{
-		{&limits.reason, 700, 120}, {&limits.target, 240, 80}, {&limits.title, 180, 80},
-		{&limits.operation, 180, 80}, {&limits.warning, 240, 100}, {&limits.requester, 80, 40},
-		{&limits.broker, 100, 40},
-	}
-	for _, value := range values {
-		if reduceLimit(value.value, value.step, value.minimum) {
+	for _, step := range steps {
+		if step() {
 			return true
 		}
 	}
 	return false
+}
+
+func decrement(value *int, minimum int) bool {
+	if *value <= minimum {
+		return false
+	}
+	*value--
+	return true
+}
+
+func disable(value *bool) bool {
+	if !*value {
+		return false
+	}
+	*value = false
+	return true
 }
 
 func reduceLimit(value *int, step, minimum int) bool {
