@@ -214,7 +214,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		t.Fatalf("idempotent grant status=%d messages=%d, want 202 and one message", resp.StatusCode, len(notifier.messages))
 	}
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != "Grant approved" {
+	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram answer = %+v", answer)
 	}
 
@@ -232,7 +232,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	if upstreamRef := strings.TrimSpace(runGit(t, upstreamRepo, "rev-parse", "refs/heads/main")); upstreamRef != initial {
 		t.Fatalf("upstream main after grant = %s, want %s", upstreamRef, initial)
 	}
-	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "Access is now closed") {
+	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusConsumed {
 		t.Fatalf("grant use notification updates = %+v", notifier.updates)
 	}
 	output, err = runClientGitErr(clone, "push", "origin", ":main")
@@ -247,7 +247,7 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		strings.Contains(got, msg.DecisionToken) {
 		t.Fatalf("audit missing grant-used or leaked secret material:\n%s", got)
 	}
-	if replay := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionDeny, msg)); replay.Answer != "Grant already used" || replay.MessageStatus != "Used. Access is now closed." {
+	if replay := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionDeny, msg)); replay.Answer != notify.AnswerAlreadyConsumed || replay.MessageStatus.Kind != notify.StatusConsumed {
 		t.Fatalf("replay answer = %+v", replay)
 	}
 }
@@ -969,7 +969,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	}
 	msg := notifier.messages[0]
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != "Grant approved" {
+	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram answer = %+v", answer)
 	}
 
@@ -978,7 +978,7 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	if err == nil || !strings.Contains(output, "upstream rejected") {
 		t.Fatalf("upstream-rejected force push err=%v output:\n%s", err, output)
 	}
-	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "ambiguous") {
+	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusRetained {
 		t.Fatalf("grant retained-reservation updates = %+v, want ambiguous update", notifier.updates)
 	}
 	updated, err := handler.grants.Get(msg.GrantID)
@@ -1049,7 +1049,7 @@ func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T
 	}
 	msg := notifier.messages[0]
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != "Grant approved" {
+	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram answer = %+v", answer)
 	}
 
@@ -1058,7 +1058,7 @@ func TestGrantBackedForwardErrorRetainsReservationAndUpdatesMessage(t *testing.T
 	if err == nil || !strings.Contains(output, "HTTP 403") {
 		t.Fatalf("forward-error force push err=%v output:\n%s", err, output)
 	}
-	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "ambiguous") {
+	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusRetained {
 		t.Fatalf("grant forward-error updates = %+v, want ambiguous update", notifier.updates)
 	}
 	updated, err := handler.grants.Get(msg.GrantID)
@@ -1134,7 +1134,7 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 	if updated.Status != grants.StatusActive || updated.ReservedCount != 1 || updated.UsedCount != 0 || !updated.ReservationRetained {
 		t.Fatalf("grant after client write error = %+v, want active with retained reservation", updated)
 	}
-	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "ambiguous") {
+	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusRetained {
 		t.Fatalf("grant client-write updates = %+v, want ambiguous update", notifier.updates)
 	}
 }

@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"errors"
+	"html"
 
 	"github.com/osolmaz/brokerkit/notify"
 )
@@ -40,24 +41,24 @@ func offsetAfterUpdate(offset, updateID int64) int64 {
 }
 
 func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) bool {
-	result := notify.DecisionResult{Answer: c.ignoredAnswer}
+	result := notify.DecisionResult{Answer: notify.AnswerIgnored}
 	if decision.ChatID == c.chatID {
 		result = c.normalizeDecisionResult(handler(ctx, decision))
 		if result.Retry {
 			return true
 		}
-		if result.MessageStatus != "" {
-			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
-			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, decision.MessageText, result.MessageStatus)
+		if result.MessageStatus.Kind != "" {
+			_ = c.answerCallback(ctx, decision.CallbackID, answerText(result.Answer))
+			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, html.EscapeString(decision.MessageText), result.MessageStatus)
 			return false
 		}
 		if result.ClearButtons {
-			_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
+			_ = c.answerCallback(ctx, decision.CallbackID, answerText(result.Answer))
 			_ = c.clearDecisionButtons(ctx, decision)
 			return false
 		}
 	}
-	_ = c.answerCallback(ctx, decision.CallbackID, result.Answer)
+	_ = c.answerCallback(ctx, decision.CallbackID, answerText(result.Answer))
 	return false
 }
 

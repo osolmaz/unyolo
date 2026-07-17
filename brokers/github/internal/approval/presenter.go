@@ -30,9 +30,9 @@ func (Presenter) Present(_ context.Context, grant grants.Grant) (approvalview.Pr
 
 func operationTitle(operation string) string {
 	if descriptor, found := opcatalog.ByName(operation); found {
-		return "GitHub: " + descriptor.Summary
+		return approvalview.BoundedTitle("GitHub: " + strings.Join(strings.Fields(descriptor.Summary), " "))
 	}
-	return "GitHub: " + operation
+	return approvalview.BoundedTitle("GitHub: " + operation)
 }
 
 // TargetSummary renders the complete canonical target without exposing request payloads.

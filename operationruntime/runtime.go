@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
@@ -95,8 +96,8 @@ type Options[I, P, A any] struct {
 	ExecutionFailure    func(error, error) Failure
 	RecordPolicyRefusal func(agentv1.Operation, P, policy.Decision, string)
 	RecordOutcome       func(agentv1.Operation, P, string, string, int)
-	Notifier            notify.Notifier
-	ApprovalMessage     func(grants.Grant, string) notify.ApprovalMessage
+	Notifier            approvalnotify.Notifier
+	ApprovalMessage     func(context.Context, grants.Grant, string) approvalnotify.Approval
 	OperatorConfigured  bool
 	Now                 func() time.Time
 	AuthorizationGrace  time.Duration
@@ -505,7 +506,7 @@ func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Gran
 		r.observeNotification(grant.ID, "already_recorded", "")
 		return nil
 	}
-	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(claim.Grant, claim.DecisionToken))
+	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(ctx, claim.Grant, claim.DecisionToken))
 	if err = validateNotificationReference(ref, err); err != nil {
 		r.observeNotification(grant.ID, "failed", "notification_unavailable")
 		return r.settleNotificationFailure(claim, err)

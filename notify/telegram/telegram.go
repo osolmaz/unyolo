@@ -9,10 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/notify"
 )
@@ -21,7 +21,6 @@ const (
 	defaultBaseURL            = "https://api.telegram.org"
 	callbackPrefix            = "bk"
 	defaultPollTimeoutSeconds = 30
-	defaultIgnoredAnswer      = "Decision ignored"
 	defaultRoute              = "d"
 )
 
@@ -40,9 +39,6 @@ var errMessageNotModified = errors.New("telegram message is not modified")
 type Options struct {
 	PollTimeoutSeconds int
 	Route              string
-	IgnoredAnswer      string
-	ApproveText        string
-	DenyText           string
 }
 
 // Client sends approval messages through Telegram Bot API.
@@ -54,9 +50,6 @@ type Client struct {
 	pollTimeoutSeconds int
 	route              string
 	retryDelay         time.Duration
-	ignoredAnswer      string
-	approveText        string
-	denyText           string
 }
 
 // New returns a Telegram client.
@@ -90,18 +83,12 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 		pollTimeoutSeconds: opts.PollTimeoutSeconds,
 		route:              opts.Route,
 		retryDelay:         time.Second,
-		ignoredAnswer:      opts.IgnoredAnswer,
-		approveText:        opts.ApproveText,
-		denyText:           opts.DenyText,
 	}, nil
 }
 
 func normalizeOptions(opts Options) Options {
 	opts.PollTimeoutSeconds = positiveOrDefault(opts.PollTimeoutSeconds, defaultPollTimeoutSeconds)
 	opts.Route = routeOrDefault(opts.Route)
-	opts.IgnoredAnswer = stringOrDefault(opts.IgnoredAnswer, defaultIgnoredAnswer)
-	opts.ApproveText = stringOrDefault(opts.ApproveText, "Approve")
-	opts.DenyText = stringOrDefault(opts.DenyText, "Deny")
 	return opts
 }
 
@@ -119,23 +106,23 @@ func routeOrDefault(route string) string {
 	return route
 }
 
-func stringOrDefault(value string, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
 // SendApproval sends one approval message with approve/deny buttons.
-func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
-	text := RenderApproval(msg)
+func (c *Client) SendApproval(ctx context.Context, approval approvalnotify.Approval) (notify.MessageRef, error) {
+	if strings.TrimSpace(approval.GrantID) == "" || strings.TrimSpace(approval.DecisionToken) == "" {
+		return notify.MessageRef{}, errors.New("approval grant id and decision token are required")
+	}
+	text, err := RenderApproval(approval)
+	if err != nil {
+		return notify.MessageRef{}, err
+	}
 	payload := map[string]any{
-		"chat_id": c.chatID,
-		"text":    text,
+		"chat_id":    c.chatID,
+		"text":       text,
+		"parse_mode": "HTML",
 		"reply_markup": map[string]any{
 			"inline_keyboard": [][]map[string]string{{
-				{"text": c.approveText, "callback_data": callbackData(c.route, notify.ActionApprove, msg.GrantID, msg.DecisionToken)},
-				{"text": c.denyText, "callback_data": callbackData(c.route, notify.ActionDeny, msg.GrantID, msg.DecisionToken)},
+				{"text": "✅ Approve", "callback_data": callbackData(c.route, notify.ActionApprove, approval.GrantID, approval.DecisionToken)},
+				{"text": "❌ Deny", "callback_data": callbackData(c.route, notify.ActionDeny, approval.GrantID, approval.DecisionToken)},
 			}},
 		},
 	}
@@ -147,11 +134,13 @@ func (c *Client) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (
 	if chatID == 0 {
 		chatID = c.chatID
 	}
-	return notify.MessageRef{Kind: "telegram", ChatID: chatID, MessageID: response.Result.MessageID, Text: text}, nil
+	return notify.MessageRef{Kind: "telegram", Renderer: rendererID, ChatID: chatID, MessageID: response.Result.MessageID, Text: text,
+		PresentationJSON: approvalnotify.SnapshotJSON(approval), PresentationDigest: approvalnotify.PresentationDigest(approval),
+		RenderedDigest: renderedDigest(text)}, nil
 }
 
 // UpdateStatus edits an existing approval message status.
-func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status string) error {
+func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status notify.Status) error {
 	err := c.editMessageStatus(ctx, ref.ChatID, ref.MessageID, ref.Text, status)
 	if errors.Is(err, errMessageNotModified) {
 		return nil
@@ -207,47 +196,23 @@ func (c *Client) answerCallback(ctx context.Context, callbackID string, text str
 
 func (c *Client) normalizeDecisionResult(result notify.DecisionResult) notify.DecisionResult {
 	if result.Answer == "" {
-		result.Answer = c.ignoredAnswer
+		result.Answer = notify.AnswerIgnored
 	}
 	return result
 }
 
-func (c *Client) editMessageStatus(ctx context.Context, chatID int64, messageID int, text string, status string) error {
+func (c *Client) editMessageStatus(ctx context.Context, chatID int64, messageID int, text string, status notify.Status) error {
 	payload := map[string]any{
 		"chat_id":    chatID,
 		"message_id": messageID,
 		"text":       withDecisionStatus(text, status),
+		"parse_mode": "HTML",
 		"reply_markup": map[string]any{
 			"inline_keyboard": []any{},
 		},
 	}
 	var response okResponse
 	return c.post(ctx, "editMessageText", payload, &response)
-}
-
-// RenderApproval returns generic approval message text.
-func RenderApproval(msg notify.ApprovalMessage) string {
-	if strings.TrimSpace(msg.Text) != "" {
-		return strings.TrimSpace(msg.Text)
-	}
-	var builder strings.Builder
-	builder.WriteString("Approval requested\n")
-	builder.WriteString("Client: " + msg.Client + "\n")
-	builder.WriteString("Operation: " + msg.Operation + "\n")
-	builder.WriteString("Target: " + msg.Target + "\n")
-	for _, field := range msg.Fields {
-		builder.WriteString(field.Name + ": " + field.Value + "\n")
-	}
-	builder.WriteString("Reason: " + msg.Reason + "\n")
-	if msg.RequestedMinutes > 0 {
-		builder.WriteString("Minutes: " + strconv.Itoa(msg.RequestedMinutes) + "\n")
-	}
-	if msg.MaxUses.IsUnlimited() {
-		builder.WriteString("Max uses: unlimited until expiry\n")
-	} else {
-		builder.WriteString("Max uses: " + strconv.Itoa(int(msg.MaxUses)) + "\n")
-	}
-	return strings.TrimSpace(builder.String())
 }
 
 // CallbackData encodes one button callback.
@@ -410,10 +375,10 @@ func checkTelegramResponse(out any) error {
 	return nil
 }
 
-func withDecisionStatus(text string, status string) string {
-	const marker = "\n\nStatus: "
+func withDecisionStatus(text string, status notify.Status) string {
+	const marker = "\n\n<b>Status</b>\n"
 	base, _, _ := strings.Cut(text, marker)
-	return base + marker + status
+	return base + marker + renderStatus(status)
 }
 
 func wait(ctx context.Context, d time.Duration) {

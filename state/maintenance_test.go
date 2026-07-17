@@ -218,6 +218,23 @@ func TestStateExportIsDeterministicAndRedacted(t *testing.T) {
 		CreatedAt: createdAt, UpdatedAt: createdAt, PresentationJSON: []byte(`{"title":"secret title"}`), PlanDigest: digest}); err != nil {
 		t.Fatal(err)
 	}
+	before, err := database.GrantSnapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	maxUses := 1
+	auditSecret := "notification-reason-secret"
+	after := before
+	after.Grants = append(after.Grants, GrantRecord{
+		ID: "grant-1", DecisionTokenVerifier: "verifier", Client: "agent-a", Operation: "repo.delete",
+		TargetJSON: []byte(`{}`), AttrsJSON: []byte(`{}`), MetadataJSON: []byte(`{}`), Status: "pending",
+		Revision: 1, CreatedAt: createdAt, PendingExpiresAt: createdAt.Add(time.Minute), Duration: time.Minute,
+		RequestedDuration: time.Minute, PendingTimeout: time.Minute, MaxUses: &maxUses, RequestedMaxUses: &maxUses,
+		NotificationJSON: []byte(`{"renderer":"telegram-html-v1","presentation_json":"` + auditSecret + `","presentation_digest":"sha256:presentation","rendered_digest":"sha256:rendered"}`),
+	})
+	if err := database.SaveGrantSnapshot(t.Context(), before, after); err != nil {
+		t.Fatal(err)
+	}
 	first, second := filepath.Join(root, "first.json"), filepath.Join(root, "second.json")
 	if err := database.Export(t.Context(), first); err != nil {
 		t.Fatal(err)
@@ -230,13 +247,18 @@ func TestStateExportIsDeterministicAndRedacted(t *testing.T) {
 	if string(left) != string(right) {
 		t.Fatal("identical state produced nondeterministic exports")
 	}
-	for _, secret := range []string{canonicalSecret, "target-secret", "argument-secret", "reason-secret", "secret title"} {
+	for _, secret := range []string{canonicalSecret, "target-secret", "argument-secret", "reason-secret", "secret title", auditSecret} {
 		if strings.Contains(string(left), secret) {
 			t.Fatalf("export leaked %q: %s", secret, left)
 		}
 	}
 	if !strings.Contains(string(left), `"id":"op-1"`) || !strings.Contains(string(left), `"digest":"`+digest+`"`) {
 		t.Fatalf("export omitted safe references: %s", left)
+	}
+	for _, reference := range []string{`"notification_renderer":"telegram-html-v1"`, `"notification_presentation_digest":"sha256:presentation"`, `"notification_rendered_digest":"sha256:rendered"`} {
+		if !strings.Contains(string(left), reference) {
+			t.Fatalf("export omitted notification audit reference %s: %s", reference, left)
+		}
 	}
 }
 

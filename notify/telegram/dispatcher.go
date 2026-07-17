@@ -26,13 +26,13 @@ type Dispatcher struct {
 	routes map[string]OperatorSource
 }
 
-var terminalDecisionAnswers = map[grants.Status]string{
-	grants.StatusActive:   "Grant approved",
-	grants.StatusDenied:   "Grant denied",
-	grants.StatusExpired:  "Grant expired",
-	grants.StatusConsumed: "Grant already used",
-	grants.StatusRevoked:  "Grant revoked",
-	grants.StatusCanceled: "Grant canceled",
+var terminalDecisionAnswers = map[grants.Status]notify.Answer{
+	grants.StatusActive:   notify.AnswerApproved,
+	grants.StatusDenied:   notify.AnswerDenied,
+	grants.StatusExpired:  notify.AnswerAlreadyExpired,
+	grants.StatusConsumed: notify.AnswerAlreadyConsumed,
+	grants.StatusRevoked:  notify.AnswerAlreadyRevoked,
+	grants.StatusCanceled: notify.AnswerAlreadyCanceled,
 }
 
 const operatorDecisionTimeout = 15 * time.Second
@@ -58,7 +58,7 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	defer cancel()
 	source, ok := d.routes[decision.Route]
 	if !ok {
-		return notify.DecisionResult{Answer: "Approval route is unavailable", ClearButtons: true}
+		return notify.DecisionResult{Answer: notify.AnswerRouteUnavailable, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
 	}
 	current, err := source.Get(ctx, decision.GrantID)
 	if err != nil {
@@ -69,7 +69,7 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	}
 	action, ok := operatorAction(decision.Action)
 	if !ok {
-		return notify.DecisionResult{Answer: "Grant decision ignored"}
+		return notify.DecisionResult{Answer: notify.AnswerIgnored}
 	}
 	updated, err := source.Decide(ctx, current.ID, action, operatorv1.Decision{
 		ExpectedRevision: current.Revision,
@@ -107,19 +107,47 @@ func dispatcherErrorResult(err error) notify.DecisionResult {
 			return completedDecisionResult(*apiError.Current)
 		}
 		if apiError.Status == 404 {
-			return notify.DecisionResult{Answer: "Grant not found", ClearButtons: true}
+			return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
 		}
 		if apiError.Code == "invalid_decision_token" {
-			return notify.DecisionResult{Answer: "Approval request was superseded", ClearButtons: true}
+			return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
 		}
 	}
-	return notify.DecisionResult{Answer: "Broker temporarily unavailable; try again"}
+	return notify.DecisionResult{Answer: notify.AnswerUnavailable}
 }
 
 func completedDecisionResult(request operatorv1.Request) notify.DecisionResult {
 	answer := terminalDecisionAnswers[request.Status]
 	if answer == "" {
-		answer = "Grant is no longer pending"
+		answer = notify.AnswerClosed
 	}
-	return notify.DecisionResult{Answer: answer, ClearButtons: request.Status != grants.StatusPending}
+	if request.Status == grants.StatusPending {
+		return notify.DecisionResult{Answer: answer}
+	}
+	return notify.DecisionResult{Answer: answer, MessageStatus: statusForRequest(request)}
+}
+
+func statusForRequest(request operatorv1.Request) notify.Status {
+	status := notify.Status{UsedCount: request.UsedCount, MaxUses: request.GrantedMaxUses}
+	switch request.Status {
+	case grants.StatusActive:
+		status.Kind = notify.StatusActive
+	case grants.StatusDenied:
+		status.Kind = notify.StatusDenied
+	case grants.StatusExpired:
+		if request.ActiveExpiresAt == nil {
+			status.Kind = notify.StatusPendingExpired
+		} else {
+			status.Kind = notify.StatusActiveExpired
+		}
+	case grants.StatusConsumed:
+		status.Kind = notify.StatusConsumed
+	case grants.StatusRevoked:
+		status.Kind = notify.StatusRevoked
+	case grants.StatusCanceled:
+		status.Kind = notify.StatusCanceled
+	default:
+		status.Kind = notify.StatusClosed
+	}
+	return status
 }

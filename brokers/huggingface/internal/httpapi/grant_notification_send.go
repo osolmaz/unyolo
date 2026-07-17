@@ -10,7 +10,7 @@ import (
 
 func (s *Server) notifyAPICreatedGrant(w http.ResponseWriter, r *http.Request, client string, claim grants.NotificationClaim) (grants.Grant, bool) {
 	grant := claim.Grant
-	messageRef, err := s.notifier.SendApproval(r.Context(), grantApprovalMessage(grant, claim.DecisionToken))
+	messageRef, err := s.notifier.SendApproval(r.Context(), grantApprovalMessage(r.Context(), grant, claim.DecisionToken))
 	if err != nil {
 		return s.handleNotificationFailure(w, r, client, grant, "could not notify operator", false)
 	}

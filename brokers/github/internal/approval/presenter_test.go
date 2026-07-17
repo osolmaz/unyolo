@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/approvalview"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/policy"
 )
@@ -116,5 +117,28 @@ func TestRiskUsesGeneratedCatalogAndProtocolTable(t *testing.T) {
 	}
 	if got := risk("custom.force"); got != approvalview.RiskUnknown {
 		t.Fatalf("unknown risk = %q", got)
+	}
+}
+
+func TestPresenterCoversEveryCatalogOperation(t *testing.T) {
+	t.Parallel()
+	for _, descriptor := range opcatalog.MustAll() {
+		presentation, err := (Presenter{}).Present(t.Context(), grants.Grant{
+			ID: "grant-" + descriptor.Name, Operation: descriptor.Name,
+			Target: policy.Target{Kind: "repo", Fields: map[string][]string{"owner": {"example"}, "name": {"project"}}},
+		})
+		if err != nil {
+			t.Errorf("Present(%q) error = %v", descriptor.Name, err)
+			continue
+		}
+		if err := approvalview.Validate(presentation); err != nil {
+			t.Errorf("Present(%q) produced invalid presentation: %v", descriptor.Name, err)
+		}
+		if presentation.Risk == approvalview.RiskUnknown {
+			t.Errorf("Present(%q) has unknown risk", descriptor.Name)
+		}
+		if (presentation.Risk == approvalview.RiskHigh || presentation.Risk == approvalview.RiskCritical) && len(presentation.Warnings) == 0 {
+			t.Errorf("Present(%q) omitted destructive warning", descriptor.Name)
+		}
 	}
 }

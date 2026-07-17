@@ -40,7 +40,7 @@ func TestTelegramLiveSendApproval(t *testing.T) {
 		Metadata: request.Metadata, Attrs: request.Attrs, Reason: request.Reason, Duration: request.Duration,
 		MaxUses: request.MaxUses, PendingExpiresAt: time.Now().UTC().Add(5 * time.Minute),
 	}
-	_, err = client.SendApproval(context.Background(), grantApprovalMessage(grant, "not-a-real-grant"))
+	_, err = client.SendApproval(context.Background(), grantApprovalMessage(context.Background(), grant, "not-a-real-grant"))
 	if err != nil {
 		t.Fatalf("SendApproval() live error = %v", err)
 	}

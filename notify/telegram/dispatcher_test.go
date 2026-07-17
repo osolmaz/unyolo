@@ -47,7 +47,7 @@ func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
 	decision := notify.Decision{Route: RouteHuggingFace, Action: notify.ActionApprove, GrantID: "grant-1",
 		DecisionToken: "token", CallbackID: "callback", ChatID: 7, MessageID: 8, MessageText: "approval", OperatorID: 42}
 	result := dispatcher.Handle(t.Context(), decision)
-	if result.Answer != "Grant approved" || !result.ClearButtons || result.Retry || source.decideCall != 1 {
+	if result.Answer != notify.AnswerApproved || result.MessageStatus.Kind != notify.StatusActive || result.Retry || source.decideCall != 1 {
 		t.Fatalf("Handle() = %+v calls=%d", result, source.decideCall)
 	}
 	if source.action != operatorv1.ActionApprove || source.decision.ExpectedRevision != 3 ||
@@ -64,11 +64,11 @@ func TestDispatcherHandlesTerminalAndUnavailableRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteGitHub, GrantID: "grant-1"})
-	if result.Answer != "Grant denied" || !result.ClearButtons || terminal.decideCall != 0 {
+	if result.Answer != notify.AnswerDenied || result.MessageStatus.Kind != notify.StatusDenied || terminal.decideCall != 0 {
 		t.Fatalf("terminal Handle() = %+v calls=%d", result, terminal.decideCall)
 	}
 	result = dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo, GrantID: "grant-1"})
-	if result.Answer != "Approval route is unavailable" || !result.ClearButtons {
+	if result.Answer != notify.AnswerRouteUnavailable || result.MessageStatus.Kind != notify.StatusClosed {
 		t.Fatalf("missing route Handle() = %+v", result)
 	}
 }
@@ -79,15 +79,15 @@ func TestDispatcherDoesNotBlockSharedPollerOnTransientOperatorFailure(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Retry || !strings.Contains(result.Answer, "temporarily unavailable") {
+	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Retry || result.Answer != notify.AnswerUnavailable {
 		t.Fatalf("Handle() = %+v, want retryable operator answer without offset retry", result)
 	}
 	source.getErr = &operatorclient.Error{Status: 404, Code: "not_found"}
-	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Answer != "Grant not found" || !result.ClearButtons {
+	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Answer != notify.AnswerNotFound || result.MessageStatus.Kind != notify.StatusUnavailable {
 		t.Fatalf("not-found Handle() = %+v", result)
 	}
 	source.getErr = &operatorclient.Error{Status: 409, Code: "invalid_decision_token"}
-	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Answer != "Approval request was superseded" || !result.ClearButtons {
+	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Answer != notify.AnswerSuperseded || result.MessageStatus.Kind != notify.StatusSuperseded {
 		t.Fatalf("stale-token Handle() = %+v", result)
 	}
 }

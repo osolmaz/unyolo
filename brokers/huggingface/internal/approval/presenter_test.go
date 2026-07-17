@@ -58,6 +58,25 @@ func TestPresenterRiskClasses(t *testing.T) {
 	}
 }
 
+func TestPresenterCoversEveryRequestableOperation(t *testing.T) {
+	for _, operation := range hfpolicy.Operations() {
+		presentation, err := (Presenter{}).Present(t.Context(), bkgrants.Grant{
+			ID: "grant-" + string(operation), Operation: string(operation),
+			Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
+		})
+		if err != nil {
+			t.Errorf("Present(%q) error = %v", operation, err)
+			continue
+		}
+		if err := approvalview.Validate(presentation); err != nil {
+			t.Errorf("Present(%q) produced invalid presentation: %v", operation, err)
+		}
+		if (presentation.Risk == approvalview.RiskHigh || presentation.Risk == approvalview.RiskCritical) && len(presentation.Warnings) == 0 {
+			t.Errorf("Present(%q) omitted destructive warning", operation)
+		}
+	}
+}
+
 func TestPresenterShowsAmbiguousExecutionWithoutInternalCounters(t *testing.T) {
 	presentation, err := (Presenter{}).Present(t.Context(), bkgrants.Grant{
 		ID: "grant-1", Operation: string(hfpolicy.OpGitPushAppend), ReservationRetained: true, ReservedCount: 1,

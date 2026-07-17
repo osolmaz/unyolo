@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
@@ -250,7 +251,7 @@ func apiGrantRequestForRepoJSON(operation policy.Operation, repo, ref, reason, c
 	return string(data)
 }
 
-func telegramGrantDecision(action notify.Action, msg notify.ApprovalMessage) notify.Decision {
+func telegramGrantDecision(action notify.Action, msg approvalnotify.Approval) notify.Decision {
 	return notify.Decision{
 		Action:        action,
 		GrantID:       msg.GrantID,

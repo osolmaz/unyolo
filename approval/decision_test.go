@@ -23,11 +23,11 @@ func (f fakeDecider) Deny(context.Context, string, string, string, notify.Messag
 
 func TestHandleDecision(t *testing.T) {
 	decision := notify.Decision{Action: notify.ActionApprove, OperatorTag: "alice"}
-	if got := HandleDecision(t.Context(), fakeDecider{}, decision); got.Answer != "Grant approved" || got.MessageStatus != "Approved. Access is active." || got.Retry {
+	if got := HandleDecision(t.Context(), fakeDecider{}, decision); got.Answer != notify.AnswerApproved || got.MessageStatus.Kind != notify.StatusActive || got.Retry {
 		t.Fatalf("HandleDecision() = %+v", got)
 	}
 	decision.Action = notify.ActionDeny
-	if got := HandleDecision(t.Context(), fakeDecider{grant: grants.Grant{Status: grants.StatusConsumed}, denyErr: grants.ErrNotPending}, decision); got.Answer != "Grant already used" || got.MessageStatus != "Used. Access is now closed." {
+	if got := HandleDecision(t.Context(), fakeDecider{grant: grants.Grant{Status: grants.StatusConsumed}, denyErr: grants.ErrNotPending}, decision); got.Answer != notify.AnswerAlreadyConsumed || got.MessageStatus.Kind != notify.StatusConsumed {
 		t.Fatalf("HandleDecision() = %+v", got)
 	}
 	if got := HandleDecision(t.Context(), fakeDecider{denyErr: errors.New("disk")}, decision); !got.Retry {
@@ -39,23 +39,23 @@ func TestHandleDecisionFailures(t *testing.T) {
 	if got := HandleDecision(t.Context(), nil, notify.Decision{}); !got.Retry {
 		t.Fatalf("HandleDecision(nil) = %+v, want retry", got)
 	}
-	if got := HandleDecision(t.Context(), fakeDecider{}, notify.Decision{Action: "unknown"}); got.Answer != "Grant decision ignored" || got.Retry {
+	if got := HandleDecision(t.Context(), fakeDecider{}, notify.Decision{Action: "unknown"}); got.Answer != notify.AnswerIgnored || got.Retry {
 		t.Fatalf("HandleDecision(unknown) = %+v", got)
 	}
 	for _, test := range []struct {
 		name              string
 		err               error
-		want              string
+		want              notify.Answer
 		retry             bool
 		wantMessageStatus bool
 	}{
-		{name: "not found", err: grants.ErrNotFound, want: "Grant not found", wantMessageStatus: true},
-		{name: "invalid token", err: grants.ErrInvalidDecisionToken, want: "Grant decision token did not match"},
+		{name: "not found", err: grants.ErrNotFound, want: notify.AnswerNotFound, wantMessageStatus: true},
+		{name: "invalid token", err: grants.ErrInvalidDecisionToken, want: notify.AnswerSuperseded},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			decision := notify.Decision{Action: notify.ActionApprove}
 			got := HandleDecision(t.Context(), fakeDecider{approveErr: test.err}, decision)
-			if got.Answer != test.want || got.Retry != test.retry || (test.wantMessageStatus && got.MessageStatus == "") {
+			if got.Answer != test.want || got.Retry != test.retry || (test.wantMessageStatus && got.MessageStatus.Kind == "") {
 				t.Fatalf("HandleDecision() = %+v, want answer %q", got, test.want)
 			}
 		})
@@ -65,55 +65,55 @@ func TestHandleDecisionFailures(t *testing.T) {
 func TestTerminalResult(t *testing.T) {
 	tests := []struct {
 		status grants.Status
-		answer string
+		answer notify.Answer
 	}{
-		{grants.StatusActive, "Grant already approved"},
-		{grants.StatusDenied, "Grant already denied"},
-		{grants.StatusExpired, "Grant already expired"},
-		{grants.StatusConsumed, "Grant already used"},
-		{grants.StatusRevoked, "Grant already revoked"},
-		{grants.StatusCanceled, "Grant already canceled"},
-		{grants.StatusPending, "Grant is no longer pending"},
+		{grants.StatusActive, notify.AnswerAlreadyApproved},
+		{grants.StatusDenied, notify.AnswerAlreadyDenied},
+		{grants.StatusExpired, notify.AnswerAlreadyExpired},
+		{grants.StatusConsumed, notify.AnswerAlreadyConsumed},
+		{grants.StatusRevoked, notify.AnswerAlreadyRevoked},
+		{grants.StatusCanceled, notify.AnswerAlreadyCanceled},
+		{grants.StatusPending, notify.AnswerClosed},
 	}
 	for _, test := range tests {
-		got := terminalResult(test.status)
-		if got.Answer != test.answer || got.MessageStatus == "" || got.Retry {
+		got := terminalResult(grants.Grant{Status: test.status})
+		if got.Answer != test.answer || got.MessageStatus.Kind == "" || got.Retry {
 			t.Fatalf("terminalResult(%q) = %+v", test.status, got)
 		}
 	}
 }
 
-func TestStatusUpdateMessage(t *testing.T) {
+func TestStatusForUpdate(t *testing.T) {
 	tests := []struct {
 		name   string
 		update grants.StatusUpdate
-		want   string
+		want   notify.StatusKind
 	}{
 		{
 			name:   "retained reservation",
 			update: grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation},
-			want:   "Result is ambiguous. Access is closed until an operator reviews the retained use.",
+			want:   notify.StatusRetained,
 		},
 		{
 			name:   "used active grant",
 			update: grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: grants.Grant{Status: grants.StatusActive}},
-			want:   "Used. Access remains active until its limit or expiry.",
+			want:   notify.StatusUsedActive,
 		},
 		{
 			name:   "used closed grant",
 			update: grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: grants.Grant{Status: grants.StatusConsumed}},
-			want:   "Used. Access is now closed.",
+			want:   notify.StatusConsumed,
 		},
 		{
 			name:   "status change",
 			update: grants.StatusUpdate{Status: grants.StatusDenied},
-			want:   "Denied. Access was not granted.",
+			want:   notify.StatusDenied,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := StatusUpdateMessage(test.update); got != test.want {
-				t.Fatalf("StatusUpdateMessage() = %q, want %q", got, test.want)
+			if got := StatusForUpdate(test.update); got.Kind != test.want {
+				t.Fatalf("StatusForUpdate() = %+v, want %q", got, test.want)
 			}
 		})
 	}

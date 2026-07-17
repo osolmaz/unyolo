@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentconformance"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
@@ -367,7 +368,7 @@ func TestSudoApprovalTransitionsAndRecovery(t *testing.T) {
 func TestSudoTelegramNotificationIsIdempotent(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()
-	memory := &notify.Memory{}
+	memory := &approvalnotify.Memory{}
 	server.notifier = memory
 	resetOperationRuntime(t, server)
 	first, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("notified"))
@@ -403,7 +404,7 @@ func TestSudoDeliversDurableNotificationStatus(t *testing.T) {
 	}
 	server.deliverNotificationStatusUpdates(t.Context())
 	server.deliverNotificationStatusUpdates(t.Context())
-	if notifier.attempts != 2 || len(notifier.Statuses) != 1 || notifier.Statuses[0] != "Denied. Access was not granted." {
+	if notifier.attempts != 2 || len(notifier.Statuses) != 1 || notifier.Statuses[0].Kind != notify.StatusDenied {
 		t.Fatalf("notification attempts=%d statuses=%v", notifier.attempts, notifier.Statuses)
 	}
 	stored, err := server.grants.Get(grant.ID)
@@ -415,18 +416,18 @@ func TestSudoDeliversDurableNotificationStatus(t *testing.T) {
 func TestSudoNotificationSweeperStopsWithContext(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()
-	server.notifier = &notify.Memory{}
+	server.notifier = &approvalnotify.Memory{}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	server.runNotificationSweeper(ctx)
 }
 
 type retryStatusNotifier struct {
-	notify.Memory
+	approvalnotify.Memory
 	attempts int
 }
 
-func (n *retryStatusNotifier) UpdateStatus(ctx context.Context, ref notify.MessageRef, status string) error {
+func (n *retryStatusNotifier) UpdateStatus(ctx context.Context, ref notify.MessageRef, status notify.Status) error {
 	n.attempts++
 	if n.attempts == 1 {
 		return errors.New("telegram unavailable")
@@ -640,10 +641,12 @@ func (f *fakeHelper) dial(_ context.Context, _, _ string) (net.Conn, error) {
 
 type errorNotifier struct{}
 
-func (errorNotifier) SendApproval(context.Context, notify.ApprovalMessage) (notify.MessageRef, error) {
+func (errorNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
 	return notify.MessageRef{}, errors.New("offline")
 }
-func (errorNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
+func (errorNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
+	return nil
+}
 
 type fakePoller struct {
 	called  chan struct{}

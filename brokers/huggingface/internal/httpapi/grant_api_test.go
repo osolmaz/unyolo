@@ -189,7 +189,7 @@ func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
 		}
 	}
 	decision := handler.handleTelegramDecision(t.Context(), telegramGrantDecision(notify.ActionApprove, notifier.messages[0]))
-	if decision.Answer != "Grant approved" || decision.Retry {
+	if decision.Answer != notify.AnswerApproved || decision.Retry {
 		t.Fatalf("approval = %+v", decision)
 	}
 	for range 3 {

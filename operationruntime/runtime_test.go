@@ -14,6 +14,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/grants"
@@ -260,11 +261,11 @@ func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 }
 
 type captureNotifier struct {
-	message notify.ApprovalMessage
+	message approvalnotify.Approval
 	err     error
 }
 
-func (n *captureNotifier) SendApproval(_ context.Context, message notify.ApprovalMessage) (notify.MessageRef, error) {
+func (n *captureNotifier) SendApproval(_ context.Context, message approvalnotify.Approval) (notify.MessageRef, error) {
 	n.message = message
 	if n.err != nil {
 		return notify.MessageRef{}, n.err
@@ -272,7 +273,9 @@ func (n *captureNotifier) SendApproval(_ context.Context, message notify.Approva
 	return notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
 }
 
-func (*captureNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
+func (*captureNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
+	return nil
+}
 
 func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	notifier := &captureNotifier{}
@@ -633,10 +636,12 @@ func TestRuntimePolicyRefusalsAreTerminalAndCleaned(t *testing.T) {
 
 type emptyRefNotifier struct{}
 
-func (emptyRefNotifier) SendApproval(context.Context, notify.ApprovalMessage) (notify.MessageRef, error) {
+func (emptyRefNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
 	return notify.MessageRef{}, nil
 }
-func (emptyRefNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error { return nil }
+func (emptyRefNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
+	return nil
+}
 
 func TestRuntimeRejectsApprovalWithoutNotificationReference(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, requestDecision, emptyRefNotifier{}, false)
@@ -978,7 +983,7 @@ func allowThenRequestDecision(_ policy.Request, options policy.DecisionOptions) 
 }
 
 func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, policy.DecisionOptions) policy.Decision,
-	notifier notify.Notifier, operatorConfigured bool) (*Runtime[runtimeInput, runtimePlan, policy.Request], *runtimeAdapter, *agentops.Store, *grants.Store, func()) {
+	notifier approvalnotify.Notifier, operatorConfigured bool) (*Runtime[runtimeInput, runtimePlan, policy.Request], *runtimeAdapter, *agentops.Store, *grants.Store, func()) {
 	t.Helper()
 	database, err := state.Open(context.Background(), t.TempDir(), state.Options{})
 	if err != nil {
@@ -1033,8 +1038,8 @@ func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, poli
 		PlanDigest:        func(grant grants.Grant) string { return grant.Metadata["test_plan_digest"] },
 		StoredPlan:        func(digest string) (state.PlanRecord, error) { return database.Plan(context.Background(), digest) },
 		ValidateExecution: func(grants.Grant) error { return nil },
-		Notifier:          notifier, ApprovalMessage: func(grant grants.Grant, token string) notify.ApprovalMessage {
-			return notify.ApprovalMessage{GrantID: grant.ID, DecisionToken: token, Operation: grant.Operation}
+		Notifier:          notifier, ApprovalMessage: func(_ context.Context, grant grants.Grant, token string) approvalnotify.Approval {
+			return approvalnotify.Approval{GrantID: grant.ID, DecisionToken: token, Operation: grant.Operation}
 		}, OperatorConfigured: operatorConfigured,
 		RecordOutcome: func(_ agentv1.Operation, _ runtimePlan, _, _ string, status int) {
 			adapter.recordedStatus.Store(int32(status))

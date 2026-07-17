@@ -68,3 +68,14 @@ func TestValidateBoundsAndText(t *testing.T) {
 		t.Fatal("safeText() rejected supported whitespace")
 	}
 }
+
+func TestBoundedTitlePreservesUTF8AndCanonicalBound(t *testing.T) {
+	value := strings.Repeat("界", 100)
+	bounded := BoundedTitle(value)
+	if !utf8.ValidString(bounded) || len(bounded) > maxTitleBytes || len(bounded) < maxTitleBytes-3 || !strings.HasSuffix(bounded, "…") {
+		t.Fatalf("BoundedTitle() = %q (%d bytes)", bounded, len(bounded))
+	}
+	if got := BoundedTitle("short title"); got != "short title" {
+		t.Fatalf("BoundedTitle(short) = %q", got)
+	}
+}

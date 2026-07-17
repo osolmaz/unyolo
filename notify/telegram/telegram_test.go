@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestSendApprovalAndUpdateStatus(t *testing.T) {
@@ -24,27 +27,18 @@ func TestSendApprovalAndUpdateStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
-		GrantID:          "grant-1",
-		DecisionToken:    "decision-token",
-		Client:           "bob",
-		Operation:        "git.ref.delete",
-		Target:           "repo/osolmaz/demo",
-		Reason:           "cleanup branch",
-		RequestedMinutes: 5,
-		MaxUses:          1,
-	})
+	ref, err := client.SendApproval(context.Background(), validApproval())
 	if err != nil || ref.MessageID != 42 || ref.ChatID != 123 {
 		t.Fatalf("SendApproval() = %+v err=%v", ref, err)
 	}
-	if err := client.UpdateStatus(context.Background(), ref, "Approved"); err != nil {
+	if err := client.UpdateStatus(context.Background(), ref, notify.Status{Kind: notify.StatusActive}); err != nil {
 		t.Fatalf("UpdateStatus() error = %v", err)
 	}
 	if len(calls) != 2 {
 		t.Fatalf("calls = %d, want 2", len(calls))
 	}
 	assertKeyboard(t, calls[0])
-	if text := calls[1]["text"].(string); !strings.Contains(text, "Status: Approved") {
+	if text := calls[1]["text"].(string); !strings.Contains(text, "Approved. Access is active.") {
 		t.Fatalf("status edit text = %q", text)
 	}
 }
@@ -60,7 +54,7 @@ func TestUpdateStatusTreatsUnmodifiedMessageAsDelivered(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := notify.MessageRef{Kind: "telegram", ChatID: 123, MessageID: 42, Text: "Approval"}
-	if err := client.UpdateStatus(context.Background(), ref, "Approved"); err != nil {
+	if err := client.UpdateStatus(context.Background(), ref, notify.Status{Kind: notify.StatusActive}); err != nil {
 		t.Fatalf("UpdateStatus() error = %v, want idempotent success", err)
 	}
 }
@@ -76,37 +70,29 @@ func TestUpdateStatusReturnsOtherTelegramErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := notify.MessageRef{Kind: "telegram", ChatID: 123, MessageID: 42, Text: "Approval"}
-	err = client.UpdateStatus(context.Background(), ref, "Approved")
+	err = client.UpdateStatus(context.Background(), ref, notify.Status{Kind: notify.StatusActive})
 	if err == nil || strings.Contains(err.Error(), "leaked-secret") || !strings.Contains(err.Error(), "status 400") {
 		t.Fatalf("UpdateStatus() error = %v, want opaque Telegram API error", err)
 	}
 }
 
-func TestSendApprovalUsesBrokerTextAndButtonLabels(t *testing.T) {
+func TestSendApprovalUsesSharedRendererAndFixedButtons(t *testing.T) {
 	calls := make([]map[string]any, 0)
 	server := httptest.NewServer(telegramTestHandler(t, &calls))
 	defer server.Close()
 
-	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{
-		Route:       RouteGitHub,
-		ApproveText: "Yes",
-		DenyText:    "No",
-	})
+	client, err := NewWithOptions("test-token", 123, server.Client(), server.URL, Options{Route: RouteGitHub})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.SendApproval(context.Background(), notify.ApprovalMessage{
-		GrantID:       "grant-1",
-		DecisionToken: "decision-token",
-		Text:          "broker-specific approval text",
-	}); err != nil {
+	if _, err := client.SendApproval(context.Background(), validApproval()); err != nil {
 		t.Fatalf("SendApproval() error = %v", err)
 	}
-	if calls[0]["text"] != "broker-specific approval text" {
+	if !strings.Contains(calls[0]["text"].(string), "Approval needed for GitHub") || calls[0]["parse_mode"] != "HTML" {
 		t.Fatalf("message text = %q", calls[0]["text"])
 	}
 	row := calls[0]["reply_markup"].(map[string]any)["inline_keyboard"].([]any)[0].([]any)
-	if row[0].(map[string]any)["text"] != "Yes" || row[1].(map[string]any)["text"] != "No" {
+	if row[0].(map[string]any)["text"] != "✅ Approve" || row[1].(map[string]any)["text"] != "❌ Deny" {
 		t.Fatalf("button row = %+v", row)
 	}
 	route, action, _, _, ok := parseCallbackData(row[0].(map[string]any)["callback_data"].(string))
@@ -127,7 +113,7 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 
 	offset, err := client.PollOnce(context.Background(), 0, func(_ context.Context, decision notify.Decision) notify.DecisionResult {
 		decisions = append(decisions, decision)
-		return notify.DecisionResult{Answer: "handled", MessageStatus: "Denied. Access was not granted."}
+		return notify.DecisionResult{Answer: notify.AnswerDenied, MessageStatus: notify.Status{Kind: notify.StatusDenied}}
 	})
 	if err != nil {
 		t.Fatalf("PollOnce() error = %v", err)
@@ -145,10 +131,21 @@ func TestPollOnceAcceptsOnlyConfiguredChat(t *testing.T) {
 
 func assertClosedDecisionMessage(t *testing.T, payload map[string]any, status string) {
 	t.Helper()
-	if text, _ := payload["text"].(string); !strings.Contains(text, "Status: "+status) {
+	if text, _ := payload["text"].(string); !strings.Contains(text, status) || payload["parse_mode"] != "HTML" {
 		t.Fatalf("edited message text = %q, want status %q", text, status)
 	}
 	assertEmptyKeyboard(t, payload)
+}
+
+func validApproval() approvalnotify.Approval {
+	return approvalnotify.Approval{
+		GrantID: "grant-1", DecisionToken: "decision-token", Broker: "GitHub", Requester: "agent-a",
+		Operation: "repo.delete", Reason: "remove an obsolete test repository", RequestedDurationSeconds: 300,
+		MaxUses: usebudget.Limit(1), PendingExpiresAt: time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC),
+		Presentation: approvalview.Presentation{Risk: approvalview.RiskCritical, Title: "Delete repository", Target: "example/project",
+			Summary: "Permanently delete the selected repository.", Facts: []approvalview.Fact{{Label: "Visibility", Value: "private"}},
+			Warnings: []approvalview.Warning{{Severity: approvalview.RiskCritical, Text: "This operation permanently deletes the repository."}}},
+	}
 }
 
 func assertEmptyKeyboard(t *testing.T, payload map[string]any) {
@@ -177,7 +174,7 @@ func TestPollOnceLeavesRetriedDecisionPending(t *testing.T) {
 	offset, err := client.PollOnce(context.Background(), 0, retryGrantOne)
 	assertRetryPollResult(t, offset, answers, err, 5, 1, true)
 	offset, err = client.PollOnce(context.Background(), offset, func(context.Context, notify.Decision) notify.DecisionResult {
-		return notify.DecisionResult{Answer: "saved"}
+		return notify.DecisionResult{Answer: notify.AnswerApproved}
 	})
 	assertRetryPollResult(t, offset, answers, err, 6, 2, false)
 	assertRetryPollOffsets(t, offsets)
@@ -204,7 +201,7 @@ func TestPollOnceCommitsCallbackWhenImmediateEditFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
-		return notify.DecisionResult{Answer: "Grant approved", MessageStatus: "Approved. Access is active."}
+		return notify.DecisionResult{Answer: notify.AnswerApproved, MessageStatus: notify.Status{Kind: notify.StatusActive}}
 	})
 	if err != nil || offset != 8 || answers != 1 {
 		t.Fatalf("PollOnce() offset=%d answers=%d err=%v, want committed callback", offset, answers, err)
@@ -220,7 +217,7 @@ func TestPollOnceClearsButtonsWithoutReplacingStatusText(t *testing.T) {
 		t.Fatal(err)
 	}
 	offset, err := client.PollOnce(t.Context(), 0, func(context.Context, notify.Decision) notify.DecisionResult {
-		return notify.DecisionResult{Answer: "Grant approved", ClearButtons: true}
+		return notify.DecisionResult{Answer: notify.AnswerApproved, ClearButtons: true}
 	})
 	if err != nil || offset != 12 || len(state.edits) != 1 {
 		t.Fatalf("PollOnce() offset=%d edits=%d err=%v", offset, len(state.edits), err)
@@ -235,7 +232,7 @@ func retryGrantOne(_ context.Context, decision notify.Decision) notify.DecisionR
 	if decision.GrantID == "g1" {
 		return notify.DecisionResult{Retry: true}
 	}
-	return notify.DecisionResult{Answer: "saved"}
+	return notify.DecisionResult{Answer: notify.AnswerApproved}
 }
 
 func assertRetryPollResult(t *testing.T, offset int64, answers int, err error, wantOffset int64, wantAnswers int, wantRetry bool) {
@@ -276,14 +273,14 @@ func TestPollRetainsCompletedBatchProgressBeforeRetry(t *testing.T) {
 	client.Poll(ctx, func(_ context.Context, decision notify.Decision) notify.DecisionResult {
 		if decision.GrantID == "g0" {
 			firstCalls++
-			return notify.DecisionResult{Answer: "saved"}
+			return notify.DecisionResult{Answer: notify.AnswerApproved}
 		}
 		retryCalls++
 		if retryCalls == 1 {
 			return notify.DecisionResult{Retry: true}
 		}
 		cancel()
-		return notify.DecisionResult{Answer: "saved"}
+		return notify.DecisionResult{Answer: notify.AnswerApproved}
 	})
 	if firstCalls != 1 || retryCalls != 2 {
 		t.Fatalf("handler calls first=%d retry=%d, want 1 and 2", firstCalls, retryCalls)
@@ -346,8 +343,7 @@ func TestNewRejectsInvalidCallbackRoute(t *testing.T) {
 
 func TestNormalizeOptions(t *testing.T) {
 	defaults := normalizeOptions(Options{})
-	if defaults.PollTimeoutSeconds != defaultPollTimeoutSeconds || defaults.Route != defaultRoute ||
-		defaults.IgnoredAnswer != defaultIgnoredAnswer || defaults.ApproveText != "Approve" || defaults.DenyText != "Deny" {
+	if defaults.PollTimeoutSeconds != defaultPollTimeoutSeconds || defaults.Route != defaultRoute {
 		t.Fatalf("normalizeOptions(defaults) = %+v", defaults)
 	}
 	invalid := normalizeOptions(Options{PollTimeoutSeconds: -1, Route: "invalid"})
@@ -355,8 +351,7 @@ func TestNormalizeOptions(t *testing.T) {
 		t.Fatalf("normalizeOptions(invalid) = %+v", invalid)
 	}
 
-	custom := Options{PollTimeoutSeconds: 5, Route: RouteGitHub,
-		IgnoredAnswer: "ignored", ApproveText: "yes", DenyText: "no"}
+	custom := Options{PollTimeoutSeconds: 5, Route: RouteGitHub}
 	if got := normalizeOptions(custom); got != custom {
 		t.Fatalf("normalizeOptions(custom) = %+v, want %+v", got, custom)
 	}
@@ -489,7 +484,7 @@ func TestTelegramRequestErrorsDoNotIncludeToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.SendApproval(context.Background(), notify.ApprovalMessage{GrantID: "g", DecisionToken: "t"})
+	_, err = client.SendApproval(context.Background(), validApproval())
 	if err == nil {
 		t.Fatal("SendApproval() error = nil, want status error")
 	}
@@ -507,7 +502,7 @@ func TestTelegramOKFalseIsError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.SendApproval(context.Background(), notify.ApprovalMessage{GrantID: "g", DecisionToken: "t"})
+	_, err = client.SendApproval(context.Background(), validApproval())
 	if err == nil || !strings.Contains(err.Error(), "ok=false") {
 		t.Fatalf("SendApproval(ok=false) error = %v, want ok=false error", err)
 	}
@@ -537,7 +532,7 @@ func TestTelegramTransportErrorsDoNotIncludeToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.SendApproval(context.Background(), notify.ApprovalMessage{GrantID: "g", DecisionToken: "t"})
+	_, err = client.SendApproval(context.Background(), validApproval())
 	if err == nil {
 		t.Fatal("SendApproval() error = nil, want transport error")
 	}
@@ -653,10 +648,10 @@ func assertPollAnswers(t *testing.T, answered []string) {
 	if len(answered) != 2 {
 		t.Fatalf("answered = %+v, want two answers", answered)
 	}
-	if answered[0] != "wrong:Decision ignored" {
+	if answered[0] != "wrong:Grant decision ignored" {
 		t.Fatalf("wrong-chat answer = %q", answered[0])
 	}
-	if answered[1] != "right:handled" {
+	if answered[1] != "right:Grant denied" {
 		t.Fatalf("right-chat answer = %q", answered[1])
 	}
 }

@@ -1,6 +1,8 @@
 package grants
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -44,6 +46,30 @@ func TestNotificationClaimAndDeliveryLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertSingleDueUpdate(t, store, StatusUpdateLifecycle, StatusRevoked, string(StatusRevoked))
+}
+
+func TestValidateMessageRefBindsDurableNotificationSnapshots(t *testing.T) {
+	presentation := `{"grant_id":"grant-1","presentation":{"title":"Delete"}}`
+	rendered := "<b>Delete</b>"
+	digest := func(value string) string {
+		sum := sha256.Sum256([]byte(value))
+		return "sha256:" + hex.EncodeToString(sum[:])
+	}
+	valid := MessageRef{MessageID: 1, PresentationJSON: presentation, PresentationDigest: digest(presentation),
+		Text: rendered, RenderedDigest: digest(rendered)}
+	if err := validateMessageRef(valid); err != nil {
+		t.Fatalf("validateMessageRef() error = %v", err)
+	}
+	for _, invalid := range []MessageRef{
+		{MessageID: 1, PresentationDigest: digest(presentation)},
+		{MessageID: 1, PresentationJSON: presentation, PresentationDigest: digest("different")},
+		{MessageID: 1, PresentationJSON: `{"grant_id":"one","grant_id":"two"}`, PresentationDigest: digest(`{"grant_id":"one","grant_id":"two"}`)},
+		{MessageID: 1, Text: rendered, RenderedDigest: digest("different")},
+	} {
+		if err := validateMessageRef(invalid); err == nil {
+			t.Fatalf("validateMessageRef(%+v) accepted an invalid reference", invalid)
+		}
+	}
 }
 
 func TestPendingApprovalGrantsRequiresAnAvailableUnnotifiedGrant(t *testing.T) {

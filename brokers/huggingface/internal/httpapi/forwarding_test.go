@@ -85,7 +85,7 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 	}
 	msg := notifier.messages[0]
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != "Grant approved" {
+	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("grant approval answer = %+v", answer)
 	}
 
@@ -181,7 +181,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	}
 	msg := notifier.messages[0]
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != "Grant approved" {
+	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("grant approval answer = %+v", answer)
 	}
 
@@ -395,7 +395,7 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 	}
 	msg := notifier.messages[0]
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != "Grant approved" {
+	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("grant approval answer = %+v", answer)
 	}
 

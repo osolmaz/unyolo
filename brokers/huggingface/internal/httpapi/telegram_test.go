@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/controlplane"
@@ -25,11 +26,7 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	botAPI := httptest.NewServer(http.HandlerFunc(bot.serveHTTP))
 	defer botAPI.Close()
 
-	client, err := bktelegram.NewWithOptions("telegram_token_value", 123, botAPI.Client(), botAPI.URL, bktelegram.Options{
-		IgnoredAnswer: "Grant decision ignored",
-		ApproveText:   "✅ Approve",
-		DenyText:      "❌ Deny",
-	})
+	client, err := bktelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +52,7 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("ClaimNotification() = %+v, %v, %v", claimed, ok, err)
 	}
-	ref, err := client.SendApproval(context.Background(), grantApprovalMessage(claimed.Grant, claimed.DecisionToken))
+	ref, err := client.SendApproval(context.Background(), grantApprovalMessage(context.Background(), claimed.Grant, claimed.DecisionToken))
 	if err != nil {
 		t.Fatalf("SendApproval() error = %v", err)
 	}
@@ -88,7 +85,7 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	restartedStore := grants.New(path, grants.Options{})
 	restarted := newTelegramDecisionTestServer(t, restartedStore, client)
 	restarted.sweepGrantNotifications(context.Background())
-	if bot.editAttempts != 3 || !strings.Contains(bot.edits[2], "Status: ✅ Approved. Access is active.") {
+	if bot.editAttempts != 3 || !strings.Contains(bot.edits[2], "✅ Approved. Access is active.") {
 		t.Fatalf("restart edits = %+v attempts=%d", bot.edits, bot.editAttempts)
 	}
 	delivered, err := restartedStore.Get(claimed.Grant.ID)
@@ -99,13 +96,13 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if _, err := client.PollOnce(context.Background(), 0, restarted.handleTelegramDecision); err != nil {
 		t.Fatalf("replay PollOnce() error = %v", err)
 	}
-	if bot.editAttempts != 4 || !strings.Contains(bot.edits[3], "Status: Approved. Access is active.") {
+	if bot.editAttempts != 4 || !strings.Contains(bot.edits[3], "Approved. Access is active.") {
 		t.Fatalf("direct callback replay did not restore terminal state: edits=%+v attempts=%d", bot.edits, bot.editAttempts)
 	}
 	if len(bot.answers) != 2 || bot.answers[0] != "Grant approved" || bot.answers[1] != "Grant already approved" {
 		t.Fatalf("callback answers = %+v", bot.answers)
 	}
-	if !strings.Contains(bot.sentText, "Approval needed for hf-broker") || strings.Contains(bot.sentText, claimed.DecisionToken) {
+	if !strings.Contains(bot.sentText, "Approval needed for Hugging Face") || strings.Contains(bot.sentText, claimed.DecisionToken) {
 		t.Fatalf("approval text missing HF summary or leaked token: %q", bot.sentText)
 	}
 }
@@ -147,11 +144,11 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 	if err != nil || stored.Status != grants.StatusActive || stored.Notification == nil || stored.Notification.MessageID != 7 || stored.Notification.Text != bot.sentText {
 		t.Fatalf("recovered callback grant = %+v err=%v", stored, err)
 	}
-	if bot.editAttempts != 1 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" || !strings.Contains(bot.edits[0], "Status: Approved. Access is active.") {
+	if bot.editAttempts != 1 || len(bot.answers) != 1 || bot.answers[0] != "Grant approved" || !strings.Contains(bot.edits[0], "Approved. Access is active.") {
 		t.Fatalf("callback did not close the approval message: edits=%+v answers=%+v", bot.edits, bot.answers)
 	}
 	server.sweepGrantNotifications(context.Background())
-	if bot.editAttempts != 2 || !strings.Contains(bot.edits[1], "Status: ✅ Approved. Access is active.") {
+	if bot.editAttempts != 2 || !strings.Contains(bot.edits[1], "✅ Approved. Access is active.") {
 		t.Fatalf("recovered status edits = %+v attempts=%d", bot.edits, bot.editAttempts)
 	}
 }
@@ -208,10 +205,11 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 }
 
 func approvalTextForTest(claim grants.NotificationClaim) string {
-	return grantApprovalMessage(claim.Grant, claim.DecisionToken).Text
+	text, _ := bktelegram.RenderApproval(grantApprovalMessage(context.Background(), claim.Grant, claim.DecisionToken))
+	return text
 }
 
-func newTelegramDecisionTestServer(t *testing.T, store *grants.Store, notifier notify.Notifier) *Server {
+func newTelegramDecisionTestServer(t *testing.T, store *grants.Store, notifier approvalnotify.Notifier) *Server {
 	t.Helper()
 	runtime, err := controlplane.New(controlplane.Options{
 		Broker:        "hf-broker",

@@ -4,18 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/brokerkit/brokers/sudo/internal/presenter"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operationruntime"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/state"
@@ -41,7 +40,7 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		},
 		DefinitiveFailure: operations.DefinitiveFailure, ExecutionFailure: operations.ExecutionFailure,
 		RecordPolicyRefusal: s.recordRuntimePolicyRefusal, RecordOutcome: s.recordRuntimeOutcome,
-		Notifier: s.notifier, ApprovalMessage: sudoApprovalMessage, OperatorConfigured: s.operatorConfigured,
+		Notifier: s.notifier, ApprovalMessage: s.sudoApprovalMessage, OperatorConfigured: s.operatorConfigured,
 		Observer:    s.control.Metrics,
 		Diagnostics: s.control.Diagnostics,
 	})
@@ -104,14 +103,8 @@ func (s *Server) recordRuntimeOutcome(operation agentv1.Operation, value operati
 	s.record(value.Authorization, auditDecision, detail, operation.ApprovalID, nil)
 }
 
-func sudoApprovalMessage(grant grants.Grant, token string) notify.ApprovalMessage {
-	commandID := corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID])
-	target := corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName])
-	return notify.ApprovalMessage{GrantID: grant.ID, DecisionToken: token,
-		Text:   fmt.Sprintf("Approval needed for sudo-broker\n\n%s requests %s once as %s.", grant.Client, commandID, target),
-		Client: grant.Client, Operation: grant.Operation, Target: target, Reason: grant.Reason,
-		RequestedMinutes: int(grant.Duration / time.Minute), MaxUses: 1,
-		Fields: []notify.Field{{Name: "command", Value: commandID}, {Name: "target user", Value: target}}}
+func (s *Server) sudoApprovalMessage(ctx context.Context, grant grants.Grant, token string) approvalnotify.Approval {
+	return approvalnotify.Project(ctx, "sudo", presenter.Presenter{Catalog: s.catalog}, grant, token)
 }
 
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {

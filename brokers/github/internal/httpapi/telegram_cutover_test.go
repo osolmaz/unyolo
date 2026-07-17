@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
@@ -55,12 +55,12 @@ func TestCallbackWinningSendRaceKeepsMessageActive(t *testing.T) {
 	notifier := &callbackDuringSendNotifier{server: server}
 	server.notifier = notifier
 	response := createGrant(t, server, "callback-wins-send", "open the work PR")
-	if response.Code != http.StatusCreated || notifier.result.Answer != "Grant approved" || notifier.result.Retry {
+	if response.Code != http.StatusCreated || notifier.result.Answer != notify.AnswerApproved || notifier.result.Retry {
 		t.Fatalf("grant response=%d result=%+v body=%s", response.Code, notifier.result, response.Body.String())
 	}
 	for _, status := range notifier.statuses {
-		if strings.Contains(status, "Superseded") {
-			t.Fatalf("callback-owned message was superseded: %q", status)
+		if status.Kind == notify.StatusSuperseded {
+			t.Fatalf("callback-owned message was superseded: %+v", status)
 		}
 	}
 	stored, err := server.grants.Get(decodeGrantResponse(t, response).ID)
@@ -82,7 +82,7 @@ func newCutoverTelegram(t *testing.T) (*fakeTelegramState, *bktelegram.Client) {
 }
 
 func setCutoverCallback(state *fakeTelegramState, grant grants.Grant, token string) {
-	state.messageText = grantApprovalText(grant)
+	state.messageText, _ = bktelegram.RenderApproval(grantApprovalMessage(context.Background(), grant, token))
 	state.callbackData = bktelegram.CallbackData(notify.ActionApprove, grant.ID, token)
 }
 
@@ -143,11 +143,11 @@ type callbackDuringSendNotifier struct {
 	server   *Server
 	ref      notify.MessageRef
 	result   notify.DecisionResult
-	statuses []string
+	statuses []notify.Status
 }
 
-func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, message notify.ApprovalMessage) (notify.MessageRef, error) {
-	n.ref = notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 7, Text: message.Text}
+func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, message approvalnotify.Approval) (notify.MessageRef, error) {
+	n.ref = notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 7, Text: message.Presentation.Title}
 	n.result = n.server.control.HandleDecision(ctx, notify.Decision{
 		Action: notify.ActionApprove, GrantID: message.GrantID, DecisionToken: message.DecisionToken,
 		ChatID: n.ref.ChatID, MessageID: n.ref.MessageID, MessageText: n.ref.Text, OperatorID: 42,
@@ -155,7 +155,7 @@ func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, message n
 	return n.ref, nil
 }
 
-func (n *callbackDuringSendNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status string) error {
+func (n *callbackDuringSendNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
 	n.statuses = append(n.statuses, status)
 	return nil
 }

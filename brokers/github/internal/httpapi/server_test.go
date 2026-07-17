@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
@@ -740,8 +742,6 @@ func TestTelegramApprovalActivatesGrant(t *testing.T) {
 	t.Cleanup(telegramAPI.Close)
 	telegram, err := bktelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, bktelegram.Options{
 		PollTimeoutSeconds: 1,
-		ApproveText:        "Approve",
-		DenyText:           "Deny",
 	})
 	if err != nil {
 		t.Fatalf("NewWithOptions() error = %v", err)
@@ -913,7 +913,7 @@ func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
 	restarted.notifier = statusNotifier
 	restarted.deliverGrantStatusUpdates(context.Background())
 	restarted.deliverGrantStatusUpdates(context.Background())
-	if len(statusNotifier.statuses) != 1 || statusNotifier.statuses[0] != "Approved. Access is active." {
+	if len(statusNotifier.statuses) != 1 || statusNotifier.statuses[0].Kind != notify.StatusActive {
 		t.Fatalf("statuses = %q, want one durable active update", statusNotifier.statuses)
 	}
 	stored, err := restarted.grants.Get(grant.ID)
@@ -964,7 +964,7 @@ func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 	}
 
 	server.deliverGrantStatusUpdates(context.Background())
-	if len(notifier.statuses) != 1 || !strings.Contains(notifier.statuses[0], "ambiguous") {
+	if len(notifier.statuses) != 1 || notifier.statuses[0].Kind != notify.StatusRetained {
 		t.Fatalf("statuses = %q, want retained-use warning", notifier.statuses)
 	}
 }
@@ -1043,45 +1043,45 @@ func TestGrantStatusDeliveryRetriesFailedEdit(t *testing.T) {
 	notifier.updateErr = nil
 	server.deliverGrantStatusUpdates(context.Background())
 	server.deliverGrantStatusUpdates(context.Background())
-	if len(notifier.statuses) != 1 || notifier.statuses[0] != "Approved. Access is active." {
-		t.Fatalf("statuses = %q, want one successful retry", notifier.statuses)
+	if len(notifier.statuses) != 1 || notifier.statuses[0].Kind != notify.StatusActive {
+		t.Fatalf("statuses = %+v, want one successful retry", notifier.statuses)
 	}
 }
 
-func TestGrantStatusText(t *testing.T) {
+func TestGrantStatusUsesSharedStates(t *testing.T) {
 	t.Parallel()
-	lifecycle := map[grants.Status]string{
-		grants.StatusActive:   "Approved. Access is active.",
-		grants.StatusDenied:   "Denied. Access was not granted.",
-		grants.StatusExpired:  "Expired. Access is closed.",
-		grants.StatusConsumed: "Used. Access is now closed.",
-		grants.StatusRevoked:  "Revoked. Access is closed.",
-		grants.StatusCanceled: "Canceled. Approval request is closed.",
-		grants.StatusPending:  "Grant status changed.",
+	lifecycle := map[grants.Status]notify.StatusKind{
+		grants.StatusActive:   notify.StatusActive,
+		grants.StatusDenied:   notify.StatusDenied,
+		grants.StatusExpired:  notify.StatusActiveExpired,
+		grants.StatusConsumed: notify.StatusConsumed,
+		grants.StatusRevoked:  notify.StatusRevoked,
+		grants.StatusCanceled: notify.StatusCanceled,
+		grants.StatusPending:  notify.StatusClosed,
 	}
 	for status, want := range lifecycle {
-		if got := grantStatusText(grants.StatusUpdate{Status: status}); got != want {
-			t.Errorf("grantStatusText(%q) = %q, want %q", status, got, want)
+		if got := approval.StatusForUpdate(grants.StatusUpdate{Status: status}); got.Kind != want {
+			t.Errorf("StatusForUpdate(%q) = %+v, want %q", status, got, want)
 		}
 	}
 	used := grants.Grant{Status: grants.StatusActive, MaxUses: 3, UsedCount: 1}
-	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used 1 of 3. 2 uses remain." {
-		t.Errorf("used status = %q", got)
+	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got.Kind != notify.StatusUsedActive || got.UsedCount != 1 {
+		t.Errorf("used status = %+v", got)
 	}
 	used = grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}
-	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used 1 of 2. 1 uses remain." {
-		t.Errorf("reserved used status = %q", got)
+	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got.ReservedCount != 1 {
+		t.Errorf("reserved used status = %+v", got)
 	}
 	used.ReservationRetained = true
-	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got != "Used. Access is now closed." {
-		t.Errorf("retained used status = %q", got)
+	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation, Grant: used}); got.Kind != notify.StatusRetained {
+		t.Errorf("retained used status = %+v", got)
 	}
 	used.Status = grants.StatusConsumed
-	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: used}); got != "Used. Access is now closed." {
-		t.Errorf("closed used status = %q", got)
+	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: used}); got.Kind != notify.StatusConsumed {
+		t.Errorf("closed used status = %+v", got)
 	}
-	if got := grantStatusText(grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation}); !strings.Contains(got, "ambiguous") {
-		t.Errorf("retained status = %q", got)
+	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation}); got.Kind != notify.StatusRetained {
+		t.Errorf("retained status = %+v", got)
 	}
 }
 
@@ -1190,7 +1190,7 @@ func approveGrant(t *testing.T, server *Server, grantID string, token string) {
 		MessageID:     1,
 		MessageText:   "approval",
 	})
-	if decision.Answer != "Grant approved" {
+	if decision.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram decision = %+v, want approval", decision)
 	}
 }
@@ -1431,7 +1431,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 		MessageID:     1,
 		MessageText:   "approval",
 	})
-	if denied.Answer != "Grant denied" {
+	if denied.Answer != notify.AnswerDenied {
 		t.Fatalf("deny decision = %+v, want denied", denied)
 	}
 	replay := server.control.HandleDecision(context.Background(), notify.Decision{
@@ -1442,7 +1442,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 		MessageID:     1,
 		MessageText:   "approval",
 	})
-	if replay.Answer != "Grant already denied" || replay.MessageStatus != "Denied. Access was not granted." {
+	if replay.Answer != notify.AnswerAlreadyDenied || replay.MessageStatus.Kind != notify.StatusDenied {
 		t.Fatalf("replay decision = %+v, want already denied", replay)
 	}
 }
@@ -1475,7 +1475,7 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 		MessageID:     1,
 		MessageText:   "approval",
 	})
-	if decision.Answer != "Grant denied" || decision.Retry {
+	if decision.Answer != notify.AnswerDenied || decision.Retry {
 		t.Fatalf("handleTelegramDecision() = %+v, want denied status", decision)
 	}
 }
@@ -2080,15 +2080,15 @@ func assertNoActiveGrants(t *testing.T, server *Server) {
 }
 
 type captureNotifier struct {
-	messages   []notify.ApprovalMessage
-	statuses   []string
+	messages   []approvalnotify.Approval
+	statuses   []notify.Status
 	token      string
 	sendErr    error
 	updateErr  error
 	invalidRef bool
 }
 
-func (n *captureNotifier) SendApproval(_ context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
+func (n *captureNotifier) SendApproval(_ context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
 	if n.sendErr != nil {
 		return notify.MessageRef{}, n.sendErr
 	}
@@ -2099,10 +2099,10 @@ func (n *captureNotifier) SendApproval(_ context.Context, msg notify.ApprovalMes
 	if n.invalidRef {
 		return notify.MessageRef{}, nil
 	}
-	return notify.MessageRef{Kind: "test", ChatID: 1, MessageID: len(n.messages), Text: msg.Text}, nil
+	return notify.MessageRef{Kind: "test", ChatID: 1, MessageID: len(n.messages), Text: msg.Presentation.Title}, nil
 }
 
-func (n *captureNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status string) error {
+func (n *captureNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
 	if n.updateErr != nil {
 		return n.updateErr
 	}

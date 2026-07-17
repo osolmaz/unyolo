@@ -26,6 +26,20 @@ const (
 	maxWarningBytes  = 500
 )
 
+// BoundedTitle truncates a trusted single-line title to the canonical title
+// bound without splitting UTF-8. Validation still rejects unsafe text.
+func BoundedTitle(value string) string {
+	if len(value) <= maxTitleBytes {
+		return value
+	}
+	const marker = "…"
+	limit := maxTitleBytes - len(marker)
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
+	}
+	return value[:limit] + marker
+}
+
 // Risk is a provider-supplied display classification with a fixed vocabulary.
 type Risk string
 
