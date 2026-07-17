@@ -29,13 +29,8 @@ const (
 // BoundedLine returns one safe single-line display value, truncated without
 // splitting UTF-8. Unsafe input returns an empty string.
 func BoundedLine(value string, maxBytes int) string {
-	if maxBytes <= 0 || !utf8.ValidString(value) {
+	if maxBytes <= 0 || !safeSingleLineText(value, len(value), false) {
 		return ""
-	}
-	for _, char := range value {
-		if unicode.IsControl(char) {
-			return ""
-		}
 	}
 	if len(value) <= maxBytes {
 		return value
@@ -44,11 +39,14 @@ func BoundedLine(value string, maxBytes int) string {
 	if maxBytes <= len(marker) {
 		return ""
 	}
-	limit := maxBytes - len(marker)
+	return utf8Prefix(value, maxBytes-len(marker)) + marker
+}
+
+func utf8Prefix(value string, limit int) string {
 	for limit > 0 && !utf8.RuneStart(value[limit]) {
 		limit--
 	}
-	return value[:limit] + marker
+	return value[:limit]
 }
 
 // BoundedTitle truncates a trusted single-line title to the canonical title
