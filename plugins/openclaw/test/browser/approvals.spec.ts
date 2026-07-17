@@ -31,6 +31,7 @@ const snapshot = {
           risk: "critical",
           title: "Hugging Face repository write",
           summary: "Approve one bounded update to the protected branch.",
+          target: "model/example/project",
           facts: [
             { label: "Repository", value: "osolmaz/model" },
             { label: "Ref", value: "refs/heads/main" },
@@ -59,6 +60,7 @@ const snapshot = {
         presentation: {
           risk: "high",
           title: "Active repository grant",
+          target: "model/example/project",
           facts: [{ label: "Repository", value: "osolmaz/model" }],
         },
         allowed_actions: ["revoke"],
