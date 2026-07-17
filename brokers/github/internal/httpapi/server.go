@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
@@ -37,7 +38,6 @@ import (
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/sealedpayload"
 	"github.com/osolmaz/brokerkit/sealedstore"
@@ -63,7 +63,7 @@ type Server struct {
 	sealedPayloads      *sealedpayload.Service
 	credentialStore     *credentialstore.Store
 	streamStore         *streamstore.Store
-	notifier            notify.Notifier
+	notifier            approvalnotify.Notifier
 	telegram            *bktelegram.Client
 	githubCredentials   *githubauth.Manager
 	githubWebhookSecret string
@@ -274,7 +274,7 @@ type coreDependencies struct {
 	audit     *bkaudit.Writer
 	control   *controlplane.Runtime
 	auth      security.TokenAuth
-	notifier  notify.Notifier
+	notifier  approvalnotify.Notifier
 	telegram  *bktelegram.Client
 }
 
@@ -345,7 +345,7 @@ func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator 
 		operatorSecrets[cfg.OperatorID] = cfg.OperatorSecret
 	}
 	control, err := controlplane.New(controlplane.Options{
-		Broker: "gh-broker", Store: grantStore,
+		Broker: "gh-broker", ApprovalBroker: "GitHub", Store: grantStore,
 		ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}, OperatorSecrets: operatorSecrets,
 		Presenter: approval.Presenter{}, ActivationValidator: planValidator, Audit: auditWriter, State: grantStore.Database(),
 	})

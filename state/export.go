@@ -44,6 +44,9 @@ type redactedGrant struct {
 	ExpiredFrom            *string `json:"expired_from,omitempty"`
 	NotificationStatus     string  `json:"notification_status,omitempty"`
 	NotificationUnresolved bool    `json:"notification_delivery_unresolved"`
+	NotificationRenderer   string  `json:"notification_renderer,omitempty"`
+	PresentationDigest     string  `json:"notification_presentation_digest,omitempty"`
+	RenderedDigest         string  `json:"notification_rendered_digest,omitempty"`
 }
 
 type redactedOperation struct {
@@ -225,7 +228,7 @@ func (d *Database) exportPlans(ctx context.Context) ([]redactedPlan, error) {
 func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT id, client, client_request_id, operation, status, revision, created_at,
 		pending_expires_at, expires_at, decided_at, used_count, reserved_count, reservation_retained, max_uses,
-		expired_from, notification_status, notification_delivery_unresolved FROM grants ORDER BY id LIMIT ?`, maxExportTableRows+1)
+		expired_from, notification_status, notification_delivery_unresolved, notification_json FROM grants ORDER BY id LIMIT ?`, maxExportTableRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -233,12 +236,25 @@ func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {
 	values := make([]redactedGrant, 0)
 	for rows.Next() {
 		var item redactedGrant
-		var expires, decided, expired sql.NullString
+		var expires, decided, expired, notification sql.NullString
 		var maximum sql.NullInt64
 		if err := rows.Scan(&item.ID, &item.Client, &item.ClientRequestID, &item.Operation, &item.Status, &item.Revision,
 			&item.CreatedAt, &item.PendingExpiresAt, &expires, &decided, &item.UsedCount, &item.ReservedCount,
-			&item.ReservationRetained, &maximum, &expired, &item.NotificationStatus, &item.NotificationUnresolved); err != nil {
+			&item.ReservationRetained, &maximum, &expired, &item.NotificationStatus, &item.NotificationUnresolved, &notification); err != nil {
 			return nil, err
+		}
+		if notification.Valid {
+			var reference struct {
+				Renderer           string `json:"renderer"`
+				PresentationDigest string `json:"presentation_digest"`
+				RenderedDigest     string `json:"rendered_digest"`
+			}
+			if err := json.Unmarshal([]byte(notification.String), &reference); err != nil {
+				return nil, errors.New("invalid persisted notification reference")
+			}
+			item.NotificationRenderer = reference.Renderer
+			item.PresentationDigest = reference.PresentationDigest
+			item.RenderedDigest = reference.RenderedDigest
 		}
 		item.ExpiresAt, item.DecidedAt, item.ExpiredFrom, item.MaxUses = stringPointer(expires), stringPointer(decided), stringPointer(expired), exportInt64Pointer(maximum)
 		values = append(values, item)

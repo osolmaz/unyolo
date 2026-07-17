@@ -16,7 +16,8 @@ brokerkit owns the reusable broker control plane:
 - policy schema and registry mechanics
 - grant lifecycle
 - approval workflow
-- notification interfaces and shared Telegram transport
+- semantic notification interfaces and shared canonical Telegram renderer and
+  transport
 - audit event schema and no-secret helpers
 - local durable storage helpers
 - doctor check building blocks
@@ -313,8 +314,10 @@ brokerkit owns:
 - transient route failures that leave the affected message retryable without
   blocking callbacks for healthy brokers
 
-Brokers own the approval summary text and the provider-specific fields shown to
-the operator.
+Brokers own bounded semantic titles, summaries, targets, risk, warnings, and
+provider-specific facts shown to the operator. BrokerKit owns presentation
+validation, Telegram layout and escaping, fixed controls, callback answers,
+terminal wording, and durable presentation/render digests.
 
 Protocol and window-grant brokers expose the shared request shape through:
 

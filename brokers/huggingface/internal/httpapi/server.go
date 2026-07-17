@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
+	bkapprovalnotify "github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
@@ -72,7 +73,7 @@ type Options struct {
 	UpstreamBaseURL       string
 	UpstreamRouterBaseURL string
 	Context               context.Context
-	GrantNotifier         bknotify.Notifier
+	GrantNotifier         bkapprovalnotify.Notifier
 	TelegramBaseURL       string
 	OperatorAudit         operatorapi.AuditRecorder
 	Now                   func() time.Time
@@ -107,7 +108,7 @@ type Server struct {
 	agentAPI            *agentapi.Handler
 	database            *state.Database
 	planValidator       hfplan.Validator
-	notifier            bknotify.Notifier
+	notifier            bkapprovalnotify.Notifier
 	operatorConfigured  bool
 	lifecycleContext    context.Context
 	lifecycleCancel     context.CancelFunc
@@ -404,7 +405,7 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 		return err
 	}
 	r.control, err = controlplane.New(controlplane.Options{
-		Broker: "hf-broker", Store: r.grantStore, ClientSecrets: clients,
+		Broker: "hf-broker", ApprovalBroker: "Hugging Face", Store: r.grantStore, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
 		ActivationValidator: r.planValidator, State: r.database,
 	})
@@ -570,10 +571,7 @@ func (s *Server) startTelegram(_ context.Context, opts Options) error {
 		return nil
 	}
 	telegram, err := bktelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, bktelegram.Options{
-		Route:         bktelegram.RouteHuggingFace,
-		IgnoredAnswer: "Grant decision ignored",
-		ApproveText:   "✅ Approve",
-		DenyText:      "❌ Deny",
+		Route: bktelegram.RouteHuggingFace,
 	})
 	if err != nil {
 		return fmt.Errorf("configure Telegram notifier: %w", err)

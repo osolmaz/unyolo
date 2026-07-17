@@ -29,8 +29,8 @@ func TestTelegramLiveSendApproval(t *testing.T) {
 	}
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client: "local-smoke", ClientRequestID: "live-telegram-smoke", Operation: "git.push.force", Mode: hfgrant.ModeWindow,
-		Target: "dataset/dutifulbob/hf-broker-smoke", Ref: "refs/heads/main",
-		Reason: "live Telegram delivery smoke test", RequestedDuration: 5 * time.Minute, MaxUses: 1,
+		Target: "dataset/example/hf-broker-smoke", Ref: "refs/heads/main",
+		Reason: "Live Telegram delivery smoke test; buttons are intentionally inactive", RequestedDuration: 5 * time.Minute, MaxUses: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestTelegramLiveSendApproval(t *testing.T) {
 		Metadata: request.Metadata, Attrs: request.Attrs, Reason: request.Reason, Duration: request.Duration,
 		MaxUses: request.MaxUses, PendingExpiresAt: time.Now().UTC().Add(5 * time.Minute),
 	}
-	_, err = client.SendApproval(context.Background(), grantApprovalMessage(grant, "not-a-real-grant"))
+	_, err = client.SendApproval(context.Background(), grantApprovalMessage(context.Background(), grant, "not-a-real-grant"))
 	if err != nil {
 		t.Fatalf("SendApproval() live error = %v", err)
 	}

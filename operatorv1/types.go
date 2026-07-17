@@ -30,11 +30,19 @@ type Fact struct {
 	Value string `json:"value"`
 }
 
+type Warning struct {
+	Severity string `json:"severity"`
+	Text     string `json:"text"`
+}
+
 type Presentation struct {
-	Risk    string `json:"risk"`
-	Title   string `json:"title"`
-	Summary string `json:"summary,omitempty"`
-	Facts   []Fact `json:"facts,omitempty"`
+	Risk     string    `json:"risk"`
+	Title    string    `json:"title"`
+	Summary  string    `json:"summary,omitempty"`
+	Target   string    `json:"target"`
+	Facts    []Fact    `json:"facts,omitempty"`
+	Warnings []Warning `json:"warnings,omitempty"`
+	PlanHash string    `json:"plan_hash,omitempty"`
 }
 
 type ApprovalBounds struct {
@@ -86,11 +94,15 @@ type Constraints struct {
 }
 
 type NotificationDecision struct {
-	Kind          string `json:"kind"`
-	DecisionToken string `json:"decision_token"`
-	ChatID        int64  `json:"chat_id"`
-	MessageID     int    `json:"message_id"`
-	Text          string `json:"text"`
+	Kind               string `json:"kind"`
+	Renderer           string `json:"renderer"`
+	DecisionToken      string `json:"decision_token"`
+	ChatID             int64  `json:"chat_id"`
+	MessageID          int    `json:"message_id"`
+	Text               string `json:"text"`
+	PresentationJSON   string `json:"presentation_json"`
+	PresentationDigest string `json:"presentation_digest"`
+	RenderedDigest     string `json:"rendered_digest"`
 }
 
 type Decision struct {

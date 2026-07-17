@@ -31,9 +31,16 @@ const snapshot = {
           risk: "critical",
           title: "Hugging Face repository write",
           summary: "Approve one bounded update to the protected branch.",
+          target: "model/example/project",
           facts: [
             { label: "Repository", value: "osolmaz/model" },
             { label: "Ref", value: "refs/heads/main" },
+          ],
+          warnings: [
+            {
+              severity: "critical",
+              text: "This update can replace protected branch history.",
+            },
           ],
         },
         allowed_actions: ["approve", "deny"],
@@ -59,6 +66,7 @@ const snapshot = {
         presentation: {
           risk: "high",
           title: "Active repository grant",
+          target: "model/example/project",
           facts: [{ label: "Repository", value: "osolmaz/model" }],
         },
         allowed_actions: ["revoke"],
@@ -115,6 +123,10 @@ test("renders a bounded capability-protected approval surface", async ({
   );
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
+  await expect(page.getByText("model/example/project").first()).toBeVisible();
+  await expect(
+    page.getByText("This update can replace protected branch history.").first(),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
   await page.getByRole("button", { name: "Deny" }).click();
@@ -129,6 +141,10 @@ test("renders a bounded capability-protected approval surface", async ({
   const dialog = page.getByRole("dialog", { name: "Approve request" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("at revision 1")).toBeVisible();
+  await expect(dialog.getByText("model/example/project")).toBeVisible();
+  await expect(
+    dialog.getByText("This update can replace protected branch history."),
+  ).toBeVisible();
   expect(
     await dialog.evaluate((element) => {
       const box = element.getBoundingClientRect();

@@ -177,19 +177,23 @@ func TestWireConversionsPreserveOptionalOperatorFields(t *testing.T) {
 	unavailable := true
 	next := "next"
 	events := "events"
+	planHash := "sha256:example"
 	facts := []operatorwire.Fact{{Label: "Repository", Value: "acme/demo"}}
+	warnings := []operatorwire.Warning{{Severity: operatorwire.Critical, Text: "Permanent change."}}
 	wire := operatorwire.BrokerRequest{
 		Id: "request-1", Revision: 7, Requester: "bob", Operation: "repo.delete", Status: operatorwire.Status(grants.StatusPending),
 		RequestedAt: time.Now().UTC(), RequestedDurationSeconds: 300,
 		RequestedMaxUses: operatorv1wire.UseLimitToWire(1), GrantedMaxUses: operatorv1wire.UseLimitToWire(usebudget.Unlimited),
 		RequestReason: &reason, DecidedBy: &decidedBy, DecidedOnBehalfOf: &onBehalfOf, PresentationUnavailable: &unavailable,
-		Presentation:   operatorwire.Presentation{Risk: "high", Title: "Delete repository", Summary: &summary, Facts: &facts},
+		Presentation: operatorwire.Presentation{Risk: "high", Title: "Delete repository", Summary: &summary, Target: "acme/demo",
+			Facts: &facts, Warnings: &warnings, PlanHash: &planHash},
 		AllowedActions: []operatorwire.Action{operatorwire.Action(operatorv1.ActionApprove), operatorwire.Action(operatorv1.ActionDeny)},
 		ApprovalBounds: &operatorwire.ApprovalBounds{MaxDurationSeconds: 600, MaxUses: operatorv1wire.UseLimitToWire(2)},
 	}
 	request := requestFromWire(wire)
 	if request.RequestReason != reason || request.DecidedBy != decidedBy || request.DecidedOnBehalfOf != onBehalfOf ||
-		!request.PresentationUnavailable || request.Presentation.Summary != summary || len(request.Presentation.Facts) != 1 ||
+		!request.PresentationUnavailable || request.Presentation.Summary != summary || request.Presentation.Target != "acme/demo" ||
+		request.Presentation.PlanHash != planHash || len(request.Presentation.Facts) != 1 || len(request.Presentation.Warnings) != 1 ||
 		request.ApprovalBounds == nil || request.ApprovalBounds.MaxUses != 2 || len(request.AllowedActions) != 2 {
 		t.Fatalf("requestFromWire() = %#v", request)
 	}

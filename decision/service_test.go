@@ -3,6 +3,8 @@ package decision
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -46,7 +48,7 @@ func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 		t.Fatalf("Decide() = %+v, %v", result, err)
 	}
 	second := create(t, store, "second")
-	approved, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:onur", notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2})
+	approved, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:onur", testTelegramRef())
 	if err != nil || approved.Status != grants.StatusActive || calls != 2 {
 		t.Fatalf("ApproveToken() = %+v, %v calls=%d", approved, err, calls)
 	}
@@ -92,7 +94,7 @@ func TestServiceAuditsRevisionAndTokenBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := create(t, store, "audit-token")
-	if _, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:42", notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}); err != nil {
+	if _, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:42", testTelegramRef()); err != nil {
 		t.Fatal(err)
 	}
 	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n"))
@@ -135,7 +137,7 @@ func TestServiceRejectsInvalidInputAndValidatorFailure(t *testing.T) {
 	}); !errors.Is(err, grants.ErrInvalidCommand) {
 		t.Fatalf("invalid constraint error = %v", err)
 	}
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}
+	ref := testTelegramRef()
 	if _, err := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", ref); !errors.Is(err, rejected) {
 		t.Fatalf("validator error = %v", err)
 	}
@@ -159,7 +161,7 @@ func TestTokenApprovalValidationAndCommitAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := notify.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2}
+	ref := testTelegramRef()
 	approveDone := make(chan error, 1)
 	go func() {
 		_, approveErr := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "telegram:onur", ref)
@@ -192,4 +194,18 @@ func create(t *testing.T, store *grants.Store, id string) grants.RequestResult {
 		t.Fatal(err)
 	}
 	return result
+}
+
+func testTelegramRef() notify.MessageRef {
+	presentation := `{"grant_id":"test","presentation":{"title":"Test approval","target":"test"}}`
+	text := "<b>Test approval</b>"
+	return notify.MessageRef{
+		Kind: "telegram", Renderer: "telegram-html-v1", ChatID: 1, MessageID: 2, Text: text,
+		PresentationJSON: presentation, PresentationDigest: digest(presentation), RenderedDigest: digest(text),
+	}
+}
+
+func digest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

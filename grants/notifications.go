@@ -2,10 +2,14 @@ package grants
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/state"
 )
@@ -308,7 +312,57 @@ func validateMessageRef(ref MessageRef) error {
 	if ref.MessageID <= 0 {
 		return errors.New("notification message id must be positive")
 	}
+	if notificationReferenceExceedsBounds(ref) {
+		return errors.New("notification reference exceeds bounds")
+	}
+	if err := validatePresentationSnapshot(ref); err != nil {
+		return err
+	}
+	if err := validateRenderedSnapshot(ref); err != nil {
+		return err
+	}
+	if ref.Kind == "telegram" && telegramReferenceIncomplete(ref) {
+		return errors.New("telegram notification reference is incomplete")
+	}
 	return nil
+}
+
+func notificationReferenceExceedsBounds(ref MessageRef) bool {
+	return len(ref.Kind) > 32 || len(ref.Renderer) > 64 || len(ref.Text) > 32*1024 || len(ref.PresentationJSON) > 64*1024
+}
+
+func telegramReferenceIncomplete(ref MessageRef) bool {
+	return ref.ChatID == 0 || ref.Renderer == "" || ref.Text == "" || ref.PresentationJSON == "" || ref.RenderedDigest == ""
+}
+
+func validatePresentationSnapshot(ref MessageRef) error {
+	if ref.PresentationJSON != "" {
+		var snapshot any
+		if err := strictjson.Decode([]byte(ref.PresentationJSON), &snapshot, false); err != nil {
+			return errors.New("notification presentation snapshot is invalid")
+		}
+		if !matchesDigest(ref.PresentationJSON, ref.PresentationDigest) {
+			return errors.New("notification presentation digest does not match")
+		}
+	} else if ref.PresentationDigest != "" {
+		return errors.New("notification presentation snapshot is missing")
+	}
+	return nil
+}
+
+func validateRenderedSnapshot(ref MessageRef) error {
+	if ref.RenderedDigest != "" && !matchesDigest(ref.Text, ref.RenderedDigest) {
+		return errors.New("notification rendered digest does not match")
+	}
+	return nil
+}
+
+func matchesDigest(value, digest string) bool {
+	if !strings.HasPrefix(digest, "sha256:") || len(digest) != len("sha256:")+sha256.Size*2 {
+		return false
+	}
+	expected := sha256.Sum256([]byte(value))
+	return digest == "sha256:"+hex.EncodeToString(expected[:])
 }
 
 func notificationWriteAllowed(grant Grant, claimedAt time.Time, mode notificationWriteMode) bool {

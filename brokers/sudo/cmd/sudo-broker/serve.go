@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/admission"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
@@ -22,7 +23,6 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/endpoint"
 	"github.com/osolmaz/brokerkit/internal/slicex"
-	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/secretfile"
@@ -303,12 +303,11 @@ func loadTelegramNotifier(opts serveOptions) (*bktelegram.Client, error) {
 		return nil, err
 	}
 	return bktelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", bktelegram.Options{
-		Route:       bktelegram.RouteSudo,
-		ApproveText: "Approve", DenyText: "Deny", IgnoredAnswer: "Request decision ignored",
+		Route: bktelegram.RouteSudo,
 	})
 }
 
-func notifierDependencies(notifier *bktelegram.Client) (notify.Notifier, routes.DecisionPoller) {
+func notifierDependencies(notifier *bktelegram.Client) (approvalnotify.Notifier, routes.DecisionPoller) {
 	if notifier == nil {
 		return nil, nil
 	}

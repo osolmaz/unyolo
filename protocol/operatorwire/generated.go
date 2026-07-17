@@ -401,11 +401,15 @@ type Health struct {
 
 // NotificationDecision defines model for NotificationDecision.
 type NotificationDecision struct {
-	ChatId        int                      `json:"chat_id"`
-	DecisionToken string                   `json:"decision_token"`
-	Kind          NotificationDecisionKind `json:"kind"`
-	MessageId     int                      `json:"message_id"`
-	Text          string                   `json:"text"`
+	ChatId             int                      `json:"chat_id"`
+	DecisionToken      string                   `json:"decision_token"`
+	Kind               NotificationDecisionKind `json:"kind"`
+	MessageId          int                      `json:"message_id"`
+	PresentationDigest string                   `json:"presentation_digest"`
+	PresentationJson   string                   `json:"presentation_json"`
+	RenderedDigest     string                   `json:"rendered_digest"`
+	Renderer           string                   `json:"renderer"`
+	Text               string                   `json:"text"`
 }
 
 // NotificationDecisionKind defines model for NotificationDecision.Kind.
@@ -413,13 +417,16 @@ type NotificationDecisionKind string
 
 // Presentation defines model for Presentation.
 type Presentation struct {
-	Facts   *[]Fact          `json:"facts,omitempty"`
-	Risk    PresentationRisk `json:"risk"`
-	Summary *string          `json:"summary,omitempty"`
-	Title   string           `json:"title"`
+	Facts    *[]Fact          `json:"facts,omitempty"`
+	PlanHash *string          `json:"plan_hash,omitempty"`
+	Risk     PresentationRisk `json:"risk"`
+	Summary  *string          `json:"summary,omitempty"`
+	Target   string           `json:"target"`
+	Title    string           `json:"title"`
+	Warnings *[]Warning       `json:"warnings,omitempty"`
 }
 
-// PresentationRisk defines model for Presentation.Risk.
+// PresentationRisk defines model for PresentationRisk.
 type PresentationRisk string
 
 // RequestPage defines model for RequestPage.
@@ -485,6 +492,12 @@ type UISummary struct {
 
 // UISummaryApiVersion defines model for UISummary.ApiVersion.
 type UISummaryApiVersion string
+
+// Warning defines model for Warning.
+type Warning struct {
+	Severity PresentationRisk `json:"severity"`
+	Text     string           `json:"text"`
+}
 
 // RequestID defines model for RequestID.
 type RequestID = string

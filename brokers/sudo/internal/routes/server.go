@@ -14,6 +14,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
 	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
@@ -44,7 +45,7 @@ type Options struct {
 	Helper             *executorclient.Client
 	ClientSecrets      map[string]string
 	OperatorSecrets    map[string]string
-	Notifier           notify.Notifier
+	Notifier           approvalnotify.Notifier
 	Poller             DecisionPoller
 	Audit              *audit.Writer
 	Now                func() time.Time
@@ -62,7 +63,7 @@ type Server struct {
 	identities         plan.IdentityResolver
 	helper             *executorclient.Client
 	validator          plan.Validator
-	notifier           notify.Notifier
+	notifier           approvalnotify.Notifier
 	poller             DecisionPoller
 	audit              *audit.Writer
 	now                func() time.Time
@@ -157,7 +158,7 @@ func newServerParts(opts Options) (serverParts, error) {
 		return serverParts{}, err
 	}
 	control, err := controlplane.New(controlplane.Options{
-		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
+		Broker: "sudo-broker", ApprovalBroker: "sudo", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
 		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit, State: opts.Database,
 	})
 	if err != nil {
@@ -259,7 +260,7 @@ func (s *Server) deliverNotificationStatusUpdates(ctx context.Context) {
 		if update.Grant.Notification == nil {
 			continue
 		}
-		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, approval.StatusUpdateMessage(update)); err != nil {
+		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, approval.StatusForUpdate(update)); err != nil {
 			continue
 		}
 		_ = s.grants.MarkNotificationStatus(update.Grant.ID, update.NotificationStatusKey())

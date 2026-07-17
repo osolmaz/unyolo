@@ -23,17 +23,20 @@ func HandleDecision(ctx context.Context, decider Decider, decision notify.Decisi
 	}
 	actor := Actor(decision)
 	ref := notify.MessageRef{Kind: "telegram", ChatID: decision.ChatID, MessageID: decision.MessageID, Text: decision.MessageText}
+	if decision.Notification != nil {
+		ref = *decision.Notification
+	}
 	var grant grants.Grant
 	var err error
 	switch decision.Action {
 	case notify.ActionApprove:
 		grant, err = decider.Approve(ctx, decision.GrantID, decision.DecisionToken, actor, ref)
-		return result(grant, err, "Grant approved", "Approved. Access is active.")
+		return result(grant, err, notify.AnswerApproved, notify.StatusActive)
 	case notify.ActionDeny:
 		grant, err = decider.Deny(ctx, decision.GrantID, decision.DecisionToken, actor, ref)
-		return result(grant, err, "Grant denied", "Denied. Access was not granted.")
+		return result(grant, err, notify.AnswerDenied, notify.StatusDenied)
 	default:
-		return notify.DecisionResult{Answer: "Grant decision ignored"}
+		return notify.DecisionResult{Answer: notify.AnswerIgnored}
 	}
 }
 
@@ -51,72 +54,85 @@ func Actor(decision notify.Decision) string {
 	return "telegram"
 }
 
-func result(grant grants.Grant, err error, success, successStatus string) notify.DecisionResult {
+func result(grant grants.Grant, err error, success notify.Answer, successStatus notify.StatusKind) notify.DecisionResult {
 	if err == nil {
-		return notify.DecisionResult{Answer: success, MessageStatus: successStatus}
+		return notify.DecisionResult{Answer: success, MessageStatus: notify.Status{Kind: successStatus, MaxUses: grant.MaxUses}}
 	}
 	switch {
 	case errors.Is(err, grants.ErrNotFound):
-		return notify.DecisionResult{Answer: "Grant not found", MessageStatus: "Unavailable. Grant no longer exists."}
+		return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
 	case errors.Is(err, grants.ErrInvalidDecisionToken):
-		return notify.DecisionResult{Answer: "Grant decision token did not match"}
+		return notify.DecisionResult{Answer: notify.AnswerSuperseded}
 	case errors.Is(err, grants.ErrNotPending):
-		return terminalResult(grant.Status)
+		return terminalResult(grant)
 	default:
 		return notify.DecisionResult{Retry: true}
 	}
 }
 
-func terminalResult(status grants.Status) notify.DecisionResult {
-	switch status {
+func terminalResult(grant grants.Grant) notify.DecisionResult {
+	status := StatusForGrant(grant)
+	switch grant.Status {
 	case grants.StatusActive:
-		return notify.DecisionResult{Answer: "Grant already approved", MessageStatus: StatusMessage(status)}
+		return notify.DecisionResult{Answer: notify.AnswerAlreadyApproved, MessageStatus: status}
 	case grants.StatusDenied:
-		return notify.DecisionResult{Answer: "Grant already denied", MessageStatus: StatusMessage(status)}
+		return notify.DecisionResult{Answer: notify.AnswerAlreadyDenied, MessageStatus: status}
 	case grants.StatusExpired:
-		return notify.DecisionResult{Answer: "Grant already expired", MessageStatus: StatusMessage(status)}
+		return notify.DecisionResult{Answer: notify.AnswerAlreadyExpired, MessageStatus: status}
 	case grants.StatusConsumed:
-		return notify.DecisionResult{Answer: "Grant already used", MessageStatus: StatusMessage(status)}
+		return notify.DecisionResult{Answer: notify.AnswerAlreadyConsumed, MessageStatus: status}
 	case grants.StatusRevoked:
-		return notify.DecisionResult{Answer: "Grant already revoked", MessageStatus: StatusMessage(status)}
+		return notify.DecisionResult{Answer: notify.AnswerAlreadyRevoked, MessageStatus: status}
 	case grants.StatusCanceled:
-		return notify.DecisionResult{Answer: "Grant already canceled", MessageStatus: StatusMessage(status)}
+		return notify.DecisionResult{Answer: notify.AnswerAlreadyCanceled, MessageStatus: status}
 	default:
-		return notify.DecisionResult{Answer: "Grant is no longer pending", MessageStatus: "Closed. Approval request is no longer pending."}
+		return notify.DecisionResult{Answer: notify.AnswerClosed, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
 	}
 }
 
-// StatusMessage returns provider-neutral operator wording for a grant status.
-func StatusMessage(status grants.Status) string {
-	switch status {
+// StatusForGrant maps a canonical grant onto a channel-neutral presentation state.
+func StatusForGrant(grant grants.Grant) notify.Status {
+	status := notify.Status{UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount, MaxUses: grant.MaxUses}
+	switch grant.Status {
 	case grants.StatusActive:
-		return "Approved. Access is active."
+		status.Kind = notify.StatusActive
 	case grants.StatusDenied:
-		return "Denied. Access was not granted."
+		status.Kind = notify.StatusDenied
 	case grants.StatusExpired:
-		return "Expired. Access is closed."
+		if grant.ExpiredFrom == grants.StatusPending {
+			status.Kind = notify.StatusPendingExpired
+		} else {
+			status.Kind = notify.StatusActiveExpired
+		}
 	case grants.StatusConsumed:
-		return "Used. Access is now closed."
+		status.Kind = notify.StatusConsumed
 	case grants.StatusRevoked:
-		return "Revoked. Access is closed."
+		status.Kind = notify.StatusRevoked
 	case grants.StatusCanceled:
-		return "Canceled. Approval request is closed."
+		status.Kind = notify.StatusCanceled
 	default:
-		return "Grant status changed."
+		status.Kind = notify.StatusClosed
 	}
+	return status
 }
 
-// StatusUpdateMessage returns provider-neutral wording for a durable notification update.
-func StatusUpdateMessage(update grants.StatusUpdate) string {
+// StatusForUpdate maps a durable notification update onto a presentation state.
+func StatusForUpdate(update grants.StatusUpdate) notify.Status {
+	status := notify.Status{UsedCount: update.Grant.UsedCount, ReservedCount: update.Grant.ReservedCount, MaxUses: update.Grant.MaxUses}
 	switch update.Kind {
 	case grants.StatusUpdateRetainedReservation:
-		return "Result is ambiguous. Access is closed until an operator reviews the retained use."
+		status.Kind = notify.StatusRetained
 	case grants.StatusUpdateUsed, grants.StatusUpdateUsedExpired:
 		if update.Grant.Status == grants.StatusActive {
-			return "Used. Access remains active until its limit or expiry."
+			status.Kind = notify.StatusUsedActive
+		} else {
+			status.Kind = notify.StatusConsumed
 		}
-		return "Used. Access is now closed."
 	default:
-		return StatusMessage(update.Status)
+		status = StatusForGrant(update.Grant)
+		if update.Grant.Status == "" {
+			status = StatusForGrant(grants.Grant{Status: update.Status})
+		}
 	}
+	return status
 }

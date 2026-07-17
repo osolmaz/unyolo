@@ -30,7 +30,12 @@ describe("BrokerRuntime", () => {
       requested_max_uses: null,
       granted_max_uses: status === "pending" ? null : 1,
       used_count: 0,
-      presentation: { risk: "high", title: "Protected write", facts: [] },
+      presentation: {
+        risk: "high",
+        title: "Protected write",
+        target: "example/project",
+        facts: [],
+      },
       allowed_actions: status === "pending" ? ["approve", "deny"] : ["revoke"],
       approval_bounds: { max_duration_seconds: 300, max_uses: null },
     });

@@ -2,6 +2,8 @@ package operatorapi_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -11,12 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorclient"
 	"github.com/osolmaz/brokerkit/operatorfake"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/operatorv1"
 	"github.com/osolmaz/brokerkit/policy"
 	"github.com/osolmaz/brokerkit/usebudget"
@@ -109,8 +111,7 @@ func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-stale",
-		OnBehalfOf: "telegram:42", Notification: &operatorv1.NotificationDecision{Kind: "telegram",
-			DecisionToken: "wrong", ChatID: 7, MessageID: 8, Text: "approval"}}
+		OnBehalfOf: "telegram:42", Notification: testNotificationDecision("wrong")}
 	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); !hasCode(err, "invalid_decision_token") {
 		t.Fatalf("stale token error = %v", err)
 	}
@@ -120,6 +121,36 @@ func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 	if err != nil || approved.Status != grants.StatusActive || approved.DecidedOnBehalfOf != "telegram:42" {
 		t.Fatalf("notification approval = %+v, %v", approved, err)
 	}
+}
+
+func TestOperatorV1AcceptsBoundedEscapedTelegramText(t *testing.T) {
+	store, _, client := newOperatorServer(t, nil)
+	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
+		Target: policy.Target{Kind: "repository"}, Reason: "test", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-escaped",
+		OnBehalfOf: "telegram:42", Notification: testNotificationDecision(result.DecisionToken)}
+	command.Notification.Text = strings.Repeat("&amp;", 1_000)
+	command.Notification.RenderedDigest = notificationDigest(command.Notification.Text)
+	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); err != nil {
+		t.Fatalf("escaped Telegram notification = %v", err)
+	}
+}
+
+func testNotificationDecision(token string) *operatorv1.NotificationDecision {
+	presentation := `{"grant_id":"test","presentation":{"title":"Test approval","target":"test"}}`
+	text := "<b>Test approval</b>"
+	return &operatorv1.NotificationDecision{
+		Kind: "telegram", Renderer: "telegram-html-v1", DecisionToken: token, ChatID: 7, MessageID: 8, Text: text,
+		PresentationJSON: presentation, PresentationDigest: notificationDigest(presentation), RenderedDigest: notificationDigest(text),
+	}
+}
+
+func notificationDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
@@ -236,9 +267,9 @@ func newOperatorServer(t *testing.T, validator decision.ActivationValidator) (*g
 	server, err := operatorfake.New(operatorfake.Options{Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret},
 		ClientSecrets: map[string]string{"bob": "client-secret-with-enough-entropy"}, ActivationValidator: validator,
 		Audit: audit.New(io.Discard),
-		Presenter: operatorinbox.PresenterFunc(func(_ context.Context, grant grants.Grant) (operatorinbox.Presentation, error) {
-			return operatorinbox.Presentation{Risk: operatorinbox.RiskHigh, Title: "Protected write", Target: grant.Target.Kind,
-				Fields: []operatorinbox.DisplayField{{Label: "Repository", Value: "demo"}}, PlanHash: "private-plan-hash"}, nil
+		Presenter: approvalview.PresenterFunc(func(_ context.Context, grant grants.Grant) (approvalview.Presentation, error) {
+			return approvalview.Presentation{Risk: approvalview.RiskHigh, Title: "Protected write", Target: grant.Target.Kind,
+				Facts: []approvalview.Fact{{Label: "Repository", Value: "demo"}}, PlanHash: "private-plan-hash"}, nil
 		})})
 	if err != nil {
 		t.Fatal(err)

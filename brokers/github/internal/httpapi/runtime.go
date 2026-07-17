@@ -3,15 +3,15 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
@@ -24,15 +24,12 @@ func stateDir(value string) string {
 	return value
 }
 
-func configuredNotifier(cfg config.Config) (notify.Notifier, *bktelegram.Client, error) {
+func configuredNotifier(cfg config.Config) (approvalnotify.Notifier, *bktelegram.Client, error) {
 	if cfg.TelegramBotToken == "" && cfg.TelegramChatID == 0 {
 		return nil, nil, nil
 	}
 	telegram, err := bktelegram.NewWithOptions(cfg.TelegramBotToken, cfg.TelegramChatID, nil, "", bktelegram.Options{
-		Route:         bktelegram.RouteGitHub,
-		IgnoredAnswer: "Grant decision ignored",
-		ApproveText:   "Approve",
-		DenyText:      "Deny",
+		Route: bktelegram.RouteGitHub,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -110,54 +107,13 @@ func (s *Server) deliverGrantStatusUpdates(ctx context.Context) {
 		if update.Grant.Notification == nil {
 			continue
 		}
-		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, grantStatusText(update)); err != nil {
+		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, approval.StatusForUpdate(update)); err != nil {
 			continue
 		}
 		if err := s.grants.MarkNotificationStatus(update.Grant.ID, update.NotificationStatusKey()); err != nil {
 			s.logger.Error("record grant notification update", "error", err)
 		}
 	}
-}
-
-func grantStatusText(update grants.StatusUpdate) string {
-	switch update.Kind {
-	case grants.StatusUpdateRetainedReservation:
-		return "Result is ambiguous. Access is closed until an operator reviews the retained use."
-	case grants.StatusUpdateUsed, grants.StatusUpdateUsedExpired:
-		return grantUseStatusText(update.Grant)
-	default:
-		return grantLifecycleStatusText(update.Status)
-	}
-}
-
-func grantLifecycleStatusText(status grants.Status) string {
-	switch status {
-	case grants.StatusActive:
-		return "Approved. Access is active."
-	case grants.StatusDenied:
-		return "Denied. Access was not granted."
-	case grants.StatusExpired:
-		return "Expired. Access is closed."
-	case grants.StatusConsumed:
-		return "Used. Access is now closed."
-	case grants.StatusRevoked:
-		return "Revoked. Access is closed."
-	case grants.StatusCanceled:
-		return "Canceled. Approval request is closed."
-	default:
-		return "Grant status changed."
-	}
-}
-
-func grantUseStatusText(grant grants.Grant) string {
-	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, 0)
-	if !finite {
-		return fmt.Sprintf("Used %d times. Access remains active until expiry.", grant.UsedCount)
-	}
-	if grant.Status != grants.StatusActive || grant.ReservationRetained || remaining <= 0 {
-		return "Used. Access is now closed."
-	}
-	return fmt.Sprintf("Used %d of %d. %d uses remain.", grant.UsedCount, int(grant.MaxUses), remaining)
 }
 
 func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.Grant, executionErr error) error {

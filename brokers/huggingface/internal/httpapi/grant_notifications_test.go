@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
@@ -188,12 +189,12 @@ func TestCallbackWinningNotificationRaceKeepsMessageActive(t *testing.T) {
 		t.Fatalf("grant request = %d %s, want 202", resp.StatusCode, responseBody)
 	}
 	result, updates := notifier.snapshot()
-	if result.Answer != "Grant approved" || result.Retry {
+	if result.Answer != notify.AnswerApproved || result.Retry {
 		t.Fatalf("callback result = %+v", result)
 	}
 	for _, status := range updates {
-		if strings.Contains(status, "Superseded") {
-			t.Fatalf("callback-owned message was superseded: %q", status)
+		if status.Kind == notify.StatusSuperseded {
+			t.Fatalf("callback-owned message was superseded: %+v", status)
 		}
 	}
 	created := decodeAPIGrantResponse(t, responseBody)
@@ -487,7 +488,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetNotification(grant.ID, grants.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+	if _, err := store.SetNotification(grant.ID, testTelegramReference(t, grant.ID)); err != nil {
 		t.Fatalf("SetNotification() error = %v", err)
 	}
 	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
@@ -532,7 +533,7 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetNotification(grant.ID, grants.MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "grant text"}); err != nil {
+	if _, err := store.SetNotification(grant.ID, testTelegramReference(t, grant.ID)); err != nil {
 		t.Fatalf("SetNotification() error = %v", err)
 	}
 	approved, err := store.Approve(grant.ID, grant.DecisionToken, "telegram:1")
@@ -552,7 +553,7 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 
 	server.updateRetainedGrantReservationMessage(reserved)
 
-	if len(notifier.updates) != 1 || !strings.Contains(notifier.updates[0], "Access is closed") || strings.Contains(notifier.updates[0], "uses remain") {
+	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusRetained {
 		t.Fatalf("retained reservation updates = %+v, want closed expired status", notifier.updates)
 	}
 	updated, err := store.Get(grant.ID)
@@ -573,59 +574,48 @@ func TestWaitForGrantNotificationCanceledContext(t *testing.T) {
 	}
 }
 
-func TestGrantStatusUpdateText(t *testing.T) {
+func TestGrantStatusUpdatesUseSharedStates(t *testing.T) {
 	tests := []struct {
 		name   string
 		update grants.StatusUpdate
-		want   string
+		want   notify.StatusKind
 	}{
 		{
 			name:   "active",
 			update: grants.StatusUpdate{Status: grants.StatusActive},
-			want:   "✅ Approved. Access is active.",
+			want:   notify.StatusActive,
 		},
 		{
 			name:   "denied",
 			update: grants.StatusUpdate{Status: grants.StatusDenied},
-			want:   "❌ Denied. Access was not granted.",
+			want:   notify.StatusDenied,
 		},
 		{
 			name:   "consumed",
 			update: grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Status: grants.StatusConsumed, Grant: grants.Grant{Status: grants.StatusConsumed, MaxUses: 1, UsedCount: 1}},
-			want:   "✅ Used. Access is now closed.",
+			want:   notify.StatusConsumed,
 		},
 		{
 			name:   "reserved",
 			update: grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation, Status: grants.StatusActive, Grant: grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}},
-			want:   "⚠️ Push result is ambiguous. 2 of 2 uses are held; access is closed until an operator reviews it.",
+			want:   notify.StatusRetained,
 		},
 		{
 			name:   "reserved expired",
 			update: grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation, Status: grants.StatusExpired, Grant: grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1, ReservedCount: 1}},
-			want:   "⚠️ Push result is ambiguous. Access is closed; operator review is still needed.",
+			want:   notify.StatusRetained,
 		},
 		{
 			name:   "expired",
 			update: grants.StatusUpdate{Status: grants.StatusExpired, Grant: grants.Grant{ExpiredFrom: grants.StatusActive}},
-			want:   "⌛ Expired. Access window ended.",
+			want:   notify.StatusActiveExpired,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := grantStatusUpdateText(tc.update); got != tc.want {
-				t.Fatalf("grantStatusUpdateText() = %q, want %q", got, tc.want)
+			if got := approval.StatusForUpdate(tc.update); got.Kind != tc.want {
+				t.Fatalf("StatusForUpdate() = %+v, want %q", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestGrantUseStatusCountsReservedUses(t *testing.T) {
-	got := grantUseStatus(grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1})
-	if !strings.Contains(got, "1 use is held") || !strings.Contains(got, "0 uses remain") {
-		t.Fatalf("grantUseStatus() = %q, want held use counted against remaining budget", got)
-	}
-	got = grantUseStatus(grants.Grant{Status: grants.StatusExpired, MaxUses: 3, UsedCount: 1})
-	if strings.Contains(got, "remain") || !strings.Contains(got, "Access is now closed") {
-		t.Fatalf("expired grantUseStatus() = %q, want closed access without remaining budget", got)
 	}
 }

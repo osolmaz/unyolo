@@ -145,12 +145,20 @@ export interface components {
       label: string;
       value: string;
     };
+    Warning: {
+      severity: components["schemas"]["PresentationRisk"];
+      text: string;
+    };
+    /** @enum {string} */
+    PresentationRisk: "unknown" | "low" | "medium" | "high" | "critical";
     Presentation: {
-      /** @enum {string} */
-      risk: "unknown" | "low" | "medium" | "high" | "critical";
+      risk: components["schemas"]["PresentationRisk"];
       title: string;
       summary?: string;
+      target: string;
       facts?: components["schemas"]["Fact"][];
+      warnings?: components["schemas"]["Warning"][];
+      plan_hash?: string;
     };
     ApprovalBounds: {
       max_duration_seconds: number;
@@ -163,10 +171,14 @@ export interface components {
     NotificationDecision: {
       /** @constant */
       kind: "telegram";
+      renderer: string;
       decision_token: string;
       chat_id: number;
       message_id: number;
       text: string;
+      presentation_json: string;
+      presentation_digest: string;
+      rendered_digest: string;
     };
     Decision: {
       expected_revision: number;

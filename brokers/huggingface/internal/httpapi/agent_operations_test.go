@@ -16,6 +16,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agentconformance"
 	"github.com/osolmaz/brokerkit/agentv1"
+	bkapprovalnotify "github.com/osolmaz/brokerkit/approvalnotify"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
@@ -185,7 +186,7 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	notifier := &bknotify.Memory{}
+	notifier := &bkapprovalnotify.Memory{}
 	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
 	defer cancel()
 	defer server.Close()
@@ -200,17 +201,17 @@ func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 		t.Fatalf("grant notification = %#v, %v", grant.Notification, err)
 	}
 	message := notifier.Messages[0]
-	if !strings.Contains(message.Text, "Create Hugging Face repository") ||
-		!strings.Contains(message.Text, "Create private dataset alice/data") ||
-		!strings.Contains(message.Text, grant.Metadata[hfplan.MetadataDigest]) {
-		t.Fatalf("approval message omitted immutable operation details: %q", message.Text)
+	if !strings.Contains(message.Presentation.Title, "Create Hugging Face repository") ||
+		!strings.Contains(message.Presentation.Summary, "Create private dataset alice/data") ||
+		message.Presentation.PlanHash != grant.Metadata[hfplan.MetadataDigest] {
+		t.Fatalf("approval message omitted immutable operation details: %+v", message.Presentation)
 	}
 }
 
 func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, &bknotify.Memory{})
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, &bkapprovalnotify.Memory{})
 	defer cancel()
 	defer server.Close()
 	body := `{"idempotency_key":"cancel-pending","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"cancel this request"}`
@@ -290,7 +291,7 @@ func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
 
 type contextCheckingNotifier struct{ sent bool }
 
-func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ bknotify.ApprovalMessage) (bknotify.MessageRef, error) {
+func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ bkapprovalnotify.Approval) (bknotify.MessageRef, error) {
 	if err := ctx.Err(); err != nil {
 		return bknotify.MessageRef{}, err
 	}
@@ -298,7 +299,7 @@ func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ bknotify.A
 	return bknotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
 }
 
-func (*contextCheckingNotifier) UpdateStatus(context.Context, bknotify.MessageRef, string) error {
+func (*contextCheckingNotifier) UpdateStatus(context.Context, bknotify.MessageRef, bknotify.Status) error {
 	return nil
 }
 
@@ -424,7 +425,7 @@ type blockingApprovalNotifier struct {
 	release chan struct{}
 }
 
-func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ bknotify.ApprovalMessage) (bknotify.MessageRef, error) {
+func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ bkapprovalnotify.Approval) (bknotify.MessageRef, error) {
 	close(n.entered)
 	select {
 	case <-n.release:
@@ -434,7 +435,7 @@ func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ bknotify.
 	}
 }
 
-func (*blockingApprovalNotifier) UpdateStatus(context.Context, bknotify.MessageRef, string) error {
+func (*blockingApprovalNotifier) UpdateStatus(context.Context, bknotify.MessageRef, bknotify.Status) error {
 	return nil
 }
 
@@ -619,7 +620,7 @@ func TestAgentRepoCreateUpstreamFailures(t *testing.T) {
 	}
 }
 
-func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, notifiers ...bknotify.Notifier) (*httptest.Server, *Server, context.CancelFunc) {
+func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, notifiers ...bkapprovalnotify.Notifier) (*httptest.Server, *Server, context.CancelFunc) {
 	t.Helper()
 	scope, err := policy.Parse([]byte(scopeJSON))
 	if err != nil {
@@ -627,7 +628,7 @@ func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, no
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	operators := []config.Client{{Name: "operator", Secret: testOtherSecret}}
-	var notifier bknotify.Notifier
+	var notifier bkapprovalnotify.Notifier
 	if len(notifiers) > 0 {
 		notifier = notifiers[0]
 		operators = nil

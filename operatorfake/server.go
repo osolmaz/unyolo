@@ -7,18 +7,18 @@ import (
 	"net/http/httptest"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/decision"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	"github.com/osolmaz/brokerkit/operatorclient"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 )
 
 // Options configures a fake server with production handlers and storage behavior.
 type Options struct {
 	Store               *grants.Store
-	Presenter           operatorinbox.Presenter
+	Presenter           approvalview.Presenter
 	OperatorSecrets     map[string]string
 	ClientSecrets       map[string]string
 	Broker              string

@@ -134,7 +134,7 @@ func assertTokenLifecycle(t *testing.T, fixture Fixture) {
 		Action: notify.ActionApprove, GrantID: created.Grant.ID, DecisionToken: created.DecisionToken,
 		ChatID: 1, MessageID: 2, OperatorID: 42,
 	})
-	if result.Retry || result.Answer != "Grant approved" {
+	if result.Retry || result.Answer != notify.AnswerApproved {
 		t.Fatalf("token approval = %+v", result)
 	}
 	current, err := fixture.Runtime.Store.Get(created.Grant.ID)

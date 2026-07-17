@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
@@ -29,7 +29,7 @@ func TestPresenterUsesSafeCatalogFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presentation.Risk != operatorinbox.RiskHigh || presentation.Title != "Run privileged command" || len(presentation.Fields) != 5 {
+	if presentation.Risk != approvalview.RiskHigh || presentation.Title != "Run privileged command" || len(presentation.Facts) != 5 || len(presentation.Warnings) != 1 {
 		t.Fatalf("presentation = %+v", presentation)
 	}
 	if fmt.Sprintf("%+v", presentation) == "" || contains(fmt.Sprintf("%+v", presentation), "secret-canary") || contains(fmt.Sprintf("%+v", presentation), "/usr/bin/printf") {
@@ -57,15 +57,42 @@ func TestPresenterRejectsUnavailableCommand(t *testing.T) {
 
 func TestRiskMapping(t *testing.T) {
 	t.Parallel()
-	tests := map[string]operatorinbox.Risk{
-		"low":      operatorinbox.RiskLow,
-		"MEDIUM":   operatorinbox.RiskMedium,
-		"high":     operatorinbox.RiskHigh,
-		"critical": operatorinbox.RiskUnknown,
+	tests := map[string]approvalview.Risk{
+		"low":      approvalview.RiskLow,
+		"MEDIUM":   approvalview.RiskMedium,
+		"high":     approvalview.RiskHigh,
+		"critical": approvalview.RiskUnknown,
 	}
 	for value, want := range tests {
 		if got := risk(value); got != want {
 			t.Fatalf("risk(%q) = %q, want %q", value, got, want)
+		}
+	}
+}
+
+func TestPresenterCoversEveryCatalogCommand(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	snapshot, err := catalog.Parse([]byte(fmt.Sprintf(`{"version":1,"commands":[
+		{"id":"inspect","executable":"/usr/bin/true","arguments":[],"target_users":["deploy"],"working_directory":%q,"timeout_seconds":5,"max_output_bytes":100,"risk":"low"},
+		{"id":"restart","executable":"/usr/bin/true","arguments":[],"target_users":["deploy"],"working_directory":%q,"timeout_seconds":5,"max_output_bytes":100,"risk":"medium"},
+		{"id":"upgrade","executable":"/usr/bin/true","arguments":[],"target_users":["root"],"working_directory":%q,"timeout_seconds":5,"max_output_bytes":100,"risk":"high"}
+	]}`, directory, directory, directory)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ command, user string }{{"inspect", "deploy"}, {"restart", "deploy"}, {"upgrade", "root"}} {
+		presentation, err := (Presenter{Catalog: snapshot}).Present(t.Context(), grants.Grant{
+			Operation: sudopolicy.OperationExecCommand,
+			Target:    corepolicy.Target{Kind: sudopolicy.TargetUser, Fields: map[string][]string{sudopolicy.TargetName: {test.user}}},
+			Attrs:     map[string][]string{sudopolicy.AttrCommandID: {test.command}},
+		})
+		if err != nil {
+			t.Errorf("Present(%q) error = %v", test.command, err)
+			continue
+		}
+		if err := approvalview.Validate(presentation); err != nil || len(presentation.Warnings) == 0 {
+			t.Errorf("Present(%q) = %+v, validation error = %v", test.command, presentation, err)
 		}
 	}
 }

@@ -2,8 +2,6 @@
 package notify
 
 import (
-	"context"
-
 	"github.com/osolmaz/brokerkit/usebudget"
 )
 
@@ -15,32 +13,62 @@ const (
 	ActionDeny    Action = "deny"
 )
 
-// ApprovalMessage is the generic notification payload for an approval request.
-type ApprovalMessage struct {
-	GrantID          string
-	DecisionToken    string
-	Text             string
-	Client           string
-	Operation        string
-	Target           string
-	Reason           string
-	RequestedMinutes int
-	MaxUses          usebudget.Limit
-	Fields           []Field
-}
-
-// Field is one provider-specific display line.
-type Field struct {
-	Name  string
-	Value string
-}
-
 // MessageRef identifies an editable notification.
 type MessageRef struct {
-	Kind      string `json:"kind"`
-	ChatID    int64  `json:"chat_id"`
-	MessageID int    `json:"message_id"`
-	Text      string `json:"text"`
+	Kind               string `json:"kind"`
+	Renderer           string `json:"renderer"`
+	ChatID             int64  `json:"chat_id"`
+	MessageID          int    `json:"message_id"`
+	Text               string `json:"text"`
+	PresentationJSON   string `json:"presentation_json"`
+	PresentationDigest string `json:"presentation_digest"`
+	RenderedDigest     string `json:"rendered_digest"`
+}
+
+// Answer identifies one fixed callback answer rendered by the channel.
+type Answer string
+
+const (
+	AnswerApproved         Answer = "approved"
+	AnswerDenied           Answer = "denied"
+	AnswerAlreadyApproved  Answer = "already_approved"
+	AnswerAlreadyDenied    Answer = "already_denied"
+	AnswerAlreadyExpired   Answer = "already_expired"
+	AnswerAlreadyConsumed  Answer = "already_consumed"
+	AnswerAlreadyRevoked   Answer = "already_revoked"
+	AnswerAlreadyCanceled  Answer = "already_canceled"
+	AnswerNotFound         Answer = "not_found"
+	AnswerSuperseded       Answer = "superseded"
+	AnswerIgnored          Answer = "ignored"
+	AnswerRouteUnavailable Answer = "route_unavailable"
+	AnswerUnavailable      Answer = "unavailable"
+	AnswerClosed           Answer = "closed"
+)
+
+// StatusKind identifies one operator-facing notification lifecycle state.
+type StatusKind string
+
+const (
+	StatusActive         StatusKind = "active"
+	StatusDenied         StatusKind = "denied"
+	StatusPendingExpired StatusKind = "pending_expired"
+	StatusActiveExpired  StatusKind = "active_expired"
+	StatusConsumed       StatusKind = "consumed"
+	StatusRevoked        StatusKind = "revoked"
+	StatusCanceled       StatusKind = "canceled"
+	StatusRetained       StatusKind = "retained"
+	StatusUsedActive     StatusKind = "used_active"
+	StatusSuperseded     StatusKind = "superseded"
+	StatusUnavailable    StatusKind = "unavailable"
+	StatusClosed         StatusKind = "closed"
+)
+
+// Status carries bounded counters needed for deterministic terminal rendering.
+type Status struct {
+	Kind          StatusKind
+	UsedCount     int
+	ReservedCount int
+	MaxUses       usebudget.Limit
 }
 
 // Decision is a parsed operator decision.
@@ -54,46 +82,21 @@ type Decision struct {
 	CallbackID    string
 	MessageID     int
 	MessageText   string
+	Notification  *MessageRef
 	OperatorID    int64
 	OperatorTag   string
 }
 
 // DecisionResult is the callback answer returned after an operator decision.
 type DecisionResult struct {
-	// Answer is the short callback answer shown by the approval channel.
-	Answer string
-	// MessageStatus is the durable status rendered into the approval message.
-	// A non-empty value also closes the message's decision controls.
-	MessageStatus string
+	// Answer is rendered into a short callback answer by the channel.
+	Answer Answer
+	// MessageStatus is rendered into the durable approval message. A non-empty
+	// kind also closes the message's decision controls.
+	MessageStatus Status
 	// ClearButtons closes decision controls without replacing broker-owned status text.
 	ClearButtons bool
 	// Retry leaves the callback unanswered and its update offset uncommitted.
 	// Brokers use it when a durable decision transaction could not be saved.
 	Retry bool
-}
-
-// Notifier sends approval requests and status updates.
-type Notifier interface {
-	SendApproval(context.Context, ApprovalMessage) (MessageRef, error)
-	UpdateStatus(context.Context, MessageRef, string) error
-}
-
-// Memory is an in-memory notifier for tests and local dry runs.
-type Memory struct {
-	Messages []ApprovalMessage
-	Statuses []string
-}
-
-// SendApproval records msg and returns a fake message reference.
-func (m *Memory) SendApproval(_ context.Context, msg ApprovalMessage) (MessageRef, error) {
-	stored := msg
-	stored.DecisionToken = ""
-	m.Messages = append(m.Messages, stored)
-	return MessageRef{Kind: "memory", ChatID: 1, MessageID: len(m.Messages), Text: msg.Operation}, nil
-}
-
-// UpdateStatus records a status update.
-func (m *Memory) UpdateStatus(_ context.Context, _ MessageRef, status string) error {
-	m.Statuses = append(m.Statuses, status)
-	return nil
 }

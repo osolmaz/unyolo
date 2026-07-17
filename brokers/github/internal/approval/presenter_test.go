@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/approvalview"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operatorinbox"
 	"github.com/osolmaz/brokerkit/policy"
 )
 
@@ -18,7 +19,7 @@ func TestPresenter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presentation.Target != "osolmaz/gh-broker" || presentation.Risk != operatorinbox.RiskCritical || len(presentation.Fields) != 5 {
+	if presentation.Target != "osolmaz/gh-broker" || presentation.Risk != approvalview.RiskCritical || len(presentation.Facts) != 5 || len(presentation.Warnings) != 1 {
 		t.Fatalf("presentation = %+v", presentation)
 	}
 }
@@ -41,7 +42,7 @@ func TestPresenterShowsConcreteGeneratedTargetsAndSecurityAttributes(t *testing.
 	}
 	want := map[string]string{"Target": presentation.Target, "Target owner": "osolmaz", "Target repository": "brokerkit", "Target ID": "123",
 		"Environment": "production", "Workflow ref": "deploy.yml@main"}
-	for _, field := range presentation.Fields {
+	for _, field := range presentation.Facts {
 		if expected, found := want[field.Label]; found {
 			if field.Value != expected {
 				t.Fatalf("%s = %q, want %q", field.Label, field.Value, expected)
@@ -63,7 +64,7 @@ func TestPresenterShowsGeneratedPathSelectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range presentation.Fields {
+	for _, field := range presentation.Facts {
 		if field.Label == "Selector username" && field.Value == "octocat" {
 			return
 		}
@@ -81,7 +82,7 @@ func TestPresenterShowsInstallationAndCreatedResourceSelectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{"Installation ID": "42", "Resource owner": "osolmaz", "Resource name": "brokerkit-next"}
-	for _, field := range presentation.Fields {
+	for _, field := range presentation.Facts {
 		if expected, found := want[field.Label]; found && field.Value == expected {
 			delete(want, field.Label)
 		}
@@ -108,13 +109,36 @@ func TestTargetSummaryRejectsKindOnlyAndFormatsNamedTargets(t *testing.T) {
 
 func TestRiskUsesGeneratedCatalogAndProtocolTable(t *testing.T) {
 	t.Parallel()
-	if got := risk("git.push.force"); got != operatorinbox.RiskCritical {
+	if got := risk("git.push.force"); got != approvalview.RiskCritical {
 		t.Fatalf("protocol risk = %q", got)
 	}
-	if got := risk("repo.delete"); got != operatorinbox.RiskCritical {
+	if got := risk("repo.delete"); got != approvalview.RiskCritical {
 		t.Fatalf("catalog risk = %q", got)
 	}
-	if got := risk("custom.force"); got != operatorinbox.RiskUnknown {
+	if got := risk("custom.force"); got != approvalview.RiskUnknown {
 		t.Fatalf("unknown risk = %q", got)
+	}
+}
+
+func TestPresenterCoversEveryCatalogOperation(t *testing.T) {
+	t.Parallel()
+	for _, descriptor := range opcatalog.MustAll() {
+		presentation, err := (Presenter{}).Present(t.Context(), grants.Grant{
+			ID: "grant-" + descriptor.Name, Operation: descriptor.Name,
+			Target: policy.Target{Kind: "repo", Fields: map[string][]string{"owner": {"example"}, "name": {"project"}}},
+		})
+		if err != nil {
+			t.Errorf("Present(%q) error = %v", descriptor.Name, err)
+			continue
+		}
+		if err := approvalview.Validate(presentation); err != nil {
+			t.Errorf("Present(%q) produced invalid presentation: %v", descriptor.Name, err)
+		}
+		if presentation.Risk == approvalview.RiskUnknown {
+			t.Errorf("Present(%q) has unknown risk", descriptor.Name)
+		}
+		if (presentation.Risk == approvalview.RiskHigh || presentation.Risk == approvalview.RiskCritical) && len(presentation.Warnings) == 0 {
+			t.Errorf("Present(%q) omitted destructive warning", descriptor.Name)
+		}
 	}
 }

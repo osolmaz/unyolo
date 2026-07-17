@@ -95,6 +95,12 @@ command's output and exits with its exit code. For typed catalog slots,
 repeat `--arg-json NAME=JSON`. Reuse a stable `--operation-id` when retrying;
 never retry an ambiguous execution under a new id.
 
+When Telegram notifications are configured, sudo-broker supplies only the
+cataloged command description, target user, bounded arguments, timeout, and
+risk. BrokerKit renders the same escaped rich approval layout and fixed
+Approve/Deny controls used by the other brokers; raw executables, environment
+values, and unrestricted command lines are never notification fields.
+
 See [the threat model](../../docs/security/THREAT_MODEL.md) for the security
 boundary and platform-specific guarantees.
 

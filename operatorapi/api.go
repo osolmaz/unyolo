@@ -4,7 +4,9 @@ package operatorapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +32,7 @@ import (
 )
 
 const (
-	maxDecisionBodyBytes = 16 * 1024
+	maxDecisionBodyBytes = 96 * 1024
 	eventHeartbeat       = 15 * time.Second
 )
 
@@ -288,8 +290,26 @@ func validNotificationDecision(value *operatorwire.NotificationDecision, constra
 }
 
 func validNotificationFields(value *operatorwire.NotificationDecision) bool {
+	return validNotificationIdentity(value) && validNotificationPayload(value)
+}
+
+func validNotificationIdentity(value *operatorwire.NotificationDecision) bool {
 	return value.Kind == operatorwire.NotificationDecisionKind("telegram") && value.ChatId != 0 && value.MessageId > 0 &&
-		value.DecisionToken != "" && len(value.DecisionToken) <= 200 && value.Text != "" && len(value.Text) <= 4096
+		value.DecisionToken != "" && len(value.DecisionToken) <= 200
+}
+
+func validNotificationPayload(value *operatorwire.NotificationDecision) bool {
+	return value.Renderer != "" && len(value.Renderer) <= 64 && value.Text != "" && len(value.Text) <= 32*1024 &&
+		value.PresentationJson != "" && len(value.PresentationJson) <= 64*1024 &&
+		validNotificationDigest(value.PresentationDigest) && validNotificationDigest(value.RenderedDigest)
+}
+
+func validNotificationDigest(value string) bool {
+	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil
 }
 
 func validDecisionConstraints(value *operatorwire.Constraints) bool {
@@ -307,8 +327,10 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 	}
 	if input.Notification != nil {
 		result.Notification = &operatorv1.NotificationDecision{Kind: string(input.Notification.Kind),
-			DecisionToken: input.Notification.DecisionToken, ChatID: int64(input.Notification.ChatId),
-			MessageID: input.Notification.MessageId, Text: input.Notification.Text}
+			Renderer: input.Notification.Renderer, DecisionToken: input.Notification.DecisionToken,
+			ChatID: int64(input.Notification.ChatId), MessageID: input.Notification.MessageId, Text: input.Notification.Text,
+			PresentationJSON: input.Notification.PresentationJson, PresentationDigest: input.Notification.PresentationDigest,
+			RenderedDigest: input.Notification.RenderedDigest}
 	}
 	if input.Constraints == nil {
 		return result
@@ -324,9 +346,13 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 }
 
 func project(item operatorinbox.Item) operatorwire.BrokerRequest {
-	facts := make([]operatorwire.Fact, 0, len(item.Presentation.Fields))
-	for _, fact := range item.Presentation.Fields {
+	facts := make([]operatorwire.Fact, 0, len(item.Presentation.Facts))
+	for _, fact := range item.Presentation.Facts {
 		facts = append(facts, operatorwire.Fact{Label: fact.Label, Value: fact.Value})
+	}
+	warnings := make([]operatorwire.Warning, 0, len(item.Presentation.Warnings))
+	for _, warning := range item.Presentation.Warnings {
+		warnings = append(warnings, operatorwire.Warning{Severity: operatorwire.PresentationRisk(warning.Severity), Text: warning.Text})
 	}
 	request := operatorwire.BrokerRequest{
 		Id: item.ID, Revision: int(item.Revision), Requester: item.Client, Operation: item.Operation, Status: operatorwire.Status(item.Status),
@@ -336,7 +362,8 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 		DecidedAt: item.DecidedAt, DecidedBy: optional.NonZero(item.DecidedBy), DecidedOnBehalfOf: optional.NonZero(item.DecidedOnBehalfOf),
 		PresentationUnavailable: optional.NonZero(item.PresentationUnavailable),
 		Presentation: operatorwire.Presentation{Risk: operatorwire.PresentationRisk(item.Presentation.Risk), Title: item.Presentation.Title,
-			Summary: optional.NonZero(item.Presentation.Summary), Facts: &facts},
+			Summary: optional.NonZero(item.Presentation.Summary), Target: item.Presentation.Target, Facts: &facts,
+			Warnings: &warnings, PlanHash: optional.NonZero(item.Presentation.PlanHash)},
 		AllowedActions: allowedActions(item),
 	}
 	if item.Status == grants.StatusPending {

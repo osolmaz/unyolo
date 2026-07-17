@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/approvalnotify"
 	ghapproval "github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
@@ -212,7 +213,7 @@ func (s *Server) claimAndSendGrantNotification(c echo.Context, plan grantCreateP
 	if !claimed {
 		return s.waitForGrantNotification(c.Request().Context(), id)
 	}
-	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(claim.Grant, claim.DecisionToken))
+	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(c.Request().Context(), claim.Grant, claim.DecisionToken))
 	if err != nil {
 		s.audit(c, plan.request, "error", "could not notify operator", 0, plan.decision.MatchedRuleIDs)
 		if s.operatorConfigured {
@@ -235,7 +236,7 @@ func (s *Server) recordGrantNotification(ctx context.Context, id string, claim g
 		return stored, ref, nil
 	}
 	if shouldSupersedeNotification(stored.Notification, ref) {
-		_ = s.notifier.UpdateStatus(ctx, ref, "Superseded by another notification attempt.")
+		_ = s.notifier.UpdateStatus(ctx, ref, notify.Status{Kind: notify.StatusSuperseded})
 	}
 	return s.waitForGrantNotification(ctx, id)
 }
@@ -414,44 +415,8 @@ func apiNotification(ref notify.MessageRef) map[string]any {
 	return map[string]any{"kind": ref.Kind, "chat_id": ref.ChatID, "message_id": ref.MessageID}
 }
 
-func grantApprovalMessage(grant grants.Grant, decisionToken string) notify.ApprovalMessage {
-	return notify.ApprovalMessage{
-		GrantID:          grant.ID,
-		DecisionToken:    decisionToken,
-		Text:             grantApprovalText(grant),
-		Client:           grant.Client,
-		Operation:        grant.Operation,
-		Target:           ghapproval.TargetSummary(grant.Target),
-		Reason:           grant.Reason,
-		RequestedMinutes: int(grant.Duration / time.Minute),
-		MaxUses:          grant.MaxUses,
-		Fields:           approvalFields(grant),
-	}
-}
-
-func grantApprovalText(grant grants.Grant) string {
-	return fmt.Sprintf(
-		"Approval needed for gh-broker\n\n%s is asking to run %s on %s.\n\nReason: %s\nRequest expires: %s\n\nApprove only if this looks right.",
-		grant.Client,
-		grant.Operation,
-		ghapproval.TargetSummary(grant.Target),
-		grant.Reason,
-		grant.PendingExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
-	)
-}
-
-func approvalFields(grant grants.Grant) []notify.Field {
-	presentationFields := ghapproval.DisplayFields(grant)
-	fields := make([]notify.Field, 0, len(presentationFields)+1)
-	for _, field := range presentationFields {
-		fields = append(fields, notify.Field{Name: field.Label, Value: field.Value})
-	}
-	if grant.MaxUses > 0 {
-		fields = append(fields, notify.Field{Name: "max_uses", Value: fmt.Sprintf("%d", grant.MaxUses)})
-	} else {
-		fields = append(fields, notify.Field{Name: "max_uses", Value: "unlimited until expiry"})
-	}
-	return fields
+func grantApprovalMessage(ctx context.Context, grant grants.Grant, decisionToken string) approvalnotify.Approval {
+	return approvalnotify.Project(ctx, "GitHub", ghapproval.Presenter{}, grant, decisionToken)
 }
 
 func flattenCoreValues(values map[string][]string) map[string]string {

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/approval"
+	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
 	"github.com/osolmaz/brokerkit/operatorclient"
@@ -26,13 +28,19 @@ type Dispatcher struct {
 	routes map[string]OperatorSource
 }
 
-var terminalDecisionAnswers = map[grants.Status]string{
-	grants.StatusActive:   "Grant approved",
-	grants.StatusDenied:   "Grant denied",
-	grants.StatusExpired:  "Grant expired",
-	grants.StatusConsumed: "Grant already used",
-	grants.StatusRevoked:  "Grant revoked",
-	grants.StatusCanceled: "Grant canceled",
+var terminalDecisionAnswers = map[grants.Status]notify.Answer{
+	grants.StatusActive:   notify.AnswerApproved,
+	grants.StatusDenied:   notify.AnswerDenied,
+	grants.StatusExpired:  notify.AnswerAlreadyExpired,
+	grants.StatusConsumed: notify.AnswerAlreadyConsumed,
+	grants.StatusRevoked:  notify.AnswerAlreadyRevoked,
+	grants.StatusCanceled: notify.AnswerAlreadyCanceled,
+}
+
+var routeBrokerNames = map[string]string{
+	RouteHuggingFace: "Hugging Face",
+	RouteGitHub:      "GitHub",
+	RouteSudo:        "sudo",
 }
 
 const operatorDecisionTimeout = 15 * time.Second
@@ -58,7 +66,7 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	defer cancel()
 	source, ok := d.routes[decision.Route]
 	if !ok {
-		return notify.DecisionResult{Answer: "Approval route is unavailable", ClearButtons: true}
+		return notify.DecisionResult{Answer: notify.AnswerRouteUnavailable, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
 	}
 	current, err := source.Get(ctx, decision.GrantID)
 	if err != nil {
@@ -69,19 +77,63 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	}
 	action, ok := operatorAction(decision.Action)
 	if !ok {
-		return notify.DecisionResult{Answer: "Grant decision ignored"}
+		return notify.DecisionResult{Answer: notify.AnswerIgnored}
+	}
+	notification, err := notificationDecision(current, decision)
+	if err != nil {
+		return notify.DecisionResult{Answer: notify.AnswerUnavailable}
 	}
 	updated, err := source.Decide(ctx, current.ID, action, operatorv1.Decision{
 		ExpectedRevision: current.Revision,
 		IdempotencyKey:   callbackIdempotencyKey(decision),
 		OnBehalfOf:       approval.Actor(decision),
-		Notification: &operatorv1.NotificationDecision{Kind: "telegram", DecisionToken: decision.DecisionToken,
-			ChatID: decision.ChatID, MessageID: decision.MessageID, Text: decision.MessageText},
+		Notification:     notification,
 	})
 	if err != nil {
 		return dispatcherErrorResult(err)
 	}
 	return completedDecisionResult(updated)
+}
+
+func notificationDecision(request operatorv1.Request, decision notify.Decision) (*operatorv1.NotificationDecision, error) {
+	semantic, err := semanticApproval(request, decision.Route, decision.DecisionToken)
+	if err != nil {
+		return nil, err
+	}
+	text, err := RenderApproval(semantic)
+	if err != nil {
+		return nil, err
+	}
+	return &operatorv1.NotificationDecision{
+		Kind: "telegram", Renderer: rendererID, DecisionToken: decision.DecisionToken,
+		ChatID: decision.ChatID, MessageID: decision.MessageID, Text: text,
+		PresentationJSON: approvalnotify.SnapshotJSON(semantic), PresentationDigest: approvalnotify.PresentationDigest(semantic),
+		RenderedDigest: renderedDigest(text),
+	}, nil
+}
+
+func semanticApproval(request operatorv1.Request, route, token string) (approvalnotify.Approval, error) {
+	broker := routeBrokerNames[route]
+	if broker == "" || request.PendingExpiresAt == nil {
+		return approvalnotify.Approval{}, errors.New("pending notification presentation is unavailable")
+	}
+	facts := make([]approvalview.Fact, len(request.Presentation.Facts))
+	for index, fact := range request.Presentation.Facts {
+		facts[index] = approvalview.Fact{Label: fact.Label, Value: fact.Value}
+	}
+	warnings := make([]approvalview.Warning, len(request.Presentation.Warnings))
+	for index, warning := range request.Presentation.Warnings {
+		warnings[index] = approvalview.Warning{Severity: approvalview.Risk(warning.Severity), Text: warning.Text}
+	}
+	return approvalnotify.Approval{
+		GrantID: request.ID, DecisionToken: token, Broker: broker, Requester: request.Requester,
+		Operation: request.Operation, Reason: request.RequestReason, RequestedDurationSeconds: request.RequestedDurationSeconds,
+		MaxUses: request.GrantedMaxUses, PendingExpiresAt: *request.PendingExpiresAt,
+		Presentation: approvalview.Presentation{Risk: approvalview.Risk(request.Presentation.Risk), Title: request.Presentation.Title,
+			Summary: request.Presentation.Summary, Target: request.Presentation.Target, Facts: facts, Warnings: warnings,
+			PlanHash: request.Presentation.PlanHash},
+		PresentationUnavailable: request.PresentationUnavailable,
+	}, nil
 }
 
 func operatorAction(action notify.Action) (operatorv1.Action, bool) {
@@ -107,19 +159,43 @@ func dispatcherErrorResult(err error) notify.DecisionResult {
 			return completedDecisionResult(*apiError.Current)
 		}
 		if apiError.Status == 404 {
-			return notify.DecisionResult{Answer: "Grant not found", ClearButtons: true}
+			return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
 		}
 		if apiError.Code == "invalid_decision_token" {
-			return notify.DecisionResult{Answer: "Approval request was superseded", ClearButtons: true}
+			return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
 		}
 	}
-	return notify.DecisionResult{Answer: "Broker temporarily unavailable; try again"}
+	return notify.DecisionResult{Answer: notify.AnswerUnavailable}
 }
 
 func completedDecisionResult(request operatorv1.Request) notify.DecisionResult {
 	answer := terminalDecisionAnswers[request.Status]
 	if answer == "" {
-		answer = "Grant is no longer pending"
+		answer = notify.AnswerClosed
 	}
-	return notify.DecisionResult{Answer: answer, ClearButtons: request.Status != grants.StatusPending}
+	if request.Status == grants.StatusPending {
+		return notify.DecisionResult{Answer: answer}
+	}
+	return notify.DecisionResult{Answer: answer, MessageStatus: statusForRequest(request)}
+}
+
+func statusForRequest(request operatorv1.Request) notify.Status {
+	status := notify.Status{UsedCount: request.UsedCount, MaxUses: request.GrantedMaxUses}
+	if request.Status == grants.StatusExpired {
+		if request.ActiveExpiresAt == nil {
+			status.Kind = notify.StatusPendingExpired
+		} else {
+			status.Kind = notify.StatusActiveExpired
+		}
+		return status
+	}
+	status.Kind = map[grants.Status]notify.StatusKind{
+		grants.StatusActive: notify.StatusActive, grants.StatusDenied: notify.StatusDenied,
+		grants.StatusConsumed: notify.StatusConsumed, grants.StatusRevoked: notify.StatusRevoked,
+		grants.StatusCanceled: notify.StatusCanceled,
+	}[request.Status]
+	if status.Kind == "" {
+		status.Kind = notify.StatusClosed
+	}
+	return status
 }

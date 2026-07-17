@@ -657,6 +657,7 @@ function safeRequest(): SafeRequest {
       presentation: {
         risk: "high",
         title: "Repository update",
+        target: "example/project",
         facts: [],
       },
       allowed_actions: ["approve", "deny", "revoke"],

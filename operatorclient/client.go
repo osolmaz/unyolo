@@ -307,8 +307,9 @@ func decisionToWire(input operatorv1.Decision) operatorwire.Decision {
 		OnBehalfOf: optional.NonZero(input.OnBehalfOf)}
 	if input.Notification != nil {
 		result.Notification = &operatorwire.NotificationDecision{Kind: operatorwire.NotificationDecisionKind(input.Notification.Kind),
-			DecisionToken: input.Notification.DecisionToken, ChatId: int(input.Notification.ChatID),
-			MessageId: input.Notification.MessageID, Text: input.Notification.Text}
+			Renderer: input.Notification.Renderer, DecisionToken: input.Notification.DecisionToken, ChatId: int(input.Notification.ChatID),
+			MessageId: input.Notification.MessageID, Text: input.Notification.Text, PresentationJson: input.Notification.PresentationJSON,
+			PresentationDigest: input.Notification.PresentationDigest, RenderedDigest: input.Notification.RenderedDigest}
 	}
 	if input.Constraints != nil {
 		result.Constraints = &operatorwire.Constraints{}
@@ -344,17 +345,25 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 			facts = append(facts, operatorv1.Fact{Label: fact.Label, Value: fact.Value})
 		}
 	}
+	warnings := []operatorv1.Warning{}
+	if input.Presentation.Warnings != nil {
+		for _, warning := range *input.Presentation.Warnings {
+			warnings = append(warnings, operatorv1.Warning{Severity: string(warning.Severity), Text: warning.Text})
+		}
+	}
 	result := operatorv1.Request{ID: input.Id, Revision: int64(input.Revision), Requester: input.Requester, Operation: input.Operation,
 		Status: grants.Status(input.Status), RequestedAt: input.RequestedAt, PendingExpiresAt: input.PendingExpiresAt,
 		ActiveExpiresAt: input.ActiveExpiresAt, RequestedDurationSeconds: int64(input.RequestedDurationSeconds),
 		RequestedMaxUses: operatorv1wire.UseLimitFromWire(input.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitFromWire(input.GrantedMaxUses),
 		UsedCount: input.UsedCount, DecidedAt: input.DecidedAt,
-		Presentation:   operatorv1.Presentation{Risk: string(input.Presentation.Risk), Title: input.Presentation.Title, Facts: facts},
+		Presentation: operatorv1.Presentation{Risk: string(input.Presentation.Risk), Title: input.Presentation.Title,
+			Target: input.Presentation.Target, Facts: facts, Warnings: warnings},
 		AllowedActions: make([]operatorv1.Action, 0, len(input.AllowedActions))}
 	result.RequestReason = optional.Value(input.RequestReason)
 	result.DecidedBy = optional.Value(input.DecidedBy)
 	result.DecidedOnBehalfOf = optional.Value(input.DecidedOnBehalfOf)
 	result.Presentation.Summary = optional.Value(input.Presentation.Summary)
+	result.Presentation.PlanHash = optional.Value(input.Presentation.PlanHash)
 	result.PresentationUnavailable = boolValue(input.PresentationUnavailable)
 	for _, action := range input.AllowedActions {
 		result.AllowedActions = append(result.AllowedActions, operatorv1.Action(action))

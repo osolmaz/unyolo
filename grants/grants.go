@@ -767,13 +767,34 @@ func decodeState(raw []byte) (fileData, error) {
 func validateLoadedGrants(items []Grant) error {
 	seen := make(map[string]bool, len(items))
 	for _, grant := range items {
-		if !validGrantIdentity(grant, seen) || !validGrantLifecycle(grant) || !validGrantUsage(grant) || !validGrantReservation(grant) {
-			return ErrUnsupportedState
-		}
-		seen[grant.ID] = true
-		if err := validateLoadedGrantMaps(grant); err != nil {
+		if err := validateLoadedGrant(grant, seen); err != nil {
 			return err
 		}
+		seen[grant.ID] = true
+	}
+	return nil
+}
+
+func validateLoadedGrant(grant Grant, seen map[string]bool) error {
+	if !validGrantIdentity(grant, seen) || !validGrantLifecycle(grant) || !validGrantUsage(grant) || !validGrantReservation(grant) {
+		return ErrUnsupportedState
+	}
+	return validateLoadedGrantData(grant)
+}
+
+func validateLoadedGrantData(grant Grant) error {
+	if err := validateLoadedGrantMaps(grant); err != nil {
+		return err
+	}
+	return validateLoadedNotification(grant.Notification)
+}
+
+func validateLoadedNotification(ref *MessageRef) error {
+	if ref == nil {
+		return nil
+	}
+	if err := validateMessageRef(*ref); err != nil {
+		return fmt.Errorf("%w: invalid grant notification: %w", ErrUnsupportedState, err)
 	}
 	return nil
 }

@@ -9,9 +9,14 @@ backend and presents the resulting safe records in its own UI.
 
 - `grants` owns revisioned requests, bounded queries, decisions, lifecycle
   events, retention, and durable cursors.
+- `approvalview` owns the provider-neutral bounded presentation model, risk
+  vocabulary, warnings, validation, defensive copies, and safe fallback.
 - `operatorinbox` combines canonical grants with a broker-owned safe
   presenter. Presenter failure returns a generic item instead of hiding the
   request.
+- `approvalnotify` projects the same validated presentation into a semantic
+  notification envelope without transport markup or decision-token
+  persistence.
 - `operatorauth` authenticates dedicated operator credentials and rejects any
   credential reused by a broker client.
 - `operatorapi` exposes the protected JSON and SSE routes and requires an
@@ -120,7 +125,8 @@ view, and starts from the newest returned lifecycle state.
 - Every route authenticates before dispatch and returns `Cache-Control:
   no-store`.
 - Every decision requires a positive expected revision.
-- Provider presenters can add wording, fields, risk, and a plan hash, but
+- Provider presenters can add bounded titles, summaries, targets, facts,
+  warnings, risk, and a plan hash, but
   presentation never becomes execution authority.
 - Events contain only grant ID, state, counters, revision, time, and cursor.
 - Operator actions persist approver, previous/next state, revisions,
@@ -128,5 +134,7 @@ view, and starts from the newest returned lifecycle state.
   audit recorder receives the same outcome as an external export; export
   failure is reported in `X-Broker-Audit-Export` but cannot turn a committed
   decision into an apparent failure.
-- Notification transports such as Telegram are optional views over the same
-  durable state machine.
+- Notification transports such as Telegram are optional renderers over the
+  same semantic presentation and durable state machine. Persisted notification
+  references bind the normalized presentation and exact rendered message with
+  separate SHA-256 digests; decision tokens are excluded.

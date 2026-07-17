@@ -32,7 +32,7 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	if err != nil || !claimed || claim.DecisionToken != "notification-token" {
 		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
 	}
-	ref := MessageRef{Kind: "telegram", ChatID: 1, MessageID: 2, Text: "approve"}
+	ref := testTelegramMessageRef(2, "approve")
 	if _, recorded, err := store.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref); err != nil || !recorded {
 		t.Fatalf("SetNotificationIfClaimed() = %v, %v", recorded, err)
 	}

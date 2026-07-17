@@ -20,11 +20,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approvalview"
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/notify"
+	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
 func testAuditRecorder() audit.Recorder { return audit.New(io.Discard) }
@@ -85,8 +88,8 @@ func (w *writeErrorResponseWriter) Write([]byte) (int, error) {
 }
 
 type captureGrantNotifier struct {
-	messages []notify.ApprovalMessage
-	updates  []string
+	messages []approvalnotify.Approval
+	updates  []notify.Status
 }
 
 type callbackDuringSendNotifier struct {
@@ -94,10 +97,15 @@ type callbackDuringSendNotifier struct {
 	server  *Server
 	ref     notify.MessageRef
 	result  notify.DecisionResult
-	updates []string
+	updates []notify.Status
 }
 
-func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
+func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
+	ref, err := bktelegram.ApprovalReference(msg, n.ref.ChatID, n.ref.MessageID)
+	if err != nil {
+		return notify.MessageRef{}, err
+	}
+	n.ref = ref
 	result := n.server.handleTelegramDecision(ctx, notify.Decision{
 		Action: notify.ActionApprove, GrantID: msg.GrantID, DecisionToken: msg.DecisionToken,
 		ChatID: n.ref.ChatID, MessageID: n.ref.MessageID, MessageText: n.ref.Text,
@@ -109,32 +117,45 @@ func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg notif
 	return n.ref, nil
 }
 
-func (n *callbackDuringSendNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status string) error {
+func testTelegramReference(t *testing.T, grantID string) notify.MessageRef {
+	t.Helper()
+	ref, err := bktelegram.ApprovalReference(approvalnotify.Approval{
+		GrantID: grantID, DecisionToken: "test-token", Broker: "Hugging Face", Requester: "agent", Operation: "test.operation",
+		Reason: "test notification", RequestedDurationSeconds: 60, MaxUses: 1, PendingExpiresAt: time.Now().Add(time.Minute),
+		Presentation: approvalview.Presentation{Risk: approvalview.RiskLow, Title: "Test approval", Target: "test/repository"},
+	}, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ref
+}
+
+func (n *callbackDuringSendNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.updates = append(n.updates, status)
 	return nil
 }
 
-func (n *callbackDuringSendNotifier) snapshot() (notify.DecisionResult, []string) {
+func (n *callbackDuringSendNotifier) snapshot() (notify.DecisionResult, []notify.Status) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return n.result, append([]string(nil), n.updates...)
+	return n.result, append([]notify.Status(nil), n.updates...)
 }
 
-func (n *captureGrantNotifier) SendApproval(_ context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
+func (n *captureGrantNotifier) SendApproval(_ context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
 	n.messages = append(n.messages, msg)
 	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: len(n.messages), Text: "grant text"}, nil
 }
 
-func (n *captureGrantNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status string) error {
+func (n *captureGrantNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
 	n.updates = append(n.updates, status)
 	return nil
 }
 
 type blockingGrantNotifier struct {
 	mu       sync.Mutex
-	messages []notify.ApprovalMessage
+	messages []approvalnotify.Approval
 	started  chan struct{}
 	release  chan struct{}
 	once     sync.Once
@@ -149,7 +170,7 @@ func newBlockingGrantNotifier() *blockingGrantNotifier {
 	}
 }
 
-func (n *blockingGrantNotifier) SendApproval(ctx context.Context, msg notify.ApprovalMessage) (notify.MessageRef, error) {
+func (n *blockingGrantNotifier) SendApproval(ctx context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
 	n.mu.Lock()
 	n.messages = append(n.messages, msg)
 	messageID := len(n.messages)
@@ -173,7 +194,7 @@ func (n *blockingGrantNotifier) SendApproval(ctx context.Context, msg notify.App
 	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: messageID, Text: "grant text"}, nil
 }
 
-func (*blockingGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error {
+func (*blockingGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
 	return nil
 }
 
@@ -210,22 +231,22 @@ type zeroMessageGrantNotifier struct {
 	calls int
 }
 
-func (n *zeroMessageGrantNotifier) SendApproval(context.Context, notify.ApprovalMessage) (notify.MessageRef, error) {
+func (n *zeroMessageGrantNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
 	n.calls++
 	return notify.MessageRef{Kind: "capture", ChatID: 123, Text: "grant text"}, nil
 }
 
-func (*zeroMessageGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error {
+func (*zeroMessageGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
 	return nil
 }
 
 type failingGrantNotifier struct{}
 
-func (failingGrantNotifier) SendApproval(context.Context, notify.ApprovalMessage) (notify.MessageRef, error) {
+func (failingGrantNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
 	return notify.MessageRef{}, errors.New("notify failed")
 }
 
-func (failingGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, string) error {
+func (failingGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
 	return nil
 }
 

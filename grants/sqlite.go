@@ -319,6 +319,9 @@ func decodeNotification(raw []byte) (*MessageRef, error) {
 	if err := strictjson.Decode(raw, &value, true); err != nil {
 		return nil, fmt.Errorf("decode grant notification: %w", err)
 	}
+	if err := validateMessageRef(value); err != nil {
+		return nil, fmt.Errorf("decode grant notification: %w", err)
+	}
 	return &value, nil
 }
 
