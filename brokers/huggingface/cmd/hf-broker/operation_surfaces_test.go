@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -307,8 +309,10 @@ func TestMCPSealedOperationSeparatesSecretFromPlan(t *testing.T) {
 				t.Fatalf("sealed idempotency key = %q", request.Header.Get("X-Broker-Idempotency-Key"))
 			}
 			sealedBody = body.Bytes()
+			digest := sha256.Sum256(sealedBody)
 			writer.WriteHeader(http.StatusCreated)
-			_, _ = writer.Write([]byte(`{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","request_key":"secret-1","digest":"digest","size":40,"expires_at":9999999999}`))
+			_, _ = fmt.Fprintf(writer, `{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","request_key":"secret-1","digest":%q,"size":%d,"expires_at":9999999999}`,
+				hex.EncodeToString(digest[:]), len(sealedBody))
 		case "/api/agent/v1/operations":
 			operationBody = body.Bytes()
 			operation := testAgentOperation(agentv1.StatePending)

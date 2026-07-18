@@ -38,8 +38,9 @@ func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey 
 	}
 	defer func() { _ = response.Body.Close() }()
 	var reference sealedstore.Reference
-	if err := decodeTransferReference(response, &reference); err != nil || reference.ID == "" ||
-		reference.Purpose != operation || reference.RequestKey != requestKey {
+	if err := decodeTransferReference(response, &reference); err != nil || reference.ID == "" || reference.Owner == "" ||
+		reference.Purpose != operation || reference.RequestKey != requestKey || reference.Size != len(payload) ||
+		reference.ExpiresAt <= 0 || !validSHA256(reference.Digest) {
 		return sealedstore.Reference{}, errors.New("broker returned an invalid sealed payload reference")
 	}
 	return reference, nil
@@ -59,7 +60,8 @@ func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaT
 	defer func() { _ = response.Body.Close() }()
 	var reference streamstore.Reference
 	if err := decodeTransferReference(response, &reference); err != nil || reference.ID == "" || reference.Owner == "" ||
-		reference.Purpose != operation || reference.RequestKey != requestKey || reference.Size != size {
+		reference.Purpose != operation || reference.RequestKey != requestKey || reference.Size != size ||
+		reference.MediaType != mediaType || reference.ExpiresAt <= 0 || !validSHA256(reference.Digest) {
 		return streamstore.Reference{}, errors.New("broker returned an invalid stream reference")
 	}
 	return reference, nil
@@ -132,4 +134,9 @@ func decodeTransferReference(response *http.Response, target any) error {
 
 func validTransferBinding(operation, requestKey string) bool {
 	return len(operation) <= 128 && strings.Contains(operation, ".") && agentv1.ValidIdempotencyKey(requestKey)
+}
+
+func validSHA256(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size
 }
