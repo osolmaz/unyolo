@@ -53,7 +53,7 @@ func (s *Server) listReposForClient(ctx context.Context, client string, query re
 	repos := make([]apiRepoBody, 0)
 	seen := map[string]bool{}
 	for _, source := range repoListSources(s.policy, client, query) {
-		upstream, err := s.hubClient.ListRepos(ctx, source.repoType, source.owner, min(query.limit, 100))
+		upstream, err := s.hubClient.ListRepos(ctx, source.repoType, source.owner, 100)
 		if err != nil {
 			return nil, err
 		}

@@ -31,7 +31,7 @@ func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey 
 	if !validSealedUpload(operation, requestKey, payload) {
 		return sealedstore.Reference{}, errors.New("sealed payload is invalid")
 	}
-	response, err := c.upload(ctx, "/api/agent/v1/sealed-payloads", operation, requestKey,
+	response, err := c.upload(ctx, c.httpClient, "/api/agent/v1/sealed-payloads", operation, requestKey,
 		bytes.NewReader(payload), int64(len(payload)), "application/octet-stream")
 	if err != nil {
 		return sealedstore.Reference{}, err
@@ -50,7 +50,7 @@ func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaT
 	if !validStreamUpload(operation, requestKey, mediaType, source, size, limit) {
 		return streamstore.Reference{}, errors.New("stream upload is invalid")
 	}
-	response, err := c.upload(ctx, "/api/agent/v1/streams", operation, requestKey, io.LimitReader(source, limit+1), size, mediaType)
+	response, err := c.upload(ctx, c.transfer, "/api/agent/v1/streams", operation, requestKey, io.LimitReader(source, limit+1), size, mediaType)
 	if err != nil {
 		return streamstore.Reference{}, err
 	}
@@ -72,7 +72,7 @@ func (c *Client) DownloadStream(ctx context.Context, id string, destination io.W
 	if err != nil {
 		return 0, err
 	}
-	response, err := c.httpClient.Do(request)
+	response, err := c.transfer.Do(request)
 	if err != nil {
 		return 0, errors.New("download stream")
 	}
@@ -83,14 +83,14 @@ func (c *Client) DownloadStream(ctx context.Context, id string, destination io.W
 	return copyVerifiedStream(response, destination, limit)
 }
 
-func (c *Client) upload(ctx context.Context, path, operation, requestKey string, body io.Reader, size int64, mediaType string) (*http.Response, error) {
+func (c *Client) upload(ctx context.Context, client *http.Client, path, operation, requestKey string, body io.Reader, size int64, mediaType string) (*http.Response, error) {
 	request, err := c.request(ctx, http.MethodPost, path, body, size, mediaType)
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Set("X-Broker-Operation", operation)
 	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	response, err := c.httpClient.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, errors.New("upload broker payload")
 	}

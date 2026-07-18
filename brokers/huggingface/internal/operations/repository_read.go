@@ -25,12 +25,12 @@ type repositoryReadClient interface {
 type repositoryReadAdapter struct {
 	descriptor opcatalog.Descriptor
 	client     repositoryReadClient
-	disclose   RepositoryDisclosure
+	authorize  RepositoryAuthorization
 }
 
-// RepositoryDisclosure applies one authenticated client's policy to a
-// concrete repository returned by upstream discovery.
-type RepositoryDisclosure func(client string, target hfpolicy.Target) bool
+// RepositoryAuthorization applies one authenticated client's policy to a
+// concrete repository operation returned by an upstream read.
+type RepositoryAuthorization func(client string, operation hfpolicy.Operation, target hfpolicy.Target) bool
 
 type repoListArguments struct {
 	Limit int `json:"limit,omitempty"`
@@ -47,12 +47,12 @@ type repoContentsArguments struct {
 	Path     string `json:"path"`
 }
 
-func NewRepositoryReadAdapters(client repositoryReadClient, disclose RepositoryDisclosure) ([]Adapter, error) {
-	if client == nil || disclose == nil {
+func NewRepositoryReadAdapters(client repositoryReadClient, authorize RepositoryAuthorization) ([]Adapter, error) {
+	if client == nil || authorize == nil {
 		return nil, errors.New("hugging face repository read client is required")
 	}
 	return adaptersForNames([]string{"repo.contents.read", "repo.list", "repo.metadata.read", "repo.tree.list"}, func(descriptor opcatalog.Descriptor) Adapter {
-		return &repositoryReadAdapter{descriptor: descriptor, client: client, disclose: disclose}
+		return &repositoryReadAdapter{descriptor: descriptor, client: client, authorize: authorize}
 	})
 }
 
@@ -150,11 +150,18 @@ func (a *repositoryReadAdapter) reconstruct(plan Plan) reconstructedPlan {
 func (a *repositoryReadAdapter) presentationAndPolicy(target repositoryTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
 	request := hfpolicy.Request{Operation: hfpolicy.Operation(a.descriptor.Name), Target: target.policyTarget()}
 	summary := fmt.Sprintf("Read %s %s/%s", target.Type, target.Owner, target.Name)
-	if a.descriptor.Name == "repo.contents.read" {
+	switch a.descriptor.Name {
+	case "repo.contents.read":
 		var arguments repoContentsArguments
 		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil {
 			request.Target.Paths = []string{arguments.Path}
 			summary = fmt.Sprintf("Read %s from %s/%s", arguments.Path, target.Owner, target.Name)
+		}
+	case "repo.tree.list":
+		var arguments repoTreeArguments
+		if decodeClosed(raw, &arguments, maxArgumentsBytes) == nil && arguments.Path != "" {
+			request.Target.Paths = []string{arguments.Path}
+			summary = fmt.Sprintf("List %s in %s/%s", arguments.Path, target.Owner, target.Name)
 		}
 	}
 	return agentv1.Presentation{Title: "Read Hugging Face repository", Summary: summary}, request
@@ -198,11 +205,19 @@ func (a *repositoryReadAdapter) readList(ctx context.Context, plan Plan, target 
 	if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
 		return nil, errors.New("repository list plan is invalid")
 	}
-	repos, err := a.client.ListRepos(ctx, hubclient.RepoType(target.Type), target.Owner, arguments.Limit)
+	var repos []hubclient.RepoSummary
+	var err error
+	if target.Name == "*" {
+		repos, err = a.client.ListRepos(ctx, hubclient.RepoType(target.Type), target.Owner, 100)
+	} else {
+		var info hubclient.RepoInfo
+		info, err = a.client.RepoInfo(ctx, target.repoRef())
+		repos = []hubclient.RepoSummary{{ID: info.ID, SHA: info.SHA, Private: info.Private}}
+	}
 	if err != nil {
 		return nil, err
 	}
-	return a.repoListResult(repos, target, plan.Policy.Client), nil
+	return a.repoListResult(repos, target, plan.Policy.Client, arguments.Limit), nil
 }
 
 func (a *repositoryReadAdapter) readTree(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
@@ -210,7 +225,11 @@ func (a *repositoryReadAdapter) readTree(ctx context.Context, plan Plan, target 
 	if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
 		return nil, errors.New("repository tree plan is invalid")
 	}
-	return a.client.RepoTree(ctx, target.repoRef(), arguments.Revision, arguments.Path, arguments.Recursive)
+	entries, err := a.client.RepoTree(ctx, target.repoRef(), arguments.Revision, arguments.Path, arguments.Recursive)
+	if err != nil {
+		return nil, err
+	}
+	return a.filterTree(entries, target, plan.Policy.Client), nil
 }
 
 func (a *repositoryReadAdapter) readContent(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
@@ -230,19 +249,47 @@ func (a *repositoryReadAdapter) readContent(ctx context.Context, plan Plan, targ
 		"content": content, "content_type": file.ContentType, "commit": file.Commit}, nil
 }
 
-func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, query repositoryTarget, client string) map[string]any {
+func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, query repositoryTarget, client string, limit int) map[string]any {
 	result := make([]hubclient.RepoSummary, 0, len(repos))
 	for _, repo := range repos {
-		parts := strings.Split(repo.ID, "/")
-		if len(parts) != 2 || parts[0] != query.Owner || (query.Name != "*" && parts[1] != query.Name) {
+		summary, ok := a.disclosedRepoSummary(repo, query, client)
+		if !ok {
 			continue
 		}
-		target := hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(query.Type), Owner: parts[0], Name: parts[1]}
-		if a.disclose(client, target) {
-			result = append(result, hubclient.RepoSummary{ID: repo.ID, SHA: repo.SHA})
+		result = append(result, summary)
+		if len(result) == limit {
+			break
 		}
 	}
 	return map[string]any{"repos": result, "next_cursor": nil}
+}
+
+func (a *repositoryReadAdapter) disclosedRepoSummary(repo hubclient.RepoSummary, query repositoryTarget, client string) (hubclient.RepoSummary, bool) {
+	target, ok := listedRepoTarget(repo.ID, query)
+	if !ok || !a.authorize(client, hfpolicy.OpRepoList, target) || !a.authorize(client, hfpolicy.OpRepoMetadataRead, target) {
+		return hubclient.RepoSummary{}, false
+	}
+	return hubclient.RepoSummary{ID: repo.ID, SHA: repo.SHA}, true
+}
+
+func listedRepoTarget(id string, query repositoryTarget) (hfpolicy.Target, bool) {
+	parts := strings.Split(id, "/")
+	if len(parts) != 2 || parts[0] != query.Owner || (query.Name != "*" && parts[1] != query.Name) {
+		return hfpolicy.Target{}, false
+	}
+	return hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(query.Type), Owner: parts[0], Name: parts[1]}, true
+}
+
+func (a *repositoryReadAdapter) filterTree(entries []hubclient.RepoTreeEntry, target repositoryTarget, client string) []hubclient.RepoTreeEntry {
+	result := make([]hubclient.RepoTreeEntry, 0, len(entries))
+	for _, entry := range entries {
+		policyTarget := target.policyTarget()
+		policyTarget.Paths = []string{entry.Path}
+		if a.authorize(client, hfpolicy.OpRepoTreeList, policyTarget) {
+			result = append(result, entry)
+		}
+	}
+	return result
 }
 
 func (a *repositoryReadAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

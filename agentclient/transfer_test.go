@@ -75,6 +75,16 @@ func TestTransferMethodsRejectInvalidBounds(t *testing.T) {
 	}
 }
 
+func TestStreamTransfersUseLongLivedSecureClient(t *testing.T) {
+	client := newTestClient(t, "http://127.0.0.1:1", &http.Client{Timeout: time.Second})
+	if client.httpClient.Timeout != time.Second {
+		t.Fatalf("operation timeout = %s", client.httpClient.Timeout)
+	}
+	if client.transfer.Timeout != 10*time.Minute || client.transfer.CheckRedirect == nil {
+		t.Fatalf("transfer client = timeout %s, redirect policy %v", client.transfer.Timeout, client.transfer.CheckRedirect != nil)
+	}
+}
+
 func TestTransferMethodsRejectBrokerFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {

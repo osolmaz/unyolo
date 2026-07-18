@@ -17,10 +17,10 @@ import (
 func TestAPIReposListsOnlyPolicyMetadata(t *testing.T) {
 	var auditLog bytes.Buffer
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "acme" || r.Header.Get("Authorization") != "Bearer "+testToken {
+		if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "acme" || r.URL.Query().Get("limit") != "100" || r.Header.Get("Authorization") != "Bearer "+testToken {
 			t.Fatalf("upstream list request = %s?%s", r.URL.Path, r.URL.RawQuery)
 		}
-		_, _ = w.Write([]byte(`[{"id":"acme/repo","private":true},{"id":"acme/split"},{"id":"acme/other"},{"id":"acme/secret"}]`))
+		_, _ = w.Write([]byte(`[{"id":"acme/secret"},{"id":"acme/repo","private":true},{"id":"acme/split"},{"id":"acme/other"}]`))
 	}))
 	defer upstream.Close()
 	policyJSON := `{"rules":[
@@ -64,6 +64,10 @@ func TestAPIReposListsOnlyPolicyMetadata(t *testing.T) {
 	}
 	if strings.Contains(body, "refs/") || strings.Contains(body, "commit") || strings.Contains(body, "README") {
 		t.Fatalf("repo list leaked content metadata: %s", body)
+	}
+	resp, body = doRequest(t, http.MethodGet, broker.URL+"/api/repos?type=dataset&owner=acme&limit=1", "Bearer "+testSecret, nil)
+	if limited := decodeAPIRepoList(t, body); resp.StatusCode != http.StatusOK || !repoNamesEqual(limited, []string{"repo"}) {
+		t.Fatalf("filtered limited repo list = %d %s", resp.StatusCode, body)
 	}
 	if got := auditLog.String(); !strings.Contains(got, `"operation":"repo.list"`) ||
 		!strings.Contains(got, `"target":"repos"`) ||

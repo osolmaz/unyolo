@@ -120,20 +120,26 @@ func (c *Client) RepoInfoRevision(ctx context.Context, ref RepoRef, revision str
 }
 
 func (c *Client) ReadRepoFile(ctx context.Context, ref RepoRef, revision, path string) ([]byte, error) {
+	payload, _, err := c.readRepoFilePayload(ctx, ref, revision, path)
+	return payload, err
+}
+
+func (c *Client) readRepoFilePayload(ctx context.Context, ref RepoRef, revision, path string) ([]byte, http.Header, error) {
 	if err := ref.Validate(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !ValidGitRefComponent(revision) || !ValidRepoPath(path, false) {
-		return nil, errors.New("hubclient: repository file identity is invalid")
+		return nil, nil, errors.New("hubclient: repository file identity is invalid")
 	}
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 	response, err := c.readRepoFileResponse(ctx, ref, revision, path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { _ = response.Body.Close() }()
-	return c.readResponsePayload(response)
+	payload, err := c.readResponsePayload(response)
+	return payload, response.Header.Clone(), err
 }
 
 func (c *Client) readRepoFileResponse(ctx context.Context, ref RepoRef, revision, path string) (*http.Response, error) {

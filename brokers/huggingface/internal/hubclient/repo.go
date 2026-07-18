@@ -81,19 +81,10 @@ func validateRepoTreeEntries(entries []RepoTreeEntry) error {
 	return nil
 }
 
-// RepoFile reads one bounded exact file. Redirects remain refused, so large
-// content that requires a separate storage origin must use a stream operation.
+// RepoFile reads one bounded exact file and follows only trusted Hub content
+// redirects without forwarding the broker credential.
 func (c *Client) RepoFile(ctx context.Context, ref RepoRef, revision, path string) (RepoFile, error) {
-	if err := ref.Validate(); err != nil || !ValidGitRefComponent(revision) || !ValidRepoPath(path, false) {
-		return RepoFile{}, errors.New("hubclient: repository file query is invalid")
-	}
-	prefix := ""
-	if ref.Type != RepoTypeModel {
-		prefix = string(ref.Type) + "s/"
-	}
-	endpoint := "/" + prefix + url.PathEscape(ref.Owner) + "/" + url.PathEscape(ref.Name) + "/resolve/" +
-		url.PathEscape(revision) + "/" + escapeRepoPath(path)
-	payload, header, err := c.callBytes(ctx, callSpec{method: http.MethodGet, path: endpoint})
+	payload, header, err := c.readRepoFilePayload(ctx, ref, revision, path)
 	if err != nil {
 		return RepoFile{}, err
 	}

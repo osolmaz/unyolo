@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/agentv1wire"
@@ -32,6 +33,7 @@ type Client struct {
 	baseURL    string
 	credential string
 	httpClient *http.Client
+	transfer   *http.Client
 }
 
 // Error is one stable Agent V1 error envelope.
@@ -60,7 +62,9 @@ func New(options Options) (*Client, error) {
 	if err != nil {
 		return nil, errors.New("agent base URL is invalid")
 	}
-	return &Client{api: api, baseURL: baseURL, credential: options.Credential, httpClient: httpClient}, nil
+	transfer := *httpClient
+	transfer.Timeout = 10 * time.Minute
+	return &Client{api: api, baseURL: baseURL, credential: options.Credential, httpClient: httpClient, transfer: &transfer}, nil
 }
 
 // Submit creates or idempotently replays one provider operation.

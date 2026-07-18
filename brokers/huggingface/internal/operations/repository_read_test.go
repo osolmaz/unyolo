@@ -17,11 +17,14 @@ func (repositoryReadFake) RepoInfo(context.Context, hubclient.RepoRef) (hubclien
 }
 
 func (repositoryReadFake) ListRepos(context.Context, hubclient.RepoType, string, int) ([]hubclient.RepoSummary, error) {
-	return []hubclient.RepoSummary{{ID: "alice/private", SHA: "abc", Private: true}, {ID: "alice/denied", Private: true}}, nil
+	return []hubclient.RepoSummary{{ID: "alice/denied", Private: true}, {ID: "alice/private", SHA: "abc", Private: true}}, nil
 }
 
 func (repositoryReadFake) RepoTree(context.Context, hubclient.RepoRef, string, string, bool) ([]hubclient.RepoTreeEntry, error) {
-	return []hubclient.RepoTreeEntry{{Type: "file", Path: "README.md", OID: "abc", Size: 4}}, nil
+	return []hubclient.RepoTreeEntry{
+		{Type: "file", Path: "docs/README.md", OID: "abc", Size: 4},
+		{Type: "file", Path: "docs/secret.txt", OID: "def", Size: 4},
+	}, nil
 }
 
 func (repositoryReadFake) RepoFile(context.Context, hubclient.RepoRef, string, string) (hubclient.RepoFile, error) {
@@ -29,15 +32,15 @@ func (repositoryReadFake) RepoFile(context.Context, hubclient.RepoRef, string, s
 }
 
 func TestRepositoryReadAdaptersExecuteEveryBoundOperation(t *testing.T) {
-	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(_ string, target hfpolicy.Target) bool {
-		return target.Name == "private"
+	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(_ string, _ hfpolicy.Operation, target hfpolicy.Target) bool {
+		return target.Name == "private" && (len(target.Paths) == 0 || !strings.Contains(target.Paths[0], "secret"))
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	inputs := map[string]struct{ target, arguments string }{
 		"repo.metadata.read": {`{"kind":"repo","type":"dataset","owner":"alice","name":"private"}`, `{}`},
-		"repo.list":          {`{"kind":"repo","type":"dataset","owner":"alice","name":"*"}`, `{"limit":10}`},
+		"repo.list":          {`{"kind":"repo","type":"dataset","owner":"alice","name":"*"}`, `{"limit":1}`},
 		"repo.tree.list":     {`{"kind":"repo","type":"dataset","owner":"alice","name":"private"}`, `{"path":"docs","recursive":true}`},
 		"repo.contents.read": {`{"kind":"repo","type":"dataset","owner":"alice","name":"private"}`, `{"path":"README.md"}`},
 	}
@@ -66,6 +69,9 @@ func TestRepositoryReadAdaptersExecuteEveryBoundOperation(t *testing.T) {
 		if name == "repo.contents.read" && !strings.Contains(string(outcome.Result), `"encoding":"utf-8"`) {
 			t.Fatalf("content result = %s", outcome.Result)
 		}
+		if name == "repo.tree.list" && strings.Contains(string(outcome.Result), "secret.txt") {
+			t.Fatalf("tree result disclosed denied path: %s", outcome.Result)
+		}
 		if reconciled, reconcileErr := adapter.Reconcile(t.Context(), plan); reconcileErr != nil || !reconciled.Proven {
 			t.Fatalf("%s reconcile = %#v, %v", name, reconciled, reconcileErr)
 		}
@@ -73,13 +79,13 @@ func TestRepositoryReadAdaptersExecuteEveryBoundOperation(t *testing.T) {
 }
 
 func TestRepositoryReadAdaptersRejectInvalidConfigurationAndInput(t *testing.T) {
-	if _, err := NewRepositoryReadAdapters(nil, func(string, hfpolicy.Target) bool { return true }); err == nil {
+	if _, err := NewRepositoryReadAdapters(nil, func(string, hfpolicy.Operation, hfpolicy.Target) bool { return true }); err == nil {
 		t.Fatal("nil repository client accepted")
 	}
 	if _, err := NewRepositoryReadAdapters(repositoryReadFake{}, nil); err == nil {
 		t.Fatal("nil disclosure accepted")
 	}
-	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(string, hfpolicy.Target) bool { return true })
+	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(string, hfpolicy.Operation, hfpolicy.Target) bool { return true })
 	if err != nil {
 		t.Fatal(err)
 	}

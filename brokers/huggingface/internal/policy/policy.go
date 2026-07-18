@@ -42,6 +42,7 @@ const (
 	OpRepoCreate        Operation = "repo.create"
 	OpRepoMetadataRead  Operation = "repo.metadata.read"
 	OpRepoContentsRead  Operation = "repo.contents.read"
+	OpRepoTreeList      Operation = "repo.tree.list"
 	OpGitFetch          Operation = "git.fetch"
 	OpGitPushAppend     Operation = "git.push.append"
 	OpGitPushForce      Operation = "git.push.force"
