@@ -1,4 +1,4 @@
-# Production-Readiness Cutover Plan
+# Production-Readiness Implementation Plan
 
 Date: 2026-07-14
 

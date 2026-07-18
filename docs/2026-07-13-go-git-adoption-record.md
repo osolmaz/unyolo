@@ -1,4 +1,4 @@
-# go-git Cutover Record
+# go-git Adoption Record
 
 Date: 2026-07-13
 

@@ -391,7 +391,7 @@ redacted error class. They do not store raw secrets or upstream response bodies.
   timeout, ambiguous completion, and reconciliation.
 - Finalize operation names, closed schemas, risk class, and policy defaults.
 
-### 2. Registry and Plan Cutover
+### 2. Registry and Plan Replacement
 
 - Add the descriptor registry and startup validation.
 - Replace HF plan V1 in place with the canonical adapter envelope.
@@ -512,7 +512,7 @@ replayed after one use.
 
 Mutation testing remains disabled for this implementation.
 
-## Cutover Deletion List
+## Superseded Code Deletion List
 
 Delete in the same branch that replaces them:
 

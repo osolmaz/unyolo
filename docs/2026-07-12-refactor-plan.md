@@ -413,7 +413,7 @@ Acceptance:
   excessive delta depth, and maximum lengths have shared tests and fuzz seeds.
 - Existing Git proxy integration tests remain unchanged in behavior.
 
-Implementation record: [2026-07-13 go-git cutover](2026-07-13-go-git-cutover.md).
+Implementation record: [2026-07-13 go-git adoption record](2026-07-13-go-git-adoption-record.md).
 
 ### 7. Keep Provider SDK Adoption Evidence-Based
 
@@ -949,7 +949,7 @@ Implementation sequence:
 6. Update setup, CLI, MCP, docs, examples, and conformance coverage to use only
    the Agent V1 operation surface.
 
-Cutover rules:
+Replacement rules:
 
 - Do not retain aliases for replaced operation routes.
 - Do not read or convert superseded operation state.

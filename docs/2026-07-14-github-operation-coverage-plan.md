@@ -735,7 +735,7 @@ ambiguous requests.
 
 Mutation tooling remains checked in but disabled and non-blocking.
 
-## Cutover Deletion List
+## Superseded Code Deletion List
 
 Delete in the same implementation branch:
 

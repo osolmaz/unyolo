@@ -1,4 +1,4 @@
-# Agent-Tool Compatibility Cutover Plan
+# Agent-Tool Compatibility Implementation Plan
 
 Date: 2026-07-14
 
@@ -395,7 +395,7 @@ Provider onboarding documentation must require:
 - transcript-safe public identifiers; and
 - conformance against every supported host profile.
 
-## Persistence And Fresh-State Cutover
+## Persistence And Fresh-State Replacement
 
 Do not weaken or delete durable idempotency. The operation store continues to
 enforce a unique client/request identity and exact replay semantics.
@@ -512,7 +512,7 @@ slophammer-go check .
 Run package and generated-artifact checks already defined by the repository.
 Do not run mutation testing.
 
-## Cutover
+## Replacement
 
 Implement and ship the change as one coordinated branch:
 
