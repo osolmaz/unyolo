@@ -206,3 +206,19 @@ frame and must bind each response to the supplied 128-bit nonce. `session` is
 the same `brokerkit.io/delegated-web/v1` object returned by
 `POST <basePath>/session`. The bridge is a BrokerKit interface; it contains
 no host-product namespace or host-specific payload.
+
+### Session rebootstrap
+
+A direct-renewal token can expire while a browser tab is suspended. If the
+host rejects renewal with `not_authorized`, a framed UI sends this
+credential-free message once:
+
+```text
+{ type: "brokerkit.delegated-web.rebootstrap", version: 1 }
+```
+
+The host must accept it only from the embedded BrokerKit frame and reload only
+that protected frame so its HTML response can inject a fresh session. Hosts
+must rate-limit reloads and must not return a token through this message. This
+keeps rebootstrap host-neutral while leaving session issuance at the trusted
+HTTP boundary.

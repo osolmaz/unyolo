@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BrokerKitUiApi,
+  DELEGATED_REBOOTSTRAP_REQUEST,
   DELEGATED_SESSION_META,
   DELEGATED_SESSION_REQUEST,
   DELEGATED_SESSION_RESPONSE,
@@ -373,6 +374,50 @@ describe("BrokerKitUiApi", () => {
     );
     expect(renewals).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("asks the host to rebootstrap an expired framed session once", async () => {
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const initial = {
+      api_version: "brokerkit.io/delegated-web/v1",
+      token: "f".repeat(48),
+      expires_at: new Date(now + 31_000).toISOString(),
+      access: "decide",
+      renewal_transport: "direct",
+    };
+    const meta = {
+      getAttribute: vi.fn(() => encoded(initial)),
+      remove: vi.fn(),
+    };
+    let embedded: typeof meta | null = meta;
+    vi.stubGlobal("document", { querySelector: vi.fn(() => embedded) });
+    const parent = { postMessage: vi.fn() };
+    vi.stubGlobal("window", { parent });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(emptySnapshot()))
+      .mockResolvedValue(
+        Response.json({ error: { code: "not_authorized" } }, { status: 401 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+
+    await api.snapshot();
+    now += 2_000;
+    embedded = null;
+    await expect(api.snapshot()).rejects.toThrow(
+      "Approval authorization expired",
+    );
+    await expect(api.snapshot()).rejects.toThrow(
+      "Approval authorization expired",
+    );
+
+    expect(parent.postMessage).toHaveBeenCalledOnce();
+    expect(parent.postMessage).toHaveBeenCalledWith(
+      { type: DELEGATED_REBOOTSTRAP_REQUEST, version: 1 },
+      "*",
+    );
   });
 
   it("rejects overlong delegated sessions", async () => {
