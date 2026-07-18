@@ -187,12 +187,10 @@ Because the packaged UI has an opaque origin under the required scripts-only
 sandbox, a delegated host must accept only the expected `Origin: null`,
 return `Access-Control-Allow-Origin: null`, allow `BrokerKit-Session` and
 `Content-Type` in preflight responses, allow only its fixed route methods,
-set `Access-Control-Allow-Credentials: true`, and set `Vary: Origin` plus
-`Cache-Control: no-store`. Delegated API requests use `credentials: "include"`
-so a private hosting edge can receive its own access cookie. The host must not
-treat that cookie as BrokerKit authorization: every delegated route still
-requires and validates the short-lived `BrokerKit-Session`. Direct mode keeps
-using `credentials: "omit"`.
+and set `Vary: Origin` plus `Cache-Control: no-store`. Delegated and direct API
+requests use `credentials: "omit"`; a delegated host must be reachable without
+ambient browser credentials. Every delegated route requires and validates the
+short-lived `BrokerKit-Session`.
 
 ### Parent session bridge
 

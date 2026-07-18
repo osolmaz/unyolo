@@ -696,17 +696,13 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
   await expect(page).toHaveURL(parentUrl);
 });
 
-test("keeps a private-host access cookie in delegated sandbox requests", async ({
-  browserName,
+test("loads from a protected host without sending ambient cookies", async ({
   context,
   page,
+  request,
 }) => {
-  test.skip(
-    browserName !== "chromium",
-    "Models Chromium private-host cookie delivery for the reported deployment",
-  );
-  const host = "https://private-space.test";
-  const token = "private-space-session-that-is-long-enough";
+  const host = "https://protected-space.test";
+  const token = "protected-space-session-that-is-long-enough";
   const encodedBootstrap = bootstrap({
     version: 1,
     mode: "delegated-web",
@@ -724,12 +720,12 @@ test("keeps a private-host access cookie in delegated sandbox requests", async (
       name: "private_host_access",
       value: "private-edge-cookie",
       url: host,
-      sameSite: "None",
+      sameSite: "Lax",
       secure: true,
     },
   ]);
 
-  let cookieReceived = false;
+  let snapshotReceived = false;
   await page.route(`${host}/**`, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/host") {
@@ -746,17 +742,15 @@ test("keeps a private-host access cookie in delegated sandbox requests", async (
       }
       const headers = await route.request().allHeaders();
       expectBrowserSession(headers, token);
-      expect(headers.cookie).toContain(
-        "private_host_access=private-edge-cookie",
-      );
-      cookieReceived = true;
+      expect(headers.cookie).toBeUndefined();
+      snapshotReceived = true;
       await route.fulfill({ json: snapshot, headers: delegatedCorsHeaders });
       return;
     }
 
-    const response = await route.fetch({
-      url: `http://127.0.0.1:4179${url.pathname}`,
-    });
+    const response = await request.get(
+      `http://127.0.0.1:4179${url.pathname}${url.search}`,
+    );
     if (url.pathname === "/plugins/brokerkit/ui/") {
       const body = (await response.text()).replace(
         "<head>",
@@ -781,7 +775,7 @@ test("keeps a private-host access cookie in delegated sandbox requests", async (
   await expect(
     approvals.getByText("Hugging Face repository write"),
   ).toBeVisible();
-  await expect.poll(() => cookieReceived).toBe(true);
+  await expect.poll(() => snapshotReceived).toBe(true);
 });
 
 function bootstrap(value: unknown): string {
@@ -823,7 +817,6 @@ function expectBrowserSession(
 
 const delegatedCorsHeaders = {
   "access-control-allow-origin": "null",
-  "access-control-allow-credentials": "true",
   "access-control-allow-headers": `${BROWSER_SESSION_HEADER}, Content-Type`,
   "access-control-allow-methods": "GET, POST",
   "cache-control": "no-store",

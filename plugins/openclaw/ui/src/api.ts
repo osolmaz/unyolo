@@ -106,7 +106,7 @@ export class BrokerKitUiApi {
         : this.bootstrap.basePath;
     const response = await fetch(`${basePath}${path}`, {
       ...init,
-      credentials: this.bootstrap.mode === "delegated-web" ? "include" : "omit",
+      credentials: "omit",
       cache: "no-store",
       redirect: "error",
       headers: browserSessionHeaders(init.headers, auth.token),
@@ -206,7 +206,7 @@ async function delegatedSessionPayload(
   if (current && (current.renewalTransport === "direct" || !framed())) {
     const response = await fetch(`${basePath}/session`, {
       method: "POST",
-      credentials: "include",
+      credentials: "omit",
       cache: "no-store",
       redirect: "error",
       headers: browserSessionHeaders(undefined, current.token),
