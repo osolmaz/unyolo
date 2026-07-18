@@ -144,6 +144,38 @@ func TestAgentPrivateRepositoryReadExecutesDirectly(t *testing.T) {
 	}
 }
 
+func TestAgentRepositoryDiscoveryQueriesUpstreamAndFiltersPolicy(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "alice" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":"alice/private","private":true},{"id":"alice/denied","private":true}]`))
+	}))
+	defer upstream.Close()
+	policyJSON := `{"rules":[
+		{"id":"deny-one","effect":"deny","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"denied"}]},
+		{"id":"discover","effect":"allow","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"*"}]}
+	]}`
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"list-private","operation":"repo.list","target":{"kind":"repo","type":"dataset","owner":"alice","name":"*"},"arguments":{"limit":10},"reason":"discover repositories"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit = %d %s", response.StatusCode, text)
+	}
+	var operation agentv1.Operation
+	if err := json.Unmarshal([]byte(text), &operation); err != nil {
+		t.Fatal(err)
+	}
+	operation = waitForTestOperation(t, server.URL, operation.ID)
+	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != "" ||
+		!strings.Contains(string(operation.Result), `"id":"alice/private"`) || strings.Contains(string(operation.Result), "alice/denied") {
+		t.Fatalf("operation = %#v", operation)
+	}
+}
+
 func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	var mu sync.Mutex
 	createHits := 0

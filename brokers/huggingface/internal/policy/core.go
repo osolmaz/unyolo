@@ -344,7 +344,7 @@ func (p Policy) decideCore(req Request, grants []Rule, now time.Time, grantReque
 	if _, ok := operations[req.Operation]; !ok {
 		return Decision{Effect: EffectDeny, Reason: "invalid_operation"}
 	}
-	if err := validateRequestTarget(req.Target); err != nil {
+	if err := validatePolicyRequestTarget(req); err != nil {
 		return Decision{Effect: EffectDeny, Reason: "invalid_target"}
 	}
 	coreRequest := coreRequestFromHF(req, view)

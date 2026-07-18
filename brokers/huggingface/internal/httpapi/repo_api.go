@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
@@ -20,7 +22,12 @@ func (s *Server) handleAPIRepos(w http.ResponseWriter, r *http.Request, client s
 		s.record(client, string(policy.OpRepoList), "repos", audit.DecisionRefused, reason, 0)
 		return
 	}
-	repos := s.listReposForClient(client, query)
+	repos, err := s.listReposForClient(r.Context(), client, query)
+	if err != nil {
+		writeJSendError(w, http.StatusBadGateway, "Could not list Hugging Face repositories", "upstream_unavailable")
+		s.record(client, string(policy.OpRepoList), "repos", audit.DecisionRefused, "upstream_unavailable", 0)
+		return
+	}
 	writeJSendSuccess(w, http.StatusOK, map[string]any{"repos": repos, "next_cursor": nil})
 	s.record(client, string(policy.OpRepoList), "repos", audit.DecisionAllowed, "", 0)
 }
@@ -42,38 +49,51 @@ func readRepoListQuery(w http.ResponseWriter, r *http.Request) (repoListQuery, s
 	}, "", true
 }
 
-func (s *Server) listReposForClient(client string, query repoListQuery) []apiRepoBody {
+func (s *Server) listReposForClient(ctx context.Context, client string, query repoListQuery) ([]apiRepoBody, error) {
 	repos := make([]apiRepoBody, 0)
 	seen := map[string]bool{}
-	for _, rule := range s.policy.Rules() {
-		repos = s.appendReposFromRule(client, rule, query, repos, seen)
-		if len(repos) >= query.limit {
-			return repos
+	for _, source := range repoListSources(s.policy, client, query) {
+		upstream, err := s.hubClient.ListRepos(ctx, source.repoType, source.owner, min(query.limit, 100))
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range upstream {
+			repo, ok := s.disclosedRepo(client, source.repoType, candidate, query)
+			if !ok || seen[repoKey(repo)] {
+				continue
+			}
+			seen[repoKey(repo)] = true
+			repos = append(repos, repo)
+			if len(repos) >= query.limit {
+				return repos, nil
+			}
 		}
 	}
-	return repos
+	return repos, nil
 }
 
-func (s *Server) appendReposFromRule(client string, rule policy.Rule, query repoListQuery, repos []apiRepoBody, seen map[string]bool) []apiRepoBody {
-	if !ruleMayDiscloseRepoListTarget(rule, client) {
-		return repos
-	}
-	for _, target := range rule.Targets {
-		repos = s.appendListedRepo(client, target, query, repos, seen)
-		if len(repos) >= query.limit {
-			return repos
+type repoListSource struct {
+	repoType hubclient.RepoType
+	owner    string
+}
+
+func repoListSources(pol policy.Policy, client string, query repoListQuery) []repoListSource {
+	seen := map[repoListSource]bool{}
+	var result []repoListSource
+	for _, rule := range pol.Rules() {
+		if !ruleMayDiscloseRepoListTarget(rule, client) {
+			continue
+		}
+		for _, target := range rule.Targets {
+			for _, source := range repoListTargetSources(target, query) {
+				if !seen[source] {
+					seen[source] = true
+					result = append(result, source)
+				}
+			}
 		}
 	}
-	return repos
-}
-
-func (s *Server) appendListedRepo(client string, target policy.TargetMatcher, query repoListQuery, repos []apiRepoBody, seen map[string]bool) []apiRepoBody {
-	repo, ok := listedRepoForTarget(client, s.policy, target, query, s.utcNow())
-	if !ok || seen[repoKey(repo)] {
-		return repos
-	}
-	seen[repoKey(repo)] = true
-	return append(repos, repo)
+	return result
 }
 
 func ruleMayDiscloseRepoListTarget(rule policy.Rule, client string) bool {
@@ -103,6 +123,28 @@ func operationListContains(values []policy.Operation, want policy.Operation) boo
 	return false
 }
 
+func repoListTargetSources(target policy.TargetMatcher, query repoListQuery) []repoListSource {
+	if target.Kind != policy.KindRepo || target.Owner == "" || strings.ContainsAny(target.Owner, "*?") ||
+		(query.filterOwner != "" && query.filterOwner != target.Owner) {
+		return nil
+	}
+	if query.filterType != "" {
+		if target.Type != policy.TypeAny && target.Type != query.filterType {
+			return nil
+		}
+		return []repoListSource{{repoType: hubclient.RepoType(query.filterType), owner: target.Owner}}
+	}
+	types := []policy.RepoType{policy.TypeModel, policy.TypeDataset, policy.TypeSpace, policy.TypeKernel}
+	if target.Type != policy.TypeAny {
+		types = []policy.RepoType{target.Type}
+	}
+	result := make([]repoListSource, 0, len(types))
+	for _, repoType := range types {
+		result = append(result, repoListSource{repoType: hubclient.RepoType(repoType), owner: target.Owner})
+	}
+	return result
+}
+
 func parseRepoListLimit(value string) (int, bool) {
 	if value == "" {
 		return 100, true
@@ -118,32 +160,16 @@ func repoListLimitInBounds(limit int) bool {
 	return limit >= 1 && limit <= 100
 }
 
-func listedRepoForTarget(client string, pol policy.Policy, target policy.TargetMatcher, query repoListQuery, now time.Time) (apiRepoBody, bool) {
-	if !targetIsListCandidate(target, query) {
+func (s *Server) disclosedRepo(client string, repoType hubclient.RepoType, candidate hubclient.RepoSummary, query repoListQuery) (apiRepoBody, bool) {
+	parts := strings.Split(candidate.ID, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || (query.filterOwner != "" && query.filterOwner != parts[0]) {
 		return apiRepoBody{}, false
 	}
-	reqTarget := repoTargetFromMatcher(target)
-	if !policyAllowsListedRepo(client, pol, reqTarget, now) {
+	target := policy.Target{Kind: policy.KindRepo, Type: policy.RepoType(repoType), Owner: parts[0], Name: parts[1]}
+	if !policyAllowsListedRepo(client, s.policy, target, s.utcNow()) {
 		return apiRepoBody{}, false
 	}
-	return apiRepoBody{Type: string(target.Type), Owner: target.Owner, Name: target.Name}, true
-}
-
-func targetIsListCandidate(target policy.TargetMatcher, query repoListQuery) bool {
-	return target.Kind == policy.KindRepo &&
-		exactRepoTarget(target) &&
-		repoTargetMatchesListQuery(target, query)
-}
-
-func repoTargetMatchesListQuery(target policy.TargetMatcher, query repoListQuery) bool {
-	if query.filterType != "" && target.Type != query.filterType {
-		return false
-	}
-	return query.filterOwner == "" || target.Owner == query.filterOwner
-}
-
-func repoTargetFromMatcher(target policy.TargetMatcher) policy.Target {
-	return policy.Target{Kind: policy.KindRepo, Type: target.Type, Owner: target.Owner, Name: target.Name}
+	return apiRepoBody{Type: string(repoType), Owner: parts[0], Name: parts[1]}, true
 }
 
 func policyAllowsListedRepo(client string, pol policy.Policy, target policy.Target, now time.Time) bool {
@@ -158,15 +184,6 @@ func policyAllowsRepoOperation(client string, pol policy.Policy, target policy.T
 
 func repoKey(repo apiRepoBody) string {
 	return repo.Type + "/" + repo.Owner + "/" + repo.Name
-}
-
-func exactRepoTarget(target policy.TargetMatcher) bool {
-	return target.Type != policy.TypeAny &&
-		target.Owner != "" &&
-		target.Name != "" &&
-		!strings.ContainsAny(string(target.Type), "*?") &&
-		!strings.ContainsAny(target.Owner, "*?") &&
-		!strings.ContainsAny(target.Name, "*?")
 }
 
 func validGrantStatusFilter(value string) bool {

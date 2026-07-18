@@ -24,7 +24,12 @@ type repositoryReadClient interface {
 type repositoryReadAdapter struct {
 	descriptor opcatalog.Descriptor
 	client     repositoryReadClient
+	disclose   RepositoryDisclosure
 }
+
+// RepositoryDisclosure applies one authenticated client's policy to a
+// concrete repository returned by upstream discovery.
+type RepositoryDisclosure func(client string, target hfpolicy.Target) bool
 
 type repoListArguments struct {
 	Limit int `json:"limit,omitempty"`
@@ -41,21 +46,33 @@ type repoContentsArguments struct {
 	Path     string `json:"path"`
 }
 
-func NewRepositoryReadAdapters(client repositoryReadClient) ([]Adapter, error) {
-	if client == nil {
+func NewRepositoryReadAdapters(client repositoryReadClient, disclose RepositoryDisclosure) ([]Adapter, error) {
+	if client == nil || disclose == nil {
 		return nil, errors.New("hugging face repository read client is required")
 	}
 	return adaptersForNames([]string{"repo.contents.read", "repo.list", "repo.metadata.read", "repo.tree.list"}, func(descriptor opcatalog.Descriptor) Adapter {
-		return &repositoryReadAdapter{descriptor: descriptor, client: client}
+		return &repositoryReadAdapter{descriptor: descriptor, client: client, disclose: disclose}
 	})
 }
 
 func (a *repositoryReadAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
 func (a *repositoryReadAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
-	return decodeInput(targetRaw, argumentsRaw, decodeRepositoryInputTarget, func(_ repositoryTarget, raw json.RawMessage) (any, error) {
+	decodeTarget := decodeRepositoryInputTarget
+	if a.descriptor.Name == "repo.list" {
+		decodeTarget = decodeRepositoryListTarget
+	}
+	return decodeInput(targetRaw, argumentsRaw, decodeTarget, func(_ repositoryTarget, raw json.RawMessage) (any, error) {
 		return a.decodeArguments(raw)
 	})
+}
+
+func decodeRepositoryListTarget(raw json.RawMessage) (repositoryTarget, error) {
+	return decodeValidated(raw, maxTargetBytes, func(target repositoryTarget) bool {
+		return validRepositoryTarget(target) ||
+			(target.Kind == "repo" && target.Name == "*" && repoSegment.MatchString(target.Owner) &&
+				(target.Type == "model" || target.Type == "dataset" || target.Type == "space" || target.Type == "kernel"))
+	}, "repository list target must contain an exact type and owner plus an exact name or *")
 }
 
 func (a *repositoryReadAdapter) decodeArguments(raw json.RawMessage) (any, error) {
@@ -155,7 +172,7 @@ func (a *repositoryReadAdapter) Execute(ctx context.Context, plan Plan) (Outcome
 		var repos []hubclient.RepoSummary
 		repos, err = a.client.ListRepos(ctx, hubclient.RepoType(target.Type), target.Owner, arguments.Limit)
 		if err == nil {
-			result = exactRepoListResult(repos, target.Owner+"/"+target.Name)
+			result = a.repoListResult(repos, target, plan.Policy.Client)
 		}
 	case "repo.tree.list":
 		var arguments repoTreeArguments
@@ -184,12 +201,16 @@ func (a *repositoryReadAdapter) Execute(ctx context.Context, plan Plan) (Outcome
 	return Outcome{Proven: true, Result: encoded}, err
 }
 
-func exactRepoListResult(repos []hubclient.RepoSummary, id string) map[string]any {
-	result := make([]hubclient.RepoSummary, 0, 1)
+func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, query repositoryTarget, client string) map[string]any {
+	result := make([]hubclient.RepoSummary, 0, len(repos))
 	for _, repo := range repos {
-		if strings.EqualFold(repo.ID, id) {
+		parts := strings.Split(repo.ID, "/")
+		if len(parts) != 2 || parts[0] != query.Owner || (query.Name != "*" && parts[1] != query.Name) {
+			continue
+		}
+		target := hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(query.Type), Owner: parts[0], Name: parts[1]}
+		if a.disclose(client, target) {
 			result = append(result, repo)
-			break
 		}
 	}
 	return map[string]any{"repos": result, "next_cursor": nil}
