@@ -35,6 +35,7 @@ component documentation.
 
 ## Implementation Records
 
+- [Provider credential lifecycle](2026-07-18-provider-credential-lifecycle-plan.md)
 - [Hugging Face credential lifecycle](2026-07-18-hugging-face-credential-lifecycle-plan.md)
 - [Provider-neutral MCP execution](2026-07-18-provider-neutral-mcp-execution-plan.md)
 - [Approval presentation](2026-07-17-approval-presentation-plan.md)

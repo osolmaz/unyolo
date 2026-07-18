@@ -6,10 +6,11 @@ Status: planned
 
 ## Objective
 
-Replace the manual Hugging Face token-file repair procedure and the current
-complete-permissions credential profile with one production-ready BrokerKit
-credential lifecycle. A user must be able to repair an installed HF Broker by
-running:
+Implement the first provider adapter for the
+[shared BrokerKit credential framework](2026-07-18-provider-credential-lifecycle-plan.md).
+Replace the manual Hugging Face token-file repair procedure and current
+complete-permissions credential profile. A user must be able to repair an
+installed HF Broker by running:
 
 ```sh
 hf-broker credential repair
@@ -68,6 +69,11 @@ an operation executed.
   never read, modified, logged out, or replaced.
 - Upstream retirement of the previous Hugging Face token remains manual until
   Hugging Face exposes a documented API suitable for that credential.
+- Generic command parsing, secret input, privilege transition, protected
+  replacement, metadata, status, requirement evaluation, MCP filtering,
+  generation binding, and contract tests live in shared BrokerKit packages.
+- The HF adapter contains no GitHub branches. The subsequent GitHub App
+  implementation must use the same shared contracts without copying HF code.
 
 ## Non-Goals
 
@@ -81,8 +87,10 @@ This cutover does not:
 - add a second privileged daemon solely for credential repair;
 - make an agent or ordinary broker client an operator;
 - require a Team or Enterprise Hugging Face plan;
-- implement Enterprise OAuth Token Exchange or service accounts now; or
-- change GitHub App, sudo, or Telegram credential acquisition in this slice.
+- implement Enterprise OAuth Token Exchange or service accounts now;
+- implement the GitHub App adapter in this first slice; it follows immediately
+  after the shared framework and HF adapter are green;
+- change sudo or Telegram credential acquisition in this slice.
 
 The shared lifecycle must leave explicit extension points for service-account,
 token-exchange, and external-secret providers without embedding Hugging Face
@@ -220,25 +228,27 @@ delegated web hosting, OpenClaw, or an untrusted browser parent.
 
 ### Shared credential lifecycle
 
-Add a provider-neutral package, named for example `credentiallifecycle`, that
-owns only transactional lifecycle mechanics:
+Use the provider-neutral packages and adapter contract defined in the shared
+plan. The shared layer owns:
 
 - bounded candidate input;
 - secret-memory ownership and clearing;
 - credential fingerprinting with truncated display identifiers;
+- the canonical typed capability and all-of/any-of requirement model;
+- requirement evaluation against structured resource selectors;
+- generic inspect, repair, and status command behavior;
 - candidate, activation, probe, commit, and rollback state transitions;
 - exact-replacement invariants;
 - lifecycle audit event construction;
+- immutable credential snapshots, generations, and capability digests;
+- authenticated capability status used by MCP discovery;
 - platform activation adapters;
 - stable status and error codes; and
 - test seams for clocks, process activation, and protected storage.
 
-The package receives provider verification and probing functions. It must not
-import Hugging Face, GitHub, sudo, Telegram, OpenClaw, MLClaw, browser-opening,
-or provider operation catalogs.
-
-Do not create a broad plugin framework. Use concrete lifecycle types and small
-functions for provider inspection and platform activation.
+Shared packages receive the HF adapter through a compile-time interface. They
+must not import Hugging Face, GitHub, sudo, Telegram, OpenClaw, MLClaw, or a
+provider operation catalog. Do not create a runtime plugin loader.
 
 ### Hugging Face credential adapter
 
@@ -252,28 +262,29 @@ Add an HF-owned package under `brokers/huggingface/internal` that owns:
 - account identity normalization;
 - fine-grained global, personal, organization, and resource capability
   extraction;
-- mapping inspected capabilities to HF operation requirements;
+- one complete generated mapping from HF operations to typed provider
+  requirements;
 - HF-specific active probes and upstream error classification; and
 - secret-free credential metadata.
 
 The adapter must use the existing bounded Hub client transport and redaction
 rules. Do not add a second generic HTTP client or parse raw response strings.
 
-### CLI orchestration
+### CLI integration
 
-The HF CLI command owns:
+The HF binary supplies the shared command package with:
 
 - deployment discovery;
-- browser opening on Linux and macOS;
-- unwrapped URL fallback;
-- hidden TTY input;
-- human and JSON rendering;
-- explicit automation flags;
-- privilege transition into the trusted install phase; and
-- final live status reporting.
+- HF enrollment wording and the constant generic token URL;
+- the HF adapter;
+- systemd and launchd deployment metadata; and
+- provider-specific final status labels.
 
-The command must not implement provider verification, protected-file writes,
-systemd or launchd operations, rollback, or capability matching itself.
+The shared command package owns browser opening, URL fallback, hidden input,
+stdin bounds, flags, privilege transition, text and JSON schemas, and generic
+status rendering. The HF command package must not implement provider
+verification, protected-file writes, systemd or launchd operations, rollback,
+or capability matching itself.
 
 ### Privileged installation
 
@@ -308,32 +319,28 @@ provider-neutral, operator-authenticated, secret-write-only, and use sealed
 candidate references rather than plaintext credential fields. Do not make a
 network credential endpoint mandatory for the local CLI cutover.
 
-## Credential Model
+## HF Credential Projection
 
 Store only the active token in the configured protected credential source.
-Store the following secret-free metadata in broker state:
+Project the HF response into the shared `CredentialSnapshot` model. The HF
+projection provides:
 
 ```text
-schema_version
-credential_class
-provider
-identity
-token_kind
-fingerprint_sha256
-installed_at
-verified_at
-verification_state
-capability_digest
-capability_summary
-source_kind
-rotation_state
-revocation_mode
+provider = huggingface
+credential_kind = fine_grained_user_token
+subject = Hugging Face account
+capabilities[].domain = global, user, organization, or resource
+capabilities[].permission = canonical HF permission name
+capabilities[].access_level = read or write where HF exposes one
+capabilities[].resource_selector = normalized account, organization, or resource
 ```
 
-The full fingerprint may remain in protected state for exact identity checks;
-human and audit output uses a short identifier. Capability metadata must be
-bounded, normalized, deterministic, and safe to disclose to the operator. It
-must not include raw token claims or provider response bodies.
+The shared snapshot adds fingerprint, generation, verification state, times,
+and capability digest. The full fingerprint may remain in protected state for
+exact identity checks; human and audit output uses a short identifier.
+Capability metadata is bounded, normalized, deterministic, and safe for the
+authorized operator. It does not include raw token claims or provider response
+bodies.
 
 Never infer token kind from length, prefix, or JWT punctuation alone. Those
 checks may reject obviously unsafe input early, but acceptance requires a
@@ -342,9 +349,10 @@ fine-grained token and exposes an inspectable permission model.
 
 ## Capability-Aware Operation Exposure
 
-The user chooses the upstream ceiling, so every HF operation binding must
-declare its required upstream capabilities. Generate this mapping with the HF
-operation catalog and validate complete coverage at build and startup.
+The user chooses the upstream ceiling, so every implemented HF operation must
+declare a typed upstream requirement using the shared all-of/any-of model.
+Generate the mapping with the HF operation catalog and validate complete
+coverage at generation, test, and startup.
 
 For one operation to be advertised, all of these must hold:
 
@@ -352,10 +360,13 @@ For one operation to be advertised, all of these must hold:
 2. the client exposure profile permits it;
 3. policy recognizes it;
 4. a runtime implementation is registered; and
-5. the active credential ceiling covers its upstream requirements.
+5. the active credential can satisfy the requirement for at least one
+   reachable target.
 
-Apply the same check during direct submission. Discovery filtering is not an
-authorization boundary.
+For submission, bind the exact canonical target to the requirement's structured
+resource selector and evaluate it before policy, approval creation, sealed
+payload allocation, or an upstream request. Recheck the target immediately
+before execution. Discovery filtering is not an authorization boundary.
 
 When capability coverage is missing:
 
@@ -366,6 +377,10 @@ When capability coverage is missing:
   capability names; and
 - do not create an approval request, because operator approval cannot expand
   the provider credential ceiling.
+
+Bind the shared credential generation and capability digest into each immutable
+HF operation plan. Credential expansion does not widen an existing approval;
+credential reduction invalidates uncovered execution.
 
 `credential status` reports the number and classes of available operations,
 not a claim that every possible provider mutation has been tested.
@@ -484,18 +499,28 @@ repository, token name, fingerprint, or operation target.
 
 Replace the current credential surface in one merge:
 
-1. add shared lifecycle and HF inspection packages;
-2. add repair, inspect, and status commands;
-3. add capability requirements to every HF operation binding;
-4. make HF operation exposure and submission credential-aware;
-5. add active readiness and doctor checks;
-6. migrate systemd and launchd setup to the shared focused-rotation primitive;
-7. migrate trusted host integrations to the new inspection contract;
-8. remove permission-prefilled token URL generation;
-9. remove the complete-permissions acceptance profile;
-10. remove OAuth and legacy-token acceptance paths;
-11. replace direct token-file overwrite documentation; and
-12. regenerate capability and compatibility artifacts.
+1. add the shared credential model, adapter contract, command orchestration,
+   runtime snapshot service, requirement evaluator, and contract suite;
+2. extend the existing service transaction with a provider-neutral focused
+   credential replacement primitive;
+3. implement the HF adapter against the shared contract;
+4. add typed capability requirements to every implemented HF operation;
+5. make HF discovery, submission, immutable plans, and execution use the same
+   active credential snapshot;
+6. add active readiness and doctor checks;
+7. migrate systemd and launchd setup to the shared replacement primitive;
+8. migrate trusted host integrations to the shared inspection contract;
+9. remove permission-prefilled token URL generation;
+10. remove the complete-permissions acceptance profile;
+11. remove OAuth and legacy-token acceptance paths;
+12. replace direct token-file overwrite documentation; and
+13. regenerate capability and compatibility artifacts.
+
+Finish this HF slice before implementing GitHub, but prove the shared boundary
+with an in-memory fake adapter and shared contract tests. After HF is green,
+implement GitHub App credentials as the second slice in the shared plan. That
+slice must add no second command parser, lifecycle state machine, installer,
+metadata schema, requirement evaluator, or MCP filtering path.
 
 Replace `hf-broker credential requirements` with the new status and inspection
 surface. Do not keep it as an alias. If a machine-readable operation-to-HF
@@ -510,6 +535,7 @@ No broker operation silently falls back to the user's HF CLI login.
 
 ### Unit tests
 
+- shared adapter contract tests pass for an in-memory fake provider and HF;
 - generic browser URL contains no permission, resource, organization, token
   name, or credential value parameters;
 - strict bounded parsing for valid fine-grained identity responses;
@@ -517,7 +543,9 @@ No broker operation silently falls back to the user's HF CLI login.
   oversized, and ambiguous token responses;
 - capability normalization and deterministic digesting;
 - complete operation-to-capability mapping coverage;
+- all-of and any-of requirement evaluation and exact target binding;
 - exact exposure intersection and stable missing-capability errors;
+- immutable generation and capability-digest binding;
 - no token in text, JSON, errors, logs, audit, or metrics; and
 - lifecycle transition and rollback invariants.
 
@@ -547,9 +575,11 @@ Run real compiled processes against a fake Hugging Face server:
 7. wait through the real Agent V1 lifecycle;
 8. assert the returned repository list came from the fake provider;
 9. rotate to a limited read-only candidate and assert tool exposure changes;
-10. inject invalid, unavailable, and probe-failure candidates and prove
+10. reduce the credential ceiling after approval and prove execution refuses
+    the now-uncovered target before an upstream request;
+11. inject invalid, unavailable, and probe-failure candidates and prove
     rollback; and
-11. restart the broker and prove metadata and capability exposure persist.
+12. restart the broker and prove metadata and capability exposure persist.
 
 ### Live manual validation
 
@@ -574,7 +604,8 @@ resource during this validation.
 - generated artifacts are current and reproducible;
 - Go formatting, vet, race tests, aggregate coverage, lint, vulnerability,
   secret scanning, and Slophammer gates pass;
-- HF, GitHub, sudo, Telegram, and OpenClaw package tests remain green;
+- shared credential contract tests and all HF package tests pass;
+- existing GitHub, sudo, Telegram, and OpenClaw tests remain green;
 - Linux systemd and macOS launchd credential paths pass platform CI;
 - the packed OpenClaw plugin remains installable;
 - Codex review reports no P0 or P1 findings;
@@ -586,19 +617,25 @@ Mutation tooling remains available but disabled and non-blocking.
 
 ## Release And Rollout
 
-1. merge the hard cutover with all dependent trusted-host changes ready;
+1. merge the shared credential framework and HF adapter with all dependent
+   trusted-host changes ready;
 2. install the merged development binaries locally;
 3. repair the local HF Broker credential through the new flow;
 4. complete the Bob MCP and doctor validation;
-5. publish the HF Broker and any shared BrokerKit artifacts from one immutable
-   commit;
-6. update trusted hosts to that immutable BrokerKit release;
-7. build the dependent MLClaw runtime image without adding MLClaw knowledge to
+5. push and pin the green shared-framework and HF-adapter commit for dependent
+   validation without publishing a final release;
+6. implement and validate the GitHub App adapter against the same immutable
+   shared contracts;
+7. publish the unified BrokerKit artifacts from one immutable commit after HF
+   and GitHub are green;
+8. update trusted hosts to that immutable BrokerKit release;
+9. build the dependent MLClaw runtime image without adding MLClaw knowledge to
    BrokerKit;
-8. deploy the test environment;
-9. repeat credential status, MCP repository read, approval, and UI smoke tests;
-10. deploy GoePT only after the test environment is green; and
-11. archive the implementation plan after maintained documentation reflects
+10. deploy the test environment;
+11. repeat credential status, MCP repository read, approval, and UI smoke
+    tests;
+12. deploy GoePT only after the test environment is green; and
+13. archive the implementation plan after maintained documentation reflects
     the shipped contract.
 
 ## Completion Criteria
@@ -606,12 +643,16 @@ Mutation tooling remains available but disabled and non-blocking.
 The cutover is complete only when:
 
 - `hf-broker credential repair` performs the complete interactive lifecycle;
+- generic command, lifecycle, metadata, capability, and enforcement behavior
+  comes from the shared provider credential framework;
 - no CLI question duplicates account, organization, resource, or permission
   selection from Hugging Face;
 - only valid fine-grained tokens are accepted;
 - limited tokens produce an explicit capability ceiling instead of an
   installation failure;
 - credential-aware MCP discovery and submission are enforced;
+- immutable HF plans bind the shared credential generation and capability
+  digest and recheck exact coverage at execution;
 - activation is exact, transactional, auditable, and rollback-safe;
 - repair candidates never enter argv, environment, logs, audit, MCP, Agent V1,
   or ordinary user storage;
@@ -621,3 +662,8 @@ The cutover is complete only when:
 - all local and remote quality gates pass;
 - immutable releases are published; and
 - GoePT is redeployed and validated from the released artifacts.
+
+The HF slice is not considered a sufficient shared framework until the fake
+adapter contract suite proves provider independence. Overall provider
+credential work completes only after the GitHub App adapter uses those same
+contracts as described in the shared plan.
