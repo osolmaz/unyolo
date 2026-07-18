@@ -201,9 +201,9 @@ func prepareAdapterPlan(provider operations.Plan, request grants.Request, presen
 }
 
 func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations.Adapter) (operations.Plan, error) {
-	envelope, err := s.plans.Get(operation.PlanDigest)
-	if err != nil || !runtimeEnvelopeMatchesOperation(envelope, operation, adapter) {
-		return operations.Plan{}, errors.New("operation plan binding is invalid")
+	envelope, err := s.loadRuntimeEnvelope(operation, adapter)
+	if err != nil {
+		return operations.Plan{}, err
 	}
 	credential, err := runtimeEnvelopeCredential(envelope)
 	if err != nil {
@@ -218,6 +218,17 @@ func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations
 		return operations.Plan{}, errors.New("operation policy metadata is invalid")
 	}
 	return plan, nil
+}
+
+func (s *Server) loadRuntimeEnvelope(operation agentv1.Operation, adapter operations.Adapter) (ghplan.Plan, error) {
+	envelope, err := s.plans.Get(operation.PlanDigest)
+	if err != nil || !runtimeEnvelopeMatchesOperation(envelope, operation, adapter) {
+		return ghplan.Plan{}, errors.New("operation plan binding is invalid")
+	}
+	if err := s.planValidator.ValidateCredential(envelope); err != nil {
+		return ghplan.Plan{}, errors.New("operation credential binding is stale or insufficient")
+	}
+	return envelope, nil
 }
 
 func runtimeEnvelopeMatchesOperation(envelope ghplan.Plan, operation agentv1.Operation, adapter operations.Adapter) bool {

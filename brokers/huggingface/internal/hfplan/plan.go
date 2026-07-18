@@ -273,7 +273,7 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("HF grant does not match its immutable plan")
 	}
-	if err := v.validateCredential(plan); err != nil {
+	if err := v.ValidateCredential(plan); err != nil {
 		return err
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
@@ -282,7 +282,9 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	return nil
 }
 
-func (v Validator) validateCredential(plan Plan) error {
+// ValidateCredential proves that the currently active credential still covers
+// the exact authority bound into an immutable plan.
+func (v Validator) ValidateCredential(plan Plan) error {
 	if v.Credential == nil {
 		return nil
 	}

@@ -187,33 +187,47 @@ func buildHTTPHandler(ctx context.Context, stdout io.Writer, cfg config.Config) 
 }
 
 func activeCredentialService(ctx context.Context, cfg config.Config) (*providercredential.Service, error) {
-	timeout := cfg.HFTimeout
-	if timeout <= 0 || timeout > 30*time.Second {
-		timeout = 30 * time.Second
-	}
-	client := &http.Client{Timeout: timeout}
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	secret, err := providercredential.NewSecret([]byte(cfg.HFToken))
-	if err != nil {
-		return nil, errors.New("HF provider credential is unavailable")
-	}
-	defer secret.Clear()
 	status, err := loadActiveCredentialStatus(cfg.HFTokenFile)
 	if err != nil {
 		return nil, err
 	}
-	generation := uint64(1)
-	if status != nil {
-		generation = status.Snapshot.Generation
-	}
-	snapshot, err := (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: cfg.UpstreamHubURL, Client: client}, Generation: generation}).Inspect(ctx, secret)
+	snapshot, err := inspectActiveCredential(ctx, cfg, activeCredentialHTTPClient(cfg.HFTimeout), credentialGeneration(status))
 	if err != nil {
-		return nil, fmt.Errorf("inspect HF provider credential: %w", err)
+		return nil, err
 	}
 	if status != nil && snapshot.FingerprintSHA256 != status.Snapshot.FingerprintSHA256 {
 		return nil, errors.New("HF credential metadata does not match the active credential; run hf-broker credential repair")
 	}
 	return providercredential.NewService(snapshot)
+}
+
+func activeCredentialHTTPClient(timeout time.Duration) *http.Client {
+	if timeout <= 0 || timeout > 30*time.Second {
+		timeout = 30 * time.Second
+	}
+	client := &http.Client{Timeout: timeout}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return client
+}
+
+func credentialGeneration(status *credentialStatus) uint64 {
+	if status != nil {
+		return status.Snapshot.Generation
+	}
+	return 1
+}
+
+func inspectActiveCredential(ctx context.Context, cfg config.Config, client *http.Client, generation uint64) (providercredential.Snapshot, error) {
+	secret, err := providercredential.NewSecret([]byte(cfg.HFToken))
+	if err != nil {
+		return providercredential.Snapshot{}, errors.New("HF provider credential is unavailable")
+	}
+	defer secret.Clear()
+	snapshot, err := (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: cfg.UpstreamHubURL, Client: client}, Generation: generation}).Inspect(ctx, secret)
+	if err != nil {
+		return providercredential.Snapshot{}, fmt.Errorf("inspect HF provider credential: %w", err)
+	}
+	return snapshot, nil
 }
 
 func loadActiveCredentialStatus(tokenFile string) (*credentialStatus, error) {

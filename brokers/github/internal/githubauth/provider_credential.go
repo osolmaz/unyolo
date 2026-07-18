@@ -78,46 +78,57 @@ func (m *Manager) CurrentSnapshot(ctx context.Context, selected Metadata, genera
 }
 
 func (m *Manager) currentMetadata(ctx context.Context, selected Metadata) (Metadata, error) {
+	current, err := m.revalidateMetadata(ctx, selected)
+	if err != nil {
+		return Metadata{}, err
+	}
+	current.APIHost = m.apiURL.Host
+	current.ExpiresAt = time.Time{}
+	return current, nil
+}
+
+func (m *Manager) revalidateMetadata(ctx context.Context, selected Metadata) (Metadata, error) {
 	switch selected.Kind {
 	case KindAppJWT:
-		if err := m.CheckApp(ctx); err != nil {
-			return Metadata{}, err
-		}
+		return selected, m.CheckApp(ctx)
 	case KindInstallation:
-		if err := m.validateInstallationMetadata(ctx, selected); err != nil {
-			return Metadata{}, err
-		}
+		return selected, m.validateInstallationMetadata(ctx, selected)
 	case KindUser:
 		credential, err := m.UserCredential(ctx, selected.UserID)
 		if err != nil {
 			return Metadata{}, err
 		}
-		selected = credential.Metadata()
+		return credential.Metadata(), nil
 	default:
 		return Metadata{}, errors.New("GitHub credential kind cannot be revalidated")
 	}
-	selected.APIHost = m.apiURL.Host
-	selected.ExpiresAt = time.Time{}
-	return selected, nil
 }
 
 func (m *Manager) validateInstallationMetadata(ctx context.Context, selected Metadata) error {
-	if m.app == nil || selected.InstallationID <= 0 {
-		return errors.New("GitHub App installation is unavailable")
-	}
-	installation, err := m.app.installation(ctx, selected.InstallationID)
+	installation, err := m.currentInstallation(ctx, selected.InstallationID)
 	if err != nil {
 		return err
 	}
 	if !permissionsCover(installationPermissionMap(installation.GetPermissions()), selected.Permissions) {
 		return errors.New("GitHub installation permissions no longer satisfy the selected authority")
 	}
+	return m.validateRepositorySelection(ctx, selected)
+}
+
+func (m *Manager) currentInstallation(ctx context.Context, installationID int64) (*github.Installation, error) {
+	if m.app == nil || installationID <= 0 {
+		return nil, errors.New("GitHub App installation is unavailable")
+	}
+	return m.app.installationByID(ctx, installationID, false)
+}
+
+func (m *Manager) validateRepositorySelection(ctx context.Context, selected Metadata) error {
 	repositoryIDs := canonicalRepositoryIDs(selected.RepositoryIDs)
 	if len(repositoryIDs) != len(selected.RepositoryIDs) {
 		return errors.New("GitHub repository selection is invalid")
 	}
 	for _, repositoryID := range repositoryIDs {
-		repositoryInstallation, repositoryErr := m.app.repositoryInstallationByID(ctx, repositoryID)
+		repositoryInstallation, repositoryErr := m.app.installationByID(ctx, repositoryID, true)
 		if repositoryErr != nil {
 			return repositoryErr
 		}
@@ -177,6 +188,10 @@ func (ProviderAdapter) Requirement(operation string) (providercredential.Require
 		clauses = append(clauses, providercredential.AnyOf{Alternatives: []providercredential.Need{{Domain: "github", Permission: "credential.installation", MinimumAccessLevel: providercredential.AccessRead}}})
 	case string(KindUser):
 		clauses = append(clauses, providercredential.AnyOf{Alternatives: []providercredential.Need{{Domain: "github", Permission: "credential.user", MinimumAccessLevel: providercredential.AccessRead}}})
+		// GitHub does not expose a trustworthy permission inventory for user
+		// access tokens. The authenticated user is verified here; GitHub remains
+		// authoritative for operation-specific token access at execution time.
+		return providercredential.Requirement{AllOf: clauses}, true
 	default:
 		return providercredential.Requirement{}, false
 	}

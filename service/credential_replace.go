@@ -19,6 +19,8 @@ import (
 	"github.com/osolmaz/brokerkit/credentiallifecycle"
 )
 
+const credentialRollbackRestartTimeout = 30 * time.Second
+
 // CredentialReplacePlan describes an exact replacement of credentials owned
 // by an already-installed broker service.
 type CredentialReplacePlan struct {
@@ -172,39 +174,44 @@ func credentialOwnerIDs(plan CredentialReplacePlan) (int, int, error) {
 	if plan.AllowNonRoot {
 		return os.Geteuid(), os.Getegid(), nil
 	}
-	uid, err := credentialUserID(plan.User)
+	uid, err := credentialIdentityID(plan.User, "user")
 	if err != nil {
 		return 0, 0, err
 	}
-	gid, err := credentialGroupID(plan.Group)
+	gid, err := credentialIdentityID(plan.Group, "group")
 	if err != nil {
 		return 0, 0, err
 	}
 	return uid, gid, nil
 }
 
-func credentialUserID(name string) (int, error) {
-	account, err := user.Lookup(name)
-	if err != nil {
-		return 0, errors.New("credential service user does not exist")
+func credentialIdentityID(name, kind string) (int, error) {
+	var id string
+	var err error
+	switch kind {
+	case "user":
+		var account *user.User
+		account, err = user.Lookup(name)
+		if err == nil {
+			id = account.Uid
+		}
+	case "group":
+		var group *user.Group
+		group, err = user.LookupGroup(name)
+		if err == nil {
+			id = group.Gid
+		}
+	default:
+		return 0, errors.New("credential service identity kind is invalid")
 	}
-	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return 0, fmt.Errorf("credential service %s does not exist", kind)
+	}
+	value, err := strconv.Atoi(id)
 	if err != nil {
 		return 0, errors.New("credential service identity is invalid")
 	}
-	return uid, nil
-}
-
-func credentialGroupID(name string) (int, error) {
-	group, err := user.LookupGroup(name)
-	if err != nil {
-		return 0, errors.New("credential service group does not exist")
-	}
-	gid, err := strconv.Atoi(group.Gid)
-	if err != nil {
-		return 0, errors.New("credential service identity is invalid")
-	}
-	return gid, nil
+	return value, nil
 }
 
 func openCredentialRoot(path string) (*os.Root, error) {
@@ -326,7 +333,9 @@ func writeCredentialHandle(handle *os.File, data []byte, mode os.FileMode, uid, 
 func rollbackCredentialReplacement(ctx context.Context, root *os.Root, snapshots []credentialFileSnapshot, uid, gid int,
 	runner CommandRunner, plan CredentialReplacePlan, cause error) error {
 	restoreErr := restoreCredentialFiles(root, snapshots, uid, gid, plan.AllowNonRoot)
-	restartErr := restartCredentialService(ctx, runner, plan)
+	rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), credentialRollbackRestartTimeout)
+	defer cancel()
+	restartErr := restartCredentialService(rollbackCtx, runner, plan)
 	return errors.Join(cause, restoreErr, restartErr)
 }
 

@@ -338,8 +338,9 @@ type currentGitHubCredentialResolver struct {
 }
 
 func (r *currentGitHubCredentialResolver) snapshot(plan ghplan.Plan) (providercredential.Snapshot, error) {
-	if r == nil || r.manager == nil {
-		return providercredential.Snapshot{}, errors.New("GitHub credential provider is unavailable")
+	manager, err := r.currentManager()
+	if err != nil {
+		return providercredential.Snapshot{}, err
 	}
 	metadata, err := operations.CredentialFromPreconditions(plan.Preconditions)
 	if err != nil {
@@ -347,7 +348,14 @@ func (r *currentGitHubCredentialResolver) snapshot(plan ghplan.Plan) (providercr
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return r.manager.CurrentSnapshot(ctx, metadata, 1, time.Now().UTC())
+	return manager.CurrentSnapshot(ctx, metadata, 1, time.Now().UTC())
+}
+
+func (r *currentGitHubCredentialResolver) currentManager() (*githubauth.Manager, error) {
+	if r == nil || r.manager == nil {
+		return nil, errors.New("GitHub credential provider is unavailable")
+	}
+	return r.manager, nil
 }
 
 func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {

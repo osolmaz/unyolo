@@ -37,7 +37,7 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 			if err != nil {
 				return nil, err
 			}
-			return mcpTools(discovery.Operations...), nil
+			return mcpTools(discovery.Operations), nil
 		},
 		Call: bridge.Call, ErrorValue: func(err error) any { return mcpoperation.ErrorValue(err) },
 	})
@@ -99,23 +99,21 @@ func prepareHFMCPInput(ctx context.Context, client *agentClient, descriptor opca
 	return nil
 }
 
-func mcpTools(operations ...string) []map[string]any {
+func mcpTools(operations []string) []map[string]any {
 	tools := catalogMCPTools()
-	if operations != nil {
-		available := make(map[string]struct{}, len(operations))
-		for _, operation := range operations {
-			available[operation] = struct{}{}
-		}
-		filtered := tools[:0]
-		for _, tool := range tools {
-			name, _ := tool["name"].(string)
-			descriptor, found := descriptorByMCPTool(name)
-			if _, allowed := available[descriptor.Name]; found && allowed {
-				filtered = append(filtered, tool)
-			}
-		}
-		tools = filtered
+	available := make(map[string]struct{}, len(operations))
+	for _, operation := range operations {
+		available[operation] = struct{}{}
 	}
+	filtered := tools[:0]
+	for _, tool := range tools {
+		name, _ := tool["name"].(string)
+		descriptor, found := descriptorByMCPTool(name)
+		if _, allowed := available[descriptor.Name]; found && allowed {
+			filtered = append(filtered, tool)
+		}
+	}
+	tools = filtered
 	return append(tools,
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait briefly for a temporary HF Broker grant decision, then call again if it remains pending.", "inputSchema": mcpIDSchema("grant_id", true)},

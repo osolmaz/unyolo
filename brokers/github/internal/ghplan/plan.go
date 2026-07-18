@@ -264,7 +264,7 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if err != nil {
 		return err
 	}
-	if err := v.validateCredential(plan); err != nil {
+	if err := v.ValidateCredential(plan); err != nil {
 		return err
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
@@ -291,7 +291,9 @@ func (v Validator) loadGrantPlan(grant grants.Grant) (Plan, time.Duration, usebu
 	return plan, requestedDuration, requestedMaxUses, nil
 }
 
-func (v Validator) validateCredential(plan Plan) error {
+// ValidateCredential proves that the currently active credential still covers
+// the exact authority bound into an immutable plan.
+func (v Validator) ValidateCredential(plan Plan) error {
 	if v.Credential == nil || plan.CredentialSelector.Binding.Generation == 0 {
 		return nil
 	}

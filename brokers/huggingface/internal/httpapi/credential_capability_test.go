@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,42 @@ func TestCredentialDiscoveryFiltersUnavailableOperations(t *testing.T) {
 	}
 	if !containsRead || containsDelete {
 		t.Fatalf("discovered operations did not reflect read-only credential: read=%v delete=%v", containsRead, containsDelete)
+	}
+}
+
+func TestDirectOperationRevalidatesCredentialBeforeExecution(t *testing.T) {
+	var upstreamCalls int
+	upstream := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstreamCalls++ })
+	upstreamServer := httptest.NewServer(upstream)
+	defer upstreamServer.Close()
+	policyJSON := `{"rules":[{"id":"read-private","effect":"allow","clients":["agent"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"private","paths":["README.md"]}]}]}`
+	server := newTestHandler(t, t.TempDir(), upstreamServer.URL, &strings.Builder{}, policyJSON)
+	t.Cleanup(func() { _ = server.Close() })
+	credential := testCredentialCeiling(t, "alice/private")
+	server.credential = credential
+	server.plans.SetCredentialService(credential)
+	server.planValidator = hfplan.Validator{Store: server.plans, Credential: credential, Requirement: (credentialauth.Adapter{}).Requirement}
+	operation, _, err := server.submitAgentOperation(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "stale-direct",
+		Operation: "repo.contents.read", Target: json.RawMessage(`{"kind":"repo","type":"dataset","owner":"alice","name":"private"}`),
+		Arguments: json.RawMessage(`{"path":"README.md"}`), Reason: "test stale authority"})
+	if err != nil || operation.State != agentv1.StateApproved || operation.ApprovalID != "" {
+		t.Fatalf("direct submission = %+v, %v", operation, err)
+	}
+	snapshot, err := credential.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Generation++
+	if err := credential.Replace(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime.Advance(t.Context(), operation)
+	completed, err := server.operations.GetByID(operation.ID)
+	if err != nil || completed.State != agentv1.StateFailed || completed.Error == nil || completed.Error.Code != "invalid_stored_operation" {
+		t.Fatalf("stale direct operation = %+v, %v", completed, err)
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("stale direct operation reached upstream %d times", upstreamCalls)
 	}
 }
 

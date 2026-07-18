@@ -222,9 +222,13 @@ func currentIdentity(t *testing.T) (string, string) {
 	return current.Username, group.Name
 }
 
-type credentialRecordingRunner struct{ calls []string }
+type credentialRecordingRunner struct {
+	calls       []string
+	contextErrs []error
+}
 
-func (r *credentialRecordingRunner) Run(_ context.Context, name string, args ...string) error {
+func (r *credentialRecordingRunner) Run(ctx context.Context, name string, args ...string) error {
 	r.calls = append(r.calls, name+" "+args[len(args)-1])
+	r.contextErrs = append(r.contextErrs, ctx.Err())
 	return nil
 }

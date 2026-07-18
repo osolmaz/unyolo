@@ -200,6 +200,9 @@ func (s *Server) loadRuntimePlan(operation agentv1.Operation, adapter operations
 	if err != nil || !s.runtimePlanEnvelopeMatches(envelope, operation, adapter) {
 		return operations.Plan{}, errors.New("operation plan binding is invalid")
 	}
+	if err := s.planValidator.ValidateCredential(envelope); err != nil {
+		return operations.Plan{}, errors.New("operation credential binding is stale or insufficient")
+	}
 	plan := operations.Plan{Operation: envelope.Operation, OperationRevision: envelope.OperationRevision, Target: envelope.Target,
 		Arguments: envelope.Arguments, Preconditions: envelope.Preconditions, Presentation: envelope.Presentation,
 		PolicyDecision: operations.PolicyDecision{Effect: envelope.Authorization.PolicyEffect, RuleIDs: envelope.Authorization.PolicyRuleIDs}}

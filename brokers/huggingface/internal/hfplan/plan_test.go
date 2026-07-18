@@ -312,33 +312,33 @@ func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
 			Domain: "huggingface", Permission: "repo.content.read", MinimumAccessLevel: providercredential.AccessRead, TargetBinding: "resource",
 		}}}}}, true
 	}
-	if err := (Validator{Credential: credential, Requirement: requirement}).validateCredential(plan); err != nil {
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(plan); err != nil {
 		t.Fatal(err)
 	}
-	if err := (Validator{}).validateCredential(plan); err != nil {
+	if err := (Validator{}).ValidateCredential(plan); err != nil {
 		t.Fatalf("nil credential = %v", err)
 	}
 	stale := plan
 	stale.CredentialSelector.Binding.Generation++
-	if err := (Validator{Credential: credential, Requirement: requirement}).validateCredential(stale); err == nil {
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(stale); err == nil {
 		t.Fatal("stale binding was accepted")
 	}
-	if err := (Validator{Credential: credential}).validateCredential(plan); err == nil {
+	if err := (Validator{Credential: credential}).ValidateCredential(plan); err == nil {
 		t.Fatal("missing requirement map was accepted")
 	}
 	if err := (Validator{Credential: credential, Requirement: func(string) (providercredential.Requirement, bool) {
 		return providercredential.Requirement{}, false
-	}}).validateCredential(plan); err == nil {
+	}}).ValidateCredential(plan); err == nil {
 		t.Fatal("missing operation requirement was accepted")
 	}
 	malformed := plan
 	malformed.Target = json.RawMessage(`{`)
-	if err := (Validator{Credential: credential, Requirement: requirement}).validateCredential(malformed); err == nil {
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(malformed); err == nil {
 		t.Fatal("malformed target was accepted")
 	}
 	outside := plan
 	outside.Target = json.RawMessage(`{"owner":"alice","name":"other"}`)
-	if err := (Validator{Credential: credential, Requirement: requirement}).validateCredential(outside); err == nil {
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(outside); err == nil {
 		t.Fatal("target outside credential authority was accepted")
 	}
 }

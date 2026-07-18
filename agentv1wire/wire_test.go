@@ -1,6 +1,8 @@
 package agentv1wire
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +44,15 @@ func TestDescriptorAndPageRoundTrip(t *testing.T) {
 	wireDescriptor := DescriptorToWire(descriptor)
 	if output := DescriptorFromWire(wireDescriptor); output.Credential.Generation != 2 || len(output.Operations) != 1 {
 		t.Fatalf("descriptor round trip = %+v", output)
+	}
+	emptyWire := DescriptorToWire(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{}})
+	emptyJSON, err := json.Marshal(emptyWire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := DescriptorFromWire(emptyWire)
+	if emptyWire.Operations == nil || empty.Operations == nil || !strings.Contains(string(emptyJSON), `"operations":[]`) {
+		t.Fatalf("empty descriptor operations were not preserved: wire=%+v domain=%+v json=%s", emptyWire, empty, emptyJSON)
 	}
 	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
 	cursor := "next"

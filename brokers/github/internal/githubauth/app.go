@@ -3,6 +3,7 @@ package githubauth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -61,30 +62,26 @@ func (p *appProvider) repositoryInstallation(ctx context.Context, owner, repo st
 	return installation, nil
 }
 
-func (p *appProvider) installation(ctx context.Context, id int64) (*github.Installation, error) {
-	if !p.available() || id <= 0 {
-		return nil, errors.New("GitHub installation lookup is invalid")
+func (p *appProvider) installationByID(ctx context.Context, id int64, repository bool) (*github.Installation, error) {
+	kind := "GitHub installation"
+	if repository {
+		kind = "GitHub repository installation"
 	}
-	installation, _, err := p.client.Apps.GetInstallation(ctx, id)
+	if !p.available() || id <= 0 {
+		return nil, fmt.Errorf("%s lookup is invalid", kind)
+	}
+	var installation *github.Installation
+	var err error
+	if repository {
+		installation, _, err = p.client.Apps.GetRepositoryInstallationByID(ctx, id)
+	} else {
+		installation, _, err = p.client.Apps.GetInstallation(ctx, id)
+	}
 	if err != nil {
 		return nil, classifyAPIError(err)
 	}
 	if !availableInstallation(installation) {
-		return nil, errors.New("GitHub installation is unavailable")
-	}
-	return installation, nil
-}
-
-func (p *appProvider) repositoryInstallationByID(ctx context.Context, id int64) (*github.Installation, error) {
-	if !p.available() || id <= 0 {
-		return nil, errors.New("GitHub repository installation lookup is invalid")
-	}
-	installation, _, err := p.client.Apps.GetRepositoryInstallationByID(ctx, id)
-	if err != nil {
-		return nil, classifyAPIError(err)
-	}
-	if !availableInstallation(installation) {
-		return nil, errors.New("GitHub repository installation is unavailable")
+		return nil, fmt.Errorf("%s is unavailable", kind)
 	}
 	return installation, nil
 }

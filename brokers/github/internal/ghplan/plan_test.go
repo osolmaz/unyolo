@@ -270,33 +270,33 @@ func TestValidatorChecksSelectedGitHubCredential(t *testing.T) {
 	}
 	credential := func(Plan) (providercredential.Snapshot, error) { return snapshot, nil }
 	validator := Validator{Credential: credential, Requirement: requirement}
-	if err := validator.validateCredential(plan); err != nil {
+	if err := validator.ValidateCredential(plan); err != nil {
 		t.Fatal(err)
 	}
-	if err := (Validator{}).validateCredential(plan); err != nil {
+	if err := (Validator{}).ValidateCredential(plan); err != nil {
 		t.Fatalf("nil credential = %v", err)
 	}
 	unbound := plan
 	unbound.CredentialSelector.Binding = providercredential.Binding{}
-	if err := validator.validateCredential(unbound); err != nil {
+	if err := validator.ValidateCredential(unbound); err != nil {
 		t.Fatalf("unbound development plan = %v", err)
 	}
-	if err := (Validator{Credential: credential}).validateCredential(plan); err == nil {
+	if err := (Validator{Credential: credential}).ValidateCredential(plan); err == nil {
 		t.Fatal("missing requirement map was accepted")
 	}
 	if err := (Validator{Credential: func(Plan) (providercredential.Snapshot, error) {
 		return providercredential.Snapshot{}, errors.New("unavailable")
-	}, Requirement: requirement}).validateCredential(plan); err == nil {
+	}, Requirement: requirement}).ValidateCredential(plan); err == nil {
 		t.Fatal("credential lookup failure was accepted")
 	}
 	if err := (Validator{Credential: credential, Requirement: func(string) (providercredential.Requirement, bool) {
 		return providercredential.Requirement{}, false
-	}}).validateCredential(plan); err == nil {
+	}}).ValidateCredential(plan); err == nil {
 		t.Fatal("missing operation requirement was accepted")
 	}
 	stale := plan
 	stale.CredentialSelector.Binding.Generation++
-	if err := validator.validateCredential(stale); err == nil {
+	if err := validator.ValidateCredential(stale); err == nil {
 		t.Fatal("stale selected credential was accepted")
 	}
 }

@@ -113,9 +113,16 @@ func TestCredentialReplacementRollbackAndLifecycleAudit(t *testing.T) {
 	}
 	runner := &credentialRecordingRunner{}
 	plan := credentialTestPlan(dir, files)
+	plan.AllowNonRoot = false
+	plan.User, plan.Group = currentIdentity(t)
 	cause := errors.New("readiness failed")
-	if err := rollbackCredentialReplacement(context.Background(), root, snapshots, os.Geteuid(), os.Getegid(), runner, plan, cause); !errors.Is(err, cause) {
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := rollbackCredentialReplacement(canceled, root, snapshots, os.Geteuid(), os.Getegid(), runner, plan, cause); !errors.Is(err, cause) {
 		t.Fatalf("rollback error = %v", err)
+	}
+	if len(runner.contextErrs) != 1 || runner.contextErrs[0] != nil {
+		t.Fatalf("rollback restart inherited canceled context: %v", runner.contextErrs)
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "token")); err != nil || string(data) != "old-token" {
 		t.Fatalf("restored token = %q, %v", data, err)

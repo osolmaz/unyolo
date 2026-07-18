@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentconformance"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
@@ -111,6 +112,12 @@ func TestGeneratedAgentDirectAllowAndDenial(t *testing.T) {
 	denied, _, err := deniedServer.submitAgentOperation(t.Context(), "bob", generatedPullRequestSubmission("deny"))
 	if err != nil || denied.State != agentv1.StateDenied || denied.Error == nil || denied.Error.Code != "operation_policy_denied" {
 		t.Fatalf("denied submit = %#v, %v", denied, err)
+	}
+}
+
+func TestCurrentCredentialResolverRejectsMissingProvider(t *testing.T) {
+	if _, err := (&currentGitHubCredentialResolver{}).snapshot(ghplan.Plan{}); err == nil {
+		t.Fatal("missing GitHub credential provider was accepted")
 	}
 }
 

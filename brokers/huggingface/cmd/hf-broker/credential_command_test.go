@@ -259,6 +259,36 @@ func TestActiveCredentialServiceInspectsConfiguredAuthority(t *testing.T) {
 	if err != nil || snapshot.Subject != "alice" || snapshot.Generation != 1 || snapshot.VerificationState != providercredential.VerificationValid {
 		t.Fatalf("active credential snapshot = %+v, %v", snapshot, err)
 	}
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, hfTokenFileName)
+	snapshot.Generation = 7
+	status, err := json.Marshal(credentialStatus{Status: "valid", Snapshot: snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, credentialStatusFileName), status, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	credential, err = activeCredentialService(t.Context(), config.Config{
+		HFToken: "hf_candidate", HFTokenFile: tokenFile, UpstreamHubURL: server.URL, HFTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = credential.Snapshot()
+	if err != nil || snapshot.Generation != 7 {
+		t.Fatalf("persisted active credential snapshot = %+v, %v", snapshot, err)
+	}
+	snapshot.FingerprintSHA256 = strings.Repeat("b", 64)
+	status, _ = json.Marshal(credentialStatus{Status: "valid", Snapshot: snapshot})
+	if err := os.WriteFile(filepath.Join(dir, credentialStatusFileName), status, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := activeCredentialService(t.Context(), config.Config{
+		HFToken: "hf_candidate", HFTokenFile: tokenFile, UpstreamHubURL: server.URL,
+	}); err == nil {
+		t.Fatal("credential metadata for another token was accepted")
+	}
 	if _, err := activeCredentialService(t.Context(), config.Config{UpstreamHubURL: server.URL}); err == nil {
 		t.Fatal("empty configured credential was accepted")
 	}

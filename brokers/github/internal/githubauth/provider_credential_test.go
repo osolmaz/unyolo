@@ -24,6 +24,25 @@ func TestProviderRequirementsCoverCatalogWithoutDevelopmentTokens(t *testing.T) 
 	}
 }
 
+func TestUserCredentialRequirementUsesVerifiableIdentity(t *testing.T) {
+	adapter := ProviderAdapter{}
+	for _, descriptor := range opcatalog.MustAll() {
+		if descriptor.CredentialKind != string(KindUser) || len(descriptor.RequiredGitHubPermissions) == 0 {
+			continue
+		}
+		requirement, found := adapter.Requirement(descriptor.Name)
+		if !found || len(requirement.AllOf) != 1 || requirement.AllOf[0].Alternatives[0].Permission != "credential.user" {
+			t.Fatalf("user requirement for %q = %+v, found=%v", descriptor.Name, requirement, found)
+		}
+		snapshot, err := SnapshotForMetadata(Metadata{Kind: KindUser, UserID: 7, APIHost: "api.github.com"}, 1, time.Now())
+		if err != nil || !providercredential.Evaluate(snapshot, requirement, providercredential.Target{}).Allowed {
+			t.Fatalf("user snapshot did not satisfy %q: %+v, %v", descriptor.Name, snapshot, err)
+		}
+		return
+	}
+	t.Fatal("catalog has no user operation with provider permissions")
+}
+
 func TestSnapshotForMetadataUsesExactPermissionCeiling(t *testing.T) {
 	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
 	snapshot, err := SnapshotForMetadata(Metadata{Kind: KindInstallation, InstallationID: 42, APIHost: "api.github.com",
@@ -78,6 +97,8 @@ func TestCurrentSnapshotRevalidatesInstallationAuthority(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
+		case "/app":
+			_, _ = io.WriteString(writer, `{"id":12345,"slug":"broker"}`)
 		case "/app/installations/42":
 			_, _ = io.WriteString(writer, "{\"id\":42,\"account\":{\"login\":\"acme\"},\"permissions\":"+permissions+"}")
 		case "/repositories/99/installation":
@@ -97,6 +118,22 @@ func TestCurrentSnapshotRevalidatesInstallationAuthority(t *testing.T) {
 	snapshot, err := manager.CurrentSnapshot(t.Context(), selected, 7, time.Now())
 	if err != nil || snapshot.Generation != 7 {
 		t.Fatalf("current snapshot = %+v, %v", snapshot, err)
+	}
+	if appSnapshot, appErr := manager.CurrentSnapshot(t.Context(), Metadata{Kind: KindAppJWT}, 8, time.Now()); appErr != nil || appSnapshot.CredentialKind != string(KindAppJWT) {
+		t.Fatalf("current app snapshot = %+v, %v", appSnapshot, appErr)
+	}
+	if _, err := manager.CurrentSnapshot(t.Context(), Metadata{Kind: KindDevelopmentToken}, 8, time.Now()); err == nil {
+		t.Fatal("non-revalidatable credential kind was accepted")
+	}
+	invalid := selected
+	invalid.RepositoryIDs = []int64{99, 99}
+	if _, err := manager.CurrentSnapshot(t.Context(), invalid, 7, time.Now()); err == nil {
+		t.Fatal("duplicate repository selection was accepted")
+	}
+	invalid = selected
+	invalid.InstallationID = 0
+	if _, err := manager.CurrentSnapshot(t.Context(), invalid, 7, time.Now()); err == nil {
+		t.Fatal("missing installation was accepted")
 	}
 	selected.Permissions["contents"] = "write"
 	if _, err := manager.CurrentSnapshot(t.Context(), selected, 7, time.Now()); err == nil {
