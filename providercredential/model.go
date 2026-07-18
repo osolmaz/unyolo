@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -99,6 +100,10 @@ func TargetFromJSON(data json.RawMessage) (Target, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&raw); err != nil || raw == nil {
+		return nil, errors.New("provider credential target is invalid")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, errors.New("provider credential target is invalid")
 	}
 	target := Target{}

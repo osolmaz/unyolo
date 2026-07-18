@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/providercredential"
 	bkservice "github.com/osolmaz/brokerkit/service"
@@ -101,6 +103,73 @@ func TestCredentialRequirementsCommandWasRemoved(t *testing.T) {
 	if err := runCredential(command, []string{"requirements"}, credentialTestDependencies()); err == nil {
 		t.Fatal("legacy requirements command still exists")
 	}
+}
+
+func TestCredentialStatusReadsProtectedMetadata(t *testing.T) {
+	deps := credentialTestDependencies()
+	deps.euid = func() int { return 0 }
+	snapshot, err := deps.inspect(t.Context(), "", "hf_candidate", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(credentialStatus{Status: "valid", Snapshot: snapshot})
+	deps.readFile = func(string) ([]byte, error) { return data, nil }
+	var output strings.Builder
+	command := commandContext{ctx: t.Context(), stdin: strings.NewReader(""), stdout: &output, stderr: io.Discard}
+	if err := runCredential(command, []string{"status", "--json"}, deps); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"generation":7`) {
+		t.Fatalf("status output = %s", output.String())
+	}
+	generation, err := nextCredentialGeneration(deps)
+	if err != nil || generation != 8 {
+		t.Fatalf("next generation = %d, %v", generation, err)
+	}
+}
+
+func TestCredentialStatusElevatesWithoutReadingToken(t *testing.T) {
+	deps := credentialTestDependencies()
+	deps.euid = func() int { return 1000 }
+	called := false
+	deps.runElevated = func(_ context.Context, token string, args []string, _, _ io.Writer) error {
+		called = true
+		if token != "" || strings.Join(args, " ") != "credential __status --json" {
+			t.Fatalf("elevated status = %q %v", token, args)
+		}
+		return nil
+	}
+	command := commandContext{ctx: t.Context(), stdin: strings.NewReader(""), stdout: io.Discard, stderr: io.Discard}
+	if err := runCredential(command, []string{"status", "--json"}, deps); err != nil || !called {
+		t.Fatalf("status = %v, called=%v", err, called)
+	}
+	if err := runCredential(command, []string{"status", "--token-stdin"}, deps); err == nil {
+		t.Fatal("status accepted token input")
+	}
+}
+
+func TestCredentialInputAndPresentationFailures(t *testing.T) {
+	if _, err := readCredentialStdin(nil); err == nil {
+		t.Fatal("nil stdin accepted")
+	}
+	if _, err := readCredentialStdin(strings.NewReader(strings.Repeat("x", 64*1024+2))); err == nil {
+		t.Fatal("oversized stdin accepted")
+	}
+	deps := credentialTestDependencies()
+	deps.openURL = func(context.Context, string) error { return errors.New("no browser") }
+	deps.euid = func() int { return 1000 }
+	var stdout, stderr strings.Builder
+	command := commandContext{ctx: t.Context(), stdin: strings.NewReader("hf_candidate\n"), stdout: &stdout, stderr: &stderr}
+	if err := runCredential(command, []string{"repair", "--token-stdin"}, deps); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), credentialauth.TokenFormURL) || !strings.Contains(stderr.String(), "Could not open") {
+		t.Fatalf("presentation output = %q %q", stdout.String(), stderr.String())
+	}
+	if credentialUpstream(func(string) string { return "https://hub.example" }) != "https://hub.example" || credentialUpstream(nil) != config.DefaultUpstreamHubURL {
+		t.Fatal("credential upstream selection failed")
+	}
+	clearString(nil)
 }
 
 func credentialTestDependencies() credentialDependencies {

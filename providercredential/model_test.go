@@ -89,3 +89,101 @@ func TestSecretClears(t *testing.T) {
 		t.Fatal("cleared secret remained readable")
 	}
 }
+
+func TestTargetFromJSON(t *testing.T) {
+	target, err := TargetFromJSON([]byte(`{"owner":"acme","name":"repo","count":2,"empty":""}`))
+	if err != nil || target["resource"] != "acme/repo" || target["count"] != "" {
+		t.Fatalf("target = %#v, %v", target, err)
+	}
+	target, err = TargetFromJSON([]byte(`{"namespace":"team","repo":"project"}`))
+	if err != nil || target["resource"] != "team/project" {
+		t.Fatalf("namespace target = %#v, %v", target, err)
+	}
+	for _, invalid := range [][]byte{nil, []byte(`[]`), []byte(`{"owner":"a"} {}`), make([]byte, 64*1024+1)} {
+		if _, err := TargetFromJSON(invalid); err == nil {
+			t.Fatalf("TargetFromJSON(%q) succeeded", invalid)
+		}
+	}
+}
+
+func TestSnapshotValidationRejectsMalformedAuthority(t *testing.T) {
+	base := Snapshot{Provider: "test", CredentialKind: "app", Subject: "subject", FingerprintSHA256: strings.Repeat("a", 64),
+		Generation: 1, VerifiedAt: time.Now().UTC(), VerificationState: VerificationValid}
+	tests := []func(*Snapshot){
+		func(value *Snapshot) { value.SchemaVersion = 2 },
+		func(value *Snapshot) { value.Generation = 0 },
+		func(value *Snapshot) { value.Provider = "bad name" },
+		func(value *Snapshot) { value.Subject = " " },
+		func(value *Snapshot) { value.FingerprintSHA256 = "bad" },
+		func(value *Snapshot) { value.VerifiedAt = time.Time{} },
+		func(value *Snapshot) { value.VerificationState = "unknown" },
+		func(value *Snapshot) { expired := value.VerifiedAt; value.ExpiresAt = &expired },
+		func(value *Snapshot) {
+			value.Capabilities = []Capability{{Domain: "bad name", Permission: "read", AccessLevel: AccessRead}}
+		},
+		func(value *Snapshot) {
+			value.Capabilities = []Capability{{Domain: "repo", Permission: "read", AccessLevel: "owner"}}
+		},
+		func(value *Snapshot) {
+			value.Capabilities = []Capability{{Domain: "repo", Permission: "read", AccessLevel: AccessRead, Resource: ResourceSelector{Name: " bad"}}}
+		},
+	}
+	for index, mutate := range tests {
+		value := base
+		mutate(&value)
+		if _, err := Normalize(value); err == nil {
+			t.Fatalf("invalid snapshot %d succeeded", index)
+		}
+	}
+}
+
+func TestServiceOperationsAndUnavailableState(t *testing.T) {
+	var unavailable *Service
+	if _, err := unavailable.Snapshot(); err == nil || unavailable.Evaluate(Requirement{}, nil).Allowed || unavailable.CanSatisfy(Requirement{}, time.Now()) {
+		t.Fatal("unavailable service did not fail closed")
+	}
+	if _, err := unavailable.Binding(); err == nil || unavailable.Validate(Binding{}) == nil {
+		t.Fatal("unavailable service returned a binding")
+	}
+	snapshot := Snapshot{Provider: "test", CredentialKind: "app", Subject: "subject", FingerprintSHA256: strings.Repeat("e", 64),
+		Generation: 1, VerifiedAt: time.Now().UTC(), VerificationState: VerificationValid,
+		Capabilities: []Capability{{Domain: "repo", Permission: "contents", AccessLevel: AccessWrite}}}
+	service, err := NewService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requirement := Requirement{AllOf: []AnyOf{{Alternatives: []Need{{Domain: "repo", Permission: "contents", MinimumAccessLevel: AccessRead}}}}}
+	if !service.Evaluate(requirement, nil).Allowed || !service.CanSatisfy(requirement, time.Now()) {
+		t.Fatal("service did not evaluate its snapshot")
+	}
+	binding, err := service.Binding()
+	if err != nil || service.Validate(binding) != nil {
+		t.Fatalf("binding = %+v, %v", binding, err)
+	}
+	copy, _ := service.Snapshot()
+	copy.Capabilities[0].Permission = "changed"
+	stable, _ := service.Snapshot()
+	if stable.Capabilities[0].Permission != "contents" {
+		t.Fatal("snapshot returned mutable capability storage")
+	}
+	invalid := snapshot
+	invalid.Generation = 2
+	invalid.Provider = "bad name"
+	if service.Replace(invalid) == nil {
+		t.Fatal("service accepted invalid replacement")
+	}
+}
+
+func TestSecretBoundsAndNilClear(t *testing.T) {
+	if _, err := NewSecret(nil); err == nil {
+		t.Fatal("empty secret accepted")
+	}
+	if _, err := NewSecret(make([]byte, maxSecretBytes+1)); err == nil {
+		t.Fatal("oversized secret accepted")
+	}
+	var secret *Secret
+	secret.Clear()
+	if _, err := secret.Bytes(); err == nil {
+		t.Fatal("nil secret readable")
+	}
+}

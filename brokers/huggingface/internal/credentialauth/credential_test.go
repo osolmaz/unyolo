@@ -110,3 +110,58 @@ func TestTokenFormURLContainsNoPermissionOrResourcePrefill(t *testing.T) {
 		t.Fatalf("unexpected token form URL: %s", TokenFormURL)
 	}
 }
+
+func TestAdapterContract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"alice","auth":{"accessToken":{"role":"fineGrained","fineGrained":{"global":["repo.content.read"],"scoped":[]}}}}`))
+	}))
+	defer server.Close()
+	adapter := Adapter{Inspector: Inspector{BaseURL: server.URL, Client: server.Client()}, Generation: 9}
+	if adapter.Provider() != "huggingface" {
+		t.Fatal("unexpected provider")
+	}
+	enrollment, err := adapter.Enrollment(t.Context())
+	if err != nil || enrollment.URL != TokenFormURL || enrollment.Instructions == "" {
+		t.Fatalf("enrollment = %+v, %v", enrollment, err)
+	}
+	secret, _ := providercredential.NewSecret([]byte("hf_candidate"))
+	defer secret.Clear()
+	snapshot, err := adapter.Inspect(t.Context(), secret)
+	if err != nil || snapshot.Generation != 9 {
+		t.Fatalf("snapshot = %+v, %v", snapshot, err)
+	}
+	probe, err := adapter.Probe(t.Context(), snapshot)
+	if err != nil || probe.State != providercredential.ProbeValid {
+		t.Fatalf("probe = %+v, %v", probe, err)
+	}
+	snapshot.VerificationState = providercredential.VerificationInvalid
+	probe, err = adapter.Probe(t.Context(), snapshot)
+	if err == nil || probe.State != providercredential.ProbeInvalid {
+		t.Fatalf("invalid probe = %+v, %v", probe, err)
+	}
+	secret.Clear()
+	if _, err := adapter.Inspect(t.Context(), secret); err == nil {
+		t.Fatal("adapter inspected a cleared secret")
+	}
+}
+
+func TestInspectionValidationErrors(t *testing.T) {
+	if _, err := Snapshot(Inspection{VerifiedAt: "bad"}, 1); err == nil {
+		t.Fatal("invalid verification time accepted")
+	}
+	for _, token := range []string{"", "token", "hf_bad token", strings.Repeat("x", maxTokenBytes+1)} {
+		if _, err := NormalizeToken(token); err == nil {
+			t.Fatalf("invalid token %q accepted", token)
+		}
+	}
+	for _, raw := range []string{"http://", "https://user@example.com", "https://example.com?q=1", "https://example.com/#fragment"} {
+		if _, err := validateBaseURL(raw); err == nil {
+			t.Fatalf("invalid base URL %q accepted", raw)
+		}
+	}
+	for _, status := range []int{http.StatusForbidden, http.StatusTooManyRequests, http.StatusInternalServerError} {
+		if credentialResponseError(status) == nil {
+			t.Fatalf("status %d had no error", status)
+		}
+	}
+}
