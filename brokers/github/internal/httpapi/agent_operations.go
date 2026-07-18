@@ -73,7 +73,7 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
-	request := runtimeGrantRequest(preparation, mode, duration, pending)
+	request := runtimeGrantRequest(preparation, mode, duration, pending, runtimeGrantUses(preparation, mode))
 	presentation := adapter.Present(preparation.Plan)
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, presentation, string(preparation.Decision.Effect),
 		runtimePlanRuleIDs(preparation), preparation.CreatedAt)
@@ -109,6 +109,17 @@ func runtimeGrantBounds(adapter operations.Adapter, preparation operations.Prepa
 	if preparation.Direct {
 		return duration, pending, nil
 	}
+	if preparation.ReusedGrant != nil {
+		grant := *preparation.ReusedGrant
+		if corepolicy.GrantMode(grant.Metadata["github_grant_mode"]) != mode || mode != corepolicy.GrantModeWindow {
+			return 0, 0, errors.New("active grant approval mode does not match operation")
+		}
+		duration = grant.RequestedDuration
+		if duration <= 0 {
+			duration = grant.Duration
+		}
+		return duration, grant.PendingTimeout, nil
+	}
 	bounds := preparation.Decision.GrantPolicy
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
 		return 0, 0, errors.New("operation approval mode does not match policy")
@@ -117,18 +128,32 @@ func runtimeGrantBounds(adapter operations.Adapter, preparation operations.Prepa
 		min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending), nil
 }
 
-func runtimeGrantRequest(preparation operations.Preparation, mode corepolicy.GrantMode, duration time.Duration, pending time.Duration) grants.Request {
+func runtimeGrantRequest(preparation operations.Preparation, mode corepolicy.GrantMode, duration time.Duration,
+	pending time.Duration, maxUses usebudget.Limit) grants.Request {
 	return grants.Request{
 		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
 		Target: preparation.Core.Target, Attrs: preparation.Core.Attrs, Reason: preparation.Reason,
-		Duration: duration, PendingTimeout: pending, MaxUses: usebudget.Limit(1), MaxUsesSpecified: true,
+		Duration: duration, PendingTimeout: pending, MaxUses: maxUses, MaxUsesSpecified: true,
 		Metadata: map[string]string{"github_grant_mode": string(mode)},
 	}
+}
+
+func runtimeGrantUses(preparation operations.Preparation, mode corepolicy.GrantMode) usebudget.Limit {
+	if preparation.Direct || mode == corepolicy.GrantModeExecution {
+		return 1
+	}
+	if preparation.ReusedGrant != nil {
+		return preparation.ReusedGrant.RequestedMaxUses
+	}
+	return preparation.Decision.GrantPolicy.DefaultMaxUses
 }
 
 func runtimePlanRuleIDs(preparation operations.Preparation) []string {
 	if preparation.Direct {
 		return preparation.Decision.MatchedAllowRuleIDs
+	}
+	if preparation.ReusedGrant != nil {
+		return preparation.Decision.MatchedGrantRuleIDs
 	}
 	return preparation.Decision.MatchedRequestRuleIDs
 }

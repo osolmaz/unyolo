@@ -336,6 +336,16 @@ func (r *Runtime[I, P, A]) submitResolved(ctx context.Context, client string, re
 		}
 		return operation, created, submitErr
 	}
+	if !requiresApproval(adapter) {
+		active, found, activeErr := r.options.Authorization.ActiveGrant(core)
+		if activeErr != nil {
+			r.cleanup(adapter, plan)
+			return agentv1.Operation{}, false, activeErr
+		}
+		if found {
+			return r.submitActiveGrant(submission, adapter, plan, auth, core, active)
+		}
+	}
 	return r.submitPending(ctx, submission, adapter, plan, auth, core)
 }
 
@@ -349,13 +359,7 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 		return operation, created, err
 	}
 	var prepared grants.ImmutablePlan
-	authorize := r.options.Authorization.Authorize
-	if requiresApproval(adapter) {
-		authorize = func(request policy.Request, build authorization.IntentBuilder) (authorization.Result, error) {
-			return r.options.Authorization.RequestApproval(request, build)
-		}
-	}
-	result, authErr := authorize(core, func(decision policy.Decision) (authorization.GrantIntent, error) {
+	result, authErr := r.options.Authorization.RequestApproval(core, func(decision policy.Decision) (authorization.GrantIntent, error) {
 		intent, prepareErr := r.options.Prepare(Preparation[P, A]{Plan: plan, Auth: auth, Core: core, DescriptorName: adapter.Descriptor().Name,
 			Client: operation.ClientID, OperationID: operation.ID, Reason: operation.Reason, Decision: decision, CreatedAt: r.now()})
 		prepared = intent.Plan
@@ -365,11 +369,6 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 		_ = r.abandonApproval(result.Request.Grant.ID, operation.ClientID)
 		r.cleanup(adapter, plan)
 		operation = r.finishRefused(operation, plan, result, authErr)
-		lock.Unlock()
-		return operation, true, nil
-	}
-	if result.Decision.GrantID != "" {
-		operation = r.bindActiveGrant(operation, adapter, plan, auth, core, result.Decision)
 		lock.Unlock()
 		return operation, true, nil
 	}
@@ -446,6 +445,9 @@ func (r *Runtime[I, P, A]) cancelApproval(operation agentv1.Operation, client st
 	grant, err := r.options.Grants.Get(id)
 	if err != nil {
 		return err
+	}
+	if grant.Status == grants.StatusActive && grant.ClientRequestID != operation.ID {
+		return nil
 	}
 	return r.cancelGrant(grant, client)
 }

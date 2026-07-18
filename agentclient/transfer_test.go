@@ -31,7 +31,8 @@ func TestBoundedTransferMethods(t *testing.T) {
 		case "/api/agent/v1/streams":
 			writer.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(writer).Encode(streamstore.Reference{ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "asset.upload",
-				RequestKey: "request", Digest: hex.EncodeToString(digest[:]), Size: int64(len(content)), MediaType: "application/octet-stream", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+				RequestKey: request.Header.Get("X-Broker-Idempotency-Key"), Digest: hex.EncodeToString(digest[:]), Size: int64(len(content)),
+				MediaType: request.Header.Get("Content-Type"), ExpiresAt: time.Now().Add(time.Hour).Unix()})
 		case "/api/agent/v1/streams/stream_012345678901234567890123":
 			writer.Header().Set("Content-Length", stringLength(content))
 			writer.Header().Set("X-Broker-Content-SHA256", hex.EncodeToString(digest[:]))
@@ -47,6 +48,9 @@ func TestBoundedTransferMethods(t *testing.T) {
 	}
 	if reference, err := client.UploadStream(t.Context(), "asset.upload", "request", "application/octet-stream", bytes.NewReader(content), int64(len(content)), 1024); err != nil || reference.Size != int64(len(content)) {
 		t.Fatalf("UploadStream() = %+v, %v", reference, err)
+	}
+	if reference, err := client.UploadStream(t.Context(), "asset.upload", "parameterized", "text/plain; charset=utf-8", bytes.NewReader(content), int64(len(content)), 1024); err != nil || reference.MediaType != "text/plain" {
+		t.Fatalf("UploadStream(parameterized) = %+v, %v", reference, err)
 	}
 	var output bytes.Buffer
 	if size, err := client.DownloadStream(t.Context(), "stream_012345678901234567890123", &output, 1024); err != nil || size != int64(len(content)) || !bytes.Equal(output.Bytes(), content) {

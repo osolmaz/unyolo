@@ -108,6 +108,20 @@ func (c *Coordinator) Authorize(request policy.Request, build IntentBuilder) (Re
 	return c.createApprovalRequest(request, requestDecision, build)
 }
 
+// ActiveGrant returns existing matching grant authority without creating any
+// durable state. Callers can use it before atomically recording dependent work.
+func (c *Coordinator) ActiveGrant(request policy.Request) (policy.Decision, bool, error) {
+	if err := c.registry.ValidateRequest(request); err != nil {
+		return policy.Decision{}, false, fmt.Errorf("%w: %w", ErrNoMatch, err)
+	}
+	active, err := c.activeGrants(request)
+	if err != nil {
+		return policy.Decision{}, false, fmt.Errorf("load active grants: %w", err)
+	}
+	decision := c.decide(request, policy.DecisionOptions{Now: c.now().UTC(), ActiveGrants: active})
+	return decision, decision.Allowed && decision.GrantID != "", nil
+}
+
 // RequestApproval explicitly requests a bounded approval even when an existing
 // grant could currently authorize the same capability.
 func (c *Coordinator) RequestApproval(request policy.Request, build IntentBuilder) (Result, error) {

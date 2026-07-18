@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -47,7 +48,8 @@ func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey 
 // UploadStream sends a caller-bounded stream and validates its operation and
 // retry binding. Providers remain responsible for choosing the byte limit.
 func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaType string, source io.Reader, size, limit int64) (streamstore.Reference, error) {
-	if !validStreamUpload(operation, requestKey, mediaType, source, size, limit) {
+	mediaType, ok := canonicalMediaType(mediaType)
+	if !ok || !validStreamUpload(operation, requestKey, mediaType, source, size, limit) {
 		return streamstore.Reference{}, errors.New("stream upload is invalid")
 	}
 	response, err := c.upload(ctx, c.transfer, "/api/agent/v1/streams", operation, requestKey, io.LimitReader(source, limit+1), size, mediaType)
@@ -60,6 +62,11 @@ func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaT
 		return streamstore.Reference{}, errors.New("broker returned an invalid stream reference")
 	}
 	return reference, nil
+}
+
+func canonicalMediaType(value string) (string, bool) {
+	mediaType, _, err := mime.ParseMediaType(value)
+	return mediaType, err == nil && mediaType != "" && len(mediaType) <= 255
 }
 
 // DownloadStream copies one bounded stream while verifying the broker's exact

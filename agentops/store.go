@@ -53,6 +53,7 @@ type Submit struct {
 	Reason         string
 	Presentation   agentv1.Presentation
 	PlanDigest     string
+	ApprovalID     string
 }
 
 // AdmissionUsage returns durable occupancy without exposing operation contents.
@@ -102,6 +103,16 @@ func (s *Store) SubmitWithPlan(input Submit, plan state.PlanRecord) (agentv1.Ope
 // SubmitApprovedWithPlan atomically persists a direct operation in its approved
 // state so restart recovery never has to infer whether approval was required.
 func (s *Store) SubmitApprovedWithPlan(input Submit, plan state.PlanRecord) (agentv1.Operation, bool, error) {
+	return s.submitWithPlan(input, plan, agentv1.StateApproved)
+}
+
+// SubmitApprovedWithGrantPlan atomically persists an approved operation, its
+// immutable plan, and the reusable grant authority selected for it.
+func (s *Store) SubmitApprovedWithGrantPlan(input Submit, plan state.PlanRecord, approvalID string) (agentv1.Operation, bool, error) {
+	input.ApprovalID = strings.TrimSpace(approvalID)
+	if input.ApprovalID == "" {
+		return agentv1.Operation{}, false, errors.New("approved grant is required")
+	}
 	return s.submitWithPlan(input, plan, agentv1.StateApproved)
 }
 
@@ -170,7 +181,7 @@ func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time
 		APIVersion: agentv1.APIVersion, ID: id, Broker: input.Broker, ClientID: input.ClientID,
 		IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: input.Target,
 		Arguments: input.Arguments, Reason: input.Reason, State: initialState, Revision: 1,
-		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation, PlanDigest: input.PlanDigest,
+		CreatedAt: now, UpdatedAt: now, Presentation: input.Presentation, PlanDigest: input.PlanDigest, ApprovalID: input.ApprovalID,
 	}
 	var insertErr error
 	if plan == nil {
@@ -561,6 +572,7 @@ func normalizeSubmit(input Submit) (Submit, error) {
 	input.Presentation.Title = strings.TrimSpace(input.Presentation.Title)
 	input.Presentation.Summary = strings.TrimSpace(input.Presentation.Summary)
 	input.PlanDigest = strings.TrimSpace(input.PlanDigest)
+	input.ApprovalID = strings.TrimSpace(input.ApprovalID)
 	if !validSubmitIdentity(input) {
 		return Submit{}, errors.New("operation identity is invalid")
 	}
@@ -584,7 +596,8 @@ func validSubmitIdentity(input Submit) bool {
 		validRequiredValue(input.Broker, 64) &&
 		validRequiredValue(input.ClientID, 128) &&
 		agentv1.ValidIdempotencyKey(input.IdempotencyKey) &&
-		validRequiredValue(input.Operation, 128)
+		validRequiredValue(input.Operation, 128) &&
+		len(input.ApprovalID) <= 128
 }
 
 func validRequiredValue(value string, maximum int) bool {
@@ -621,7 +634,7 @@ func normalizeObjectLimit(value json.RawMessage, maximum int) (json.RawMessage, 
 
 func sameSubmission(existing agentv1.Operation, input Submit) bool {
 	return existing.Broker == input.Broker && existing.Operation == input.Operation && existing.Reason == input.Reason &&
-		existing.Presentation == input.Presentation && existing.PlanDigest == input.PlanDigest &&
+		existing.Presentation == input.Presentation && existing.PlanDigest == input.PlanDigest && existing.ApprovalID == input.ApprovalID &&
 		equalJSON(existing.Target, input.Target) && equalJSON(existing.Arguments, input.Arguments)
 }
 
