@@ -67,4 +67,40 @@ func TestTransferMethodsRejectInvalidBounds(t *testing.T) {
 	if _, err := client.DownloadStream(t.Context(), "bad", &bytes.Buffer{}, 1); err == nil {
 		t.Fatal("invalid stream ID accepted")
 	}
+	if _, err := client.UploadSealedPayload(t.Context(), "invalid", "request", []byte("x")); err == nil {
+		t.Fatal("invalid operation accepted")
+	}
+	if _, err := client.UploadStream(t.Context(), "asset.upload", "bad key", "application/octet-stream", bytes.NewReader([]byte("x")), 1, 1); err == nil {
+		t.Fatal("invalid request key accepted")
+	}
+}
+
+func TestTransferMethodsRejectBrokerFailures(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/agent/v1/sealed-payloads":
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = writer.Write([]byte(`{"id":"sealed_012345678901234567890123","owner":"agent","purpose":"secret.set","request_key":"request","digest":"bad","size":1,"expires_at":1}`))
+		case "/api/agent/v1/streams":
+			writer.WriteHeader(http.StatusBadRequest)
+			_, _ = writer.Write([]byte(`{"error":"bad"}`))
+		case "/api/agent/v1/streams/stream_012345678901234567890123":
+			writer.Header().Set("Content-Length", "4")
+			writer.Header().Set("X-Broker-Content-SHA256", strings.Repeat("0", 64))
+			_, _ = writer.Write([]byte("data"))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	client := newTestClient(t, server.URL, nil)
+	if _, err := client.UploadSealedPayload(t.Context(), "secret.set", "request", []byte("x")); err == nil {
+		t.Fatal("invalid sealed reference accepted")
+	}
+	if _, err := client.UploadStream(t.Context(), "asset.upload", "request", "application/octet-stream", bytes.NewReader([]byte("x")), 1, 1); err == nil {
+		t.Fatal("rejected stream upload accepted")
+	}
+	if _, err := client.DownloadStream(t.Context(), "stream_012345678901234567890123", &bytes.Buffer{}, 4); err == nil {
+		t.Fatal("invalid stream integrity accepted")
+	}
 }
