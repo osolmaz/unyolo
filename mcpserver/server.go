@@ -80,33 +80,42 @@ func (s *Server) Serve(ctx context.Context, input io.Reader, output io.Writer) e
 		return err
 	}
 	for scanner.Scan() {
-		request, ok := parseRequest(scanner.Bytes())
-		if !ok {
-			if err := encoder.Encode(Response{JSONRPC: "2.0", Error: &Error{Code: -32700, Message: "Parse error"}}); err != nil {
-				return err
-			}
-			continue
-		}
-		if len(request.ID) == 0 {
-			continue
-		}
-		if s.config.ListChanged {
-			next, changed, err := s.toolsChanged(ctx, signature)
-			if err != nil {
-				return err
-			}
-			if changed {
-				if err := encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}); err != nil {
-					return err
-				}
-			}
-			signature = next
-		}
-		if err := encoder.Encode(s.Handle(ctx, request)); err != nil {
+		if err := s.serveLine(ctx, encoder, scanner.Bytes(), &signature); err != nil {
 			return err
 		}
 	}
 	return scanner.Err()
+}
+
+func (s *Server) serveLine(ctx context.Context, encoder *json.Encoder, line []byte, signature *string) error {
+	request, ok := parseRequest(line)
+	if !ok {
+		return encoder.Encode(Response{JSONRPC: "2.0", Error: &Error{Code: -32700, Message: "Parse error"}})
+	}
+	if len(request.ID) == 0 {
+		return nil
+	}
+	if err := s.notifyToolChange(ctx, encoder, signature); err != nil {
+		return err
+	}
+	return encoder.Encode(s.Handle(ctx, request))
+}
+
+func (s *Server) notifyToolChange(ctx context.Context, encoder *json.Encoder, signature *string) error {
+	if !s.config.ListChanged {
+		return nil
+	}
+	next, changed, err := s.toolsChanged(ctx, *signature)
+	if err != nil {
+		return err
+	}
+	if changed {
+		if err := encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}); err != nil {
+			return err
+		}
+	}
+	*signature = next
+	return nil
 }
 
 func parseRequest(data []byte) (Request, bool) {

@@ -317,31 +317,6 @@ func printOperationStatus(stderr io.Writer, operation agentv1.Operation, jsonOut
 	}
 }
 
-func runCatalogGrant(ctx context.Context, client *hfGrantClient, stdout, stderr io.Writer, descriptor opcatalog.Descriptor, options operationClientOptions) error {
-	var target policy.Target
-	if err := strictjson.Decode(options.target, &target, true); err != nil {
-		return exitError{code: 64, message: "target does not match the closed grant target schema"}
-	}
-	idempotencyKey, err := resolveClientRequestID(options.idempotencyKey)
-	if err != nil {
-		return err
-	}
-	request := hfGrantRequest{Operation: policy.Operation(descriptor.Name), Target: target, Attrs: options.attrs,
-		Minutes: options.minutes, Reason: strings.TrimSpace(options.reason), ClientRequestID: idempotencyKey}
-	if options.maxUses.set {
-		value := options.maxUses.limit
-		request.MaxUses = &value
-	}
-	grant, err := requestHFGrant(ctx, client, request, grantRequestOptions{wait: options.wait, waitTimeout: options.waitTimeout})
-	if err != nil {
-		return err
-	}
-	if !options.jsonOutput {
-		_, _ = fmt.Fprintf(stderr, "HF Broker grant %s: %s\n", grant.ID, grant.Status)
-	}
-	return printHFClientGrant(stdout, grant, options.jsonOutput)
-}
-
 func resolveClientRequestID(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {

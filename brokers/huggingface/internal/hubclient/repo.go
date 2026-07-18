@@ -47,7 +47,7 @@ func (c *Client) ListRepos(ctx context.Context, repoType RepoType, owner string,
 
 // RepoTree returns one bounded tree page for an exact repository and revision.
 func (c *Client) RepoTree(ctx context.Context, ref RepoRef, revision, path string, recursive bool) ([]RepoTreeEntry, error) {
-	if err := ref.Validate(); err != nil || !ValidGitRefComponent(revision) || (path != "" && !ValidRepoPath(path+"/", true)) {
+	if !validRepoTreeQuery(ref, revision, path) {
 		return nil, errors.New("hubclient: repository tree query is invalid")
 	}
 	endpoint := ref.apiPath("tree", url.PathEscape(revision))
@@ -59,15 +59,26 @@ func (c *Client) RepoTree(ctx context.Context, ref RepoRef, revision, path strin
 		query: url.Values{"recursive": {strconv.FormatBool(recursive)}, "expand": {"false"}}, out: &entries}); err != nil {
 		return nil, err
 	}
+	if err := validateRepoTreeEntries(entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func validRepoTreeQuery(ref RepoRef, revision, path string) bool {
+	return ref.Validate() == nil && ValidGitRefComponent(revision) && (path == "" || ValidRepoPath(path+"/", true))
+}
+
+func validateRepoTreeEntries(entries []RepoTreeEntry) error {
 	if len(entries) > 1000 {
-		return nil, errors.New("hubclient: repository tree page is too large")
+		return errors.New("hubclient: repository tree page is too large")
 	}
 	for _, entry := range entries {
 		if (entry.Type != "file" && entry.Type != "directory") || entry.Path == "" || entry.Size < 0 {
-			return nil, errors.New("hubclient: upstream repository tree is invalid")
+			return errors.New("hubclient: upstream repository tree is invalid")
 		}
 	}
-	return entries, nil
+	return nil
 }
 
 // RepoFile reads one bounded exact file. Redirects remain refused, so large

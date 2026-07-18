@@ -124,25 +124,31 @@ func operationListContains(values []policy.Operation, want policy.Operation) boo
 }
 
 func repoListTargetSources(target policy.TargetMatcher, query repoListQuery) []repoListSource {
-	if target.Kind != policy.KindRepo || target.Owner == "" || strings.ContainsAny(target.Owner, "*?") ||
-		(query.filterOwner != "" && query.filterOwner != target.Owner) {
+	if !validRepoListSourceTarget(target, query) {
 		return nil
 	}
-	if query.filterType != "" {
-		if target.Type != policy.TypeAny && target.Type != query.filterType {
-			return nil
-		}
-		return []repoListSource{{repoType: hubclient.RepoType(query.filterType), owner: target.Owner}}
-	}
-	types := []policy.RepoType{policy.TypeModel, policy.TypeDataset, policy.TypeSpace, policy.TypeKernel}
-	if target.Type != policy.TypeAny {
-		types = []policy.RepoType{target.Type}
-	}
+	types := repoListSourceTypes(target.Type, query.filterType)
 	result := make([]repoListSource, 0, len(types))
 	for _, repoType := range types {
 		result = append(result, repoListSource{repoType: hubclient.RepoType(repoType), owner: target.Owner})
 	}
 	return result
+}
+
+func validRepoListSourceTarget(target policy.TargetMatcher, query repoListQuery) bool {
+	return target.Kind == policy.KindRepo && target.Owner != "" && !strings.ContainsAny(target.Owner, "*?") &&
+		(query.filterOwner == "" || query.filterOwner == target.Owner) &&
+		(query.filterType == "" || target.Type == policy.TypeAny || target.Type == query.filterType)
+}
+
+func repoListSourceTypes(targetType, filterType policy.RepoType) []policy.RepoType {
+	if filterType != "" {
+		return []policy.RepoType{filterType}
+	}
+	if targetType != policy.TypeAny {
+		return []policy.RepoType{targetType}
+	}
+	return []policy.RepoType{policy.TypeModel, policy.TypeDataset, policy.TypeSpace, policy.TypeKernel}
 }
 
 func parseRepoListLimit(value string) (int, bool) {

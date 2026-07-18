@@ -88,4 +88,8 @@ func TestRepositoryReadAdaptersRejectInvalidConfigurationAndInput(t *testing.T) 
 			t.Fatalf("%s accepted invalid target", adapter.Descriptor().Name)
 		}
 	}
+	unknown := &repositoryReadAdapter{}
+	if _, err := unknown.decodeArguments(json.RawMessage(`{}`)); err == nil {
+		t.Fatal("unknown repository read operation accepted")
+	}
 }

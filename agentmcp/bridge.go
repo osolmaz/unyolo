@@ -46,7 +46,7 @@ type Bridge struct{ config Config }
 
 func New(config Config) (*Bridge, error) {
 	if config.Prefix == "" || config.Client == nil || config.Select == nil || config.Prepare == nil || config.Project == nil {
-		return nil, errors.New("Agent MCP bridge configuration is incomplete")
+		return nil, errors.New("agent MCP bridge configuration is incomplete")
 	}
 	return &Bridge{config: config}, nil
 }

@@ -28,7 +28,7 @@ const (
 // UploadSealedPayload sends one bounded opaque payload to the broker's
 // one-time sealed store and validates its request binding.
 func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey string, payload []byte) (sealedstore.Reference, error) {
-	if !validTransferBinding(operation, requestKey) || len(payload) == 0 || len(payload) > maxSealedPayloadBytes {
+	if !validSealedUpload(operation, requestKey, payload) {
 		return sealedstore.Reference{}, errors.New("sealed payload is invalid")
 	}
 	response, err := c.upload(ctx, "/api/agent/v1/sealed-payloads", operation, requestKey,
@@ -38,9 +38,7 @@ func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey 
 	}
 	defer func() { _ = response.Body.Close() }()
 	var reference sealedstore.Reference
-	if err := decodeTransferReference(response, &reference); err != nil || reference.ID == "" || reference.Owner == "" ||
-		reference.Purpose != operation || reference.RequestKey != requestKey || reference.Size != len(payload) ||
-		reference.ExpiresAt <= 0 || !validSHA256(reference.Digest) {
+	if err := decodeTransferReference(response, &reference); err != nil || !validSealedReference(reference, operation, requestKey, len(payload)) {
 		return sealedstore.Reference{}, errors.New("broker returned an invalid sealed payload reference")
 	}
 	return reference, nil
@@ -49,8 +47,7 @@ func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey 
 // UploadStream sends a caller-bounded stream and validates its operation and
 // retry binding. Providers remain responsible for choosing the byte limit.
 func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaType string, source io.Reader, size, limit int64) (streamstore.Reference, error) {
-	if !validTransferBinding(operation, requestKey) || source == nil || size < 1 || limit < 1 || size > limit ||
-		strings.TrimSpace(mediaType) == "" || len(mediaType) > 255 {
+	if !validStreamUpload(operation, requestKey, mediaType, source, size, limit) {
 		return streamstore.Reference{}, errors.New("stream upload is invalid")
 	}
 	response, err := c.upload(ctx, "/api/agent/v1/streams", operation, requestKey, io.LimitReader(source, limit+1), size, mediaType)
@@ -59,9 +56,7 @@ func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaT
 	}
 	defer func() { _ = response.Body.Close() }()
 	var reference streamstore.Reference
-	if err := decodeTransferReference(response, &reference); err != nil || reference.ID == "" || reference.Owner == "" ||
-		reference.Purpose != operation || reference.RequestKey != requestKey || reference.Size != size ||
-		reference.MediaType != mediaType || reference.ExpiresAt <= 0 || !validSHA256(reference.Digest) {
+	if err := decodeTransferReference(response, &reference); err != nil || !validStreamReference(reference, operation, requestKey, mediaType, size) {
 		return streamstore.Reference{}, errors.New("broker returned an invalid stream reference")
 	}
 	return reference, nil
@@ -82,19 +77,10 @@ func (c *Client) DownloadStream(ctx context.Context, id string, destination io.W
 		return 0, errors.New("download stream")
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK || response.ContentLength < 1 || response.ContentLength > limit {
+	if !validDownloadResponse(response, limit) {
 		return 0, errors.New("broker rejected stream download")
 	}
-	expected, err := hex.DecodeString(response.Header.Get("X-Broker-Content-SHA256"))
-	if err != nil || len(expected) != sha256.Size {
-		return 0, errors.New("broker returned invalid stream integrity metadata")
-	}
-	digest := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(destination, digest), io.LimitReader(response.Body, limit+1))
-	if copyErr != nil || written != response.ContentLength || subtle.ConstantTimeCompare(digest.Sum(nil), expected) != 1 {
-		return 0, errors.New("stream download failed integrity validation")
-	}
-	return written, nil
+	return copyVerifiedStream(response, destination, limit)
 }
 
 func (c *Client) upload(ctx context.Context, path, operation, requestKey string, body io.Reader, size int64, mediaType string) (*http.Response, error) {
@@ -134,6 +120,42 @@ func decodeTransferReference(response *http.Response, target any) error {
 
 func validTransferBinding(operation, requestKey string) bool {
 	return len(operation) <= 128 && strings.Contains(operation, ".") && agentv1.ValidIdempotencyKey(requestKey)
+}
+
+func validSealedUpload(operation, requestKey string, payload []byte) bool {
+	return validTransferBinding(operation, requestKey) && len(payload) > 0 && len(payload) <= maxSealedPayloadBytes
+}
+
+func validSealedReference(reference sealedstore.Reference, operation, requestKey string, size int) bool {
+	return reference.ID != "" && reference.Owner != "" && reference.Purpose == operation && reference.RequestKey == requestKey &&
+		reference.Size == size && reference.ExpiresAt > 0 && validSHA256(reference.Digest)
+}
+
+func validStreamUpload(operation, requestKey, mediaType string, source io.Reader, size, limit int64) bool {
+	return validTransferBinding(operation, requestKey) && source != nil && size > 0 && limit > 0 && size <= limit &&
+		strings.TrimSpace(mediaType) != "" && len(mediaType) <= 255
+}
+
+func validStreamReference(reference streamstore.Reference, operation, requestKey, mediaType string, size int64) bool {
+	return reference.ID != "" && reference.Owner != "" && reference.Purpose == operation && reference.RequestKey == requestKey &&
+		reference.Size == size && reference.MediaType == mediaType && reference.ExpiresAt > 0 && validSHA256(reference.Digest)
+}
+
+func validDownloadResponse(response *http.Response, limit int64) bool {
+	return response.StatusCode == http.StatusOK && response.ContentLength > 0 && response.ContentLength <= limit
+}
+
+func copyVerifiedStream(response *http.Response, destination io.Writer, limit int64) (int64, error) {
+	expected, err := hex.DecodeString(response.Header.Get("X-Broker-Content-SHA256"))
+	if err != nil || len(expected) != sha256.Size {
+		return 0, errors.New("broker returned invalid stream integrity metadata")
+	}
+	digest := sha256.New()
+	written, copyErr := io.Copy(io.MultiWriter(destination, digest), io.LimitReader(response.Body, limit+1))
+	if copyErr != nil || written != response.ContentLength || subtle.ConstantTimeCompare(digest.Sum(nil), expected) != 1 {
+		return 0, errors.New("stream download failed integrity validation")
+	}
+	return written, nil
 }
 
 func validSHA256(value string) bool {

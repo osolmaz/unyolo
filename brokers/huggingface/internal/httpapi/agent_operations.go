@@ -67,13 +67,9 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 }
 
 func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
-	adapter, found := s.operationRegistry.Lookup(preparation.DescriptorName)
-	if !found {
-		return bkauthorization.GrantIntent{}, errors.New("operation adapter is unavailable")
-	}
-	descriptor, found := opcatalog.ByName(preparation.DescriptorName)
-	if !found {
-		return bkauthorization.GrantIntent{}, errors.New("operation descriptor is unavailable")
+	adapter, descriptor, err := s.runtimePlanComponents(preparation.DescriptorName)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
 	mode := runtimeGrantMode(descriptor)
 	duration, pending, maxUses, err := preparationBounds(preparation, adapter, mode)
@@ -89,10 +85,7 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
-	ruleIDs := preparation.Decision.MatchedRequestRuleIDs
-	if preparation.Direct {
-		ruleIDs = preparation.Decision.MatchedAllowRuleIDs
-	}
+	ruleIDs := runtimePolicyRuleIDs(preparation)
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan),
 		string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt)
 	if err != nil {
@@ -103,6 +96,25 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 		hfplan.BindPresentation(&request, adapter.Present(preparation.Plan))
 	}
 	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+}
+
+func (s *Server) runtimePlanComponents(name string) (operations.Adapter, opcatalog.Descriptor, error) {
+	adapter, found := s.operationRegistry.Lookup(name)
+	if !found {
+		return nil, opcatalog.Descriptor{}, errors.New("operation adapter is unavailable")
+	}
+	descriptor, found := opcatalog.ByName(name)
+	if !found {
+		return nil, opcatalog.Descriptor{}, errors.New("operation descriptor is unavailable")
+	}
+	return adapter, descriptor, nil
+}
+
+func runtimePolicyRuleIDs(preparation operations.Preparation) []string {
+	if preparation.Direct {
+		return preparation.Decision.MatchedAllowRuleIDs
+	}
+	return preparation.Decision.MatchedRequestRuleIDs
 }
 
 func runtimeGrantMode(descriptor opcatalog.Descriptor) corepolicy.GrantMode {

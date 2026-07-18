@@ -162,21 +162,19 @@ func projectSummary(operation agentv1.OperationSummary) (Operation, error) {
 }
 
 func Get(ctx context.Context, client Client, input GetInput, projector ResultProjector) (Operation, error) {
-	if strings.TrimSpace(input.OperationID) == "" || len(input.OperationID) > 128 {
-		return Operation{}, errors.New("operation_id is invalid")
-	}
-	operation, err := client.Get(ctx, strings.TrimSpace(input.OperationID))
-	if err != nil {
-		return Operation{}, err
-	}
-	return Project(operation, projector)
+	return operationByID(ctx, input, projector, client.Get)
 }
 
 func Cancel(ctx context.Context, client CancelClient, input GetInput, projector ResultProjector) (Operation, error) {
+	return operationByID(ctx, input, projector, client.Cancel)
+}
+
+func operationByID(ctx context.Context, input GetInput, projector ResultProjector,
+	load func(context.Context, string) (agentv1.Operation, error)) (Operation, error) {
 	if strings.TrimSpace(input.OperationID) == "" || len(input.OperationID) > 128 {
 		return Operation{}, errors.New("operation_id is invalid")
 	}
-	operation, err := client.Cancel(ctx, strings.TrimSpace(input.OperationID))
+	operation, err := load(ctx, strings.TrimSpace(input.OperationID))
 	if err != nil {
 		return Operation{}, err
 	}

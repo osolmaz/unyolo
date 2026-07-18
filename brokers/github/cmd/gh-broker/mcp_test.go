@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentmcp"
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/mcpoperation"
@@ -95,6 +96,15 @@ func TestPrepareMCPArgumentModes(t *testing.T) {
 	secretInput := mcpOperationInput{Target: readInput.Target, Arguments: json.RawMessage(`{"secret_name":"TOKEN"}`)}
 	if err := prepareMCPSealedArguments(t.Context(), secretDescriptor, &secretInput, operationConnection{}); err == nil {
 		t.Fatal("required sealed arguments omitted")
+	}
+
+	shared := agentmcp.Input{Target: readInput.Target, Arguments: json.RawMessage(`{}`), Reason: "read", RequestID: "request"}
+	if err := prepareGitHubMCPInput(t.Context(), mcpTestEnv(nil), readDescriptor, &shared); err == nil {
+		t.Fatal("missing connection accepted")
+	}
+	shared.StreamInput = json.RawMessage(`{"bad":true}`)
+	if err := prepareGitHubMCPInput(t.Context(), mcpTestEnv(nil), readDescriptor, &shared); err == nil {
+		t.Fatal("invalid stream input accepted")
 	}
 }
 

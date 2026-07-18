@@ -357,6 +357,25 @@ func TestCatalogSchemaUsesPinnedBindingWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestCatalogSchemaUsesCustomAndNativeProtocolTargets(t *testing.T) {
+	read, found := opcatalog.ByName("repo.contents.read")
+	if !found {
+		t.Fatal("repo.contents.read missing")
+	}
+	target, arguments, _ := catalogOperationInputSchemas(read)
+	if target == nil || arguments == nil {
+		t.Fatal("custom repository schema missing")
+	}
+	native, found := opcatalog.ByName("git.push.force")
+	if !found {
+		t.Fatal("git.push.force missing")
+	}
+	target, arguments, sealed := catalogOperationInputSchemas(native)
+	if target == nil || arguments != nil || sealed != nil {
+		t.Fatalf("native protocol schema = %#v, %#v, %#v", target, arguments, sealed)
+	}
+}
+
 func TestCredentialOutputToolRequiresSlotAndHidesSealedInput(t *testing.T) {
 	descriptor, found := opcatalog.ByName("service_account.token.create")
 	if !found || descriptor.CredentialOutputKind == nil {

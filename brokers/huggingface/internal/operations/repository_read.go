@@ -81,28 +81,39 @@ func (a *repositoryReadAdapter) decodeArguments(raw json.RawMessage) (any, error
 	case "repo.metadata.read":
 		return decodeEmptyArguments(raw, "repository metadata arguments must be empty")
 	case "repo.list":
-		arguments, err := decodeValidated(raw, maxArgumentsBytes, func(value repoListArguments) bool {
-			return value.Limit >= 0 && value.Limit <= 100
-		}, "repository list arguments are invalid")
-		if arguments.Limit == 0 {
-			arguments.Limit = 100
-		}
-		return arguments, err
+		return decodeRepoListArguments(raw)
 	case "repo.tree.list":
 		arguments, err := decodeValidated(raw, maxArgumentsBytes, validRepoTreeArguments, "repository tree arguments are invalid")
-		if arguments.Revision == "" {
-			arguments.Revision = "main"
-		}
+		arguments.Revision = defaultRevision(arguments.Revision)
 		return arguments, err
 	case "repo.contents.read":
-		arguments, err := decodeValidated(raw, maxArgumentsBytes, validRepoContentsArguments, "repository content arguments are invalid")
-		if arguments.Revision == "" {
-			arguments.Revision = "main"
-		}
-		return arguments, err
+		return decodeRepoContentsArguments(raw)
 	default:
 		return nil, errors.New("repository read operation is not implemented")
 	}
+}
+
+func decodeRepoListArguments(raw json.RawMessage) (repoListArguments, error) {
+	arguments, err := decodeValidated(raw, maxArgumentsBytes, func(value repoListArguments) bool {
+		return value.Limit >= 0 && value.Limit <= 100
+	}, "repository list arguments are invalid")
+	if arguments.Limit == 0 {
+		arguments.Limit = 100
+	}
+	return arguments, err
+}
+
+func decodeRepoContentsArguments(raw json.RawMessage) (repoContentsArguments, error) {
+	arguments, err := decodeValidated(raw, maxArgumentsBytes, validRepoContentsArguments, "repository content arguments are invalid")
+	arguments.Revision = defaultRevision(arguments.Revision)
+	return arguments, err
+}
+
+func defaultRevision(revision string) string {
+	if revision == "" {
+		return "main"
+	}
+	return revision
 }
 
 func validRepoTreeArguments(value repoTreeArguments) bool {
@@ -125,21 +136,15 @@ func (a *repositoryReadAdapter) Resolve(_ context.Context, input Input) (Plan, e
 }
 
 func (a *repositoryReadAdapter) Authorize(plan Plan) hfpolicy.Request {
-	target, err := decodeRepositoryOperationTarget(plan.Target)
-	if err != nil {
-		return hfpolicy.Request{}
-	}
-	_, request := a.presentationAndPolicy(target, plan.Arguments)
-	return preferCached(plan.Policy, plan.Policy.Operation != "", request)
+	return authorizeReconstructed(plan, a.reconstruct(plan))
 }
 
 func (a *repositoryReadAdapter) Present(plan Plan) agentv1.Presentation {
-	target, err := decodeRepositoryOperationTarget(plan.Target)
-	if err != nil {
-		return agentv1.Presentation{}
-	}
-	presentation, _ := a.presentationAndPolicy(target, plan.Arguments)
-	return preferCached(plan.Presentation, plan.Presentation.Title != "", presentation)
+	return presentReconstructed(plan, a.reconstruct(plan))
+}
+
+func (a *repositoryReadAdapter) reconstruct(plan Plan) reconstructedPlan {
+	return reconstructPlan(plan.Target, plan.Arguments, decodeRepositoryOperationTarget, a.presentationAndPolicy)
 }
 
 func (a *repositoryReadAdapter) presentationAndPolicy(target repositoryTarget, raw json.RawMessage) (agentv1.Presentation, hfpolicy.Request) {
@@ -160,50 +165,69 @@ func (a *repositoryReadAdapter) Execute(ctx context.Context, plan Plan) (Outcome
 	if err != nil {
 		return Outcome{}, err
 	}
-	var result any
-	switch a.descriptor.Name {
-	case "repo.metadata.read":
-		info, readErr := a.client.RepoInfo(ctx, target.repoRef())
-		err, result = readErr, map[string]any{"id": info.ID, "sha": info.SHA, "private": info.Private, "gated": info.Gated, "sdk": info.SDK}
-	case "repo.list":
-		var arguments repoListArguments
-		if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
-			return Outcome{}, errors.New("repository list plan is invalid")
-		}
-		var repos []hubclient.RepoSummary
-		repos, err = a.client.ListRepos(ctx, hubclient.RepoType(target.Type), target.Owner, arguments.Limit)
-		if err == nil {
-			result = a.repoListResult(repos, target, plan.Policy.Client)
-		}
-	case "repo.tree.list":
-		var arguments repoTreeArguments
-		if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
-			return Outcome{}, errors.New("repository tree plan is invalid")
-		}
-		result, err = a.client.RepoTree(ctx, target.repoRef(), arguments.Revision, arguments.Path, arguments.Recursive)
-	case "repo.contents.read":
-		var arguments repoContentsArguments
-		if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
-			return Outcome{}, errors.New("repository content plan is invalid")
-		}
-		var file hubclient.RepoFile
-		file, err = a.client.RepoFile(ctx, target.repoRef(), arguments.Revision, arguments.Path)
-		if err == nil {
-			encoding, content := "base64", base64.StdEncoding.EncodeToString(file.Content)
-			if utf8.Valid(file.Content) {
-				encoding, content = "utf-8", string(file.Content)
-			}
-			result = map[string]any{"path": arguments.Path, "revision": arguments.Revision, "encoding": encoding,
-				"content": content, "content_type": file.ContentType, "commit": file.Commit}
-		}
-	default:
-		return Outcome{}, errors.New("repository read operation is not implemented")
-	}
+	result, err := a.executeResult(ctx, plan, target)
 	if err != nil {
 		return Outcome{}, err
 	}
 	encoded, err := canonical(result)
 	return Outcome{Proven: true, Result: encoded}, err
+}
+
+func (a *repositoryReadAdapter) executeResult(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
+	switch a.descriptor.Name {
+	case "repo.metadata.read":
+		return a.readMetadata(ctx, target)
+	case "repo.list":
+		return a.readList(ctx, plan, target)
+	case "repo.tree.list":
+		return a.readTree(ctx, plan, target)
+	case "repo.contents.read":
+		return a.readContent(ctx, plan, target)
+	default:
+		return nil, errors.New("repository read operation is not implemented")
+	}
+}
+
+func (a *repositoryReadAdapter) readMetadata(ctx context.Context, target repositoryTarget) (any, error) {
+	info, err := a.client.RepoInfo(ctx, target.repoRef())
+	return map[string]any{"id": info.ID, "sha": info.SHA, "private": info.Private, "gated": info.Gated, "sdk": info.SDK}, err
+}
+
+func (a *repositoryReadAdapter) readList(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
+	var arguments repoListArguments
+	if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
+		return nil, errors.New("repository list plan is invalid")
+	}
+	repos, err := a.client.ListRepos(ctx, hubclient.RepoType(target.Type), target.Owner, arguments.Limit)
+	if err != nil {
+		return nil, err
+	}
+	return a.repoListResult(repos, target, plan.Policy.Client), nil
+}
+
+func (a *repositoryReadAdapter) readTree(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
+	var arguments repoTreeArguments
+	if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
+		return nil, errors.New("repository tree plan is invalid")
+	}
+	return a.client.RepoTree(ctx, target.repoRef(), arguments.Revision, arguments.Path, arguments.Recursive)
+}
+
+func (a *repositoryReadAdapter) readContent(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
+	var arguments repoContentsArguments
+	if decodeClosed(plan.Arguments, &arguments, maxArgumentsBytes) != nil {
+		return nil, errors.New("repository content plan is invalid")
+	}
+	file, err := a.client.RepoFile(ctx, target.repoRef(), arguments.Revision, arguments.Path)
+	if err != nil {
+		return nil, err
+	}
+	encoding, content := "base64", base64.StdEncoding.EncodeToString(file.Content)
+	if utf8.Valid(file.Content) {
+		encoding, content = "utf-8", string(file.Content)
+	}
+	return map[string]any{"path": arguments.Path, "revision": arguments.Revision, "encoding": encoding,
+		"content": content, "content_type": file.ContentType, "commit": file.Commit}, nil
 }
 
 func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, query repositoryTarget, client string) map[string]any {

@@ -514,13 +514,17 @@ func ValidateRequest(req Request) error {
 }
 
 func validatePolicyRequestTarget(req Request) error {
-	if req.Operation == OpRepoList && req.Target.Kind == KindRepo && req.Target.Name == "*" {
+	if isWildcardRepoList(req) {
 		if !validConcreteRepoType(req.Target.Type) || !validRequestSegment(req.Target.Owner) {
 			return errors.New("invalid repo list target")
 		}
 		return nil
 	}
 	return validateRequestTarget(req.Target)
+}
+
+func isWildcardRepoList(req Request) bool {
+	return req.Operation == OpRepoList && req.Target.Kind == KindRepo && req.Target.Name == "*"
 }
 
 func validateExactTargetConstraints(target Target) error {

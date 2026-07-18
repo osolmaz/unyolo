@@ -101,26 +101,44 @@ func Validate(values []Descriptor) error {
 
 func validateExecutorBinding(value Descriptor) error {
 	if value.Implementation != StatusImplemented {
-		if value.ExecutorKind != "" {
-			return fmt.Errorf("HF operation %q has an executor binding without an implementation", value.Name)
-		}
-		return nil
+		return validateUnimplementedExecutor(value)
 	}
 	switch value.ExecutorKind {
 	case "inline":
-		if value.CredentialOutputKind != nil {
-			return fmt.Errorf("HF credential operation %q must use the credential executor", value.Name)
-		}
+		return validateInlineExecutor(value)
 	case "credential":
-		if value.CredentialOutputKind == nil {
-			return fmt.Errorf("HF operation %q has an invalid credential executor", value.Name)
-		}
+		return validateCredentialExecutor(value)
 	case "native-protocol":
-		if value.AuthorizationMode != ModeWindow {
-			return fmt.Errorf("HF operation %q has an invalid native protocol executor", value.Name)
-		}
+		return validateNativeExecutor(value)
 	default:
 		return fmt.Errorf("HF operation %q has no valid executor binding", value.Name)
+	}
+}
+
+func validateUnimplementedExecutor(value Descriptor) error {
+	if value.ExecutorKind != "" {
+		return fmt.Errorf("HF operation %q has an executor binding without an implementation", value.Name)
+	}
+	return nil
+}
+
+func validateInlineExecutor(value Descriptor) error {
+	if value.CredentialOutputKind != nil {
+		return fmt.Errorf("HF credential operation %q must use the credential executor", value.Name)
+	}
+	return nil
+}
+
+func validateCredentialExecutor(value Descriptor) error {
+	if value.CredentialOutputKind == nil {
+		return fmt.Errorf("HF operation %q has an invalid credential executor", value.Name)
+	}
+	return nil
+}
+
+func validateNativeExecutor(value Descriptor) error {
+	if value.AuthorizationMode != ModeWindow {
+		return fmt.Errorf("HF operation %q has an invalid native protocol executor", value.Name)
 	}
 	return nil
 }

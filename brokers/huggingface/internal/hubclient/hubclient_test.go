@@ -96,6 +96,49 @@ func TestTypedRepositoryReadCallsUseClosedRoutes(t *testing.T) {
 	}
 }
 
+func TestRepositoryReadCallsRejectInvalidQueriesAndResponses(t *testing.T) {
+	client, err := New("https://huggingface.co", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListRepos(t.Context(), RepoType("bad"), "acme", 0); err == nil {
+		t.Fatal("invalid list query accepted")
+	}
+	if validateRepoTreeEntries(make([]RepoTreeEntry, 1001)) == nil {
+		t.Fatal("oversized tree accepted")
+	}
+	if validateRepoTreeEntries([]RepoTreeEntry{{Type: "other", Path: "file", Size: 1}}) == nil {
+		t.Fatal("invalid tree entry accepted")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/datasets":
+			_, _ = w.Write([]byte(`[{"id":""}]`))
+		case "/datasets/acme/private/resolve/main/large.bin":
+			_, _ = w.Write([]byte("too large"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err = New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListRepos(t.Context(), RepoTypeDataset, "acme", 1); err == nil {
+		t.Fatal("invalid upstream list accepted")
+	}
+	client, err = New(server.URL, "secret", WithHTTPTransport(server.Client().Transport), WithMaxResponseBytes(4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := RepoRef{Type: RepoTypeDataset, Owner: "acme", Name: "private"}
+	if _, err := client.RepoFile(t.Context(), ref, "main", "large.bin"); err == nil {
+		t.Fatal("oversized file accepted")
+	}
+}
+
 func TestTypedKernelRepositoryCallsUseKernelPathsAndType(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

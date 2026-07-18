@@ -43,15 +43,27 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 func TestValidateRejectsCatalogDrift(t *testing.T) {
 	values := MustAll()
 	tests := map[string]func([]Descriptor){
-		"duplicate":         func(items []Descriptor) { items[1] = items[0] },
-		"missing name":      func(items []Descriptor) { items[0].Name = "" },
-		"invalid mode":      func(items []Descriptor) { items[0].AuthorizationMode = "other" },
-		"invalid status":    func(items []Descriptor) { items[0].Implementation = "other" },
-		"missing risk":      func(items []Descriptor) { items[0].Risk = "" },
-		"missing effect":    func(items []Descriptor) { items[0].DefaultPolicyEffect = "" },
-		"missing target":    func(items []Descriptor) { items[0].TargetKind = "" },
-		"missing executor":  func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "" },
-		"invalid executor":  func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "shell" },
+		"duplicate":        func(items []Descriptor) { items[1] = items[0] },
+		"missing name":     func(items []Descriptor) { items[0].Name = "" },
+		"invalid mode":     func(items []Descriptor) { items[0].AuthorizationMode = "other" },
+		"invalid status":   func(items []Descriptor) { items[0].Implementation = "other" },
+		"missing risk":     func(items []Descriptor) { items[0].Risk = "" },
+		"missing effect":   func(items []Descriptor) { items[0].DefaultPolicyEffect = "" },
+		"missing target":   func(items []Descriptor) { items[0].TargetKind = "" },
+		"missing executor": func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "" },
+		"invalid executor": func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "shell" },
+		"executor without implementation": func(items []Descriptor) {
+			find(items, "bucket.list").ExecutorKind = "inline"
+		},
+		"inline credential executor": func(items []Descriptor) {
+			find(items, "service_account.token.create").ExecutorKind = "inline"
+		},
+		"credential executor without output": func(items []Descriptor) {
+			find(items, "repo.create").ExecutorKind = "credential"
+		},
+		"native executor on execution operation": func(items []Descriptor) {
+			find(items, "repo.create").ExecutorKind = "native-protocol"
+		},
 		"invalid ttl":       func(items []Descriptor) { items[0].RequestTTLSeconds = 0 },
 		"family glob":       func(items []Descriptor) { item := find(items, "repo.delete"); item.FamilyGlobAllowed = true },
 		"execution uses":    func(items []Descriptor) { item := find(items, "repo.create"); item.MaxUses = 2 },

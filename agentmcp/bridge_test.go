@@ -143,4 +143,14 @@ func TestBridgeUtilityAndConfigurationFailures(t *testing.T) {
 	if _, err = bridge.Call(t.Context(), mcpserver.ToolCall{Name: "missing", Arguments: json.RawMessage(`{}`)}); err == nil {
 		t.Fatal("selection error omitted")
 	}
+	bridge.config.Select = func(string) (Selection, error) { return Selection{Operation: "repo.read"}, nil }
+	bridge.config.Prepare = func(context.Context, Selection, *Input) error { return errors.New("prepare failed") }
+	valid := mcpserver.ToolCall{Name: "test_read", Arguments: json.RawMessage(`{"target":{},"arguments":{},"reason":"read"}`)}
+	if _, err = bridge.Call(t.Context(), valid); err == nil {
+		t.Fatal("prepare error omitted")
+	}
+	bridge.config.Prepare = func(context.Context, Selection, *Input) error { return nil }
+	if _, err = bridge.Call(t.Context(), valid); err == nil {
+		t.Fatal("client error omitted")
+	}
 }
