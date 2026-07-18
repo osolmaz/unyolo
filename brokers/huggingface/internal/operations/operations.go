@@ -176,19 +176,12 @@ func NewRegistry(adapters ...Adapter) (*Registry, error) {
 	return &Registry{Registry: registry}, nil
 }
 
-var repositoryReadOperations = map[string]bool{
-	"repo.contents.read": true,
-	"repo.list":          true,
-	"repo.metadata.read": true,
-	"repo.tree.list":     true,
-}
-
-// AgentRuntimeBound reports whether an implemented catalog operation has an
-// Agent Operations executor. Native Git/LFS data-plane operations are not
-// advertised as bounded MCP executions.
+// AgentRuntimeBound reports whether the catalog explicitly binds an operation
+// to an Agent Operations executor. Native protocol bindings remain on their
+// provider data plane and are not advertised as bounded MCP executions.
 func AgentRuntimeBound(descriptor opcatalog.Descriptor) bool {
 	return descriptor.Implementation == opcatalog.StatusImplemented &&
-		(descriptor.AuthorizationMode == opcatalog.ModeExecution || repositoryReadOperations[descriptor.Name])
+		(descriptor.ExecutorKind == "inline" || descriptor.ExecutorKind == "credential")
 }
 
 // ValidateCoverage ensures every catalog entry advertised as an implemented

@@ -50,6 +50,8 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 		"missing risk":      func(items []Descriptor) { items[0].Risk = "" },
 		"missing effect":    func(items []Descriptor) { items[0].DefaultPolicyEffect = "" },
 		"missing target":    func(items []Descriptor) { items[0].TargetKind = "" },
+		"missing executor":  func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "" },
+		"invalid executor":  func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "shell" },
 		"invalid ttl":       func(items []Descriptor) { items[0].RequestTTLSeconds = 0 },
 		"family glob":       func(items []Descriptor) { item := find(items, "repo.delete"); item.FamilyGlobAllowed = true },
 		"execution uses":    func(items []Descriptor) { item := find(items, "repo.create"); item.MaxUses = 2 },
@@ -89,6 +91,26 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 				t.Fatal("Validate() accepted drift")
 			}
 		})
+	}
+}
+
+func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
+	bound, native := 0, 0
+	for _, value := range MustAll() {
+		if value.Implementation != StatusImplemented {
+			continue
+		}
+		switch value.ExecutorKind {
+		case "inline", "credential":
+			bound++
+		case "native-protocol":
+			native++
+		default:
+			t.Fatalf("%s executor = %q", value.Name, value.ExecutorKind)
+		}
+	}
+	if bound != 144 || native != 3 {
+		t.Fatalf("agent bound = %d, native = %d", bound, native)
 	}
 }
 

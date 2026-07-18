@@ -86,7 +86,41 @@ func ByName(name string) (Descriptor, bool) {
 // Validate rejects catalog drift that could weaken policy or expose an unsafe
 // operation through broad families.
 func Validate(values []Descriptor) error {
-	return capability.Validate(values, capability.ValidationOptions{
+	if err := capability.Validate(values, capability.ValidationOptions{
 		Provider: "HF", ExpectedCount: ExpectedCount, MCPToolPrefix: "hf_", RequireDefaultPolicyEffect: true,
-	})
+	}); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if err := validateExecutorBinding(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateExecutorBinding(value Descriptor) error {
+	if value.Implementation != StatusImplemented {
+		if value.ExecutorKind != "" {
+			return fmt.Errorf("HF operation %q has an executor binding without an implementation", value.Name)
+		}
+		return nil
+	}
+	switch value.ExecutorKind {
+	case "inline":
+		if value.CredentialOutputKind != nil {
+			return fmt.Errorf("HF credential operation %q must use the credential executor", value.Name)
+		}
+	case "credential":
+		if value.CredentialOutputKind == nil {
+			return fmt.Errorf("HF operation %q has an invalid credential executor", value.Name)
+		}
+	case "native-protocol":
+		if value.AuthorizationMode != ModeWindow {
+			return fmt.Errorf("HF operation %q has an invalid native protocol executor", value.Name)
+		}
+	default:
+		return fmt.Errorf("HF operation %q has no valid executor binding", value.Name)
+	}
+	return nil
 }

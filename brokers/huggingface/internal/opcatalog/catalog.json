@@ -37,7 +37,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_batch_apply",
     "cli_command": "bucket batch apply",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.create",
@@ -57,7 +58,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_create",
     "cli_command": "bucket create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.delete",
@@ -77,7 +79,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_delete",
     "cli_command": "bucket delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.list",
@@ -137,7 +140,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_move",
     "cli_command": "bucket move",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.object.copy",
@@ -157,7 +161,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_object_copy",
     "cli_command": "bucket object copy",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.object.delete",
@@ -177,7 +182,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_object_delete",
     "cli_command": "bucket object delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.object.list",
@@ -257,7 +263,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_resource_group_set",
     "cli_command": "bucket resource_group set",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.sync.apply",
@@ -277,7 +284,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_sync_apply",
     "cli_command": "bucket sync apply",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.visibility.update",
@@ -297,7 +305,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_visibility_update",
     "cli_command": "bucket visibility update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "catalog.agent_harness.list",
@@ -477,7 +486,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_create",
     "cli_command": "collection create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.delete",
@@ -497,7 +507,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_delete",
     "cli_command": "collection delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.item.add",
@@ -517,7 +528,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_item_add",
     "cli_command": "collection item add",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.item.batch",
@@ -537,7 +549,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_item_batch",
     "cli_command": "collection item batch",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.item.delete",
@@ -557,7 +570,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_item_delete",
     "cli_command": "collection item delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.item.update",
@@ -577,7 +591,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_item_update",
     "cli_command": "collection item update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.list",
@@ -617,7 +632,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_metadata_update",
     "cli_command": "collection metadata update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "collection.resource_group.set",
@@ -637,7 +653,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_collection_resource_group_set",
     "cli_command": "collection resource_group set",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "dataset.leaderboard.read",
@@ -697,7 +714,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_comment_create",
     "cli_command": "discussion comment create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.comment.edit",
@@ -717,7 +735,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_comment_edit",
     "cli_command": "discussion comment edit",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.comment.hide",
@@ -737,7 +756,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_comment_hide",
     "cli_command": "discussion comment hide",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.create",
@@ -757,7 +777,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_create",
     "cli_command": "discussion create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.delete",
@@ -777,7 +798,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_delete",
     "cli_command": "discussion delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.list",
@@ -817,7 +839,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_pin_update",
     "cli_command": "discussion pin update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.read",
@@ -857,7 +880,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_status_update",
     "cli_command": "discussion status update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "discussion.title.update",
@@ -877,7 +901,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_discussion_title_update",
     "cli_command": "discussion title update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.catalog.create",
@@ -897,7 +922,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_catalog_create",
     "cli_command": "endpoint catalog create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.catalog.list",
@@ -937,7 +963,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_create",
     "cli_command": "endpoint create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.delete",
@@ -957,7 +984,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_delete",
     "cli_command": "endpoint delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.list",
@@ -997,7 +1025,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_pause",
     "cli_command": "endpoint pause",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.read",
@@ -1037,7 +1066,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_resume",
     "cli_command": "endpoint resume",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.scale_to_zero",
@@ -1057,7 +1087,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_scale_to_zero",
     "cli_command": "endpoint scale_to_zero",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "endpoint.update",
@@ -1077,7 +1108,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_endpoint_update",
     "cli_command": "endpoint update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "git.fetch",
@@ -1137,7 +1169,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_git_push_force",
     "cli_command": "git push force",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "git.ref.delete",
@@ -1157,7 +1190,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_git_ref_delete",
     "cli_command": "git ref delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "git.tag.update",
@@ -1177,7 +1211,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_git_tag_update",
     "cli_command": "git tag update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "identity.read",
@@ -1857,7 +1892,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_cancel",
     "cli_command": "job cancel",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "job.duplicate",
@@ -1877,7 +1913,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_duplicate",
     "cli_command": "job duplicate",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "job.hardware.list",
@@ -1917,7 +1954,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_labels_update",
     "cli_command": "job labels update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "job.list",
@@ -2017,7 +2055,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_run",
     "cli_command": "job run",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "job.uv.run",
@@ -2037,7 +2076,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_uv_run",
     "cli_command": "job uv run",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "notification.delete",
@@ -2057,7 +2097,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_notification_delete",
     "cli_command": "notification delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "notification.list",
@@ -2097,7 +2138,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_notification_read_status_update",
     "cli_command": "notification read_status update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "notification.settings.update",
@@ -2117,7 +2159,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_notification_settings_update",
     "cli_command": "notification settings update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "organization.audit.export",
@@ -2197,7 +2240,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_organization_member_role_update",
     "cli_command": "organization member role update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "organization.member.token.revoke",
@@ -2217,7 +2261,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_organization_member_token_revoke",
     "cli_command": "organization member token revoke",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "organization.network_security.read",
@@ -2257,7 +2302,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_organization_network_security_update",
     "cli_command": "organization network_security update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "organization.overview.read",
@@ -2317,7 +2363,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_paper_authorship_claim",
     "cli_command": "paper authorship claim",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "paper.index",
@@ -2337,7 +2384,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_paper_index",
     "cli_command": "paper index",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "paper.links.update",
@@ -2357,7 +2405,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_paper_links_update",
     "cli_command": "paper links update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "provisioning.account.request",
@@ -2377,7 +2426,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_provisioning_account_request",
     "cli_command": "provisioning account request",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "provisioning.deep_link.create",
@@ -2398,7 +2448,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_provisioning_deep_link_create",
     "cli_command": "provisioning deep_link create",
-    "default_policy_effect": "deny"
+    "default_policy_effect": "deny",
+    "executor_kind": "credential"
   },
   {
     "name": "provisioning.resource.create",
@@ -2418,7 +2469,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_provisioning_resource_create",
     "cli_command": "provisioning resource create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "provisioning.resource.credentials.rotate",
@@ -2439,7 +2491,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_provisioning_resource_credentials_rotate",
     "cli_command": "provisioning resource credentials rotate",
-    "default_policy_effect": "deny"
+    "default_policy_effect": "deny",
+    "executor_kind": "credential"
   },
   {
     "name": "provisioning.resource.read",
@@ -2479,7 +2532,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_provisioning_resource_remove",
     "cli_command": "provisioning resource remove",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "provisioning.resource.service.update",
@@ -2499,7 +2553,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_provisioning_resource_service_update",
     "cli_command": "provisioning resource service update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "provisioning.service.list",
@@ -2539,7 +2594,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_pull_request_create",
     "cli_command": "pull_request create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "pull_request.merge",
@@ -2559,7 +2615,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_pull_request_merge",
     "cli_command": "pull_request merge",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "pull_request.ref.delete",
@@ -2579,7 +2636,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_pull_request_ref_delete",
     "cli_command": "pull_request ref delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "pull_request.storage.read",
@@ -2619,7 +2677,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_access_grant",
     "cli_command": "repo access grant",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.access.report.export",
@@ -2659,7 +2718,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_access_request_accept",
     "cli_command": "repo access request accept",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.access.request.batch",
@@ -2679,7 +2739,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_access_request_batch",
     "cli_command": "repo access request batch",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.access.request.cancel",
@@ -2699,7 +2760,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_access_request_cancel",
     "cli_command": "repo access request cancel",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.access.request.create",
@@ -2719,7 +2781,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_access_request_create",
     "cli_command": "repo access request create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.access.request.list",
@@ -2759,7 +2822,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_access_request_reject",
     "cli_command": "repo access request reject",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.branch.create",
@@ -2779,7 +2843,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_branch_create",
     "cli_command": "repo branch create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.branch.delete",
@@ -2799,7 +2864,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_branch_delete",
     "cli_command": "repo branch delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.checksums.verify",
@@ -2839,7 +2905,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_commit_create",
     "cli_command": "repo commit create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.commits.list",
@@ -2879,7 +2946,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_contents_read",
     "cli_command": "repo contents read",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.create",
@@ -2899,7 +2967,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_create",
     "cli_command": "repo create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.delete",
@@ -2919,7 +2988,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_delete",
     "cli_command": "repo delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.duplicate",
@@ -2939,7 +3009,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_duplicate",
     "cli_command": "repo duplicate",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.exists",
@@ -2979,7 +3050,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_file_copy",
     "cli_command": "repo file copy",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.file.delete",
@@ -2999,7 +3071,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_file_delete",
     "cli_command": "repo file delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.file.exists",
@@ -3059,7 +3132,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_file_upload",
     "cli_command": "repo file upload",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.gating.update",
@@ -3079,7 +3153,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_gating_update",
     "cli_command": "repo gating update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.history.super_squash",
@@ -3099,7 +3174,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_history_super_squash",
     "cli_command": "repo history super_squash",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.lfs.list",
@@ -3139,7 +3215,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_lfs_permanent_delete",
     "cli_command": "repo lfs permanent_delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.list",
@@ -3159,7 +3236,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_list",
     "cli_command": "repo list",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.metadata.read",
@@ -3179,7 +3257,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_metadata_read",
     "cli_command": "repo metadata read",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.move",
@@ -3199,7 +3278,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_move",
     "cli_command": "repo move",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.notebook.read",
@@ -3259,7 +3339,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_resource_group_set",
     "cli_command": "repo resource_group set",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.revision.exists",
@@ -3339,7 +3420,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_tag_create",
     "cli_command": "repo tag create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.tag.delete",
@@ -3359,7 +3441,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_tag_delete",
     "cli_command": "repo tag delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.tree.list",
@@ -3379,7 +3462,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_tree_list",
     "cli_command": "repo tree list",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "repo.visibility.update",
@@ -3399,7 +3483,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_repo_visibility_update",
     "cli_command": "repo visibility update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.auto_join.update",
@@ -3419,7 +3504,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_auto_join_update",
     "cli_command": "resource_group auto_join update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.create",
@@ -3439,7 +3525,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_create",
     "cli_command": "resource_group create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.delete",
@@ -3459,7 +3546,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_delete",
     "cli_command": "resource_group delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.list",
@@ -3499,7 +3587,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_member_add",
     "cli_command": "resource_group member add",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.member.remove",
@@ -3519,7 +3608,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_member_remove",
     "cli_command": "resource_group member remove",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.member.role.update",
@@ -3539,7 +3629,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_member_role_update",
     "cli_command": "resource_group member role update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "resource_group.update",
@@ -3559,7 +3650,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_resource_group_update",
     "cli_command": "resource_group update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.connect",
@@ -3599,7 +3691,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_create",
     "cli_command": "sandbox create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.delete",
@@ -3619,7 +3712,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_delete",
     "cli_command": "sandbox delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.file.delete",
@@ -3639,7 +3733,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_file_delete",
     "cli_command": "sandbox file delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.file.list",
@@ -3679,7 +3774,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_file_mkdir",
     "cli_command": "sandbox file mkdir",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.file.read",
@@ -3719,7 +3815,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_file_write",
     "cli_command": "sandbox file write",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.pool.connect",
@@ -3759,7 +3856,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_pool_create",
     "cli_command": "sandbox pool create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.pool.delete",
@@ -3779,7 +3877,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_pool_delete",
     "cli_command": "sandbox pool delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.pool.read",
@@ -3819,7 +3918,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_pool_warm",
     "cli_command": "sandbox pool warm",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.port.proxy",
@@ -3859,7 +3959,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sandbox_process_kill",
     "cli_command": "sandbox process kill",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sandbox.process.list",
@@ -3919,7 +4020,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_create",
     "cli_command": "scheduled_job create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.delete",
@@ -3939,7 +4041,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_delete",
     "cli_command": "scheduled_job delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.labels.update",
@@ -3959,7 +4062,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_labels_update",
     "cli_command": "scheduled_job labels update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.list",
@@ -3999,7 +4103,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_resume",
     "cli_command": "scheduled_job resume",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.schedule.update",
@@ -4019,7 +4124,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_schedule_update",
     "cli_command": "scheduled_job schedule update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.suspend",
@@ -4039,7 +4145,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_suspend",
     "cli_command": "scheduled_job suspend",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.trigger",
@@ -4059,7 +4166,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_trigger",
     "cli_command": "scheduled_job trigger",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scheduled_job.uv.create",
@@ -4079,7 +4187,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scheduled_job_uv_create",
     "cli_command": "scheduled_job uv create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.capabilities.read",
@@ -4119,7 +4228,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_group_create",
     "cli_command": "scim group create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.group.delete",
@@ -4139,7 +4249,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_group_delete",
     "cli_command": "scim group delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.group.list",
@@ -4179,7 +4290,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_group_patch",
     "cli_command": "scim group patch",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.group.replace",
@@ -4199,7 +4311,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_group_replace",
     "cli_command": "scim group replace",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.user.create",
@@ -4219,7 +4332,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_user_create",
     "cli_command": "scim user create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.user.delete",
@@ -4239,7 +4353,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_user_delete",
     "cli_command": "scim user delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.user.list",
@@ -4279,7 +4394,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_user_patch",
     "cli_command": "scim user patch",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "scim.user.replace",
@@ -4299,7 +4415,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_scim_user_replace",
     "cli_command": "scim user replace",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "service_account.create",
@@ -4319,7 +4436,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_service_account_create",
     "cli_command": "service_account create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "service_account.delete",
@@ -4339,7 +4457,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_service_account_delete",
     "cli_command": "service_account delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "service_account.list",
@@ -4380,7 +4499,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_service_account_token_create",
     "cli_command": "service_account token create",
-    "default_policy_effect": "deny"
+    "default_policy_effect": "deny",
+    "executor_kind": "credential"
   },
   {
     "name": "service_account.token.delete",
@@ -4400,7 +4520,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_service_account_token_delete",
     "cli_command": "service_account token delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "service_account.token.rotate",
@@ -4421,7 +4542,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_service_account_token_rotate",
     "cli_command": "service_account token rotate",
-    "default_policy_effect": "deny"
+    "default_policy_effect": "deny",
+    "executor_kind": "credential"
   },
   {
     "name": "service_account.token.update",
@@ -4441,7 +4563,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_service_account_token_update",
     "cli_command": "service_account token update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.dev_mode.disable",
@@ -4461,7 +4584,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_dev_mode_disable",
     "cli_command": "space dev_mode disable",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.dev_mode.enable",
@@ -4481,7 +4605,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_dev_mode_enable",
     "cli_command": "space dev_mode enable",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.events.read",
@@ -4521,7 +4646,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_hardware_update",
     "cli_command": "space hardware update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.hot_reload.apply",
@@ -4541,7 +4667,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_hot_reload_apply",
     "cli_command": "space hot_reload apply",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.hot_reload.read",
@@ -4621,7 +4748,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_pause",
     "cli_command": "space pause",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.restart",
@@ -4641,7 +4769,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_restart",
     "cli_command": "space restart",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.runtime.read",
@@ -4681,7 +4810,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_secret_delete",
     "cli_command": "space secret delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.secret.list",
@@ -4721,7 +4851,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_secret_set",
     "cli_command": "space secret set",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.sleep_time.update",
@@ -4741,7 +4872,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_sleep_time_update",
     "cli_command": "space sleep_time update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.variable.delete",
@@ -4761,7 +4893,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_variable_delete",
     "cli_command": "space variable delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.variable.list",
@@ -4801,7 +4934,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_variable_set",
     "cli_command": "space variable set",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.volume.delete",
@@ -4821,7 +4955,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_volume_delete",
     "cli_command": "space volume delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "space.volume.set",
@@ -4841,7 +4976,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_space_volume_set",
     "cli_command": "space volume set",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sql_embed.create",
@@ -4861,7 +4997,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sql_embed_create",
     "cli_command": "sql_embed create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sql_embed.delete",
@@ -4881,7 +5018,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sql_embed_delete",
     "cli_command": "sql_embed delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "sql_embed.update",
@@ -4901,7 +5039,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_sql_embed_update",
     "cli_command": "sql_embed update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "user.billing.read",
@@ -5001,7 +5140,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_user_repo_unlike",
     "cli_command": "user repo unlike",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "watch.settings.update",
@@ -5021,7 +5161,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_watch_settings_update",
     "cli_command": "watch settings update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "webhook.create",
@@ -5041,7 +5182,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_webhook_create",
     "cli_command": "webhook create",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "webhook.delete",
@@ -5061,7 +5203,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_webhook_delete",
     "cli_command": "webhook delete",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "webhook.delivery.replay",
@@ -5081,7 +5224,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_webhook_delivery_replay",
     "cli_command": "webhook delivery replay",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "webhook.disable",
@@ -5101,7 +5245,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_webhook_disable",
     "cli_command": "webhook disable",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "webhook.enable",
@@ -5121,7 +5266,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_webhook_enable",
     "cli_command": "webhook enable",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   },
   {
     "name": "webhook.list",
@@ -5161,6 +5307,7 @@
     "agent_facing": true,
     "mcp_tool": "hf_webhook_update",
     "cli_command": "webhook update",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "inline"
   }
 ]
