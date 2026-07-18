@@ -8,6 +8,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 )
 
 type repositoryReadFake struct{}
@@ -32,7 +33,7 @@ func (repositoryReadFake) RepoFile(context.Context, hubclient.RepoRef, string, s
 }
 
 func TestRepositoryReadAdaptersExecuteEveryBoundOperation(t *testing.T) {
-	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(_ string, _ hfpolicy.Operation, target hfpolicy.Target) bool {
+	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(_ string, _ hfpolicy.Operation, target hfpolicy.Target, _ *grants.Grant) bool {
 		return target.Name == "private" && (len(target.Paths) == 0 || !strings.Contains(target.Paths[0], "secret"))
 	})
 	if err != nil {
@@ -79,13 +80,13 @@ func TestRepositoryReadAdaptersExecuteEveryBoundOperation(t *testing.T) {
 }
 
 func TestRepositoryReadAdaptersRejectInvalidConfigurationAndInput(t *testing.T) {
-	if _, err := NewRepositoryReadAdapters(nil, func(string, hfpolicy.Operation, hfpolicy.Target) bool { return true }); err == nil {
+	if _, err := NewRepositoryReadAdapters(nil, func(string, hfpolicy.Operation, hfpolicy.Target, *grants.Grant) bool { return true }); err == nil {
 		t.Fatal("nil repository client accepted")
 	}
 	if _, err := NewRepositoryReadAdapters(repositoryReadFake{}, nil); err == nil {
 		t.Fatal("nil disclosure accepted")
 	}
-	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(string, hfpolicy.Operation, hfpolicy.Target) bool { return true })
+	adapters, err := NewRepositoryReadAdapters(repositoryReadFake{}, func(string, hfpolicy.Operation, hfpolicy.Target, *grants.Grant) bool { return true })
 	if err != nil {
 		t.Fatal(err)
 	}

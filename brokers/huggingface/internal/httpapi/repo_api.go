@@ -10,6 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -186,6 +187,65 @@ func policyAllowsListedRepo(client string, pol policy.Policy, target policy.Targ
 func policyAllowsRepoOperation(client string, pol policy.Policy, target policy.Target, operation policy.Operation, now time.Time) bool {
 	req := policy.Request{Client: client, Operation: operation, Target: target}
 	return pol.Decide(req, nil, now, false).Effect == policy.EffectAllow
+}
+
+func policyAllowsRepositoryResult(client string, pol policy.Policy, target policy.Target, operation policy.Operation,
+	authority *grants.Grant, validator hfplan.Validator, now time.Time) bool {
+	request := policy.Request{Client: client, Operation: operation, Target: target}
+	decision := pol.Decide(request, nil, now, false)
+	if len(decision.MatchedDenyRuleIDs) > 0 {
+		return false
+	}
+	if decision.Effect == policy.EffectAllow {
+		return true
+	}
+	if authority == nil {
+		return false
+	}
+	return reservedRepositoryGrantAllows(*authority, client, operation, target, validator, now)
+}
+
+func reservedRepositoryGrantAllows(grant grants.Grant, client string, operation policy.Operation, target policy.Target,
+	validator hfplan.Validator, now time.Time) bool {
+	if !validReservedRepositoryGrant(grant, client, operation, validator, now) {
+		return false
+	}
+	authorized, err := hfgrant.PolicyTarget(grant)
+	if err != nil {
+		return false
+	}
+	return repositoryAuthorityContains(authorized, target, operation)
+}
+
+func validReservedRepositoryGrant(grant grants.Grant, client string, operation policy.Operation,
+	validator hfplan.Validator, now time.Time) bool {
+	return grant.Status == grants.StatusActive && !grant.ReservationRetained && grant.ReservedCount > 0 &&
+		grant.Client == client && grant.Operation == string(operation) && runtimeWindowGrant(grant) &&
+		now.Before(grant.ExpiresAt) && validator.ValidateExecution(grant) == nil
+}
+
+func repositoryAuthorityContains(authorized, target policy.Target, operation policy.Operation) bool {
+	if authorized.Kind != target.Kind || authorized.Owner != target.Owner || authorized.Type != target.Type ||
+		(authorized.Name != "*" && authorized.Name != target.Name) {
+		return false
+	}
+	if operation != policy.OpRepoTreeList || len(authorized.Paths) == 0 {
+		return true
+	}
+	return repositoryTreeAuthorityContains(authorized.Paths, target.Paths)
+}
+
+func repositoryTreeAuthorityContains(prefixes, paths []string) bool {
+	if len(paths) != 1 {
+		return false
+	}
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSuffix(prefix, "/")
+		if paths[0] == prefix || strings.HasPrefix(paths[0], prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func repoKey(repo apiRepoBody) string {

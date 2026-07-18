@@ -44,6 +44,7 @@ type Preparation[P, A any] struct {
 	Reason         string
 	Decision       policy.Decision
 	Direct         bool
+	ReusedGrant    *grants.Grant
 	CreatedAt      time.Time
 }
 
@@ -348,7 +349,13 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 		return operation, created, err
 	}
 	var prepared grants.ImmutablePlan
-	result, authErr := r.options.Authorization.RequestApproval(core, func(decision policy.Decision) (authorization.GrantIntent, error) {
+	authorize := r.options.Authorization.Authorize
+	if requiresApproval(adapter) {
+		authorize = func(request policy.Request, build authorization.IntentBuilder) (authorization.Result, error) {
+			return r.options.Authorization.RequestApproval(request, build)
+		}
+	}
+	result, authErr := authorize(core, func(decision policy.Decision) (authorization.GrantIntent, error) {
 		intent, prepareErr := r.options.Prepare(Preparation[P, A]{Plan: plan, Auth: auth, Core: core, DescriptorName: adapter.Descriptor().Name,
 			Client: operation.ClientID, OperationID: operation.ID, Reason: operation.Reason, Decision: decision, CreatedAt: r.now()})
 		prepared = intent.Plan
@@ -358,6 +365,11 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 		_ = r.abandonApproval(result.Request.Grant.ID, operation.ClientID)
 		r.cleanup(adapter, plan)
 		operation = r.finishRefused(operation, plan, result, authErr)
+		lock.Unlock()
+		return operation, true, nil
+	}
+	if result.Decision.GrantID != "" {
+		operation = r.bindActiveGrant(operation, adapter, plan, auth, core, result.Decision)
 		lock.Unlock()
 		return operation, true, nil
 	}

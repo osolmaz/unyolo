@@ -13,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 )
 
 type repositoryReadClient interface {
@@ -30,7 +31,7 @@ type repositoryReadAdapter struct {
 
 // RepositoryAuthorization applies one authenticated client's policy to a
 // concrete repository operation returned by an upstream read.
-type RepositoryAuthorization func(client string, operation hfpolicy.Operation, target hfpolicy.Target) bool
+type RepositoryAuthorization func(client string, operation hfpolicy.Operation, target hfpolicy.Target, authority *grants.Grant) bool
 
 type repoListArguments struct {
 	Limit int `json:"limit,omitempty"`
@@ -143,6 +144,11 @@ func (a *repositoryReadAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentReconstructed(plan, a.reconstruct(plan))
 }
 
+func (a *repositoryReadAdapter) BindReservation(plan Plan, grant grants.Grant) (Plan, error) {
+	plan.ReservedGrant = &grant
+	return plan, nil
+}
+
 func (a *repositoryReadAdapter) reconstruct(plan Plan) reconstructedPlan {
 	return reconstructPlan(plan.Target, plan.Arguments, decodeRepositoryOperationTarget, a.presentationAndPolicy)
 }
@@ -217,7 +223,7 @@ func (a *repositoryReadAdapter) readList(ctx context.Context, plan Plan, target 
 	if err != nil {
 		return nil, err
 	}
-	return a.repoListResult(repos, target, plan.Policy.Client, arguments.Limit), nil
+	return a.repoListResult(repos, target, plan.Policy.Client, arguments.Limit, plan.ReservedGrant), nil
 }
 
 func (a *repositoryReadAdapter) readTree(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
@@ -229,7 +235,11 @@ func (a *repositoryReadAdapter) readTree(ctx context.Context, plan Plan, target 
 	if err != nil {
 		return nil, err
 	}
-	return a.filterTree(entries, target, plan.Policy.Client), nil
+	return map[string]any{
+		"entries":  a.filterTree(entries, target, plan.Policy.Client, plan.ReservedGrant),
+		"path":     arguments.Path,
+		"revision": arguments.Revision,
+	}, nil
 }
 
 func (a *repositoryReadAdapter) readContent(ctx context.Context, plan Plan, target repositoryTarget) (any, error) {
@@ -249,10 +259,11 @@ func (a *repositoryReadAdapter) readContent(ctx context.Context, plan Plan, targ
 		"content": content, "content_type": file.ContentType, "commit": file.Commit}, nil
 }
 
-func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, query repositoryTarget, client string, limit int) map[string]any {
+func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, query repositoryTarget, client string, limit int,
+	authority *grants.Grant) map[string]any {
 	result := make([]hubclient.RepoSummary, 0, len(repos))
 	for _, repo := range repos {
-		summary, ok := a.disclosedRepoSummary(repo, query, client)
+		summary, ok := a.disclosedRepoSummary(repo, query, client, authority)
 		if !ok {
 			continue
 		}
@@ -264,9 +275,10 @@ func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, qu
 	return map[string]any{"repos": result, "next_cursor": nil}
 }
 
-func (a *repositoryReadAdapter) disclosedRepoSummary(repo hubclient.RepoSummary, query repositoryTarget, client string) (hubclient.RepoSummary, bool) {
+func (a *repositoryReadAdapter) disclosedRepoSummary(repo hubclient.RepoSummary, query repositoryTarget, client string,
+	authority *grants.Grant) (hubclient.RepoSummary, bool) {
 	target, ok := listedRepoTarget(repo.ID, query)
-	if !ok || !a.authorize(client, hfpolicy.OpRepoList, target) || !a.authorize(client, hfpolicy.OpRepoMetadataRead, target) {
+	if !ok || !a.authorize(client, hfpolicy.OpRepoList, target, authority) {
 		return hubclient.RepoSummary{}, false
 	}
 	return hubclient.RepoSummary{ID: repo.ID, SHA: repo.SHA}, true
@@ -280,12 +292,13 @@ func listedRepoTarget(id string, query repositoryTarget) (hfpolicy.Target, bool)
 	return hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(query.Type), Owner: parts[0], Name: parts[1]}, true
 }
 
-func (a *repositoryReadAdapter) filterTree(entries []hubclient.RepoTreeEntry, target repositoryTarget, client string) []hubclient.RepoTreeEntry {
+func (a *repositoryReadAdapter) filterTree(entries []hubclient.RepoTreeEntry, target repositoryTarget, client string,
+	authority *grants.Grant) []hubclient.RepoTreeEntry {
 	result := make([]hubclient.RepoTreeEntry, 0, len(entries))
 	for _, entry := range entries {
 		policyTarget := target.policyTarget()
 		policyTarget.Paths = []string{entry.Path}
-		if a.authorize(client, hfpolicy.OpRepoTreeList, policyTarget) {
+		if a.authorize(client, hfpolicy.OpRepoTreeList, policyTarget, authority) {
 			result = append(result, entry)
 		}
 	}

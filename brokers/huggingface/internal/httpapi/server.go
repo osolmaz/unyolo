@@ -400,8 +400,8 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 	if err != nil {
 		return err
 	}
-	authorize := func(client string, operation policy.Operation, target policy.Target) bool {
-		return policyAllowsRepoOperation(client, opts.Scope, target, operation, opts.Now())
+	authorize := func(client string, operation policy.Operation, target policy.Target, authority *grants.Grant) bool {
+		return policyAllowsRepositoryResult(client, opts.Scope, target, operation, authority, r.planValidator, opts.Now())
 	}
 	r.operationRegistry, err = newOperationRegistry(r.hub, upstream.String(), r.sealedPayloadStore, r.credentialSlots, authorize)
 	if err != nil {

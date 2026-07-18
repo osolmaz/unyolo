@@ -9,6 +9,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operationruntime"
 )
 
@@ -27,6 +28,7 @@ type Plan struct {
 	Presentation      agentv1.Presentation
 	Policy            hfpolicy.Request
 	PolicyDecision    PolicyDecision
+	ReservedGrant     *grants.Grant
 }
 
 // PolicyDecision is the immutable policy context selected at submission.

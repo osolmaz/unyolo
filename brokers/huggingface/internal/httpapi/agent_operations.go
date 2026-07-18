@@ -114,6 +114,9 @@ func runtimePolicyRuleIDs(preparation operations.Preparation) []string {
 	if preparation.Direct {
 		return preparation.Decision.MatchedAllowRuleIDs
 	}
+	if preparation.ReusedGrant != nil {
+		return preparation.Decision.MatchedGrantRuleIDs
+	}
 	return preparation.Decision.MatchedRequestRuleIDs
 }
 
@@ -129,6 +132,17 @@ func preparationBounds(preparation operations.Preparation, descriptor operations
 	pending := time.Duration(descriptor.Descriptor().RequestTTLSeconds) * time.Second
 	if preparation.Direct {
 		return duration, pending, 1, nil
+	}
+	if preparation.ReusedGrant != nil {
+		grant := *preparation.ReusedGrant
+		if corepolicy.GrantMode(hfgrant.Mode(grant)) != mode || mode != corepolicy.GrantModeWindow {
+			return 0, 0, 0, errors.New("active grant approval mode does not match operation")
+		}
+		duration = grant.RequestedDuration
+		if duration <= 0 {
+			duration = grant.Duration
+		}
+		return duration, grant.PendingTimeout, int(grant.RequestedMaxUses), nil
 	}
 	bounds := preparation.Decision.GrantPolicy
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
