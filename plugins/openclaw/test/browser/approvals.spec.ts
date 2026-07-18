@@ -654,7 +654,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
     expectBrowserSession(route.request().headers(), token);
     await route.fulfill({
       json: snapshot,
-      headers: { "access-control-allow-origin": "null" },
+      headers: delegatedCorsHeaders,
     });
   });
   let decisionReceived = false;
@@ -669,7 +669,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
           ...pendingRequest,
           request: { ...pendingRequest.request, status: "denied" },
         },
-        headers: { "access-control-allow-origin": "null" },
+        headers: delegatedCorsHeaders,
       });
     },
   );
@@ -694,6 +694,94 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
   await expect(dialog).not.toBeVisible();
   expect(decisionReceived).toBe(true);
   await expect(page).toHaveURL(parentUrl);
+});
+
+test("keeps a private-host access cookie in delegated sandbox requests", async ({
+  browserName,
+  context,
+  page,
+}) => {
+  test.skip(
+    browserName !== "chromium",
+    "Models Chromium private-host cookie delivery for the reported deployment",
+  );
+  const host = "https://private-space.test";
+  const token = "private-space-session-that-is-long-enough";
+  const encodedBootstrap = bootstrap({
+    version: 1,
+    mode: "delegated-web",
+    basePath: "/trusted-host/api/brokerkit",
+  });
+  const encodedSession = bootstrap({
+    api_version: "brokerkit.io/delegated-web/v1",
+    token,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+    access: "decide",
+    renewal_transport: "direct",
+  });
+  await context.addCookies([
+    {
+      name: "private_host_access",
+      value: "private-edge-cookie",
+      url: host,
+      sameSite: "None",
+      secure: true,
+    },
+  ]);
+
+  let cookieReceived = false;
+  await page.route(`${host}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/host") {
+      await route.fulfill({
+        contentType: "text/html",
+        body: `<iframe title="Approvals" sandbox="allow-scripts" src="${host}/plugins/brokerkit/ui/#${encodedBootstrap}"></iframe>`,
+      });
+      return;
+    }
+    if (url.pathname === "/trusted-host/api/brokerkit/snapshot") {
+      if (route.request().method() === "OPTIONS") {
+        await route.fulfill({ status: 204, headers: delegatedCorsHeaders });
+        return;
+      }
+      const headers = await route.request().allHeaders();
+      expectBrowserSession(headers, token);
+      expect(headers.cookie).toContain(
+        "private_host_access=private-edge-cookie",
+      );
+      cookieReceived = true;
+      await route.fulfill({ json: snapshot, headers: delegatedCorsHeaders });
+      return;
+    }
+
+    const response = await route.fetch({
+      url: `http://127.0.0.1:4179${url.pathname}`,
+    });
+    if (url.pathname === "/plugins/brokerkit/ui/") {
+      const body = (await response.text()).replace(
+        "<head>",
+        `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+      );
+      await route.fulfill({
+        response,
+        body,
+        headers: {
+          ...response.headers(),
+          "content-security-policy":
+            "sandbox allow-scripts; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:",
+        },
+      });
+      return;
+    }
+    await route.fulfill({ response });
+  });
+
+  await page.goto(`${host}/host`);
+  const approvals = page.frameLocator('iframe[title="Approvals"]');
+  await expect(
+    approvals.getByText("Hugging Face repository write"),
+  ).toBeVisible();
+  await expect.poll(() => cookieReceived).toBe(true);
 });
 
 function bootstrap(value: unknown): string {
@@ -735,6 +823,7 @@ function expectBrowserSession(
 
 const delegatedCorsHeaders = {
   "access-control-allow-origin": "null",
+  "access-control-allow-credentials": "true",
   "access-control-allow-headers": `${BROWSER_SESSION_HEADER}, Content-Type`,
   "access-control-allow-methods": "GET, POST",
   "cache-control": "no-store",
