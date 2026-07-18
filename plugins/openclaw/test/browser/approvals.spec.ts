@@ -236,6 +236,98 @@ test("uses delegated web session authority without exposing it in the URL", asyn
   await expect(page).not.toHaveURL(/#/);
 });
 
+test("asks a framed host to rebootstrap an expired delegated session", async ({
+  page,
+}) => {
+  const token = "expiring-delegated-session-that-is-long-enough";
+  const initialSession = {
+    ...delegatedSession(token, "decide"),
+    expires_at: new Date(Date.now() + 10_000).toISOString(),
+  };
+  await page.route("**/rebootstrap-host", async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><html><body>
+        <iframe id="approvals" sandbox="allow-scripts" src="/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}"></iframe>
+        <script>
+          window.rebootstrapMessages = [];
+          window.addEventListener("message", function (event) {
+            var frame = document.getElementById("approvals");
+            if (event.source === frame.contentWindow) window.rebootstrapMessages.push(event.data);
+          });
+        </script>
+      </body></html>`,
+    });
+  });
+  await page.route("**/plugins/brokerkit/ui/**", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        "access-control-allow-private-network": "true",
+        "cross-origin-resource-policy": "cross-origin",
+      },
+    });
+  });
+  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "<head>",
+      `<head><meta name="brokerkit-delegated-session" content="${bootstrap(initialSession)}" />`,
+    );
+    await route.fulfill({
+      response,
+      body,
+      headers: {
+        ...response.headers(),
+        "access-control-allow-origin": "null",
+        "access-control-allow-private-network": "true",
+        "content-security-policy": delegatedSandboxPolicy,
+        "cross-origin-resource-policy": "cross-origin",
+      },
+    });
+  });
+  await page.route("**/trusted-host/api/brokerkit/**", async (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: delegatedCorsHeaders });
+      return;
+    }
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/snapshot")) {
+      expectBrowserSession(request.headers(), token);
+      await route.fulfill({ json: snapshot, headers: delegatedCorsHeaders });
+      return;
+    }
+    if (path.endsWith("/session")) {
+      expectBrowserSession(request.headers(), token);
+      await route.fulfill({
+        status: 401,
+        json: { error: { code: "not_authorized" } },
+        headers: delegatedCorsHeaders,
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, headers: delegatedCorsHeaders });
+  });
+
+  await page.goto("/rebootstrap-host");
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              rebootstrapMessages: unknown[];
+            }
+          ).rebootstrapMessages,
+      ),
+    )
+    .toEqual([{ type: "brokerkit.delegated-web.rebootstrap", version: 1 }]);
+});
+
 test("crosses an identity-aware delegated edge and recovers live updates", async ({
   context,
   page,

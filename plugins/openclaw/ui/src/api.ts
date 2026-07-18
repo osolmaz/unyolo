@@ -40,11 +40,14 @@ export const DELEGATED_SESSION_REQUEST =
   "brokerkit.delegated-web.session.request";
 export const DELEGATED_SESSION_RESPONSE =
   "brokerkit.delegated-web.session.response";
+export const DELEGATED_REBOOTSTRAP_REQUEST =
+  "brokerkit.delegated-web.rebootstrap";
 export const DELEGATED_SESSION_META = "brokerkit-delegated-session";
 
 export class BrokerKitUiApi {
   private delegatedSession?: DelegatedSession;
   private delegatedRefresh: Promise<DelegatedSession> | undefined;
+  private delegatedRebootstrapRequested = false;
 
   constructor(private readonly bootstrap: UiBootstrap) {}
 
@@ -141,10 +144,22 @@ export class BrokerKitUiApi {
   private async refreshDelegatedAuthorization(): Promise<DelegatedSession> {
     if (this.bootstrap.mode !== "delegated-web")
       throw new Error("Delegated approval session is invalid");
-    const value = await delegatedSessionPayload(
-      this.bootstrap.basePath,
-      this.delegatedSession,
-    );
+    let value: Record<string, unknown>;
+    try {
+      value = await delegatedSessionPayload(
+        this.bootstrap.basePath,
+        this.delegatedSession,
+      );
+    } catch (error) {
+      if (
+        this.delegatedSession &&
+        framed() &&
+        errorCode(error) === "not_authorized"
+      ) {
+        this.requestDelegatedRebootstrap();
+      }
+      throw error;
+    }
     const expiresAtMs = Date.parse(
       typeof value.expires_at === "string" ? value.expires_at : "",
     );
@@ -170,6 +185,15 @@ export class BrokerKitUiApi {
       renewalTransport: value.renewal_transport,
     };
     return this.delegatedSession;
+  }
+
+  private requestDelegatedRebootstrap(): void {
+    if (this.delegatedRebootstrapRequested) return;
+    this.delegatedRebootstrapRequested = true;
+    window.parent.postMessage(
+      { type: DELEGATED_REBOOTSTRAP_REQUEST, version: 1 },
+      "*",
+    );
   }
 }
 
@@ -313,6 +337,12 @@ export function parseUiBootstrap(hash: string): UiBootstrap {
 
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function errorCode(value: unknown): string | undefined {
+  return value instanceof Error && "code" in value
+    ? String(value.code)
+    : undefined;
 }
 
 function validBasePath(value: string): boolean {
