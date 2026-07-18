@@ -61,16 +61,17 @@ func ReplaceCredential(ctx context.Context, plan CredentialReplacePlan) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	snapshots, err := captureCredentialFiles(root, plan.Files)
 	if err != nil {
 		return err
 	}
 	defer clearCredentialSnapshots(snapshots)
-	runner := plan.Runner
-	if runner == nil {
-		runner = credentialCommandRunner{}
-	}
+	return applyCredentialReplacement(ctx, root, snapshots, uid, gid, plan)
+}
+
+func applyCredentialReplacement(ctx context.Context, root *os.Root, snapshots []credentialFileSnapshot, uid, gid int, plan CredentialReplacePlan) error {
+	runner := credentialRunner(plan.Runner)
 	if err := writeCredentialFiles(root, plan.Files, uid, gid, plan.AllowNonRoot); err != nil {
 		return errors.Join(err, restoreCredentialFiles(root, snapshots, uid, gid, plan.AllowNonRoot))
 	}
@@ -83,7 +84,24 @@ func ReplaceCredential(ctx context.Context, plan CredentialReplacePlan) error {
 	return recordCredentialReplacement(plan, snapshots)
 }
 
+func credentialRunner(runner CommandRunner) CommandRunner {
+	if runner == nil {
+		return credentialCommandRunner{}
+	}
+	return runner
+}
+
 func validateCredentialReplacePlan(plan CredentialReplacePlan) error {
+	if err := validateCredentialReplaceIdentity(plan); err != nil {
+		return err
+	}
+	if err := validateCredentialReplaceFiles(plan.Files); err != nil {
+		return err
+	}
+	return validateCredentialRestartIdentity(plan)
+}
+
+func validateCredentialReplaceIdentity(plan CredentialReplacePlan) error {
 	if strings.TrimSpace(plan.Provider) == "" {
 		return errors.New("credential provider is required")
 	}
@@ -93,35 +111,47 @@ func validateCredentialReplacePlan(plan CredentialReplacePlan) error {
 	if strings.TrimSpace(plan.User) == "" || strings.TrimSpace(plan.Group) == "" {
 		return errors.New("credential service user and group are required")
 	}
-	if len(plan.Files) == 0 {
+	return nil
+}
+
+func validateCredentialReplaceFiles(files []ManagedFile) error {
+	if len(files) == 0 {
 		return errors.New("at least one credential file is required")
 	}
-	seen := make(map[string]struct{}, len(plan.Files))
-	for _, file := range plan.Files {
-		if file.Area != ManagedFileConfig || !validManagedFileName(file.Name) || file.CredentialClass == "" {
-			return fmt.Errorf("invalid credential file %q", file.Name)
-		}
-		if _, exists := seen[file.Name]; exists {
-			return fmt.Errorf("duplicate credential file %q", file.Name)
-		}
-		seen[file.Name] = struct{}{}
-		if err := validateManagedFilePayload(file); err != nil {
-			return err
-		}
-		if err := validateManagedFileOwner(file); err != nil {
-			return err
-		}
-		if err := validateManagedFileMode(file, true); err != nil {
+	seen := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		if err := validateCredentialReplaceFile(file, seen); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func validateCredentialReplaceFile(file ManagedFile, seen map[string]struct{}) error {
+	if file.Area != ManagedFileConfig || !validManagedFileName(file.Name) || file.CredentialClass == "" {
+		return fmt.Errorf("invalid credential file %q", file.Name)
+	}
+	if _, exists := seen[file.Name]; exists {
+		return fmt.Errorf("duplicate credential file %q", file.Name)
+	}
+	seen[file.Name] = struct{}{}
+	if err := validateManagedFilePayload(file); err != nil {
+		return err
+	}
+	if err := validateManagedFileOwner(file); err != nil {
+		return err
+	}
+	return validateManagedFileMode(file, true)
+}
+
+func validateCredentialRestartIdentity(plan CredentialReplacePlan) error {
 	switch runtime.GOOS {
 	case "linux":
-		if plan.SystemdUnit == "" || filepath.Base(plan.SystemdUnit) != plan.SystemdUnit || !strings.HasSuffix(plan.SystemdUnit, ".service") {
+		if !validCredentialSystemdUnit(plan.SystemdUnit) {
 			return errors.New("a literal systemd service unit is required")
 		}
 	case "darwin":
-		if plan.LaunchdLabel == "" || strings.ContainsAny(plan.LaunchdLabel, "/\\\r\n\t ") {
+		if !validCredentialLaunchdLabel(plan.LaunchdLabel) {
 			return errors.New("a literal launchd label is required")
 		}
 	default:
@@ -130,24 +160,51 @@ func validateCredentialReplacePlan(plan CredentialReplacePlan) error {
 	return nil
 }
 
+func validCredentialSystemdUnit(unit string) bool {
+	return unit != "" && filepath.Base(unit) == unit && strings.HasSuffix(unit, ".service")
+}
+
+func validCredentialLaunchdLabel(label string) bool {
+	return label != "" && !strings.ContainsAny(label, "/\\\r\n\t ")
+}
+
 func credentialOwnerIDs(plan CredentialReplacePlan) (int, int, error) {
 	if plan.AllowNonRoot {
 		return os.Geteuid(), os.Getegid(), nil
 	}
-	account, err := user.Lookup(plan.User)
+	uid, err := credentialUserID(plan.User)
 	if err != nil {
-		return 0, 0, errors.New("credential service user does not exist")
+		return 0, 0, err
 	}
-	group, err := user.LookupGroup(plan.Group)
+	gid, err := credentialGroupID(plan.Group)
 	if err != nil {
-		return 0, 0, errors.New("credential service group does not exist")
-	}
-	uid, uidErr := strconv.Atoi(account.Uid)
-	gid, gidErr := strconv.Atoi(group.Gid)
-	if uidErr != nil || gidErr != nil {
-		return 0, 0, errors.New("credential service identity is invalid")
+		return 0, 0, err
 	}
 	return uid, gid, nil
+}
+
+func credentialUserID(name string) (int, error) {
+	account, err := user.Lookup(name)
+	if err != nil {
+		return 0, errors.New("credential service user does not exist")
+	}
+	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return 0, errors.New("credential service identity is invalid")
+	}
+	return uid, nil
+}
+
+func credentialGroupID(name string) (int, error) {
+	group, err := user.LookupGroup(name)
+	if err != nil {
+		return 0, errors.New("credential service group does not exist")
+	}
+	gid, err := strconv.Atoi(group.Gid)
+	if err != nil {
+		return 0, errors.New("credential service identity is invalid")
+	}
+	return gid, nil
 }
 
 func openCredentialRoot(path string) (*os.Root, error) {
@@ -165,32 +222,49 @@ func openCredentialRoot(path string) (*os.Root, error) {
 func captureCredentialFiles(root *os.Root, files []ManagedFile) ([]credentialFileSnapshot, error) {
 	snapshots := make([]credentialFileSnapshot, 0, len(files))
 	for _, file := range files {
-		snapshot := credentialFileSnapshot{file: file}
-		info, err := root.Lstat(file.Name)
-		if errors.Is(err, os.ErrNotExist) {
-			snapshots = append(snapshots, snapshot)
-			continue
-		}
-		if err != nil || !info.Mode().IsRegular() || info.Size() > maxManagedFileBytes {
-			clearCredentialSnapshots(snapshots)
-			return nil, fmt.Errorf("previous credential file %q is unavailable or unsafe", file.Name)
-		}
-		handle, err := root.Open(file.Name)
+		snapshot, err := captureCredentialFile(root, file)
 		if err != nil {
 			clearCredentialSnapshots(snapshots)
-			return nil, fmt.Errorf("open previous credential file %q", file.Name)
+			return nil, err
 		}
-		data, readErr := io.ReadAll(io.LimitReader(handle, maxManagedFileBytes+1))
-		closeErr := handle.Close()
-		if readErr != nil || closeErr != nil || len(data) > maxManagedFileBytes {
-			clear(data)
-			clearCredentialSnapshots(snapshots)
-			return nil, fmt.Errorf("read previous credential file %q", file.Name)
-		}
-		snapshot.existed, snapshot.data, snapshot.mode = true, data, info.Mode().Perm()
 		snapshots = append(snapshots, snapshot)
 	}
 	return snapshots, nil
+}
+
+func captureCredentialFile(root *os.Root, file ManagedFile) (credentialFileSnapshot, error) {
+	snapshot := credentialFileSnapshot{file: file}
+	info, err := root.Lstat(file.Name)
+	if errors.Is(err, os.ErrNotExist) {
+		return snapshot, nil
+	}
+	if err != nil || !safeCredentialFileInfo(info) {
+		return credentialFileSnapshot{}, fmt.Errorf("previous credential file %q is unavailable or unsafe", file.Name)
+	}
+	data, err := readCredentialFile(root, file.Name)
+	if err != nil {
+		return credentialFileSnapshot{}, err
+	}
+	snapshot.existed, snapshot.data, snapshot.mode = true, data, info.Mode().Perm()
+	return snapshot, nil
+}
+
+func safeCredentialFileInfo(info os.FileInfo) bool {
+	return info != nil && info.Mode().IsRegular() && info.Size() <= maxManagedFileBytes
+}
+
+func readCredentialFile(root *os.Root, name string) ([]byte, error) {
+	handle, err := root.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("open previous credential file %q", name)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(handle, maxManagedFileBytes+1))
+	closeErr := handle.Close()
+	if readErr != nil || closeErr != nil || len(data) > maxManagedFileBytes {
+		clear(data)
+		return nil, fmt.Errorf("read previous credential file %q", name)
+	}
+	return data, nil
 }
 
 func writeCredentialFiles(root *os.Root, files []ManagedFile, serviceUID, serviceGID int, preview bool) error {
@@ -292,20 +366,7 @@ func waitForCredentialReady(ctx context.Context, plan CredentialReplacePlan) err
 	if plan.ReadyCheck == nil || plan.AllowNonRoot {
 		return nil
 	}
-	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
-	defer cancel()
-	ticker := time.NewTicker(durationOr(plan.ReadyInterval, defaultReadinessInterval))
-	defer ticker.Stop()
-	for {
-		if err := plan.ReadyCheck(readyContext); err == nil && readyContext.Err() == nil {
-			return nil
-		}
-		select {
-		case <-readyContext.Done():
-			return errServiceReadinessFailed
-		case <-ticker.C:
-		}
-	}
+	return waitForReadiness(ctx, plan.ReadyCheck, plan.ReadyTimeout, plan.ReadyInterval)
 }
 
 func recordCredentialReplacement(plan CredentialReplacePlan, snapshots []credentialFileSnapshot) error {

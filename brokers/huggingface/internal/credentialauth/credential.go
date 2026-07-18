@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	TokenFormURL   = "https://huggingface.co/settings/tokens/new?tokenType=fineGrained"
+	TokenFormURL   = "https://huggingface.co/settings/tokens/new?tokenType=fineGrained" // #nosec G101 -- public enrollment URL, not a token.
 	maxTokenBytes  = 64 * 1024
 	maxWhoamiBytes = 1 << 20
 )
@@ -48,7 +48,7 @@ type Inspection struct {
 func (i Inspection) VerifiedTime() (time.Time, error) {
 	value, err := time.Parse(time.RFC3339, i.VerifiedAt)
 	if err != nil {
-		return time.Time{}, errors.New("Hugging Face credential verification time is invalid")
+		return time.Time{}, errors.New("Hugging Face credential verification time is invalid") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	return value.UTC(), nil
 }
@@ -100,40 +100,49 @@ func (i Inspector) Inspect(ctx context.Context, token string) (Inspection, error
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Accept", "application/json")
+	return i.inspectRequest(request, token)
+}
+
+func (i Inspector) inspectRequest(request *http.Request, token string) (Inspection, error) {
 	client := i.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
+	// #nosec G704 -- Inspect constructs this request only after validating the configured provider origin.
 	response, err := client.Do(request)
 	if err != nil {
-		return Inspection{}, errors.New("Hugging Face credential inspection is unavailable")
+		return Inspection{}, errors.New("Hugging Face credential inspection is unavailable") //nolint:staticcheck // Hugging Face is a proper name.
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return Inspection{}, credentialResponseError(response.StatusCode)
 	}
+	return decodeInspectionResponse(response.Body, token, i.now())
+}
+
+func decodeInspectionResponse(body io.Reader, token string, now time.Time) (Inspection, error) {
 	var payload whoamiResponse
-	decoder := json.NewDecoder(io.LimitReader(response.Body, maxWhoamiBytes+1))
+	decoder := json.NewDecoder(io.LimitReader(body, maxWhoamiBytes+1))
 	if err := decoder.Decode(&payload); err != nil {
-		return Inspection{}, errors.New("Hugging Face returned an invalid credential response")
+		return Inspection{}, errors.New("Hugging Face returned an invalid credential response") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	if err := ensureResponseEnded(decoder); err != nil {
 		return Inspection{}, err
 	}
-	return inspectionFromResponse(token, payload, i.now())
+	return inspectionFromResponse(token, payload, now)
 }
 
 // NormalizeToken validates the bounded token input and strips surrounding whitespace.
 func NormalizeToken(token string) (string, error) {
 	trimmed := strings.TrimSpace(token)
 	if trimmed == "" {
-		return "", errors.New("Hugging Face token is required")
+		return "", errors.New("Hugging Face token is required") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	if len(trimmed) > maxTokenBytes {
-		return "", errors.New("Hugging Face token exceeds the size limit")
+		return "", errors.New("Hugging Face token exceeds the size limit") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	if !strings.HasPrefix(trimmed, "hf_") || strings.ContainsAny(trimmed, "\r\n\t ") {
-		return "", errors.New("Hugging Face token has an invalid format")
+		return "", errors.New("Hugging Face token has an invalid format") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	return trimmed, nil
 }
@@ -143,20 +152,24 @@ func validateBaseURL(raw string) (string, error) {
 		raw = "https://huggingface.co"
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || !validInspectionOrigin(parsed) {
 		return "", errors.New("invalid Hugging Face inspection origin")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
+func validInspectionOrigin(parsed *url.URL) bool {
+	return parsed != nil && parsed.Scheme != "" && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
+}
+
 func credentialResponseError(status int) error {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return errors.New("Hugging Face did not accept this token")
+		return errors.New("Hugging Face did not accept this token") //nolint:staticcheck // Hugging Face is a proper name.
 	case http.StatusTooManyRequests:
-		return errors.New("Hugging Face credential inspection was rate limited")
+		return errors.New("Hugging Face credential inspection was rate limited") //nolint:staticcheck // Hugging Face is a proper name.
 	default:
-		return fmt.Errorf("Hugging Face credential inspection returned HTTP %d", status)
+		return fmt.Errorf("Hugging Face credential inspection returned HTTP %d", status) //nolint:staticcheck // Hugging Face is a proper name.
 	}
 }
 
@@ -166,12 +179,12 @@ func ensureResponseEnded(decoder *json.Decoder) error {
 	if errors.Is(err, io.EOF) {
 		return nil
 	}
-	return errors.New("Hugging Face returned an oversized or invalid credential response")
+	return errors.New("Hugging Face returned an oversized or invalid credential response") //nolint:staticcheck // Hugging Face is a proper name.
 }
 
 func inspectionFromResponse(token string, payload whoamiResponse, now time.Time) (Inspection, error) {
 	if strings.TrimSpace(payload.Name) == "" {
-		return Inspection{}, errors.New("Hugging Face credential response omitted the account name")
+		return Inspection{}, errors.New("Hugging Face credential response omitted the account name") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	access := payload.Auth.AccessToken
 	if access.Role != "fineGrained" || access.FineGrained == nil {

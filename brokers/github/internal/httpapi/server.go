@@ -40,6 +40,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/sealedpayload"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
@@ -311,9 +312,7 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		return coreDependencies{}, err
 	}
 	validator := ghplan.Validator{Store: plans,
-		Credential: func(plan ghplan.Plan) (githubauth.Metadata, error) {
-			return operations.CredentialFromPreconditions(plan.Preconditions)
-		},
+		Credential:  currentPlanCredential,
 		Requirement: (githubauth.ProviderAdapter{}).Requirement,
 	}
 	auditWriter := bkaudit.New(os.Stderr)
@@ -329,6 +328,14 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 	}
 	return coreDependencies{database: database, grants: grantStore, plans: plans, validator: validator, audit: auditWriter,
 		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
+}
+
+func currentPlanCredential(plan ghplan.Plan) (providercredential.Snapshot, error) {
+	metadata, err := operations.CredentialFromPreconditions(plan.Preconditions)
+	if err != nil {
+		return providercredential.Snapshot{}, err
+	}
+	return githubauth.SnapshotForMetadata(metadata, 1, plan.CreatedAt)
 }
 
 func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {

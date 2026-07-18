@@ -3,6 +3,7 @@ package credentialauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -164,4 +165,29 @@ func TestInspectionValidationErrors(t *testing.T) {
 			t.Fatalf("status %d had no error", status)
 		}
 	}
+}
+
+func TestInspectorRejectsTransportAndMalformedResponses(t *testing.T) {
+	if _, err := (Inspector{BaseURL: "https://user@example.com"}).Inspect(t.Context(), "hf_candidate"); err == nil {
+		t.Fatal("invalid inspection origin was accepted")
+	}
+	for _, body := range []string{`{`, `{"name":"alice"}{"extra":true}`} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte(body))
+		}))
+		if _, err := (Inspector{BaseURL: server.URL, Client: server.Client()}).Inspect(t.Context(), "hf_candidate"); err == nil {
+			t.Fatalf("malformed inspection response %q was accepted", body)
+		}
+		server.Close()
+	}
+	client := &http.Client{Transport: failingCredentialTransport{}}
+	if _, err := (Inspector{BaseURL: "https://example.test", Client: client}).Inspect(t.Context(), "hf_candidate"); err == nil {
+		t.Fatal("credential transport failure was accepted")
+	}
+}
+
+type failingCredentialTransport struct{}
+
+func (failingCredentialTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("transport failed")
 }

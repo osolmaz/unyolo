@@ -46,7 +46,7 @@ func (Adapter) Requirement(operation string) (providercredential.Requirement, bo
 
 func (Adapter) Probe(_ context.Context, snapshot providercredential.Snapshot) (providercredential.ProbeResult, error) {
 	if snapshot.VerificationState != providercredential.VerificationValid {
-		return providercredential.ProbeResult{State: providercredential.ProbeInvalid}, errors.New("Hugging Face credential is not valid")
+		return providercredential.ProbeResult{State: providercredential.ProbeInvalid}, errors.New("Hugging Face credential is not valid") //nolint:staticcheck // Hugging Face is a proper name.
 	}
 	return providercredential.ProbeResult{State: providercredential.ProbeValid}, nil
 }

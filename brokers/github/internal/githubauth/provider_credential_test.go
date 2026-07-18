@@ -92,3 +92,33 @@ func TestProviderAdapterContractMetadata(t *testing.T) {
 		t.Fatal("GitHub access normalization failed")
 	}
 }
+
+func TestProviderAdapterRejectsUnverifiableAppAuthority(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		handler http.HandlerFunc
+	}{
+		{name: "app rejected", handler: func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusUnauthorized) }},
+		{name: "installations invalid", handler: func(writer http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/app" {
+				_, _ = io.WriteString(writer, `{"id":12345,"slug":"broker"}`)
+				return
+			}
+			_, _ = io.WriteString(writer, `{`)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(test.handler)
+			defer server.Close()
+			base, _ := url.Parse(server.URL)
+			secret, err := providercredential.NewSecret(testPrivateKey(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer secret.Clear()
+			if _, err := (ProviderAdapter{AppID: "12345", APIBaseURL: base, HTTPClient: server.Client()}).Inspect(t.Context(), secret); err == nil {
+				t.Fatal("unverifiable GitHub App authority was accepted")
+			}
+		})
+	}
+}

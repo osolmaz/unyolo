@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -193,6 +194,19 @@ func TestDefaultCredentialDependenciesAndTextOutput(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "alice: fine_grained_user_token") || !strings.Contains(output.String(), "generation 4") {
 		t.Fatalf("text snapshot = %q", output.String())
+	}
+	name, args, err := browserCommand("https://example.test")
+	if err != nil || len(args) != 1 || args[0] != "https://example.test" ||
+		runtime.GOOS == "linux" && name != "xdg-open" || runtime.GOOS == "darwin" && name != "open" {
+		t.Fatalf("browser command = %q %v, %v", name, args, err)
+	}
+	output.Reset()
+	token, err := readHiddenCredentialFile(os.Stdin, &output, func(int) ([]byte, error) { return []byte("hf_candidate"), nil })
+	if err != nil || token != "hf_candidate" || !strings.Contains(output.String(), "Paste the new") {
+		t.Fatalf("hidden credential = %q, %q, %v", token, output.String(), err)
+	}
+	if _, err := readHiddenCredentialFile(os.Stdin, io.Discard, func(int) ([]byte, error) { return nil, errors.New("read") }); err == nil {
+		t.Fatal("hidden credential read failure was accepted")
 	}
 }
 

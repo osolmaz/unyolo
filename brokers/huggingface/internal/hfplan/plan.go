@@ -273,21 +273,29 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("HF grant does not match its immutable plan")
 	}
-	if v.Credential != nil {
-		if v.Credential.Validate(plan.CredentialSelector.Binding) != nil {
-			return errors.New("HF credential binding is stale")
-		}
-		if v.Requirement == nil {
-			return errors.New("HF credential requirement map is unavailable")
-		}
-		requirement, found := v.Requirement(plan.Operation)
-		target, targetErr := providercredential.TargetFromJSON(plan.Target)
-		if !found || targetErr != nil || !v.Credential.Evaluate(requirement, target).Allowed {
-			return errors.New("HF credential does not cover the operation target")
-		}
+	if err := v.validateCredential(plan); err != nil {
+		return err
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
+	}
+	return nil
+}
+
+func (v Validator) validateCredential(plan Plan) error {
+	if v.Credential == nil {
+		return nil
+	}
+	if v.Credential.Validate(plan.CredentialSelector.Binding) != nil {
+		return errors.New("HF credential binding is stale")
+	}
+	if v.Requirement == nil {
+		return errors.New("HF credential requirement map is unavailable")
+	}
+	requirement, found := v.Requirement(plan.Operation)
+	target, targetErr := providercredential.TargetFromJSON(plan.Target)
+	if !found || targetErr != nil || !v.Credential.Evaluate(requirement, target).Allowed {
+		return errors.New("HF credential does not cover the operation target")
 	}
 	return nil
 }
@@ -376,15 +384,23 @@ func validate(plan Plan) error {
 }
 
 func validPlanIdentity(plan Plan) bool {
-	return plan.APIVersion == SchemaV1 &&
-		plan.OperationRevision == 1 &&
-		hfpolicy.IsOperation(plan.Operation) &&
-		strings.TrimSpace(plan.ClientID) != "" &&
-		strings.TrimSpace(plan.ClientRequestID) != "" &&
-		plan.CredentialSelector.Name == "primary" &&
-		validCredentialBinding(plan.CredentialSelector.Binding) &&
-		!plan.CreatedAt.IsZero() &&
-		plan.ExpiresAt.After(plan.CreatedAt)
+	return validPlanSchema(plan) && validPlanClient(plan) && validPlanCredential(plan.CredentialSelector) && validPlanTimes(plan)
+}
+
+func validPlanSchema(plan Plan) bool {
+	return plan.APIVersion == SchemaV1 && plan.OperationRevision == 1 && hfpolicy.IsOperation(plan.Operation)
+}
+
+func validPlanClient(plan Plan) bool {
+	return strings.TrimSpace(plan.ClientID) != "" && strings.TrimSpace(plan.ClientRequestID) != ""
+}
+
+func validPlanCredential(selector CredentialSelector) bool {
+	return selector.Name == "primary" && validCredentialBinding(selector.Binding)
+}
+
+func validPlanTimes(plan Plan) bool {
+	return !plan.CreatedAt.IsZero() && plan.ExpiresAt.After(plan.CreatedAt)
 }
 
 func validCredentialBinding(binding providercredential.Binding) bool {

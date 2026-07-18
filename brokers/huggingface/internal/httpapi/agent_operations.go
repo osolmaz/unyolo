@@ -88,12 +88,9 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 		return bkauthorization.GrantIntent{}, err
 	}
 	ruleIDs := runtimePolicyRuleIDs(preparation)
-	var binding providercredential.Binding
-	if s.credential != nil {
-		binding, err = s.credential.Binding()
-		if err != nil {
-			return bkauthorization.GrantIntent{}, errors.New("HF credential binding is unavailable")
-		}
+	binding, err := runtimeCredentialBinding(s.credential)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan),
 		string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt, binding)
@@ -105,6 +102,17 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 		hfplan.BindPresentation(&request, adapter.Present(preparation.Plan))
 	}
 	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+}
+
+func runtimeCredentialBinding(credential *providercredential.Service) (providercredential.Binding, error) {
+	if credential == nil {
+		return providercredential.Binding{}, nil
+	}
+	binding, err := credential.Binding()
+	if err != nil {
+		return providercredential.Binding{}, errors.New("HF credential binding is unavailable")
+	}
+	return binding, nil
 }
 
 func (s *Server) runtimePlanComponents(name string) (operations.Adapter, opcatalog.Descriptor, error) {

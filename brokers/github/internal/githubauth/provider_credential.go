@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/go-github/v88/github"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/providercredential"
 )
@@ -49,6 +50,10 @@ func (a ProviderAdapter) Inspect(ctx context.Context, secret *providercredential
 	if err != nil {
 		return providercredential.Snapshot{}, err
 	}
+	return a.inspectProvider(ctx, provider, privateKey)
+}
+
+func (a ProviderAdapter) inspectProvider(ctx context.Context, provider *appProvider, privateKey []byte) (providercredential.Snapshot, error) {
 	if err := provider.check(ctx); err != nil {
 		return providercredential.Snapshot{}, err
 	}
@@ -56,6 +61,10 @@ func (a ProviderAdapter) Inspect(ctx context.Context, secret *providercredential
 	if err != nil {
 		return providercredential.Snapshot{}, err
 	}
+	return a.snapshotFromInstallations(privateKey, installations)
+}
+
+func (a ProviderAdapter) snapshotFromInstallations(privateKey []byte, installations []*github.Installation) (providercredential.Snapshot, error) {
 	generation := a.Generation
 	if generation == 0 {
 		generation = 1
@@ -73,7 +82,7 @@ func (a ProviderAdapter) Inspect(ctx context.Context, secret *providercredential
 			capabilities = append(capabilities, providercredential.Capability{Domain: "github", Permission: name, AccessLevel: githubAccess(access), Resource: resource})
 		}
 	}
-	return providercredential.Normalize(providercredential.Snapshot{
+	return providercredential.Normalize(providercredential.Snapshot{ // #nosec G101 -- secret-free credential metadata.
 		Provider: "github", CredentialKind: "github_app", Subject: strings.TrimSpace(a.AppID), FingerprintSHA256: hex.EncodeToString(digest[:]),
 		Generation: generation, VerifiedAt: time.Now().UTC(), VerificationState: providercredential.VerificationValid, Capabilities: capabilities,
 	})

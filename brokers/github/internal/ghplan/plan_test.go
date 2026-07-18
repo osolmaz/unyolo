@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -249,6 +251,53 @@ func TestPlanValidationRejectsEachBoundary(t *testing.T) {
 		if _, err := canonicalObject(raw, maxTargetBytes); err == nil && string(raw) != `{}` {
 			t.Fatalf("invalid canonical object accepted: %q", raw[:min(len(raw), 20)])
 		}
+	}
+}
+
+func TestValidatorChecksSelectedGitHubCredential(t *testing.T) {
+	metadata := githubauth.Metadata{Kind: githubauth.KindInstallation, InstallationID: 42, APIHost: "api.github.com",
+		Permissions: map[string]string{"pull_requests": "write"}}
+	snapshot, err := githubauth.SnapshotForMetadata(metadata, 3, fixtureTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := testAdapterPlan()
+	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
+	requirement := func(string) (providercredential.Requirement, bool) {
+		return providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{
+			Domain: "github", Permission: "pull_requests", MinimumAccessLevel: providercredential.AccessWrite,
+		}}}}}, true
+	}
+	credential := func(Plan) (providercredential.Snapshot, error) { return snapshot, nil }
+	validator := Validator{Credential: credential, Requirement: requirement}
+	if err := validator.validateCredential(plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Validator{}).validateCredential(plan); err != nil {
+		t.Fatalf("nil credential = %v", err)
+	}
+	unbound := plan
+	unbound.CredentialSelector.Binding = providercredential.Binding{}
+	if err := validator.validateCredential(unbound); err != nil {
+		t.Fatalf("unbound development plan = %v", err)
+	}
+	if err := (Validator{Credential: credential}).validateCredential(plan); err == nil {
+		t.Fatal("missing requirement map was accepted")
+	}
+	if err := (Validator{Credential: func(Plan) (providercredential.Snapshot, error) {
+		return providercredential.Snapshot{}, errors.New("unavailable")
+	}, Requirement: requirement}).validateCredential(plan); err == nil {
+		t.Fatal("credential lookup failure was accepted")
+	}
+	if err := (Validator{Credential: credential, Requirement: func(string) (providercredential.Requirement, bool) {
+		return providercredential.Requirement{}, false
+	}}).validateCredential(plan); err == nil {
+		t.Fatal("missing operation requirement was accepted")
+	}
+	stale := plan
+	stale.CredentialSelector.Binding.Generation++
+	if err := validator.validateCredential(stale); err == nil {
+		t.Fatal("stale selected credential was accepted")
 	}
 }
 

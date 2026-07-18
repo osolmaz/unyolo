@@ -110,7 +110,7 @@ func discoveredMCPTools(ctx context.Context, getenv func(string) string) ([]map[
 	}
 	connection, err := loadOperationConnection(getenv)
 	if err != nil {
-		return tools, nil
+		return nil, err
 	}
 	client, err := connection.client()
 	if err != nil {
@@ -120,8 +120,12 @@ func discoveredMCPTools(ctx context.Context, getenv func(string) string) ([]map[
 	if err != nil {
 		return nil, err
 	}
-	available := make(map[string]struct{}, len(discovery.Operations))
-	for _, operation := range discovery.Operations {
+	return filterDiscoveredMCPTools(tools, discovery.Operations, getenv), nil
+}
+
+func filterDiscoveredMCPTools(tools []map[string]any, operations []string, getenv func(string) string) []map[string]any {
+	available := make(map[string]struct{}, len(operations))
+	for _, operation := range operations {
 		available[operation] = struct{}{}
 	}
 	filtered := tools[:0]
@@ -132,7 +136,7 @@ func discoveredMCPTools(ctx context.Context, getenv func(string) string) ([]map[
 			filtered = append(filtered, tool)
 		}
 	}
-	return filtered, nil
+	return filtered
 }
 
 func mcpExposure(getenv func(string) string) mcpcatalog.Exposure {

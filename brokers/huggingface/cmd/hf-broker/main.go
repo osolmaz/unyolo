@@ -61,10 +61,6 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 	return runCommandInput(ctx, getenv, os.Stdin, stdout, stderr, args)
 }
 
-func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
-	return runCommandInput(ctx, getenv, os.Stdin, stdout, stderr, args)
-}
-
 func runCommandInput(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	run, found := commandRunners[args[0]]
 	if !found {

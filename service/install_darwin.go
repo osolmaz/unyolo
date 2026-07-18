@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
-	"time"
 )
 
 // InstallLaunchd installs one system LaunchDaemon from a validated typed plan.
@@ -311,20 +310,7 @@ func waitForLaunchdReady(ctx context.Context, plan LaunchdInstallPlan) error {
 	if plan.ReadyCheck == nil {
 		return nil
 	}
-	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
-	defer cancel()
-	ticker := time.NewTicker(durationOr(plan.ReadyInterval, defaultReadinessInterval))
-	defer ticker.Stop()
-	for {
-		if err := plan.ReadyCheck(readyContext); err == nil && readyContext.Err() == nil {
-			return nil
-		}
-		select {
-		case <-readyContext.Done():
-			return errServiceReadinessFailed
-		case <-ticker.C:
-		}
-	}
+	return waitForReadiness(ctx, plan.ReadyCheck, plan.ReadyTimeout, plan.ReadyInterval)
 }
 
 func removeLaunchdManagedFiles(plan LaunchdInstallPlan) error {

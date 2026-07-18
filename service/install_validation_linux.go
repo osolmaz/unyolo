@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"time"
 )
 
 func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
@@ -17,30 +16,7 @@ func waitForSystemdReady(ctx context.Context, plan SystemdInstallPlan) error {
 		}
 		return nil
 	}
-	readyContext, cancel := context.WithTimeout(ctx, durationOr(plan.ReadyTimeout, defaultReadinessTimeout))
-	defer cancel()
-	return pollSystemdReadiness(readyContext, plan.ReadyCheck, durationOr(plan.ReadyInterval, defaultReadinessInterval))
-}
-
-func pollSystemdReadiness(ctx context.Context, check ReadinessCheck, interval time.Duration) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		if ctx.Err() != nil {
-			return errServiceReadinessFailed
-		}
-		if err := check(ctx); err == nil {
-			if ctx.Err() != nil {
-				return errServiceReadinessFailed
-			}
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return errServiceReadinessFailed
-		case <-ticker.C:
-		}
-	}
+	return waitForReadiness(ctx, plan.ReadyCheck, plan.ReadyTimeout, plan.ReadyInterval)
 }
 
 func validateManagedFileArea(area ManagedFileArea, name string) error {

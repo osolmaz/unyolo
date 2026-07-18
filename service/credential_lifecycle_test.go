@@ -98,7 +98,7 @@ func TestCredentialReplacementRollbackAndLifecycleAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	files := []ManagedFile{
 		{Area: ManagedFileConfig, Name: "token", Data: []byte("new-token"), Mode: 0o600, Owner: ManagedFileOwnerService, CredentialClass: "provider-access"},
 		{Area: ManagedFileConfig, Name: "metadata", Data: []byte("new-metadata"), Mode: 0o600, Owner: ManagedFileOwnerRoot, CredentialClass: "provider-metadata"},

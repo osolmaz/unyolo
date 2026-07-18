@@ -28,83 +28,98 @@ func hfPermission(operation string) (permission, binding string, known bool) {
 	if !found {
 		return "", "", false
 	}
-	switch family {
-	case "auth", "identity", "catalog":
-		return "", "", true
-	case "bucket":
-		return readWritePermission(action, "repo.content.read", "repo.write", "namespace")
-	case "collection":
-		return readWritePermission(action, "collection.read", "collection.write", "owner")
-	case "dataset":
-		return "repo.content.read", "owner", true
-	case "discussion":
-		if readAction(action) {
-			return "repo.content.read", "owner", true
-		}
-		return "discussion.write", "owner", true
-	case "endpoint":
-		if action == "catalog.list" {
-			return "", "", true
-		}
-		return "inference.endpoints.write", "namespace", true
-	case "git":
-		return readWritePermission(action, "repo.content.read", "repo.write", "owner")
-	case "inference":
-		if action == "models.list" {
-			return "", "", true
-		}
-		if strings.HasPrefix(action, "endpoint.") {
-			return "inference.endpoints.infer.write", "namespace", true
-		}
-		return "inference.serverless.write", "", true
-	case "job", "scheduled_job", "sandbox":
-		return "job.write", "namespace", true
-	case "notification":
-		if action == "list" {
-			return "user.notifications.read", "", true
-		}
-		if action == "settings.update" {
-			return "user.settings.notifications.write", "", true
-		}
-		return "user.notifications.write", "", true
-	case "organization":
-		return organizationPermission(action)
-	case "paper":
-		return "user.papers.write", "", true
-	case "provisioning":
-		if strings.HasSuffix(action, ".read") || strings.HasSuffix(action, ".list") {
-			return "org.serviceAccounts.read", "owner", true
-		}
-		return "org.serviceAccounts.write", "owner", true
-	case "pull_request":
-		return "repo.write", "owner", true
-	case "repo":
-		return repositoryPermission(action)
-	case "resource_group":
-		return "resourceGroup.write", "owner", true
-	case "scim":
-		if readAction(action) {
-			return "org.members.read", "owner", true
-		}
-		return "org.members.write", "owner", true
-	case "service_account":
-		if readAction(action) {
-			return "org.serviceAccounts.read", "owner", true
-		}
-		return "org.serviceAccounts.write", "owner", true
-	case "space":
-		return readWritePermission(action, "repo.content.read", "repo.write", "owner")
-	case "sql_embed":
-		return "sql-console.embed.write", "owner", true
-	case "user":
-		return userPermission(action)
-	case "watch":
-		return "user.preferences.write", "", true
-	case "webhook":
-		return readWritePermission(action, "user.webhooks.read", "user.webhooks.write", "owner")
-	default:
+	if fixed, ok := fixedFamilyPermissions[family]; ok {
+		return fixed.permission, fixed.binding, true
+	}
+	resolver, ok := familyPermissionResolvers[family]
+	if !ok {
 		return "", "", false
 	}
+	return resolver(action)
+}
+
+type permissionRule struct {
+	permission string
+	binding    string
+}
+
+type permissionResolver func(string) (string, string, bool)
+
+var fixedFamilyPermissions = map[string]permissionRule{
+	"auth": {}, "identity": {}, "catalog": {},
+	"dataset": {permission: "repo.content.read", binding: "owner"},
+	"job":     {permission: "job.write", binding: "namespace"}, "scheduled_job": {permission: "job.write", binding: "namespace"},
+	"sandbox": {permission: "job.write", binding: "namespace"},
+	"paper":   {permission: "user.papers.write"}, "pull_request": {permission: "repo.write", binding: "owner"},
+	"resource_group": {permission: "resourceGroup.write", binding: "owner"},
+	"sql_embed":      {permission: "sql-console.embed.write", binding: "owner"}, "watch": {permission: "user.preferences.write"},
+}
+
+var familyPermissionResolvers = map[string]permissionResolver{
+	"bucket": func(action string) (string, string, bool) {
+		return readWritePermission(action, "repo.content.read", "repo.write", "namespace")
+	},
+	"collection": func(action string) (string, string, bool) {
+		return readWritePermission(action, "collection.read", "collection.write", "owner")
+	},
+	"discussion": discussionPermission, "endpoint": endpointPermission,
+	"git": func(action string) (string, string, bool) {
+		return readWritePermission(action, "repo.content.read", "repo.write", "owner")
+	},
+	"inference": inferencePermission, "notification": notificationPermission, "organization": organizationPermission,
+	"provisioning": provisioningPermission, "repo": repositoryPermission,
+	"scim": func(action string) (string, string, bool) {
+		return readWritePermission(action, "org.members.read", "org.members.write", "owner")
+	},
+	"service_account": func(action string) (string, string, bool) {
+		return readWritePermission(action, "org.serviceAccounts.read", "org.serviceAccounts.write", "owner")
+	},
+	"space": func(action string) (string, string, bool) {
+		return readWritePermission(action, "repo.content.read", "repo.write", "owner")
+	},
+	"user": userPermission,
+	"webhook": func(action string) (string, string, bool) {
+		return readWritePermission(action, "user.webhooks.read", "user.webhooks.write", "owner")
+	},
+}
+
+func discussionPermission(action string) (string, string, bool) {
+	if readAction(action) {
+		return "repo.content.read", "owner", true
+	}
+	return "discussion.write", "owner", true
+}
+
+func endpointPermission(action string) (string, string, bool) {
+	if action == "catalog.list" {
+		return "", "", true
+	}
+	return "inference.endpoints.write", "namespace", true
+}
+
+func inferencePermission(action string) (string, string, bool) {
+	if action == "models.list" {
+		return "", "", true
+	}
+	if strings.HasPrefix(action, "endpoint.") {
+		return "inference.endpoints.infer.write", "namespace", true
+	}
+	return "inference.serverless.write", "", true
+}
+
+func notificationPermission(action string) (string, string, bool) {
+	switch action {
+	case "list":
+		return "user.notifications.read", "", true
+	case "settings.update":
+		return "user.settings.notifications.write", "", true
+	default:
+		return "user.notifications.write", "", true
+	}
+}
+
+func provisioningPermission(action string) (string, string, bool) {
+	return readWritePermission(action, "org.serviceAccounts.read", "org.serviceAccounts.write", "owner")
 }
 
 func readWritePermission(action, read, write, binding string) (string, string, bool) {
@@ -115,28 +130,35 @@ func readWritePermission(action, read, write, binding string) (string, string, b
 }
 
 func readAction(action string) bool {
-	return action == "list" || action == "read" || action == "exists" || strings.HasSuffix(action, ".list") ||
-		strings.HasSuffix(action, ".read") || strings.HasSuffix(action, ".info") || strings.HasSuffix(action, ".verify") ||
-		strings.HasSuffix(action, ".connect") || strings.Contains(action, "logs") || strings.Contains(action, "metrics")
+	if action == "list" || action == "read" || action == "exists" {
+		return true
+	}
+	for _, suffix := range []string{".list", ".read", ".info", ".verify", ".connect"} {
+		if strings.HasSuffix(action, suffix) {
+			return true
+		}
+	}
+	return strings.Contains(action, "logs") || strings.Contains(action, "metrics")
 }
 
 func organizationPermission(action string) (string, string, bool) {
-	switch {
-	case action == "audit.export":
-		return "org.auditLog.write", "owner", true
-	case action == "billing.read":
-		return "org.billing.read", "owner", true
-	case strings.HasPrefix(action, "member."):
-		return readWritePermission(action, "org.members.read", "org.members.write", "owner")
-	case strings.HasPrefix(action, "network_security."):
-		return readWritePermission(action, "org.networkSecurity.read", "org.networkSecurity.write", "owner")
-	case action == "repositories.list":
-		return "org.repos.read", "owner", true
-	case action == "overview.read":
-		return "org.read", "owner", true
-	default:
-		return "", "", false
+	if fixed, ok := organizationFixedPermissions[action]; ok {
+		return fixed.permission, fixed.binding, true
 	}
+	if strings.HasPrefix(action, "member.") {
+		return readWritePermission(action, "org.members.read", "org.members.write", "owner")
+	}
+	if strings.HasPrefix(action, "network_security.") {
+		return readWritePermission(action, "org.networkSecurity.read", "org.networkSecurity.write", "owner")
+	}
+	return "", "", false
+}
+
+var organizationFixedPermissions = map[string]permissionRule{
+	"audit.export":      {permission: "org.auditLog.write", binding: "owner"},
+	"billing.read":      {permission: "org.billing.read", binding: "owner"},
+	"repositories.list": {permission: "org.repos.read", binding: "owner"},
+	"overview.read":     {permission: "org.read", binding: "owner"},
 }
 
 func repositoryPermission(action string) (string, string, bool) {
@@ -145,11 +167,23 @@ func repositoryPermission(action string) (string, string, bool) {
 		return "repo.access.read", "owner", true
 	case strings.HasPrefix(action, "access."):
 		return "repo.write", "owner", true
-	case readAction(action) || strings.Contains(action, "metadata") || strings.Contains(action, "checksums") || strings.Contains(action, "snapshot") || strings.Contains(action, "notebook") || strings.Contains(action, "commits") || strings.Contains(action, "refs") || strings.Contains(action, "lfs.list"):
+	case repositoryReadAction(action):
 		return "repo.content.read", "owner", true
 	default:
 		return "repo.write", "owner", true
 	}
+}
+
+func repositoryReadAction(action string) bool {
+	if readAction(action) {
+		return true
+	}
+	for _, marker := range []string{"metadata", "checksums", "snapshot", "notebook", "commits", "refs", "lfs.list"} {
+		if strings.Contains(action, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func userPermission(action string) (string, string, bool) {

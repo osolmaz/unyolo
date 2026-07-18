@@ -93,6 +93,16 @@ type Target map[string]string
 // TargetFromJSON projects scalar canonical target fields and a conventional
 // owner/name resource key for provider capability matching.
 func TargetFromJSON(data json.RawMessage) (Target, error) {
+	raw, err := decodeTargetObject(data)
+	if err != nil {
+		return nil, err
+	}
+	target := scalarTarget(raw)
+	addConventionalResource(target)
+	return target, nil
+}
+
+func decodeTargetObject(data json.RawMessage) (map[string]json.RawMessage, error) {
 	if len(data) == 0 || len(data) > 64*1024 {
 		return nil, errors.New("provider credential target is invalid")
 	}
@@ -106,6 +116,10 @@ func TargetFromJSON(data json.RawMessage) (Target, error) {
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, errors.New("provider credential target is invalid")
 	}
+	return raw, nil
+}
+
+func scalarTarget(raw map[string]json.RawMessage) Target {
 	target := Target{}
 	for name, value := range raw {
 		var text string
@@ -113,6 +127,10 @@ func TargetFromJSON(data json.RawMessage) (Target, error) {
 			target[name] = text
 		}
 	}
+	return target
+}
+
+func addConventionalResource(target Target) {
 	owner := target["owner"]
 	if owner == "" {
 		owner = target["namespace"]
@@ -124,7 +142,6 @@ func TargetFromJSON(data json.RawMessage) (Target, error) {
 	if owner != "" && name != "" {
 		target["resource"] = owner + "/" + name
 	}
-	return target, nil
 }
 
 // Binding is persisted in immutable operation plans.
@@ -179,6 +196,10 @@ func validateSnapshotIdentity(snapshot Snapshot) error {
 	if !validName(snapshot.Provider) || !validName(snapshot.CredentialKind) || strings.TrimSpace(snapshot.Subject) == "" {
 		return errors.New("provider credential snapshot identity is invalid")
 	}
+	return validateSnapshotVerification(snapshot)
+}
+
+func validateSnapshotVerification(snapshot Snapshot) error {
 	if len(snapshot.FingerprintSHA256) != sha256.Size*2 {
 		return errors.New("provider credential fingerprint is invalid")
 	}
@@ -259,24 +280,22 @@ func CanSatisfy(snapshot Snapshot, requirement Requirement, now time.Time) bool 
 		return false
 	}
 	for _, clause := range requirement.AllOf {
-		matched := false
-		for _, need := range clause.Alternatives {
-			for _, capability := range snapshot.Capabilities {
-				if capability.Permission == need.Permission && (need.Domain == "" || capability.Domain == need.Domain) &&
-					accessRank(capability.AccessLevel) >= accessRank(need.MinimumAccessLevel) {
-					matched = true
-					break
-				}
-			}
-			if matched {
-				break
-			}
-		}
-		if !matched {
+		if !clauseCanBeSatisfied(snapshot.Capabilities, clause) {
 			return false
 		}
 	}
 	return true
+}
+
+func clauseCanBeSatisfied(capabilities []Capability, clause AnyOf) bool {
+	for _, need := range clause.Alternatives {
+		for _, capability := range capabilities {
+			if capabilityMeetsNeed(capability, need) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func clauseSatisfied(capabilities []Capability, clause AnyOf, target Target) bool {
@@ -292,18 +311,31 @@ func clauseSatisfied(capabilities []Capability, clause AnyOf, target Target) boo
 }
 
 func needSatisfied(capabilities []Capability, need Need, target Target) bool {
-	if !validPermission(need.Permission) || accessRank(need.MinimumAccessLevel) < 0 {
+	if !validNeed(need) {
 		return false
 	}
 	for _, capability := range capabilities {
-		if capability.Permission != need.Permission || need.Domain != "" && capability.Domain != need.Domain || accessRank(capability.AccessLevel) < accessRank(need.MinimumAccessLevel) {
+		if !capabilityMeetsNeed(capability, need) {
 			continue
 		}
-		if capability.Resource.Name == "" || need.TargetBinding != "" && strings.EqualFold(capability.Resource.Name, target[need.TargetBinding]) {
+		if capabilityMatchesTarget(capability, need, target) {
 			return true
 		}
 	}
 	return false
+}
+
+func validNeed(need Need) bool {
+	return validPermission(need.Permission) && accessRank(need.MinimumAccessLevel) >= 0
+}
+
+func capabilityMatchesTarget(capability Capability, need Need, target Target) bool {
+	return capability.Resource.Name == "" || need.TargetBinding != "" && strings.EqualFold(capability.Resource.Name, target[need.TargetBinding])
+}
+
+func capabilityMeetsNeed(capability Capability, need Need) bool {
+	return capability.Permission == need.Permission && (need.Domain == "" || capability.Domain == need.Domain) &&
+		accessRank(capability.AccessLevel) >= accessRank(need.MinimumAccessLevel)
 }
 
 func clauseLabel(clause AnyOf) string {

@@ -125,7 +125,7 @@ func TestCredentialReplacementHelpersRestoreAndCheckReadiness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	files := []ManagedFile{
 		{Area: ManagedFileConfig, Name: "old", Data: []byte("after"), Mode: 0o600, Owner: ManagedFileOwnerService, CredentialClass: "test"},
 		{Area: ManagedFileConfig, Name: "new", Data: []byte("new"), Mode: 0o600, Owner: ManagedFileOwnerService, CredentialClass: "test"},
@@ -174,6 +174,26 @@ func TestOpenCredentialRootRejectsRegularFile(t *testing.T) {
 	}
 	if _, err := openCredentialRoot(path); err == nil {
 		t.Fatal("regular file accepted as credential root")
+	}
+}
+
+func TestCredentialOwnerIdentityHelpers(t *testing.T) {
+	plan := credentialTestPlan(t.TempDir(), []ManagedFile{{Area: ManagedFileConfig, Name: "token", Data: []byte("value"), Mode: 0o600,
+		Owner: ManagedFileOwnerService, CredentialClass: "test"}})
+	plan.AllowNonRoot = false
+	plan.User, plan.Group = currentIdentity(t)
+	uid, gid, err := credentialOwnerIDs(plan)
+	if err != nil || uid < 0 || gid < 0 {
+		t.Fatalf("credential owner IDs = %d:%d, %v", uid, gid, err)
+	}
+	plan.User = "brokerkit-user-does-not-exist"
+	if _, _, err := credentialOwnerIDs(plan); err == nil {
+		t.Fatal("missing credential user was accepted")
+	}
+	plan.User, plan.Group = currentIdentity(t)
+	plan.Group = "brokerkit-group-does-not-exist"
+	if _, _, err := credentialOwnerIDs(plan); err == nil {
+		t.Fatal("missing credential group was accepted")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/osolmaz/brokerkit/clienthttp"
 )
@@ -53,5 +54,25 @@ func HTTPReadyCheck(rawURL string, client *http.Client) ReadinessCheck {
 			return fmt.Errorf("readiness endpoint returned HTTP %d", response.StatusCode)
 		}
 		return nil
+	}
+}
+
+func waitForReadiness(ctx context.Context, check ReadinessCheck, timeout, interval time.Duration) error {
+	readyContext, cancel := context.WithTimeout(ctx, durationOr(timeout, defaultReadinessTimeout))
+	defer cancel()
+	ticker := time.NewTicker(durationOr(interval, defaultReadinessInterval))
+	defer ticker.Stop()
+	for {
+		if readyContext.Err() != nil {
+			return errServiceReadinessFailed
+		}
+		if err := check(readyContext); err == nil && readyContext.Err() == nil {
+			return nil
+		}
+		select {
+		case <-readyContext.Done():
+			return errServiceReadinessFailed
+		case <-ticker.C:
+		}
 	}
 }

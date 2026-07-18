@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
@@ -248,7 +247,7 @@ func BindPrepared(request *grants.Request, prepared grants.ImmutablePlan) {
 
 type Validator struct {
 	Store       *Store
-	Credential  func(Plan) (githubauth.Metadata, error)
+	Credential  func(Plan) (providercredential.Snapshot, error)
 	Requirement func(string) (providercredential.Requirement, bool)
 }
 
@@ -261,31 +260,49 @@ func (v Validator) ValidateExecution(grant grants.Grant) error {
 }
 
 func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConstraints) error {
-	if v.Store == nil {
-		return errors.New("GitHub plan store is unavailable")
-	}
-	if grant.Metadata[MetadataSchema] != SchemaV1 {
-		return errors.New("GitHub grant plan schema is missing or unsupported")
-	}
-	plan, err := v.Store.Get(grant.Metadata[MetadataDigest])
+	plan, requestedDuration, requestedMaxUses, err := v.loadGrantPlan(grant)
 	if err != nil {
 		return err
 	}
-	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
-	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
-		return errors.New("GitHub grant does not match its immutable plan")
-	}
-	if v.Credential != nil && plan.CredentialSelector.Binding.Generation > 0 {
-		metadata, credentialErr := v.Credential(plan)
-		snapshot, snapshotErr := githubauth.SnapshotForMetadata(metadata, plan.CredentialSelector.Binding.Generation, plan.CreatedAt)
-		requirement, found := v.Requirement(plan.Operation)
-		if credentialErr != nil || snapshotErr != nil || !found || providercredential.ValidateBinding(snapshot, plan.CredentialSelector.Binding) != nil ||
-			!providercredential.EvaluateAt(snapshot, requirement, nil, plan.CreatedAt).Allowed {
-			return errors.New("GitHub credential binding is stale or insufficient")
-		}
+	if err := v.validateCredential(plan); err != nil {
+		return err
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
+	}
+	return nil
+}
+
+func (v Validator) loadGrantPlan(grant grants.Grant) (Plan, time.Duration, usebudget.Limit, error) {
+	if v.Store == nil {
+		return Plan{}, 0, 0, errors.New("GitHub plan store is unavailable")
+	}
+	if grant.Metadata[MetadataSchema] != SchemaV1 {
+		return Plan{}, 0, 0, errors.New("GitHub grant plan schema is missing or unsupported")
+	}
+	plan, err := v.Store.Get(grant.Metadata[MetadataDigest])
+	if err != nil {
+		return Plan{}, 0, 0, err
+	}
+	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
+	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
+		return Plan{}, 0, 0, errors.New("GitHub grant does not match its immutable plan")
+	}
+	return plan, requestedDuration, requestedMaxUses, nil
+}
+
+func (v Validator) validateCredential(plan Plan) error {
+	if v.Credential == nil || plan.CredentialSelector.Binding.Generation == 0 {
+		return nil
+	}
+	if v.Requirement == nil {
+		return errors.New("GitHub credential requirement map is unavailable")
+	}
+	snapshot, credentialErr := v.Credential(plan)
+	requirement, found := v.Requirement(plan.Operation)
+	if credentialErr != nil || !found || providercredential.ValidateBinding(snapshot, plan.CredentialSelector.Binding) != nil ||
+		!providercredential.EvaluateAt(snapshot, requirement, nil, plan.CreatedAt).Allowed {
+		return errors.New("GitHub credential binding is stale or insufficient")
 	}
 	return nil
 }
