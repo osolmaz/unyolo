@@ -131,7 +131,7 @@ describe("BrokerKitUiApi", () => {
         api: new BrokerKitUiApi(parseUiBootstrap(delegated)),
         basePath: "/trusted-host/api/brokerkit",
         token: delegatedToken,
-        credentials: "include",
+        credentials: "omit",
       },
     ];
     for (const value of cases) {
@@ -236,7 +236,7 @@ describe("BrokerKitUiApi", () => {
     expect(meta.remove).toHaveBeenCalledOnce();
     expect(api.canDecide()).toBe(true);
     expect(fetchMock).toHaveBeenCalledOnce();
-    expectBrowserSession(fetchCall(fetchMock, 0)[1], "e".repeat(48), "include");
+    expectBrowserSession(fetchCall(fetchMock, 0)[1], "e".repeat(48), "omit");
   });
 
   it("consumes a trusted embedded delegated session while framed", async () => {
@@ -267,7 +267,7 @@ describe("BrokerKitUiApi", () => {
     expect(api.canDecide()).toBe(false);
     expect(parent.postMessage).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledOnce();
-    expectBrowserSession(fetchCall(fetchMock, 0)[1], "e".repeat(48), "include");
+    expectBrowserSession(fetchCall(fetchMock, 0)[1], "e".repeat(48), "omit");
   });
 
   it("accepts decision authority inside a delegated frame", async () => {
@@ -292,7 +292,7 @@ describe("BrokerKitUiApi", () => {
 
     expect(meta.remove).toHaveBeenCalledOnce();
     expect(api.canDecide()).toBe(true);
-    expectBrowserSession(fetchCall(fetchMock, 0)[1], "e".repeat(48), "include");
+    expectBrowserSession(fetchCall(fetchMock, 0)[1], "e".repeat(48), "omit");
   });
 
   it("renews delegated authority with the current browser session", async () => {
@@ -338,8 +338,8 @@ describe("BrokerKitUiApi", () => {
     expect(fetchCall(fetchMock, 1)[0]).toBe(
       "/trusted-host/api/brokerkit/session",
     );
-    expectBrowserSession(fetchCall(fetchMock, 1)[1], "f".repeat(48), "include");
-    expectBrowserSession(fetchCall(fetchMock, 2)[1], "r".repeat(48), "include");
+    expectBrowserSession(fetchCall(fetchMock, 1)[1], "f".repeat(48), "omit");
+    expectBrowserSession(fetchCall(fetchMock, 2)[1], "r".repeat(48), "omit");
   });
 
   it("shares one renewal across concurrent delegated requests", async () => {
@@ -385,7 +385,7 @@ describe("BrokerKitUiApi", () => {
     const renewals = fetchCalls(fetchMock).filter(
       ([url, init]) =>
         url === "/trusted-host/api/brokerkit/session" &&
-        (init as RequestInit).credentials === "include",
+        (init as RequestInit).credentials === "omit",
     );
     expect(renewals).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -530,7 +530,7 @@ describe("BrokerKitUiApi", () => {
     await new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot();
 
     expect(parent.postMessage).toHaveBeenCalledOnce();
-    expectBrowserSession(fetchCall(fetchMock, 0)[1], "d".repeat(48), "include");
+    expectBrowserSession(fetchCall(fetchMock, 0)[1], "d".repeat(48), "omit");
   });
 
   it("renews framed delegated authority through the parent bridge", async () => {
@@ -586,7 +586,7 @@ describe("BrokerKitUiApi", () => {
 
     expect(parent.postMessage).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expectBrowserSession(fetchCall(fetchMock, 1)[1], "r".repeat(48), "include");
+    expectBrowserSession(fetchCall(fetchMock, 1)[1], "r".repeat(48), "omit");
   });
 
   it("strips caller authentication fields before applying the session", () => {
