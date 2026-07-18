@@ -61,6 +61,34 @@ func (p *appProvider) repositoryInstallation(ctx context.Context, owner, repo st
 	return installation, nil
 }
 
+func (p *appProvider) installation(ctx context.Context, id int64) (*github.Installation, error) {
+	if !p.available() || id <= 0 {
+		return nil, errors.New("GitHub installation lookup is invalid")
+	}
+	installation, _, err := p.client.Apps.GetInstallation(ctx, id)
+	if err != nil {
+		return nil, classifyAPIError(err)
+	}
+	if !availableInstallation(installation) {
+		return nil, errors.New("GitHub installation is unavailable")
+	}
+	return installation, nil
+}
+
+func (p *appProvider) repositoryInstallationByID(ctx context.Context, id int64) (*github.Installation, error) {
+	if !p.available() || id <= 0 {
+		return nil, errors.New("GitHub repository installation lookup is invalid")
+	}
+	installation, _, err := p.client.Apps.GetRepositoryInstallationByID(ctx, id)
+	if err != nil {
+		return nil, classifyAPIError(err)
+	}
+	if !availableInstallation(installation) {
+		return nil, errors.New("GitHub repository installation is unavailable")
+	}
+	return installation, nil
+}
+
 func (p *appProvider) installations(ctx context.Context) ([]*github.Installation, error) {
 	if !p.available() {
 		return nil, errors.New("GitHub App credential is unavailable")

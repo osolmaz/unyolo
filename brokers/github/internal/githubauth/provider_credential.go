@@ -64,6 +64,82 @@ func (a ProviderAdapter) inspectProvider(ctx context.Context, provider *appProvi
 	return a.snapshotFromInstallations(privateKey, installations)
 }
 
+// CurrentSnapshot revalidates the exact selected authority against GitHub
+// before reconstructing its secret-free operation binding.
+func (m *Manager) CurrentSnapshot(ctx context.Context, selected Metadata, generation uint64, now time.Time) (providercredential.Snapshot, error) {
+	if m == nil {
+		return providercredential.Snapshot{}, errors.New("GitHub credential provider is unavailable")
+	}
+	current, err := m.currentMetadata(ctx, selected)
+	if err != nil {
+		return providercredential.Snapshot{}, err
+	}
+	return SnapshotForMetadata(current, generation, now)
+}
+
+func (m *Manager) currentMetadata(ctx context.Context, selected Metadata) (Metadata, error) {
+	switch selected.Kind {
+	case KindAppJWT:
+		if err := m.CheckApp(ctx); err != nil {
+			return Metadata{}, err
+		}
+	case KindInstallation:
+		if err := m.validateInstallationMetadata(ctx, selected); err != nil {
+			return Metadata{}, err
+		}
+	case KindUser:
+		credential, err := m.UserCredential(ctx, selected.UserID)
+		if err != nil {
+			return Metadata{}, err
+		}
+		selected = credential.Metadata()
+	default:
+		return Metadata{}, errors.New("GitHub credential kind cannot be revalidated")
+	}
+	selected.APIHost = m.apiURL.Host
+	selected.ExpiresAt = time.Time{}
+	return selected, nil
+}
+
+func (m *Manager) validateInstallationMetadata(ctx context.Context, selected Metadata) error {
+	if m.app == nil || selected.InstallationID <= 0 {
+		return errors.New("GitHub App installation is unavailable")
+	}
+	installation, err := m.app.installation(ctx, selected.InstallationID)
+	if err != nil {
+		return err
+	}
+	if !permissionsCover(installationPermissionMap(installation.GetPermissions()), selected.Permissions) {
+		return errors.New("GitHub installation permissions no longer satisfy the selected authority")
+	}
+	repositoryIDs := canonicalRepositoryIDs(selected.RepositoryIDs)
+	if len(repositoryIDs) != len(selected.RepositoryIDs) {
+		return errors.New("GitHub repository selection is invalid")
+	}
+	for _, repositoryID := range repositoryIDs {
+		repositoryInstallation, repositoryErr := m.app.repositoryInstallationByID(ctx, repositoryID)
+		if repositoryErr != nil {
+			return repositoryErr
+		}
+		if repositoryInstallation.GetID() != selected.InstallationID {
+			return errors.New("GitHub repository is no longer available to the selected installation")
+		}
+	}
+	return nil
+}
+
+func permissionsCover(current, required map[string]string) bool {
+	for name, requiredAccess := range required {
+		currentAccess := githubAccess(current[name])
+		requiredLevel := githubAccess(requiredAccess)
+		if currentAccess == providercredential.AccessNone || requiredLevel == providercredential.AccessNone ||
+			requiredLevel == providercredential.AccessWrite && currentAccess != providercredential.AccessWrite {
+			return false
+		}
+	}
+	return true
+}
+
 func (a ProviderAdapter) snapshotFromInstallations(privateKey []byte, installations []*github.Installation) (providercredential.Snapshot, error) {
 	generation := a.Generation
 	if generation == 0 {

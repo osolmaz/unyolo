@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/serverhttp"
 	"github.com/osolmaz/brokerkit/statecmd"
@@ -195,11 +198,68 @@ func activeCredentialService(ctx context.Context, cfg config.Config) (*providerc
 		return nil, errors.New("HF provider credential is unavailable")
 	}
 	defer secret.Clear()
-	snapshot, err := (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: cfg.UpstreamHubURL, Client: client}, Generation: 1}).Inspect(ctx, secret)
+	status, err := loadActiveCredentialStatus(cfg.HFTokenFile)
+	if err != nil {
+		return nil, err
+	}
+	generation := uint64(1)
+	if status != nil {
+		generation = status.Snapshot.Generation
+	}
+	snapshot, err := (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: cfg.UpstreamHubURL, Client: client}, Generation: generation}).Inspect(ctx, secret)
 	if err != nil {
 		return nil, fmt.Errorf("inspect HF provider credential: %w", err)
 	}
+	if status != nil && snapshot.FingerprintSHA256 != status.Snapshot.FingerprintSHA256 {
+		return nil, errors.New("HF credential metadata does not match the active credential; run hf-broker credential repair")
+	}
 	return providercredential.NewService(snapshot)
+}
+
+func loadActiveCredentialStatus(tokenFile string) (*credentialStatus, error) {
+	tokenFile = strings.TrimSpace(tokenFile)
+	if tokenFile == "" {
+		return nil, nil
+	}
+	path := filepath.Join(filepath.Dir(tokenFile), credentialStatusFileName)
+	data, found, err := readActiveCredentialStatus(path)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, nil
+	}
+	return decodeActiveCredentialStatus(data)
+}
+
+func readActiveCredentialStatus(path string) ([]byte, bool, error) {
+	file, err := os.Open(path) // #nosec G304 -- derived from the operator-configured credential file.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.New("HF credential metadata is unavailable; run hf-broker credential repair")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxCredentialStatusBytes+1))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || len(data) > maxCredentialStatusBytes {
+		return nil, false, errors.New("HF credential metadata is invalid; run hf-broker credential repair")
+	}
+	return data, true, nil
+}
+
+func decodeActiveCredentialStatus(data []byte) (*credentialStatus, error) {
+	var status credentialStatus
+	if strictjson.Decode(data, &status, true) != nil || status.Status != "valid" {
+		return nil, errors.New("HF credential metadata is invalid; run hf-broker credential repair")
+	}
+	normalized, err := providercredential.Normalize(status.Snapshot)
+	if err != nil || normalized.Provider != "huggingface" || normalized.CredentialKind != "fine_grained_user_token" ||
+		normalized.CapabilityDigest != status.Snapshot.CapabilityDigest {
+		return nil, errors.New("HF credential metadata is invalid; run hf-broker credential repair")
+	}
+	status.Snapshot = normalized
+	return &status, nil
 }
 
 func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverhttp.Binding, error) {

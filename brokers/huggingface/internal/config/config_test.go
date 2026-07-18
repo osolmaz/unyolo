@@ -54,8 +54,8 @@ func TestLoadHFTokenFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.HFToken != "hf_token_value" {
-		t.Fatalf("HFToken = %q, want file token", cfg.HFToken)
+	if cfg.HFToken != "hf_token_value" || cfg.HFTokenFile != tokenFile {
+		t.Fatalf("HF credential config = token %q file %q", cfg.HFToken, cfg.HFTokenFile)
 	}
 }
 

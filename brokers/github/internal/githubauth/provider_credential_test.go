@@ -1,6 +1,7 @@
 package githubauth
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -68,6 +69,43 @@ func TestProviderAdapterInspectsAppAndInstallations(t *testing.T) {
 	if snapshot.Generation != 4 || snapshot.Subject != "12345" || !providercredential.CanSatisfy(snapshot,
 		providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{Domain: "github", Permission: "issues", MinimumAccessLevel: providercredential.AccessWrite}}}}}, time.Now()) {
 		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestCurrentSnapshotRevalidatesInstallationAuthority(t *testing.T) {
+	permissions := "{\"contents\":\"read\"}"
+	repositoryInstallationID := int64(42)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/app/installations/42":
+			_, _ = io.WriteString(writer, "{\"id\":42,\"account\":{\"login\":\"acme\"},\"permissions\":"+permissions+"}")
+		case "/repositories/99/installation":
+			_, _ = io.WriteString(writer, fmt.Sprintf("{\"id\":%d,\"account\":{\"login\":\"acme\"},\"permissions\":%s}", repositoryInstallationID, permissions))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	base, _ := url.Parse(server.URL)
+	manager, err := New(Config{AppID: "12345", AppPrivateKey: testPrivateKey(t), APIBaseURL: base, WebBaseURL: base, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := Metadata{Kind: KindInstallation, InstallationID: 42, RepositoryIDs: []int64{99},
+		Permissions: map[string]string{"contents": "read"}, APIHost: base.Host}
+	snapshot, err := manager.CurrentSnapshot(t.Context(), selected, 7, time.Now())
+	if err != nil || snapshot.Generation != 7 {
+		t.Fatalf("current snapshot = %+v, %v", snapshot, err)
+	}
+	selected.Permissions["contents"] = "write"
+	if _, err := manager.CurrentSnapshot(t.Context(), selected, 7, time.Now()); err == nil {
+		t.Fatal("reduced installation permission was accepted")
+	}
+	selected.Permissions["contents"] = "read"
+	repositoryInstallationID = 43
+	if _, err := manager.CurrentSnapshot(t.Context(), selected, 7, time.Now()); err == nil {
+		t.Fatal("repository reassigned to another installation was accepted")
 	}
 }
 

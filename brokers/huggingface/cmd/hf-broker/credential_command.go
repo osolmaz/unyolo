@@ -26,7 +26,10 @@ import (
 	bkservice "github.com/osolmaz/brokerkit/service"
 )
 
-const credentialStatusFileName = "credential-status.json" // #nosec G101 -- this is a metadata filename, not a credential.
+const (
+	credentialStatusFileName = "credential-status.json" // #nosec G101 -- this is a metadata filename, not a credential.
+	maxCredentialStatusBytes = 256 * 1024
+)
 
 type credentialDependencies struct {
 	inspect     func(context.Context, string, string, uint64) (providercredential.Snapshot, error)

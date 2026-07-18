@@ -104,6 +104,7 @@ func newServerWithCore(cfg config.Config, brokerPolicy *policy.Policy, core core
 	if err != nil {
 		return nil, err
 	}
+	core.credentialResolver.manager = appSource
 	operationStore, admissionController, err := newAdmissionDependencies(cfg, core)
 	if err != nil {
 		return nil, err
@@ -289,15 +290,16 @@ func (s *Server) configureSealedPayloads() error {
 }
 
 type coreDependencies struct {
-	database  *state.Database
-	grants    *grants.Store
-	plans     *ghplan.Store
-	validator ghplan.Validator
-	audit     *bkaudit.Writer
-	control   *controlplane.Runtime
-	auth      security.TokenAuth
-	notifier  approvalnotify.Notifier
-	telegram  *bktelegram.Client
+	database           *state.Database
+	grants             *grants.Store
+	plans              *ghplan.Store
+	validator          ghplan.Validator
+	audit              *bkaudit.Writer
+	control            *controlplane.Runtime
+	auth               security.TokenAuth
+	notifier           approvalnotify.Notifier
+	telegram           *bktelegram.Client
+	credentialResolver *currentGitHubCredentialResolver
 }
 
 func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
@@ -311,8 +313,9 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		_ = database.Close()
 		return coreDependencies{}, err
 	}
+	credentialResolver := &currentGitHubCredentialResolver{}
 	validator := ghplan.Validator{Store: plans,
-		Credential:  currentPlanCredential,
+		Credential:  credentialResolver.snapshot,
 		Requirement: (githubauth.ProviderAdapter{}).Requirement,
 	}
 	auditWriter := bkaudit.New(os.Stderr)
@@ -327,15 +330,24 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		return coreDependencies{}, err
 	}
 	return coreDependencies{database: database, grants: grantStore, plans: plans, validator: validator, audit: auditWriter,
-		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
+		control: control, auth: auth, notifier: notifier, telegram: telegram, credentialResolver: credentialResolver}, nil
 }
 
-func currentPlanCredential(plan ghplan.Plan) (providercredential.Snapshot, error) {
+type currentGitHubCredentialResolver struct {
+	manager *githubauth.Manager
+}
+
+func (r *currentGitHubCredentialResolver) snapshot(plan ghplan.Plan) (providercredential.Snapshot, error) {
+	if r == nil || r.manager == nil {
+		return providercredential.Snapshot{}, errors.New("GitHub credential provider is unavailable")
+	}
 	metadata, err := operations.CredentialFromPreconditions(plan.Preconditions)
 	if err != nil {
 		return providercredential.Snapshot{}, err
 	}
-	return githubauth.SnapshotForMetadata(metadata, 1, plan.CreatedAt)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return r.manager.CurrentSnapshot(ctx, metadata, 1, time.Now().UTC())
 }
 
 func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {

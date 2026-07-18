@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -128,6 +129,35 @@ func TestCredentialStatusReadsProtectedMetadata(t *testing.T) {
 	generation, err := nextCredentialGeneration(deps)
 	if err != nil || generation != 8 {
 		t.Fatalf("next generation = %d, %v", generation, err)
+	}
+}
+
+func TestActiveCredentialStatusPreservesGeneration(t *testing.T) {
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, hfTokenFileName)
+	deps := credentialTestDependencies()
+	snapshot, err := deps.inspect(t.Context(), "", "hf_candidate", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(credentialStatus{Status: "valid", Snapshot: snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, credentialStatusFileName), data, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	status, err := loadActiveCredentialStatus(tokenFile)
+	if err != nil || status == nil || status.Snapshot.Generation != 7 {
+		t.Fatalf("active status = %+v, %v", status, err)
+	}
+	status.Snapshot.CapabilityDigest = strings.Repeat("0", 64)
+	data, _ = json.Marshal(status)
+	if err := os.WriteFile(filepath.Join(dir, credentialStatusFileName), data, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadActiveCredentialStatus(tokenFile); err == nil {
+		t.Fatal("tampered credential metadata was accepted")
 	}
 }
 
