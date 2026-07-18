@@ -2,6 +2,10 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,5 +86,66 @@ func TestCaptureCredentialRemovalsSkipsAndClearsSecretData(t *testing.T) {
 		if value != 0 {
 			t.Fatalf("secret data was not cleared: %q", secret)
 		}
+	}
+}
+
+func TestCredentialReplacementRollbackAndLifecycleAudit(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "token"), []byte("old-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := openCredentialRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	files := []ManagedFile{
+		{Area: ManagedFileConfig, Name: "token", Data: []byte("new-token"), Mode: 0o600, Owner: ManagedFileOwnerService, CredentialClass: "provider-access"},
+		{Area: ManagedFileConfig, Name: "metadata", Data: []byte("new-metadata"), Mode: 0o600, Owner: ManagedFileOwnerRoot, CredentialClass: "provider-metadata"},
+	}
+	snapshots, err := captureCredentialFiles(root, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clearCredentialSnapshots(snapshots)
+	if err := writeCredentialFiles(root, files, os.Geteuid(), os.Getegid(), true); err != nil {
+		t.Fatal(err)
+	}
+	runner := &credentialRecordingRunner{}
+	plan := credentialTestPlan(dir, files)
+	plan.AllowNonRoot = false
+	plan.User, plan.Group = currentIdentity(t)
+	cause := errors.New("readiness failed")
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := rollbackCredentialReplacement(canceled, root, snapshots, os.Geteuid(), os.Getegid(), runner, plan, cause); !errors.Is(err, cause) {
+		t.Fatalf("rollback error = %v", err)
+	}
+	if len(runner.contextErrs) != 1 || runner.contextErrs[0] != nil {
+		t.Fatalf("rollback restart inherited canceled context: %v", runner.contextErrs)
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "token")); err != nil || string(data) != "old-token" {
+		t.Fatalf("restored token = %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "metadata")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new metadata remained after rollback: %v", err)
+	}
+
+	var output bytes.Buffer
+	reporter, err := credentiallifecycle.New(audit.New(&output), "hf-broker", "local-operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Lifecycle = reporter
+	if err := recordCredentialReplacement(plan, snapshots); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"lifecycle_action":"rotated"`, `"lifecycle_action":"created"`, `"provider":"test"`} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("credential lifecycle audit missing %s: %s", want, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "old-token") || strings.Contains(output.String(), "new-token") {
+		t.Fatalf("credential lifecycle audit leaked a token: %s", output.String())
 	}
 }

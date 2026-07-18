@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/plandigest"
 	"github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -71,7 +72,7 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "fd4b6fe4595c07215d1a88949b10ea33d3cab5d6289c7f7112314b13a2cf94df"
+	const expected = "e45fbf6a9cf6e1023026b56b82bbb8d3f2a8716e60297ec4f1760ded8dc5e2b0"
 	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}
@@ -283,6 +284,62 @@ func TestValidatorRejectsMissingMetadataAndWidenedUses(t *testing.T) {
 	grant.Operation = "repo.create"
 	if err := validator.ValidateExecution(grant); err == nil {
 		t.Fatal("validator accepted grant drift")
+	}
+}
+
+func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
+	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	snapshot, err := providercredential.Normalize(providercredential.Snapshot{
+		Provider: "huggingface", CredentialKind: "fine_grained_user_token", Subject: "alice",
+		FingerprintSHA256: strings.Repeat("a", 64), Generation: 2, VerifiedAt: now,
+		VerificationState: providercredential.VerificationValid,
+		Capabilities: []providercredential.Capability{{Domain: "huggingface", Permission: "repo.content.read", AccessLevel: providercredential.AccessRead,
+			Resource: providercredential.ResourceSelector{Kind: "repo", Name: "alice/private"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := providercredential.NewService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := validTestPlan(now)
+	plan.Operation = "repo.contents.read"
+	plan.Target = json.RawMessage(`{"owner":"alice","name":"private"}`)
+	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
+	requirement := func(string) (providercredential.Requirement, bool) {
+		return providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{
+			Domain: "huggingface", Permission: "repo.content.read", MinimumAccessLevel: providercredential.AccessRead, TargetBinding: "resource",
+		}}}}}, true
+	}
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Validator{}).ValidateCredential(plan); err != nil {
+		t.Fatalf("nil credential = %v", err)
+	}
+	stale := plan
+	stale.CredentialSelector.Binding.Generation++
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(stale); err == nil {
+		t.Fatal("stale binding was accepted")
+	}
+	if err := (Validator{Credential: credential}).ValidateCredential(plan); err == nil {
+		t.Fatal("missing requirement map was accepted")
+	}
+	if err := (Validator{Credential: credential, Requirement: func(string) (providercredential.Requirement, bool) {
+		return providercredential.Requirement{}, false
+	}}).ValidateCredential(plan); err == nil {
+		t.Fatal("missing operation requirement was accepted")
+	}
+	malformed := plan
+	malformed.Target = json.RawMessage(`{`)
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(malformed); err == nil {
+		t.Fatal("malformed target was accepted")
+	}
+	outside := plan
+	outside.Target = json.RawMessage(`{"owner":"alice","name":"other"}`)
+	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(outside); err == nil {
+		t.Fatal("target outside credential authority was accepted")
 	}
 }
 

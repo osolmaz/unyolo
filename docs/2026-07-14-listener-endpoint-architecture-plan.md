@@ -241,7 +241,7 @@ it does not become a second policy engine or credential holder.
 - Print the resolved endpoint as structured readiness output.
 - Never persist the ephemeral endpoint as a production service setting.
 
-## Configuration Cutover
+## Configuration Replacement
 
 Replace provider-local bind fields with shared endpoint fields. Delete:
 
@@ -322,7 +322,7 @@ dual-listener architecture.
   authentication over the selected ingress path.
 - Keep operator routes unreachable from agent ingress.
 
-### 6. Broker cutover
+### 6. Broker replacement
 
 - Migrate HF, GH, and sudo brokers to the shared endpoint model.
 - Remove every fixed production port and old config field in the same slice.

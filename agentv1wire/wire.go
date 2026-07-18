@@ -3,12 +3,58 @@ package agentv1wire
 
 import (
 	"encoding/json"
+	"strconv"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/internal/optional"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
+
+func DescriptorToWire(input agentv1.Descriptor) agentwire.Descriptor {
+	return agentwire.Descriptor{
+		ApiVersion: agentwire.DescriptorApiVersionBrokerkitIoagentv1,
+		Operations: cloneStrings(input.Operations),
+		Credential: agentwire.CredentialDescriptor{
+			Ready: input.Credential.Ready, Provider: input.Credential.Provider,
+			CredentialKind: input.Credential.CredentialKind, Generation: generationToWire(input.Credential.Generation),
+			VerificationState: input.Credential.VerificationState,
+		},
+	}
+}
+
+func DescriptorFromWire(input agentwire.Descriptor) agentv1.Descriptor {
+	return agentv1.Descriptor{
+		APIVersion: string(input.ApiVersion), Operations: cloneStrings(input.Operations),
+		Credential: agentv1.CredentialDescriptor{
+			Ready: input.Credential.Ready, Provider: input.Credential.Provider,
+			CredentialKind: input.Credential.CredentialKind, Generation: generationFromWire(input.Credential.Generation),
+			VerificationState: input.Credential.VerificationState,
+		},
+	}
+}
+
+func cloneStrings(input []string) []string {
+	if input == nil {
+		return nil
+	}
+	return append([]string{}, input...)
+}
+
+func generationToWire(value uint64) int {
+	maximum := uint64(1<<(strconv.IntSize-1) - 1)
+	if value > maximum {
+		return int(maximum) // #nosec G115 -- maximum is explicitly bounded to the platform int range.
+	}
+	return int(value) // #nosec G115 -- value was checked against the platform int range.
+}
+
+func generationFromWire(value int) uint64 {
+	if value < 0 {
+		return 0
+	}
+	return uint64(value) // #nosec G115 -- non-negative int values always fit in uint64.
+}
 
 func SubmitToWire(input agentv1.SubmitRequest) (agentwire.SubmitRequest, error) {
 	target, err := decodeObject(input.Target)

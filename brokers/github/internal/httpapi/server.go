@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
+	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/approvalnotify"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
@@ -39,6 +40,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/sealedpayload"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
@@ -102,6 +104,7 @@ func newServerWithCore(cfg config.Config, brokerPolicy *policy.Policy, core core
 	if err != nil {
 		return nil, err
 	}
+	core.credentialResolver.manager = appSource
 	operationStore, admissionController, err := newAdmissionDependencies(cfg, core)
 	if err != nil {
 		return nil, err
@@ -241,12 +244,32 @@ func (s *Server) configureAgentAPI(control *controlplane.Runtime) error {
 	handler, err := agentapi.New(agentapi.Options{
 		Store: s.operations, Authenticate: control.Clients.AuthenticateHeader,
 		Submit: s.submitAgentOperation, Cancel: s.cancelAgentOperation, Realm: "gh-broker",
+		Discover: s.discoverAgent,
 	})
 	if err != nil {
 		return err
 	}
 	s.agentAPI = handler
 	return nil
+}
+
+func (s *Server) discoverAgent(_ string) agentv1.Descriptor {
+	kind := s.githubCredentials.CredentialKind()
+	descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{},
+		Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: string(kind), Generation: 1, VerificationState: "valid"}}
+	if kind != githubauth.KindInstallation {
+		return descriptor
+	}
+	adapter := githubauth.ProviderAdapter{}
+	for _, operation := range opcatalog.MustAll() {
+		if !operation.AgentFacing || operation.CredentialKind == string(githubauth.KindUser) {
+			continue
+		}
+		if _, found := adapter.Requirement(operation.Name); found {
+			descriptor.Operations = append(descriptor.Operations, operation.Name)
+		}
+	}
+	return descriptor
 }
 
 func (s *Server) configureSealedPayloads() error {
@@ -267,15 +290,16 @@ func (s *Server) configureSealedPayloads() error {
 }
 
 type coreDependencies struct {
-	database  *state.Database
-	grants    *grants.Store
-	plans     *ghplan.Store
-	validator ghplan.Validator
-	audit     *bkaudit.Writer
-	control   *controlplane.Runtime
-	auth      security.TokenAuth
-	notifier  approvalnotify.Notifier
-	telegram  *bktelegram.Client
+	database           *state.Database
+	grants             *grants.Store
+	plans              *ghplan.Store
+	validator          ghplan.Validator
+	audit              *bkaudit.Writer
+	control            *controlplane.Runtime
+	auth               security.TokenAuth
+	notifier           approvalnotify.Notifier
+	telegram           *bktelegram.Client
+	credentialResolver *currentGitHubCredentialResolver
 }
 
 func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
@@ -289,7 +313,11 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		_ = database.Close()
 		return coreDependencies{}, err
 	}
-	validator := ghplan.Validator{Store: plans}
+	credentialResolver := &currentGitHubCredentialResolver{}
+	validator := ghplan.Validator{Store: plans,
+		Credential:  credentialResolver.snapshot,
+		Requirement: (githubauth.ProviderAdapter{}).Requirement,
+	}
 	auditWriter := bkaudit.New(os.Stderr)
 	control, auth, err := newControlPlane(cfg, grantStore, validator, auditWriter)
 	if err != nil {
@@ -302,7 +330,32 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		return coreDependencies{}, err
 	}
 	return coreDependencies{database: database, grants: grantStore, plans: plans, validator: validator, audit: auditWriter,
-		control: control, auth: auth, notifier: notifier, telegram: telegram}, nil
+		control: control, auth: auth, notifier: notifier, telegram: telegram, credentialResolver: credentialResolver}, nil
+}
+
+type currentGitHubCredentialResolver struct {
+	manager *githubauth.Manager
+}
+
+func (r *currentGitHubCredentialResolver) snapshot(plan ghplan.Plan) (providercredential.Snapshot, error) {
+	manager, err := r.currentManager()
+	if err != nil {
+		return providercredential.Snapshot{}, err
+	}
+	metadata, err := operations.CredentialFromPreconditions(plan.Preconditions)
+	if err != nil {
+		return providercredential.Snapshot{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return manager.CurrentSnapshot(ctx, metadata, 1, time.Now().UTC())
+}
+
+func (r *currentGitHubCredentialResolver) currentManager() (*githubauth.Manager, error) {
+	if r == nil || r.manager == nil {
+		return nil, errors.New("GitHub credential provider is unavailable")
+	}
+	return r.manager, nil
 }
 
 func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {

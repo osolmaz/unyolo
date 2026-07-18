@@ -49,6 +49,7 @@ type Options struct {
 	Cancel       CancelFunc
 	AuthFailure  AuthFailureFunc
 	Realm        string
+	Discover     func(client string) agentv1.Descriptor
 }
 
 // Handler implements the generated Agent V1 Echo interface.
@@ -59,6 +60,7 @@ type Handler struct {
 	cancel       CancelFunc
 	authFailure  AuthFailureFunc
 	realm        string
+	discover     func(client string) agentv1.Descriptor
 }
 
 var _ agentwire.ServerInterface = (*Handler)(nil)
@@ -83,7 +85,7 @@ func New(options Options) (*Handler, error) {
 	}
 	return &Handler{
 		store: options.Store, authenticate: options.Authenticate, submit: options.Submit,
-		cancel: options.Cancel, authFailure: options.AuthFailure, realm: options.Realm,
+		cancel: options.Cancel, authFailure: options.AuthFailure, realm: options.Realm, discover: options.Discover,
 	}, nil
 }
 
@@ -108,8 +110,13 @@ func generatedBindingErrors(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func (h *Handler) DiscoverAgent(c echo.Context) error {
-	return h.withAuthenticated(c, func(string) error {
-		return c.JSON(http.StatusOK, agentwire.Descriptor{ApiVersion: agentwire.DescriptorApiVersionBrokerkitIoagentv1})
+	return h.withAuthenticated(c, func(client string) error {
+		descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{}, Credential: agentv1.CredentialDescriptor{}}
+		if h.discover != nil {
+			descriptor = h.discover(client)
+			descriptor.APIVersion = agentv1.APIVersion
+		}
+		return c.JSON(http.StatusOK, agentv1wire.DescriptorToWire(descriptor))
 	})
 }
 

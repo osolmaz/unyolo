@@ -189,6 +189,11 @@ func TestGrantRequestOptionValidation(t *testing.T) {
 
 func TestRunMCPListsAndCallsTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/brokerkit-agent" {
+			_ = json.NewEncoder(w).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.create"},
+				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "fine_grained_user_token", Generation: 1, VerificationState: "valid"}})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(testAgentOperation(agentv1.StatePending))
 	}))
 	defer server.Close()
@@ -213,6 +218,19 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	if len(lines) != 3 || !strings.Contains(lines[1], "hf_repo_create") || !strings.Contains(lines[2], `"state":"pending"`) {
 		t.Fatalf("MCP output = %q", output.String())
+	}
+}
+
+func TestMCPToolsDoNotTreatEmptyDiscoveryAsFullAccess(t *testing.T) {
+	tools := mcpTools([]string{})
+	if len(tools) != 4 {
+		t.Fatalf("empty discovery tools = %d, want only four grant utilities", len(tools))
+	}
+	for _, tool := range tools {
+		name, _ := tool["name"].(string)
+		if !strings.HasPrefix(name, "hf_grant_") {
+			t.Fatalf("empty discovery exposed operation tool %q", name)
+		}
 	}
 }
 

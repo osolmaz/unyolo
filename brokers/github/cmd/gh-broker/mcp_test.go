@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -122,7 +123,43 @@ func TestMCPToolSignatureChangesWithLivePolicyExposure(t *testing.T) {
 	}
 }
 
+func TestMCPToolsRequireAndIntersectAgentDiscovery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/.well-known/brokerkit-agent" {
+			http.NotFound(writer, request)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.metadata.read"},
+			Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: "github_app", Generation: 1, VerificationState: "valid"}})
+	}))
+	defer server.Close()
+	values := map[string]string{
+		"GH_BROKER_AGENT_ENDPOINT": ghTestEndpoint(server.URL), "GH_BROKER_SHARED_SECRET": operationTestSecret,
+		"GH_BROKER_MCP_EXACT_OPERATIONS": "repo.metadata.read,pull_request.create", "GH_BROKER_MCP_CLIENT_OPERATIONS": "repo.metadata.read,pull_request.create",
+		"GH_BROKER_MCP_POLICY_OPERATIONS": "repo.metadata.read,pull_request.create", "GH_BROKER_MCP_RUNTIME_OPERATIONS": "repo.metadata.read,pull_request.create",
+	}
+	tools, err := discoveredMCPTools(t.Context(), mcpTestEnv(values))
+	if err != nil || len(tools) != 1 || tools[0]["name"] != "gh_repo_metadata_read" {
+		t.Fatalf("discovered tools = %#v, %v", tools, err)
+	}
+	if _, err := discoveredMCPTools(t.Context(), mcpTestEnv(nil)); err == nil {
+		t.Fatal("missing Agent discovery endpoint was accepted")
+	}
+}
+
 func TestRunMCPAndJSONRPCDispatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/.well-known/brokerkit-agent" {
+			http.NotFound(writer, request)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{},
+			Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: "github_app", Generation: 1, VerificationState: "valid"}})
+	}))
+	defer server.Close()
+	getenv := mcpTestEnv(map[string]string{
+		"GH_BROKER_AGENT_ENDPOINT": ghTestEndpoint(server.URL), "GH_BROKER_SHARED_SECRET": operationTestSecret,
+	})
 	input := strings.Join([]string{
 		`not-json`,
 		`{"jsonrpc":"2.0","method":"ping"}`,
@@ -134,7 +171,7 @@ func TestRunMCPAndJSONRPCDispatch(t *testing.T) {
 		`{"jsonrpc":"2.0","id":6,"method":"unknown"}`,
 	}, "\n")
 	var output bytes.Buffer
-	if err := runMCP(t.Context(), mcpTestEnv(nil), strings.NewReader(input), &output, nil); err != nil {
+	if err := runMCP(t.Context(), getenv, strings.NewReader(input), &output, nil); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
@@ -143,7 +180,7 @@ func TestRunMCPAndJSONRPCDispatch(t *testing.T) {
 			t.Fatalf("MCP output missing %q: %s", want, text)
 		}
 	}
-	if err := runMCP(t.Context(), mcpTestEnv(nil), strings.NewReader(""), &output, []string{"extra"}); err == nil {
+	if err := runMCP(t.Context(), getenv, strings.NewReader(""), &output, []string{"extra"}); err == nil {
 		t.Fatal("accepted MCP arguments")
 	}
 }

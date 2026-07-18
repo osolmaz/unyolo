@@ -35,13 +35,15 @@ component documentation.
 
 ## Implementation Records
 
-- [Provider-neutral MCP execution cutover](2026-07-18-provider-neutral-mcp-execution-cutover-plan.md)
-- [Approval presentation cutover](2026-07-17-approval-presentation-cutover-plan.md)
-- [Browser session transport cutover](2026-07-14-browser-session-transport-plan.md)
-- [Production-readiness cutover](2026-07-14-production-readiness-cutover-plan.md)
+- [Provider credential lifecycle](2026-07-18-provider-credential-lifecycle-plan.md)
+- [Hugging Face credential lifecycle](2026-07-18-hugging-face-credential-lifecycle-plan.md)
+- [Provider-neutral MCP execution](2026-07-18-provider-neutral-mcp-execution-plan.md)
+- [Approval presentation](2026-07-17-approval-presentation-plan.md)
+- [Browser session transport](2026-07-14-browser-session-transport-plan.md)
+- [Production readiness](2026-07-14-production-readiness-plan.md)
 - [Listener endpoint architecture](2026-07-14-listener-endpoint-architecture-plan.md)
 - [Provider-neutral policy presets](2026-07-14-provider-neutral-policy-presets-plan.md)
-- [Agent tool compatibility cutover](2026-07-14-agent-tool-compatibility-cutover-plan.md)
+- [Agent tool compatibility](2026-07-14-agent-tool-compatibility-plan.md)
 - [Refactor plan](2026-07-12-refactor-plan.md)
 - [Hugging Face administrative operations](2026-07-13-hugging-face-administrative-operations-plan.md)
 - [Hugging Face operation inventory](2026-07-13-hugging-face-operation-inventory.md)

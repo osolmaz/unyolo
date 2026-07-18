@@ -1,4 +1,4 @@
-# Browser Session Transport Cutover Plan
+# Browser Session Transport Implementation Plan
 
 Date: 2026-07-14
 
@@ -338,7 +338,7 @@ slophammer-go check .
 Generated and packaged `dist/ui` assets must match source before the commit is
 considered complete.
 
-## Coordinated Cutover
+## Coordinated Replacement
 
 Land BrokerKit and its MLClaw consumer as one coordinated pre-release change:
 

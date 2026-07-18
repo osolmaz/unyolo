@@ -1,4 +1,4 @@
-# Approval Presentation Cutover Plan
+# Approval Presentation Implementation Plan
 
 Date: 2026-07-17
 
@@ -263,7 +263,7 @@ Every terminal edit clears the inline keyboard in the same Telegram request
 where possible. Retry and reconciliation must converge on the same text and
 empty keyboard after crashes or ambiguous Telegram responses.
 
-## Provider Cutover
+## Provider Replacement
 
 ### Hugging Face
 

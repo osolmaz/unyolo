@@ -6,16 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialprofile"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/serverhttp"
 	"github.com/osolmaz/brokerkit/statecmd"
 )
@@ -55,20 +61,21 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 	if len(args) == 0 {
 		return runServer(ctx, getenv, stdout, stderr)
 	}
-	return runCommand(ctx, getenv, stdout, stderr, args)
+	return runCommandInput(ctx, getenv, os.Stdin, stdout, stderr, args)
 }
 
-func runCommand(ctx context.Context, getenv func(string) string, stdout, stderr io.Writer, args []string) error {
+func runCommandInput(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	run, found := commandRunners[args[0]]
 	if !found {
 		return exitError{code: 64, message: "usage: hf-broker [--version|version|credential|doctor|setup|policy|client|mcp|state]"}
 	}
-	return run(commandContext{ctx: ctx, getenv: getenv, stdout: stdout, stderr: stderr}, args[1:])
+	return run(commandContext{ctx: ctx, getenv: getenv, stdin: stdin, stdout: stdout, stderr: stderr}, args[1:])
 }
 
 type commandContext struct {
 	ctx            context.Context
 	getenv         func(string) string
+	stdin          io.Reader
 	stdout, stderr io.Writer
 }
 
@@ -91,15 +98,7 @@ func runVersionCommand(command commandContext, _ []string) error {
 }
 
 func runCredentialCommand(command commandContext, args []string) error {
-	if len(args) != 1 || args[0] != "requirements" {
-		return exitError{code: 64, message: "usage: hf-broker credential requirements"}
-	}
-	raw, err := credentialprofile.JSON()
-	if err != nil {
-		return err
-	}
-	_, err = command.stdout.Write(raw)
-	return err
+	return runCredential(command, args, defaultCredentialDependencies())
 }
 
 func runDoctorCommand(command commandContext, args []string) error {
@@ -119,7 +118,7 @@ func runClientTopLevelCommand(command commandContext, args []string) error {
 }
 
 func runMCPCommand(command commandContext, args []string) error {
-	return runMCP(command.ctx, command.getenv, os.Stdin, command.stdout, command.stderr, args)
+	return runMCP(command.ctx, command.getenv, command.stdin, command.stdout, command.stderr, args)
 }
 
 func runStateCommand(command commandContext, args []string) error {
@@ -175,8 +174,106 @@ func buildHTTPHandler(ctx context.Context, stdout io.Writer, cfg config.Config) 
 		return nil, err
 	}
 	auditRecorder := audit.New(stdout)
+	var credential *providercredential.Service
+	if !cfg.Development {
+		credential, err = activeCredentialService(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return httpapi.New(httpapi.Options{Config: cfg, Scope: pol, Audit: auditRecorder, Context: ctx,
-		UpstreamBaseURL: cfg.UpstreamHubURL, UpstreamRouterBaseURL: cfg.UpstreamRouterURL, OperatorAudit: auditRecorder})
+		UpstreamBaseURL: cfg.UpstreamHubURL, UpstreamRouterBaseURL: cfg.UpstreamRouterURL, OperatorAudit: auditRecorder,
+		Credential: credential})
+}
+
+func activeCredentialService(ctx context.Context, cfg config.Config) (*providercredential.Service, error) {
+	status, err := loadActiveCredentialStatus(cfg.HFTokenFile)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := inspectActiveCredential(ctx, cfg, activeCredentialHTTPClient(cfg.HFTimeout), credentialGeneration(status))
+	if err != nil {
+		return nil, err
+	}
+	if status != nil && snapshot.FingerprintSHA256 != status.Snapshot.FingerprintSHA256 {
+		return nil, errors.New("HF credential metadata does not match the active credential; run hf-broker credential repair")
+	}
+	return providercredential.NewService(snapshot)
+}
+
+func activeCredentialHTTPClient(timeout time.Duration) *http.Client {
+	if timeout <= 0 || timeout > 30*time.Second {
+		timeout = 30 * time.Second
+	}
+	client := &http.Client{Timeout: timeout}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return client
+}
+
+func credentialGeneration(status *credentialStatus) uint64 {
+	if status != nil {
+		return status.Snapshot.Generation
+	}
+	return 1
+}
+
+func inspectActiveCredential(ctx context.Context, cfg config.Config, client *http.Client, generation uint64) (providercredential.Snapshot, error) {
+	secret, err := providercredential.NewSecret([]byte(cfg.HFToken))
+	if err != nil {
+		return providercredential.Snapshot{}, errors.New("HF provider credential is unavailable")
+	}
+	defer secret.Clear()
+	snapshot, err := (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: cfg.UpstreamHubURL, Client: client}, Generation: generation}).Inspect(ctx, secret)
+	if err != nil {
+		return providercredential.Snapshot{}, fmt.Errorf("inspect HF provider credential: %w", err)
+	}
+	return snapshot, nil
+}
+
+func loadActiveCredentialStatus(tokenFile string) (*credentialStatus, error) {
+	tokenFile = strings.TrimSpace(tokenFile)
+	if tokenFile == "" {
+		return nil, nil
+	}
+	path := filepath.Join(filepath.Dir(tokenFile), credentialStatusFileName)
+	data, found, err := readActiveCredentialStatus(path)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, nil
+	}
+	return decodeActiveCredentialStatus(data)
+}
+
+func readActiveCredentialStatus(path string) ([]byte, bool, error) {
+	file, err := os.Open(path) // #nosec G304 -- derived from the operator-configured credential file.
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.New("HF credential metadata is unavailable; run hf-broker credential repair")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxCredentialStatusBytes+1))
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || len(data) > maxCredentialStatusBytes {
+		return nil, false, errors.New("HF credential metadata is invalid; run hf-broker credential repair")
+	}
+	return data, true, nil
+}
+
+func decodeActiveCredentialStatus(data []byte) (*credentialStatus, error) {
+	var status credentialStatus
+	if strictjson.Decode(data, &status, true) != nil || status.Status != "valid" {
+		return nil, errors.New("HF credential metadata is invalid; run hf-broker credential repair")
+	}
+	normalized, err := providercredential.Normalize(status.Snapshot)
+	if err != nil || normalized.Provider != "huggingface" || normalized.CredentialKind != "fine_grained_user_token" ||
+		normalized.CapabilityDigest != status.Snapshot.CapabilityDigest {
+		return nil, errors.New("HF credential metadata is invalid; run hf-broker credential repair")
+	}
+	status.Snapshot = normalized
+	return &status, nil
 }
 
 func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverhttp.Binding, error) {

@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -54,8 +55,9 @@ type Plan struct {
 }
 
 type CredentialSelector struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
+	Name    string                     `json:"name"`
+	Kind    string                     `json:"kind"`
+	Binding providercredential.Binding `json:"binding"`
 }
 
 type Authorization struct {
@@ -243,7 +245,11 @@ func BindPrepared(request *grants.Request, prepared grants.ImmutablePlan) {
 	request.Metadata[MetadataDigest] = prepared.Digest
 }
 
-type Validator struct{ Store *Store }
+type Validator struct {
+	Store       *Store
+	Credential  func(Plan) (providercredential.Snapshot, error)
+	Requirement func(string) (providercredential.Requirement, bool)
+}
 
 func (v Validator) ValidateActivation(_ context.Context, grant grants.Grant, constraints grants.ApprovalConstraints) error {
 	return v.validate(grant, constraints)
@@ -254,22 +260,51 @@ func (v Validator) ValidateExecution(grant grants.Grant) error {
 }
 
 func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConstraints) error {
-	if v.Store == nil {
-		return errors.New("GitHub plan store is unavailable")
-	}
-	if grant.Metadata[MetadataSchema] != SchemaV1 {
-		return errors.New("GitHub grant plan schema is missing or unsupported")
-	}
-	plan, err := v.Store.Get(grant.Metadata[MetadataDigest])
+	plan, requestedDuration, requestedMaxUses, err := v.loadGrantPlan(grant)
 	if err != nil {
 		return err
 	}
-	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
-	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
-		return errors.New("GitHub grant does not match its immutable plan")
+	if err := v.ValidateCredential(plan); err != nil {
+		return err
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
+	}
+	return nil
+}
+
+func (v Validator) loadGrantPlan(grant grants.Grant) (Plan, time.Duration, usebudget.Limit, error) {
+	if v.Store == nil {
+		return Plan{}, 0, 0, errors.New("GitHub plan store is unavailable")
+	}
+	if grant.Metadata[MetadataSchema] != SchemaV1 {
+		return Plan{}, 0, 0, errors.New("GitHub grant plan schema is missing or unsupported")
+	}
+	plan, err := v.Store.Get(grant.Metadata[MetadataDigest])
+	if err != nil {
+		return Plan{}, 0, 0, err
+	}
+	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
+	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
+		return Plan{}, 0, 0, errors.New("GitHub grant does not match its immutable plan")
+	}
+	return plan, requestedDuration, requestedMaxUses, nil
+}
+
+// ValidateCredential proves that the currently active credential still covers
+// the exact authority bound into an immutable plan.
+func (v Validator) ValidateCredential(plan Plan) error {
+	if v.Credential == nil || plan.CredentialSelector.Binding.Generation == 0 {
+		return nil
+	}
+	if v.Requirement == nil {
+		return errors.New("GitHub credential requirement map is unavailable")
+	}
+	snapshot, credentialErr := v.Credential(plan)
+	requirement, found := v.Requirement(plan.Operation)
+	if credentialErr != nil || !found || providercredential.ValidateBinding(snapshot, plan.CredentialSelector.Binding) != nil ||
+		!providercredential.EvaluateAt(snapshot, requirement, nil, plan.CreatedAt).Allowed {
+		return errors.New("GitHub credential binding is stale or insufficient")
 	}
 	return nil
 }
@@ -365,7 +400,11 @@ func validPlanClient(plan Plan) bool {
 }
 
 func validPlanCredential(value CredentialSelector) bool {
-	return value.Name == "primary" && validCredentialKind(value.Kind)
+	return value.Name == "primary" && validCredentialKind(value.Kind) && validCredentialBinding(value.Binding)
+}
+
+func validCredentialBinding(binding providercredential.Binding) bool {
+	return binding.Generation == 0 && binding.CapabilityDigest == "" || binding.Generation > 0 && len(binding.CapabilityDigest) == 64
 }
 
 func validPlanTimes(plan Plan) bool {

@@ -17,35 +17,35 @@ import (
 
 func TestTelegramCallbackRecoversAmbiguousNotification(t *testing.T) {
 	server := newTestServer(t)
-	state, telegram := newCutoverTelegram(t)
+	state, telegram := newReplacementTelegram(t)
 	server.notifier = telegram
 	server.telegram = telegram
-	grant, token := claimCutoverGrant(t, server)
+	grant, token := claimReplacementGrant(t, server)
 	if _, retained, err := server.grants.RetainNotificationClaim(grant.ID, grant.NotificationClaimedAt); err != nil || !retained {
 		t.Fatalf("RetainNotificationClaim() retained=%v err=%v", retained, err)
 	}
-	setCutoverCallback(state, grant, token)
+	setReplacementCallback(state, grant, token)
 	offset, err := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
-	assertSuccessfulCutoverPoll(t, offset, state, err)
-	assertRecoveredCutoverGrant(t, server, grant.ID, state.messageID)
+	assertSuccessfulReplacementPoll(t, offset, state, err)
+	assertRecoveredReplacementGrant(t, server, grant.ID, state.messageID)
 }
 
 func TestTelegramCallbackRetriesDurableWriteFailure(t *testing.T) {
 	dir := t.TempDir()
 	server := newTestServerWithStateDir(t, dir)
-	state, telegram := newCutoverTelegram(t)
+	state, telegram := newReplacementTelegram(t)
 	server.notifier = telegram
 	server.telegram = telegram
-	grant, token := claimCutoverGrant(t, server)
-	setCutoverCallback(state, grant, token)
-	setCutoverDirectoryMode(t, dir, 0o500)
+	grant, token := claimReplacementGrant(t, server)
+	setReplacementCallback(state, grant, token)
+	setReplacementDirectoryMode(t, dir, 0o500)
 	offset, pollErr := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
-	setCutoverDirectoryMode(t, dir, 0o700)
-	assertRetryableCutoverPoll(t, offset, state, pollErr)
-	assertPendingCutoverGrant(t, server, grant.ID)
+	setReplacementDirectoryMode(t, dir, 0o700)
+	assertRetryableReplacementPoll(t, offset, state, pollErr)
+	assertPendingReplacementGrant(t, server, grant.ID)
 	state.updateSent = false
 	offset, pollErr = telegram.PollOnce(context.Background(), offset, server.control.HandleDecision)
-	assertSuccessfulCutoverPoll(t, offset, state, pollErr)
+	assertSuccessfulReplacementPoll(t, offset, state, pollErr)
 }
 
 func TestCallbackWinningSendRaceKeepsMessageActive(t *testing.T) {
@@ -69,7 +69,7 @@ func TestCallbackWinningSendRaceKeepsMessageActive(t *testing.T) {
 	}
 }
 
-func newCutoverTelegram(t *testing.T) (*fakeTelegramState, *bktelegram.Client) {
+func newReplacementTelegram(t *testing.T) (*fakeTelegramState, *bktelegram.Client) {
 	t.Helper()
 	state := &fakeTelegramState{chatID: 123, messageID: 77}
 	api := httptest.NewServer(fakeTelegramHandler(t, state))
@@ -81,12 +81,12 @@ func newCutoverTelegram(t *testing.T) (*fakeTelegramState, *bktelegram.Client) {
 	return state, client
 }
 
-func setCutoverCallback(state *fakeTelegramState, grant grants.Grant, token string) {
+func setReplacementCallback(state *fakeTelegramState, grant grants.Grant, token string) {
 	state.messageText, _ = bktelegram.RenderApproval(grantApprovalMessage(context.Background(), grant, token))
 	state.callbackData = bktelegram.CallbackData(notify.ActionApprove, grant.ID, token)
 }
 
-func claimCutoverGrant(t *testing.T, server *Server) (grants.Grant, string) {
+func claimReplacementGrant(t *testing.T, server *Server) (grants.Grant, string) {
 	t.Helper()
 	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
 	if err != nil {
@@ -99,14 +99,14 @@ func claimCutoverGrant(t *testing.T, server *Server) (grants.Grant, string) {
 	return claim.Grant, claim.DecisionToken
 }
 
-func setCutoverDirectoryMode(t *testing.T, path string, mode os.FileMode) {
+func setReplacementDirectoryMode(t *testing.T, path string, mode os.FileMode) {
 	t.Helper()
 	if err := os.Chmod(path, mode); err != nil { // #nosec G302 -- test controls private directory permissions.
 		t.Fatal(err)
 	}
 }
 
-func assertRetryableCutoverPoll(t *testing.T, offset int64, state *fakeTelegramState, err error) {
+func assertRetryableReplacementPoll(t *testing.T, offset int64, state *fakeTelegramState, err error) {
 	t.Helper()
 	if err == nil {
 		t.Skip("filesystem does not enforce directory write permissions")
@@ -116,14 +116,14 @@ func assertRetryableCutoverPoll(t *testing.T, offset int64, state *fakeTelegramS
 	}
 }
 
-func assertSuccessfulCutoverPoll(t *testing.T, offset int64, state *fakeTelegramState, err error) {
+func assertSuccessfulReplacementPoll(t *testing.T, offset int64, state *fakeTelegramState, err error) {
 	t.Helper()
 	if err != nil || offset != 2 || !state.answered {
 		t.Fatalf("PollOnce() offset=%d answered=%v err=%v", offset, state.answered, err)
 	}
 }
 
-func assertPendingCutoverGrant(t *testing.T, server *Server, id string) {
+func assertPendingReplacementGrant(t *testing.T, server *Server, id string) {
 	t.Helper()
 	pending, err := server.grants.Get(id)
 	if err != nil || pending.Status != grants.StatusPending || pending.Notification != nil {
@@ -131,7 +131,7 @@ func assertPendingCutoverGrant(t *testing.T, server *Server, id string) {
 	}
 }
 
-func assertRecoveredCutoverGrant(t *testing.T, server *Server, id string, messageID int) {
+func assertRecoveredReplacementGrant(t *testing.T, server *Server, id string, messageID int) {
 	t.Helper()
 	stored, err := server.grants.Get(id)
 	if err != nil || stored.Status != grants.StatusActive || stored.Notification == nil || stored.Notification.MessageID != messageID {

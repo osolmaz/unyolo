@@ -1,4 +1,4 @@
-# Provider-Neutral MCP Execution Cutover Plan
+# Provider-Neutral MCP Execution Implementation Plan
 
 Date: 2026-07-18
 
@@ -51,7 +51,7 @@ enforced in code and conformance tests.
 ## Superseded Contract
 
 This plan supersedes the statements in `docs/OPERATIONS_RUNTIME.md` and
-`docs/2026-07-14-agent-tool-compatibility-cutover-plan.md` that window-mode MCP
+`docs/2026-07-14-agent-tool-compatibility-plan.md` that window-mode MCP
 tools remain direct grant tools outside Agent Operations.
 
 After the cutover:
@@ -292,7 +292,7 @@ must not claim that a fetch, push, or transfer has already completed.
 Protocol traffic remains policy-enforced at the broker data plane. Approval of
 a control-plane operation does not create an unbounded generic proxy.
 
-## Hugging Face Cutover
+## Hugging Face Replacement
 
 ### MCP submission
 
@@ -341,7 +341,7 @@ Rules:
 The private-repository regression fixture must prove that an allowed private
 repo can be listed and read without an approval request.
 
-## GitHub Cutover
+## GitHub Replacement
 
 - Replace the GitHub-local JSON-RPC loop with `mcpserver`.
 - Replace GitHub-local submission and lifecycle dispatch with `agentmcp`.

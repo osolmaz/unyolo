@@ -49,6 +49,7 @@ type Client struct {
 // Config is the validated broker configuration.
 type Config struct {
 	HFToken           string
+	HFTokenFile       string
 	Clients           []Client
 	Operators         []Client
 	AgentEndpoint     endpoint.Endpoint
@@ -85,6 +86,7 @@ func loadBaseConfig(getenv func(string) string) (Config, error) {
 	}
 	cfg := Config{
 		HFToken:           hfToken,
+		HFTokenFile:       strings.TrimSpace(brokerEnv(getenv, "HF_TOKEN_FILE")),
 		ScopeFile:         brokerEnv(getenv, "SCOPE_FILE"),
 		StateDir:          brokerEnv(getenv, "STATE_DIR"),
 		UpstreamHubURL:    stringOr(brokerEnv(getenv, "UPSTREAM_HUB_URL"), DefaultUpstreamHubURL),

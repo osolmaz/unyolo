@@ -416,6 +416,10 @@ func TestUserEnrollmentRefreshRotationAndRevocationAreEncrypted(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertBearer(t, credential, "access-canary-one")
+	snapshot, err := manager.CurrentSnapshot(t.Context(), Metadata{Kind: KindUser, UserID: 7}, 3, now)
+	if err != nil || snapshot.Generation != 3 || snapshot.CredentialKind != string(KindUser) {
+		t.Fatalf("current user snapshot = %+v, %v", snapshot, err)
+	}
 	cached, err := manager.UserCredential(t.Context(), 7)
 	if err != nil || cached != credential {
 		t.Fatalf("cached user credential = %p %p, %v", credential, cached, err)
