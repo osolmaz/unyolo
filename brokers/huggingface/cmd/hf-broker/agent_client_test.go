@@ -266,7 +266,7 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 			return ""
 		}
 	})
-	if err != nil || client.secret != agentClientTestSecret || client.operations == nil {
+	if err != nil || client.operations == nil || client.grantClient == nil {
 		t.Fatalf("file client = %#v, %v", client, err)
 	}
 	for _, value := range []string{"", "ftp://example.test", "tcp://localhost:1", "tcp://127.0.0.1:1?x=1"} {

@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -20,11 +18,8 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/clienthttp"
 	"github.com/osolmaz/brokerkit/credentialstore"
-	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/sealedstore"
 )
 
 const maxOperationInputBytes = 1 << 20
@@ -289,54 +284,13 @@ func (client *agentClient) wrapSealedArguments(ctx context.Context, operation, i
 		wrapper["credential_slot"] = credentialSlot
 	}
 	if len(secret) != 0 {
-		reference, err := client.uploadSealedPayload(ctx, operation, idempotencyKey, secret)
+		reference, err := client.operations.UploadSealedPayload(ctx, operation, idempotencyKey, secret)
 		if err != nil {
 			return nil, err
 		}
 		wrapper["sealed_payload"] = reference
 	}
 	return json.Marshal(wrapper)
-}
-
-func (client *agentClient) uploadSealedPayload(ctx context.Context, operation, idempotencyKey string, payload []byte) (sealedstore.Reference, error) {
-	request, err := client.sealedPayloadRequest(ctx, operation, idempotencyKey, payload)
-	if err != nil {
-		return sealedstore.Reference{}, err
-	}
-	response, err := client.httpClient.Do(request)
-	if err != nil {
-		return sealedstore.Reference{}, errors.New("upload sealed payload")
-	}
-	defer func() { _ = response.Body.Close() }()
-	return sealedPayloadReference(response, operation)
-}
-
-func (client *agentClient) sealedPayloadRequest(ctx context.Context, operation, idempotencyKey string, payload []byte) (*http.Request, error) {
-	base, err := clienthttp.ParseBaseURL(client.baseURL)
-	if err != nil {
-		return nil, err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+"/api/agent/v1/sealed-payloads", bytes.NewReader(payload))
-	if err != nil {
-		return nil, errors.New("create sealed payload request")
-	}
-	request.Header.Set("Authorization", "Bearer "+client.secret)
-	request.Header.Set("Content-Type", "application/octet-stream")
-	request.Header.Set("X-Broker-Operation", operation)
-	request.Header.Set("X-Broker-Idempotency-Key", idempotencyKey)
-	return request, nil
-}
-
-func sealedPayloadReference(response *http.Response, operation string) (sealedstore.Reference, error) {
-	data, readErr := httpx.ReadLimited(response.Body, maxOperationInputBytes)
-	if readErr != nil || response.StatusCode != http.StatusCreated {
-		return sealedstore.Reference{}, errors.New("broker rejected sealed payload")
-	}
-	var reference sealedstore.Reference
-	if strictjson.Decode(data, &reference, true) != nil || reference.ID == "" || reference.Purpose != operation {
-		return sealedstore.Reference{}, errors.New("broker returned an invalid sealed payload reference")
-	}
-	return reference, nil
 }
 
 func submitAndMaybeWait(ctx context.Context, client *agentClient, request agentv1.SubmitRequest, wait bool, timeout time.Duration) (agentv1.Operation, error) {

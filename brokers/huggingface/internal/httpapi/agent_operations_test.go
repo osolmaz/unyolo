@@ -136,7 +136,8 @@ func TestAgentPrivateRepositoryReadExecutesDirectly(t *testing.T) {
 	}
 	operation = waitForTestOperation(t, server.URL, operation.ID)
 	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != "" ||
-		!strings.Contains(string(operation.Result), `"content":"cHJpdmF0ZSBjb250ZW50"`) {
+		!strings.Contains(string(operation.Result), `"content":"private content"`) ||
+		!strings.Contains(string(operation.Result), `"encoding":"utf-8"`) {
 		t.Fatalf("operation = %#v", operation)
 	}
 	if contentHits.Load() != 1 {
@@ -171,7 +172,8 @@ func TestAgentRepositoryDiscoveryQueriesUpstreamAndFiltersPolicy(t *testing.T) {
 	}
 	operation = waitForTestOperation(t, server.URL, operation.ID)
 	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != "" ||
-		!strings.Contains(string(operation.Result), `"id":"alice/private"`) || strings.Contains(string(operation.Result), "alice/denied") {
+		!strings.Contains(string(operation.Result), `"id":"alice/private"`) || strings.Contains(string(operation.Result), "alice/denied") ||
+		strings.Contains(string(operation.Result), `"private"`) {
 		t.Fatalf("operation = %#v", operation)
 	}
 }

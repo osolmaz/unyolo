@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -188,8 +189,12 @@ func (a *repositoryReadAdapter) Execute(ctx context.Context, plan Plan) (Outcome
 		var file hubclient.RepoFile
 		file, err = a.client.RepoFile(ctx, target.repoRef(), arguments.Revision, arguments.Path)
 		if err == nil {
-			result = map[string]any{"path": arguments.Path, "revision": arguments.Revision, "encoding": "base64",
-				"content": base64.StdEncoding.EncodeToString(file.Content), "content_type": file.ContentType, "commit": file.Commit}
+			encoding, content := "base64", base64.StdEncoding.EncodeToString(file.Content)
+			if utf8.Valid(file.Content) {
+				encoding, content = "utf-8", string(file.Content)
+			}
+			result = map[string]any{"path": arguments.Path, "revision": arguments.Revision, "encoding": encoding,
+				"content": content, "content_type": file.ContentType, "commit": file.Commit}
 		}
 	default:
 		return Outcome{}, errors.New("repository read operation is not implemented")
@@ -210,7 +215,7 @@ func (a *repositoryReadAdapter) repoListResult(repos []hubclient.RepoSummary, qu
 		}
 		target := hfpolicy.Target{Kind: hfpolicy.KindRepo, Type: hfpolicy.RepoType(query.Type), Owner: parts[0], Name: parts[1]}
 		if a.disclose(client, target) {
-			result = append(result, repo)
+			result = append(result, hubclient.RepoSummary{ID: repo.ID, SHA: repo.SHA})
 		}
 	}
 	return map[string]any{"repos": result, "next_cursor": nil}
