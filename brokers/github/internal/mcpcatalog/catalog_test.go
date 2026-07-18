@@ -16,11 +16,11 @@ func allEnabled() Enabled {
 
 func TestMCPExposureProfilesAreFilteredAndTyped(t *testing.T) {
 	enabled := allEnabled()
-	if tools, err := Tools(Exposure{}, enabled); err != nil || len(tools) != 3 {
+	if tools, err := Tools(Exposure{}, enabled); err != nil || len(tools) != 4 {
 		t.Fatalf("empty tools=%d err=%v", len(tools), err)
 	}
 	tools, err := Tools(DefaultExposure(), enabled)
-	if err != nil || len(tools) != 7 {
+	if err != nil || len(tools) != 8 {
 		t.Fatalf("default tools=%d err=%v", len(tools), err)
 	}
 	for _, tool := range tools[:4] {
@@ -64,7 +64,7 @@ func TestMCPExactAdministrativeAndCompleteProfiles(t *testing.T) {
 		t.Fatalf("complete=%d agent=%d", len(complete), agent)
 	}
 	tools, err := Tools(Exposure{Complete: true}, enabled)
-	if err != nil || len(tools) != agent+3 {
+	if err != nil || len(tools) != agent+4 {
 		t.Fatalf("complete typed tools=%d agent=%d err=%v", len(tools), agent, err)
 	}
 }

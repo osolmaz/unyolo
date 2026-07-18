@@ -161,7 +161,7 @@ func projectedMCPSchema(schema map[string]any, projection Projection) map[string
 	return projected
 }
 
-// OperationUtilityTools returns provider-prefixed get, wait, and list tools
+// OperationUtilityTools returns provider-prefixed operation lifecycle tools
 // with closed shared schemas.
 func OperationUtilityTools(prefix string) []map[string]any {
 	id := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
@@ -185,6 +185,7 @@ func OperationUtilityTools(prefix string) []map[string]any {
 		{"name": prefix + "operation_get", "description": "Get one requester-owned broker operation by operation_id.", "inputSchema": get},
 		{"name": prefix + "operation_wait", "description": "Wait up to 25 seconds for one requester-owned broker operation.", "inputSchema": wait},
 		{"name": prefix + "operation_list", "description": "List or recover requester-owned broker operations.", "inputSchema": list},
+		{"name": prefix + "operation_cancel", "description": "Cancel one requester-owned broker operation before execution starts.", "inputSchema": get},
 	}
 }
 
