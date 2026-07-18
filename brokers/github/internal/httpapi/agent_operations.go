@@ -19,6 +19,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operationruntime"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -75,8 +76,16 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 	}
 	request := runtimeGrantRequest(preparation, mode, duration, pending, runtimeGrantUses(preparation, mode))
 	presentation := adapter.Present(preparation.Plan)
+	var binding providercredential.Binding
+	if preparation.Plan.Credential.Kind != githubauth.KindDevelopmentToken {
+		snapshot, snapshotErr := githubauth.SnapshotForMetadata(preparation.Plan.Credential, 1, preparation.CreatedAt)
+		if snapshotErr != nil {
+			return bkauthorization.GrantIntent{}, errors.New("GitHub credential binding is unavailable")
+		}
+		binding = providercredential.Bind(snapshot)
+	}
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, presentation, string(preparation.Decision.Effect),
-		runtimePlanRuleIDs(preparation), preparation.CreatedAt)
+		runtimePlanRuleIDs(preparation), preparation.CreatedAt, binding)
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
@@ -173,12 +182,16 @@ func bindPreparedRuntimePlan(request *grants.Request, prepared grants.ImmutableP
 	ghplan.BindPresentation(request, presentation)
 }
 
-func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
+func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time, bindings ...providercredential.Binding) (grants.ImmutablePlan, error) {
 	kind := string(provider.Credential.Kind)
+	var binding providercredential.Binding
+	if len(bindings) > 0 {
+		binding = bindings[0]
+	}
 	return ghplan.Prepare(ghplan.Plan{
 		APIVersion: ghplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
 		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
-		Preconditions: provider.Preconditions, CredentialSelector: ghplan.CredentialSelector{Name: "primary", Kind: kind}, Presentation: presentation,
+		Preconditions: provider.Preconditions, CredentialSelector: ghplan.CredentialSelector{Name: "primary", Kind: kind, Binding: binding}, Presentation: presentation,
 		Authorization: ghplan.Authorization{Mode: request.Metadata["github_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
 			Target: ghplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,

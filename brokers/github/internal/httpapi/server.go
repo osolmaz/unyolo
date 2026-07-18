@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/admission"
 	"github.com/osolmaz/brokerkit/agentapi"
 	"github.com/osolmaz/brokerkit/agentops"
+	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/approvalnotify"
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	bkauth "github.com/osolmaz/brokerkit/auth"
@@ -241,12 +242,32 @@ func (s *Server) configureAgentAPI(control *controlplane.Runtime) error {
 	handler, err := agentapi.New(agentapi.Options{
 		Store: s.operations, Authenticate: control.Clients.AuthenticateHeader,
 		Submit: s.submitAgentOperation, Cancel: s.cancelAgentOperation, Realm: "gh-broker",
+		Discover: s.discoverAgent,
 	})
 	if err != nil {
 		return err
 	}
 	s.agentAPI = handler
 	return nil
+}
+
+func (s *Server) discoverAgent(_ string) agentv1.Descriptor {
+	kind := s.githubCredentials.CredentialKind()
+	descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{},
+		Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: string(kind), Generation: 1, VerificationState: "valid"}}
+	if kind != githubauth.KindInstallation {
+		return descriptor
+	}
+	adapter := githubauth.ProviderAdapter{}
+	for _, operation := range opcatalog.MustAll() {
+		if !operation.AgentFacing || operation.CredentialKind == string(githubauth.KindUser) {
+			continue
+		}
+		if _, found := adapter.Requirement(operation.Name); found {
+			descriptor.Operations = append(descriptor.Operations, operation.Name)
+		}
+	}
+	return descriptor
 }
 
 func (s *Server) configureSealedPayloads() error {
@@ -289,7 +310,12 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		_ = database.Close()
 		return coreDependencies{}, err
 	}
-	validator := ghplan.Validator{Store: plans}
+	validator := ghplan.Validator{Store: plans,
+		Credential: func(plan ghplan.Plan) (githubauth.Metadata, error) {
+			return operations.CredentialFromPreconditions(plan.Preconditions)
+		},
+		Requirement: (githubauth.ProviderAdapter{}).Requirement,
+	}
 	auditWriter := bkaudit.New(os.Stderr)
 	control, auth, err := newControlPlane(cfg, grantStore, validator, auditWriter)
 	if err != nil {

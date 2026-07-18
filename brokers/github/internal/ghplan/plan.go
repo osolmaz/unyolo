@@ -13,11 +13,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -54,8 +56,9 @@ type Plan struct {
 }
 
 type CredentialSelector struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
+	Name    string                     `json:"name"`
+	Kind    string                     `json:"kind"`
+	Binding providercredential.Binding `json:"binding"`
 }
 
 type Authorization struct {
@@ -243,7 +246,11 @@ func BindPrepared(request *grants.Request, prepared grants.ImmutablePlan) {
 	request.Metadata[MetadataDigest] = prepared.Digest
 }
 
-type Validator struct{ Store *Store }
+type Validator struct {
+	Store       *Store
+	Credential  func(Plan) (githubauth.Metadata, error)
+	Requirement func(string) (providercredential.Requirement, bool)
+}
 
 func (v Validator) ValidateActivation(_ context.Context, grant grants.Grant, constraints grants.ApprovalConstraints) error {
 	return v.validate(grant, constraints)
@@ -267,6 +274,15 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("GitHub grant does not match its immutable plan")
+	}
+	if v.Credential != nil && plan.CredentialSelector.Binding.Generation > 0 {
+		metadata, credentialErr := v.Credential(plan)
+		snapshot, snapshotErr := githubauth.SnapshotForMetadata(metadata, plan.CredentialSelector.Binding.Generation, plan.CreatedAt)
+		requirement, found := v.Requirement(plan.Operation)
+		if credentialErr != nil || snapshotErr != nil || !found || providercredential.ValidateBinding(snapshot, plan.CredentialSelector.Binding) != nil ||
+			!providercredential.EvaluateAt(snapshot, requirement, nil, plan.CreatedAt).Allowed {
+			return errors.New("GitHub credential binding is stale or insufficient")
+		}
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
@@ -365,7 +381,11 @@ func validPlanClient(plan Plan) bool {
 }
 
 func validPlanCredential(value CredentialSelector) bool {
-	return value.Name == "primary" && validCredentialKind(value.Kind)
+	return value.Name == "primary" && validCredentialKind(value.Kind) && validCredentialBinding(value.Binding)
+}
+
+func validCredentialBinding(binding providercredential.Binding) bool {
+	return binding.Generation == 0 && binding.CapabilityDigest == "" || binding.Generation > 0 && len(binding.CapabilityDigest) == 64
 }
 
 func validPlanTimes(plan Plan) bool {

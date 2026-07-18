@@ -58,7 +58,7 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 	}
 	server, err := mcpserver.New(mcpserver.Config{
 		Name: "gh-broker", Version: version, ListChanged: true,
-		Tools: func(context.Context) ([]map[string]any, error) { return configuredMCPTools(getenv) },
+		Tools: func(ctx context.Context) ([]map[string]any, error) { return discoveredMCPTools(ctx, getenv) },
 		Call:  bridge.Call,
 		Resources: func(context.Context) ([]map[string]any, error) {
 			return []map[string]any{{"uri": "github://operations?limit=50", "name": "GitHub operation catalog", "description": "Paged exhaustive GitHub capability catalog", "mimeType": "application/json"}}, nil
@@ -101,6 +101,38 @@ func newGitHubMCPBridge(getenv func(string) string) (*agentmcp.Bridge, error) {
 
 func configuredMCPTools(getenv func(string) string) ([]map[string]any, error) {
 	return mcpcatalog.Tools(mcpExposure(getenv), mcpEnabled(getenv))
+}
+
+func discoveredMCPTools(ctx context.Context, getenv func(string) string) ([]map[string]any, error) {
+	tools, err := configuredMCPTools(getenv)
+	if err != nil {
+		return nil, err
+	}
+	connection, err := loadOperationConnection(getenv)
+	if err != nil {
+		return tools, nil
+	}
+	client, err := connection.client()
+	if err != nil {
+		return nil, err
+	}
+	discovery, err := client.Discover(ctx)
+	if err != nil {
+		return nil, err
+	}
+	available := make(map[string]struct{}, len(discovery.Operations))
+	for _, operation := range discovery.Operations {
+		available[operation] = struct{}{}
+	}
+	filtered := tools[:0]
+	for _, tool := range tools {
+		name, _ := tool["name"].(string)
+		descriptor, selectErr := selectedMCPDescriptor(getenv, name)
+		if _, found := available[descriptor.Name]; selectErr == nil && found {
+			filtered = append(filtered, tool)
+		}
+	}
+	return filtered, nil
 }
 
 func mcpExposure(getenv func(string) string) mcpcatalog.Exposure {
