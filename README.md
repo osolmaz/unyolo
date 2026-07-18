@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-wordmark.svg" alt="BrokerKit" width="760">
+</p>
+
 # BrokerKit
 
 BrokerKit is a Go toolkit and monorepo of brokered access-control services.
