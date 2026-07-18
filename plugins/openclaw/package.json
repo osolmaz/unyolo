@@ -1,6 +1,6 @@
 {
   "name": "openclaw-brokerkit",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Provider-neutral BrokerKit approvals for OpenClaw",
   "repository": {
     "type": "git",

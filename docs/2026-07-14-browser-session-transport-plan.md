@@ -179,7 +179,9 @@ and decision request. The browser never receives an Operator V1 credential.
 
 For `renewal_transport: "direct"`, the UI sends the current token in
 `BrokerKit-Session` to `POST <basePath>/session`. The request uses
-`credentials: "omit"`, `cache: "no-store"`, and no `Authorization` field.
+`credentials: "include"`, `cache: "no-store"`, and no `Authorization` field.
+Included cookies are for a private hosting edge only; the delegated host still
+authorizes the request exclusively with `BrokerKit-Session`.
 
 For `renewal_transport: "parent"`, the existing strict postMessage bridge
 remains unchanged. The returned replacement token is then used in
@@ -195,13 +197,13 @@ conforming host therefore:
 - allows `BrokerKit-Session` and `Content-Type` in preflight responses;
 - allows only the methods required by its fixed delegated routes;
 - uses `Vary: Origin` and `Cache-Control: no-store`;
-- does not require or allow browser cookies on delegated API calls; and
-- does not return `Access-Control-Allow-Credentials: true`, because the UI
-  deliberately uses `credentials: "omit"`.
+- returns `Access-Control-Allow-Credentials: true`; and
+- may receive a hosting-edge access cookie, but never treats it as sufficient
+  authorization for a delegated API call.
 
-The token is the delegated API credential. The host's ordinary browser
-session remains responsible only for the protected HTML response that issues
-the initial token.
+The token is the delegated API credential. A host's ordinary browser session
+or hosting-edge cookie may admit the HTML and API requests through the outer
+edge, but cannot replace the token at the delegated application boundary.
 
 ### Browser and Operator V1 isolation
 
@@ -308,7 +310,7 @@ fixture must simulate an identity-aware edge that:
 - forwards `BrokerKit-Session` unchanged to the trusted test backend;
 - requires the opaque sandbox origin and successful preflight;
 - serves a decision-capable sandboxed OpenClaw Gateway popover;
-- renews a session without cookies; and
+- renews a session through the same private hosting edge; and
 - streams a newly created request into the already-mounted UI.
 
 The test passes only when the request renders, the operator decides it without
@@ -362,7 +364,8 @@ bearer transport. There is no mixed-version compatibility window.
 - Server-to-server Operator V1 retains its existing bearer authentication.
 - A proxy that reserves `Authorization` cannot interfere with either browser
   UI mode.
-- The sandboxed UI sends no cookies and passes strict CORS preflight.
+- The sandboxed UI can cross a private hosting edge and passes strict
+  credentialed CORS preflight.
 - Tokens remain memory-only, short-lived, scoped, redacted, and absent from
   URLs and persistent browser state.
 - A recovered connection clears `Approvals are unavailable` without reloading
