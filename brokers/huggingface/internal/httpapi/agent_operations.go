@@ -134,15 +134,7 @@ func preparationBounds(preparation operations.Preparation, descriptor operations
 		return duration, pending, 1, nil
 	}
 	if preparation.ReusedGrant != nil {
-		grant := *preparation.ReusedGrant
-		if corepolicy.GrantMode(hfgrant.Mode(grant)) != mode || mode != corepolicy.GrantModeWindow {
-			return 0, 0, 0, errors.New("active grant approval mode does not match operation")
-		}
-		duration = grant.RequestedDuration
-		if duration <= 0 {
-			duration = grant.Duration
-		}
-		return duration, grant.PendingTimeout, int(grant.RequestedMaxUses), nil
+		return reusedPreparationBounds(*preparation.ReusedGrant, mode)
 	}
 	bounds := preparation.Decision.GrantPolicy
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
@@ -155,6 +147,17 @@ func preparationBounds(preparation operations.Preparation, descriptor operations
 		maxUses = int(bounds.DefaultMaxUses)
 	}
 	return duration, pending, maxUses, nil
+}
+
+func reusedPreparationBounds(grant grants.Grant, mode corepolicy.GrantMode) (time.Duration, time.Duration, int, error) {
+	if corepolicy.GrantMode(hfgrant.Mode(grant)) != mode || mode != corepolicy.GrantModeWindow {
+		return 0, 0, 0, errors.New("active grant approval mode does not match operation")
+	}
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	return duration, grant.PendingTimeout, int(grant.RequestedMaxUses), nil
 }
 
 func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {

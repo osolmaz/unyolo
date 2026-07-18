@@ -323,30 +323,17 @@ func (r *Runtime[I, P, A]) submitResolved(ctx context.Context, client string, re
 	auth := adapter.Authorize(plan)
 	core := r.options.Project(auth)
 	decision := r.options.Decide(core, policy.DecisionOptions{Now: r.now()})
-	if decision.Allowed && len(decision.MatchedAllowRuleIDs) > 0 && !requiresApproval(adapter) {
-		intent, prepareErr := r.options.Prepare(Preparation[P, A]{Plan: plan, Auth: auth, Core: core, DescriptorName: adapter.Descriptor().Name,
-			Client: client, OperationID: id, Reason: request.Reason, Decision: decision, Direct: true, CreatedAt: r.now()})
-		if prepareErr != nil {
-			r.cleanup(adapter, plan)
-			return agentv1.Operation{}, false, prepareErr
-		}
-		operation, created, submitErr := r.options.Operations.SubmitApprovedWithPlan(submission, PlanRecord(intent.Plan))
-		if submitErr != nil {
-			r.cleanup(adapter, plan)
-		}
-		return operation, created, submitErr
+	if directlyAllowed(decision, adapter) {
+		return r.submitDirectGrant(submission, adapter, plan, auth, core, decision)
 	}
-	if !requiresApproval(adapter) {
-		active, found, activeErr := r.options.Authorization.ActiveGrant(core)
-		if activeErr != nil {
-			r.cleanup(adapter, plan)
-			return agentv1.Operation{}, false, activeErr
-		}
-		if found {
-			return r.submitActiveGrant(submission, adapter, plan, auth, core, active)
-		}
+	if requiresApproval(adapter) {
+		return r.submitPending(ctx, submission, adapter, plan, auth, core)
 	}
-	return r.submitPending(ctx, submission, adapter, plan, auth, core)
+	return r.submitWithAvailableGrant(ctx, submission, adapter, plan, auth, core)
+}
+
+func directlyAllowed[I, P, A any](decision policy.Decision, adapter Adapter[I, P, A]) bool {
+	return decision.Allowed && len(decision.MatchedAllowRuleIDs) > 0 && !requiresApproval(adapter)
 }
 
 func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentops.Submit, adapter Adapter[I, P, A],

@@ -110,17 +110,24 @@ func runtimeGrantBounds(adapter operations.Adapter, preparation operations.Prepa
 		return duration, pending, nil
 	}
 	if preparation.ReusedGrant != nil {
-		grant := *preparation.ReusedGrant
-		if corepolicy.GrantMode(grant.Metadata["github_grant_mode"]) != mode || mode != corepolicy.GrantModeWindow {
-			return 0, 0, errors.New("active grant approval mode does not match operation")
-		}
-		duration = grant.RequestedDuration
-		if duration <= 0 {
-			duration = grant.Duration
-		}
-		return duration, grant.PendingTimeout, nil
+		return reusedRuntimeGrantBounds(*preparation.ReusedGrant, mode)
 	}
-	bounds := preparation.Decision.GrantPolicy
+	return requestedRuntimeGrantBounds(preparation.Decision.GrantPolicy, mode, duration, pending)
+}
+
+func reusedRuntimeGrantBounds(grant grants.Grant, mode corepolicy.GrantMode) (time.Duration, time.Duration, error) {
+	if corepolicy.GrantMode(grant.Metadata["github_grant_mode"]) != mode || mode != corepolicy.GrantModeWindow {
+		return 0, 0, errors.New("active grant approval mode does not match operation")
+	}
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	return duration, grant.PendingTimeout, nil
+}
+
+func requestedRuntimeGrantBounds(bounds *corepolicy.GrantPolicy, mode corepolicy.GrantMode,
+	duration, pending time.Duration) (time.Duration, time.Duration, error) {
 	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
 		return 0, 0, errors.New("operation approval mode does not match policy")
 	}

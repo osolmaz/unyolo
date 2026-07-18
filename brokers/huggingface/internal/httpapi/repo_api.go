@@ -225,14 +225,18 @@ func validReservedRepositoryGrant(grant grants.Grant, client string, operation p
 }
 
 func repositoryAuthorityContains(authorized, target policy.Target, operation policy.Operation) bool {
-	if authorized.Kind != target.Kind || authorized.Owner != target.Owner || authorized.Type != target.Type ||
-		(authorized.Name != "*" && authorized.Name != target.Name) {
+	if !sameRepositoryAuthority(authorized, target) {
 		return false
 	}
 	if operation != policy.OpRepoTreeList || len(authorized.Paths) == 0 {
 		return true
 	}
 	return repositoryTreeAuthorityContains(authorized.Paths, target.Paths)
+}
+
+func sameRepositoryAuthority(authorized, target policy.Target) bool {
+	return authorized.Kind == target.Kind && authorized.Owner == target.Owner && authorized.Type == target.Type &&
+		(authorized.Name == "*" || authorized.Name == target.Name)
 }
 
 func repositoryTreeAuthorityContains(prefixes, paths []string) bool {
