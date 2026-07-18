@@ -168,7 +168,7 @@ type Registry struct {
 
 func NewRegistry(adapters ...Adapter) (*Registry, error) {
 	registry, err := operationruntime.NewRegistry(operationruntime.RegistryOptions{
-		Provider: "Hugging Face", Descriptor: opcatalog.ByName,
+		Provider: "Hugging Face", Descriptor: opcatalog.ByName, RequiresAdapter: AgentRuntimeBound,
 	}, adapters...)
 	if err != nil {
 		return nil, err
@@ -176,9 +176,23 @@ func NewRegistry(adapters ...Adapter) (*Registry, error) {
 	return &Registry{Registry: registry}, nil
 }
 
+var repositoryReadOperations = map[string]bool{
+	"repo.contents.read": true,
+	"repo.list":          true,
+	"repo.metadata.read": true,
+	"repo.tree.list":     true,
+}
+
+// AgentRuntimeBound reports whether an implemented catalog operation has an
+// Agent Operations executor. Native Git/LFS data-plane operations are not
+// advertised as bounded MCP executions.
+func AgentRuntimeBound(descriptor opcatalog.Descriptor) bool {
+	return descriptor.Implementation == opcatalog.StatusImplemented &&
+		(descriptor.AuthorizationMode == opcatalog.ModeExecution || repositoryReadOperations[descriptor.Name])
+}
+
 // ValidateCoverage ensures every catalog entry advertised as an implemented
-// execution operation has an adapter. Existing bounded protocol operations do
-// not enter this registry.
+// operation with an Agent Operations binding has an adapter.
 func (r *Registry) ValidateCoverage() error {
 	return r.Registry.ValidateCoverage("Hugging Face", opcatalog.MustAll())
 }

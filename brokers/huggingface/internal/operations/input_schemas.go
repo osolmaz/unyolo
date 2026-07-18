@@ -24,6 +24,10 @@ type inputSchemaExamples struct {
 }
 
 var customInputSchemaExamples = map[string]inputSchemaExamples{
+	"repo.contents.read":      {repositoryTarget{}, repoContentsArguments{}, nil},
+	"repo.list":               {repositoryTarget{}, repoListArguments{}, nil},
+	"repo.metadata.read":      {repositoryTarget{}, emptyArguments{}, nil},
+	"repo.tree.list":          {repositoryTarget{}, repoTreeArguments{}, nil},
 	"repo.create":             {repositoryTarget{}, repoCreateArguments{}, nil},
 	"repo.delete":             {repositoryTarget{}, emptyArguments{}, nil},
 	"repo.gating.update":      {repositoryTarget{}, gatingArguments{}, nil},

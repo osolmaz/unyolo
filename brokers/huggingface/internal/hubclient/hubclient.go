@@ -146,6 +146,31 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 	return classifyDecodedResponse(spec.method, response.StatusCode, decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode))
 }
 
+func (c *Client) callBytes(ctx context.Context, spec callSpec) ([]byte, http.Header, error) {
+	ctx, cancel := c.callContext(ctx)
+	defer cancel()
+	request, err := c.newRequest(ctx, spec)
+	if err != nil {
+		return nil, nil, err
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, nil, transportError(spec.method, 0)
+	}
+	defer func() { _ = response.Body.Close() }()
+	payload, err := io.ReadAll(io.LimitReader(response.Body, c.maxResponseBytes+1))
+	if err != nil {
+		return nil, nil, transportError(spec.method, response.StatusCode)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, nil, statusError(response.StatusCode, response.Header)
+	}
+	if int64(len(payload)) > c.maxResponseBytes {
+		return nil, nil, &Error{Code: CodeResponseInvalid, StatusCode: response.StatusCode}
+	}
+	return payload, response.Header.Clone(), nil
+}
+
 func transportError(method string, status int) *Error {
 	if method == http.MethodGet {
 		return &Error{Code: CodeUnavailable, StatusCode: status}

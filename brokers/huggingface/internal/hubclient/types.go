@@ -247,6 +247,28 @@ type RepoInfo struct {
 	SDK     string
 }
 
+// RepoSummary is the bounded repository projection returned by discovery.
+type RepoSummary struct {
+	ID      string `json:"id"`
+	SHA     string `json:"sha,omitempty"`
+	Private bool   `json:"private,omitempty"`
+}
+
+// RepoTreeEntry is one bounded file or directory returned by the Hub tree API.
+type RepoTreeEntry struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+	OID  string `json:"oid,omitempty"`
+	Size int64  `json:"size,omitempty"`
+}
+
+// RepoFile contains one bounded repository file and non-secret response metadata.
+type RepoFile struct {
+	Content     []byte
+	ContentType string
+	Commit      string
+}
+
 // RepoSettings is the bounded response from an exact settings mutation.
 type RepoSettings struct {
 	Visibility Visibility `json:"visibility"`

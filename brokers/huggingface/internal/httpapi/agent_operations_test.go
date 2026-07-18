@@ -105,6 +105,45 @@ func TestAgentV1Conformance(t *testing.T) {
 	})
 }
 
+func TestAgentPrivateRepositoryReadExecutesDirectly(t *testing.T) {
+	var contentHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+testToken {
+			t.Fatalf("upstream authorization was not the broker token")
+		}
+		if r.URL.Path != "/datasets/alice/private/resolve/main/README.md" {
+			http.NotFound(w, r)
+			return
+		}
+		contentHits.Add(1)
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("X-Repo-Commit", "abc")
+		_, _ = w.Write([]byte("private content"))
+	}))
+	defer upstream.Close()
+	policyJSON := `{"rules":[{"id":"read-private","effect":"allow","clients":["agent"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"private","paths":["README.md"]}]}]}`
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"read-private","operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"alice","name":"private"},"arguments":{"path":"README.md"},"reason":"read private repository"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit = %d %s", response.StatusCode, text)
+	}
+	var operation agentv1.Operation
+	if err := json.Unmarshal([]byte(text), &operation); err != nil {
+		t.Fatal(err)
+	}
+	operation = waitForTestOperation(t, server.URL, operation.ID)
+	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != "" ||
+		!strings.Contains(string(operation.Result), `"content":"cHJpdmF0ZSBjb250ZW50"`) {
+		t.Fatalf("operation = %#v", operation)
+	}
+	if contentHits.Load() != 1 {
+		t.Fatalf("content hits = %d, want 1", contentHits.Load())
+	}
+}
+
 func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	var mu sync.Mutex
 	createHits := 0

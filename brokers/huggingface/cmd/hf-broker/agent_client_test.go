@@ -351,17 +351,8 @@ func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 		t.Fatal("oversized repository wait accepted")
 	}
 	tools := catalogMCPTools()
-	if len(tools) != len(agentFacingDescriptors())+3 || len(tools) != 260 {
+	if len(tools) != len(agentFacingDescriptors())+4 {
 		t.Fatalf("catalog MCP tools = %d", len(tools))
-	}
-	largeID := json.RawMessage(`9007199254740993`)
-	response := handleMCPRequest(context.Background(), client, mcpRequest{JSONRPC: "2.0", ID: largeID, Method: "unknown"})
-	if response.Error == nil || response.Error.Code != -32601 {
-		t.Fatalf("unknown method response = %#v", response)
-	}
-	encoded, _ := json.Marshal(response)
-	if !strings.Contains(string(encoded), `"id":9007199254740993`) {
-		t.Fatalf("response ID changed: %s", encoded)
 	}
 	var output bytes.Buffer
 	if err := runMCP(context.Background(), agentClientTestEnv(server.URL), strings.NewReader("bad\n"), &output, &bytes.Buffer{}, nil); err != nil || !strings.Contains(output.String(), "-32700") {

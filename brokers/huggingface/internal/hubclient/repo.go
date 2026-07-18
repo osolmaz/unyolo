@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 )
 
 // RepoInfo reads bounded metadata for one exact repository.
@@ -18,6 +21,72 @@ func (c *Client) RepoInfo(ctx context.Context, ref RepoRef) (RepoInfo, error) {
 		return RepoInfo{}, err
 	}
 	return wire.toRepoInfo(), nil
+}
+
+// ListRepos discovers a bounded page for one exact owner and repository type.
+func (c *Client) ListRepos(ctx context.Context, repoType RepoType, owner string, limit int) ([]RepoSummary, error) {
+	probe := RepoRef{Type: repoType, Owner: owner, Name: "probe"}
+	if err := probe.Validate(); err != nil || limit < 1 || limit > 100 {
+		return nil, errors.New("hubclient: repository list query is invalid")
+	}
+	var wire []repoInfoWire
+	err := c.call(ctx, callSpec{method: http.MethodGet, path: "/api/" + string(repoType) + "s",
+		query: url.Values{"author": {owner}, "limit": {strconv.Itoa(limit)}}, out: &wire})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]RepoSummary, 0, len(wire))
+	for _, item := range wire {
+		if item.ID == "" || len(item.ID) > 193 {
+			return nil, errors.New("hubclient: upstream repository list is invalid")
+		}
+		result = append(result, RepoSummary{ID: item.ID, SHA: item.SHA, Private: item.Private})
+	}
+	return result, nil
+}
+
+// RepoTree returns one bounded tree page for an exact repository and revision.
+func (c *Client) RepoTree(ctx context.Context, ref RepoRef, revision, path string, recursive bool) ([]RepoTreeEntry, error) {
+	if err := ref.Validate(); err != nil || !ValidGitRefComponent(revision) || (path != "" && !ValidRepoPath(path+"/", true)) {
+		return nil, errors.New("hubclient: repository tree query is invalid")
+	}
+	endpoint := ref.apiPath("tree", url.PathEscape(revision))
+	if path != "" {
+		endpoint += "/" + escapeRepoPath(path)
+	}
+	var entries []RepoTreeEntry
+	if err := c.call(ctx, callSpec{method: http.MethodGet, path: endpoint,
+		query: url.Values{"recursive": {strconv.FormatBool(recursive)}, "expand": {"false"}}, out: &entries}); err != nil {
+		return nil, err
+	}
+	if len(entries) > 1000 {
+		return nil, errors.New("hubclient: repository tree page is too large")
+	}
+	for _, entry := range entries {
+		if (entry.Type != "file" && entry.Type != "directory") || entry.Path == "" || entry.Size < 0 {
+			return nil, errors.New("hubclient: upstream repository tree is invalid")
+		}
+	}
+	return entries, nil
+}
+
+// RepoFile reads one bounded exact file. Redirects remain refused, so large
+// content that requires a separate storage origin must use a stream operation.
+func (c *Client) RepoFile(ctx context.Context, ref RepoRef, revision, path string) (RepoFile, error) {
+	if err := ref.Validate(); err != nil || !ValidGitRefComponent(revision) || !ValidRepoPath(path, false) {
+		return RepoFile{}, errors.New("hubclient: repository file query is invalid")
+	}
+	prefix := ""
+	if ref.Type != RepoTypeModel {
+		prefix = string(ref.Type) + "s/"
+	}
+	endpoint := "/" + prefix + url.PathEscape(ref.Owner) + "/" + url.PathEscape(ref.Name) + "/resolve/" +
+		url.PathEscape(revision) + "/" + escapeRepoPath(path)
+	payload, header, err := c.callBytes(ctx, callSpec{method: http.MethodGet, path: endpoint})
+	if err != nil {
+		return RepoFile{}, err
+	}
+	return RepoFile{Content: payload, ContentType: strings.TrimSpace(strings.Split(header.Get("Content-Type"), ";")[0]), Commit: header.Get("X-Repo-Commit")}, nil
 }
 
 type createRepoBody struct {

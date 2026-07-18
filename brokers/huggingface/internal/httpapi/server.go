@@ -438,6 +438,7 @@ func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealed
 
 func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store) ([]operations.Adapter, error) {
 	factories := []func() ([]operations.Adapter, error){
+		func() ([]operations.Adapter, error) { return operations.NewRepositoryReadAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryAdapters(hub, upstream) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositorySettingsAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewRefsAdapters(hub) },
