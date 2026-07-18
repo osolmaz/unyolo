@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
@@ -66,52 +67,97 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 }
 
 func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
-	descriptor, found := s.operationRegistry.Lookup(preparation.DescriptorName)
-	if !found {
-		return bkauthorization.GrantIntent{}, errors.New("operation adapter is unavailable")
+	adapter, descriptor, err := s.runtimePlanComponents(preparation.DescriptorName)
+	if err != nil {
+		return bkauthorization.GrantIntent{}, err
 	}
-	duration, pending, err := preparationBounds(preparation, descriptor)
+	mode := runtimeGrantMode(descriptor)
+	duration, pending, maxUses, err := preparationBounds(preparation, adapter, mode)
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
-		Mode: hfgrant.ModeExecution, PolicyTarget: &preparation.Auth.Target, Attrs: preparation.Auth.Attrs,
+		Mode: string(mode), PolicyTarget: &preparation.Auth.Target, Attrs: preparation.Auth.Attrs,
 		Reason: preparation.Reason, RequestedDuration: duration, PendingTimeout: pending,
-		MaxUses: 1, MaxUsesSpecified: true,
+		MaxUses: maxUses, MaxUsesSpecified: true,
 	})
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
-	ruleIDs := preparation.Decision.MatchedRequestRuleIDs
-	if preparation.Direct {
-		ruleIDs = preparation.Decision.MatchedAllowRuleIDs
-	}
-	prepared, err := prepareAdapterPlan(preparation.Plan, request, descriptor.Present(preparation.Plan),
+	ruleIDs := runtimePolicyRuleIDs(preparation)
+	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan),
 		string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt)
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
 	if !preparation.Direct {
 		hfplan.BindPrepared(&request, prepared)
-		hfplan.BindPresentation(&request, descriptor.Present(preparation.Plan))
+		hfplan.BindPresentation(&request, adapter.Present(preparation.Plan))
 	}
-	return bkauthorization.GrantIntent{Mode: corepolicy.GrantModeExecution, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
 }
 
-func preparationBounds(preparation operations.Preparation, descriptor operations.Adapter) (time.Duration, time.Duration, error) {
+func (s *Server) runtimePlanComponents(name string) (operations.Adapter, opcatalog.Descriptor, error) {
+	adapter, found := s.operationRegistry.Lookup(name)
+	if !found {
+		return nil, opcatalog.Descriptor{}, errors.New("operation adapter is unavailable")
+	}
+	descriptor, found := opcatalog.ByName(name)
+	if !found {
+		return nil, opcatalog.Descriptor{}, errors.New("operation descriptor is unavailable")
+	}
+	return adapter, descriptor, nil
+}
+
+func runtimePolicyRuleIDs(preparation operations.Preparation) []string {
+	if preparation.Direct {
+		return preparation.Decision.MatchedAllowRuleIDs
+	}
+	if preparation.ReusedGrant != nil {
+		return preparation.Decision.MatchedGrantRuleIDs
+	}
+	return preparation.Decision.MatchedRequestRuleIDs
+}
+
+func runtimeGrantMode(descriptor opcatalog.Descriptor) corepolicy.GrantMode {
+	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+		return corepolicy.GrantModeExecution
+	}
+	return corepolicy.GrantModeWindow
+}
+
+func preparationBounds(preparation operations.Preparation, descriptor operations.Adapter, mode corepolicy.GrantMode) (time.Duration, time.Duration, int, error) {
 	duration := time.Duration(descriptor.Descriptor().ApprovalTTLSeconds) * time.Second
 	pending := time.Duration(descriptor.Descriptor().RequestTTLSeconds) * time.Second
 	if preparation.Direct {
-		return duration, pending, nil
+		return duration, pending, 1, nil
+	}
+	if preparation.ReusedGrant != nil {
+		return reusedPreparationBounds(*preparation.ReusedGrant, mode)
 	}
 	bounds := preparation.Decision.GrantPolicy
-	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeExecution {
-		return 0, 0, errors.New("operation requires execution approval")
+	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != mode {
+		return 0, 0, 0, errors.New("operation approval mode does not match policy")
 	}
 	duration = min(time.Duration(bounds.DefaultMinutes)*time.Minute, duration)
 	pending = min(time.Duration(bounds.RequestTTLMinutes)*time.Minute, pending)
-	return duration, pending, nil
+	maxUses := 1
+	if mode == corepolicy.GrantModeWindow {
+		maxUses = int(bounds.DefaultMaxUses)
+	}
+	return duration, pending, maxUses, nil
+}
+
+func reusedPreparationBounds(grant grants.Grant, mode corepolicy.GrantMode) (time.Duration, time.Duration, int, error) {
+	if corepolicy.GrantMode(hfgrant.Mode(grant)) != mode || mode != corepolicy.GrantModeWindow {
+		return 0, 0, 0, errors.New("active grant approval mode does not match operation")
+	}
+	duration := grant.RequestedDuration
+	if duration <= 0 {
+		duration = grant.Duration
+	}
+	return duration, grant.PendingTimeout, int(grant.RequestedMaxUses), nil
 }
 
 func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
@@ -120,8 +166,9 @@ func prepareAdapterPlan(provider operations.Plan, request grants.Request, presen
 		APIVersion: hfplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
 		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
 		Preconditions: provider.Preconditions, CredentialSelector: hfplan.CredentialSelector{Name: "primary"}, Presentation: presentation,
-		Authorization: hfplan.Authorization{Mode: hfgrant.ModeExecution, RequestedDurationSeconds: int64(request.Duration.Seconds()),
-			RequestedMaxUses: 1, Target: hfplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
+		Authorization: hfplan.Authorization{Mode: request.Metadata["hf_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
+			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
+			Target: hfplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
 			PolicyEffect: policyEffect, PolicyRuleIDs: append([]string(nil), policyRuleIDs...)},
 		CreatedAt: createdAt, ExpiresAt: expiresAt,
 	})

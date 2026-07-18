@@ -105,6 +105,205 @@ func TestAgentV1Conformance(t *testing.T) {
 	})
 }
 
+func TestAgentPrivateRepositoryReadExecutesDirectly(t *testing.T) {
+	var contentHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+testToken {
+			t.Fatalf("upstream authorization was not the broker token")
+		}
+		if r.URL.Path != "/datasets/alice/private/resolve/main/README.md" {
+			http.NotFound(w, r)
+			return
+		}
+		contentHits.Add(1)
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("X-Repo-Commit", "abc")
+		_, _ = w.Write([]byte("private content"))
+	}))
+	defer upstream.Close()
+	policyJSON := `{"rules":[{"id":"read-private","effect":"allow","clients":["agent"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"private","paths":["README.md"]}]}]}`
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"read-private","operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"alice","name":"private"},"arguments":{"path":"README.md"},"reason":"read private repository"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit = %d %s", response.StatusCode, text)
+	}
+	var operation agentv1.Operation
+	if err := json.Unmarshal([]byte(text), &operation); err != nil {
+		t.Fatal(err)
+	}
+	operation = waitForTestOperation(t, server.URL, operation.ID)
+	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != "" ||
+		!strings.Contains(string(operation.Result), `"content":"private content"`) ||
+		!strings.Contains(string(operation.Result), `"encoding":"utf-8"`) {
+		t.Fatalf("operation = %#v", operation)
+	}
+	if contentHits.Load() != 1 {
+		t.Fatalf("content hits = %d, want 1", contentHits.Load())
+	}
+}
+
+func TestAgentRepositoryDiscoveryQueriesUpstreamAndFiltersPolicy(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "alice" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":"alice/private","private":true},{"id":"alice/denied","private":true}]`))
+	}))
+	defer upstream.Close()
+	policyJSON := `{"rules":[
+		{"id":"deny-one","effect":"deny","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"denied"}]},
+		{"id":"discover","effect":"allow","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"*"}]}
+	]}`
+	server, _, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"list-private","operation":"repo.list","target":{"kind":"repo","type":"dataset","owner":"alice","name":"*"},"arguments":{"limit":10},"reason":"discover repositories"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit = %d %s", response.StatusCode, text)
+	}
+	var operation agentv1.Operation
+	if err := json.Unmarshal([]byte(text), &operation); err != nil {
+		t.Fatal(err)
+	}
+	operation = waitForTestOperation(t, server.URL, operation.ID)
+	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != "" ||
+		!strings.Contains(string(operation.Result), `"id":"alice/private"`) || strings.Contains(string(operation.Result), "alice/denied") ||
+		strings.Contains(string(operation.Result), `"private"`) {
+		t.Fatalf("operation = %#v", operation)
+	}
+}
+
+func TestAgentRepositoryDiscoveryReusesApprovedWindowGrant(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "alice" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":"alice/private","private":true},{"id":"alice/denied","private":true}]`))
+	}))
+	defer upstream.Close()
+	policyJSON := `{"rules":[
+		{"id":"deny-one","effect":"deny","clients":["agent"],"operations":["repo.list"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"denied"}]},
+		{"id":"discover","effect":"request","clients":["agent"],"operations":["repo.list"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"*"}],"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":2,"max_uses":2}}
+	]}`
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+
+	submit := func(key string) agentv1.Operation {
+		t.Helper()
+		body := `{"idempotency_key":"` + key + `","operation":"repo.list","target":{"kind":"repo","type":"dataset","owner":"alice","name":"*"},"arguments":{"limit":10},"reason":"discover repositories"}`
+		response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+		if response.StatusCode != http.StatusAccepted && response.StatusCode != http.StatusCreated {
+			t.Fatalf("submit %s = %d %s", key, response.StatusCode, text)
+		}
+		var operation agentv1.Operation
+		if err := json.Unmarshal([]byte(text), &operation); err != nil {
+			t.Fatal(err)
+		}
+		return operation
+	}
+
+	first := submit("discover-approved-1")
+	if first.State != agentv1.StatePending || first.ApprovalID == "" {
+		t.Fatalf("first operation = %#v", first)
+	}
+	grant, err := handler.grants.Get(first.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-discovery",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first = waitForTestOperation(t, server.URL, first.ID)
+	if first.State != agentv1.StateSucceeded {
+		t.Fatalf("first repository list operation = %#v", first)
+	}
+	grant, err = handler.grants.Get(grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserved, err := handler.grants.ReserveUse(grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := policyAllowsRepositoryResult("agent", handler.policy,
+		policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "alice", Name: "private"},
+		policy.OpRepoList, &reserved, handler.planValidator, handler.utcNow())
+	_, _ = handler.grants.ReleaseUse(grant.ID)
+	if !allowed {
+		t.Fatalf("reserved repository grant did not authorize its result: %+v", reserved)
+	}
+	assertApprovedRepositoryList(t, first, grant.ID)
+
+	second := submit("discover-approved-2")
+	if second.ApprovalID != grant.ID || second.State == agentv1.StatePending {
+		t.Fatalf("reused operation = %#v", second)
+	}
+	second = waitForTestOperation(t, server.URL, second.ID)
+	assertApprovedRepositoryList(t, second, grant.ID)
+	grantsForClient, err := handler.grants.ListForClient("agent")
+	if err != nil || len(grantsForClient) != 1 || grantsForClient[0].UsedCount != 2 {
+		t.Fatalf("grants after reuse = %+v, %v", grantsForClient, err)
+	}
+}
+
+func assertApprovedRepositoryList(t *testing.T, operation agentv1.Operation, grantID string) {
+	t.Helper()
+	if operation.State != agentv1.StateSucceeded || operation.ApprovalID != grantID ||
+		!strings.Contains(string(operation.Result), `"id":"alice/private"`) || strings.Contains(string(operation.Result), "alice/denied") {
+		t.Fatalf("repository list operation = %#v", operation)
+	}
+}
+
+func TestAgentRepositoryTreeApprovalPreservesDeniedPaths(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/datasets/alice/private/tree/main/docs") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"type":"file","path":"docs/README.md","oid":"abc","size":4},
+			{"type":"file","path":"docs/secret.txt","oid":"def","size":6}
+		]`))
+	}))
+	defer upstream.Close()
+	policyJSON := `{"rules":[
+		{"id":"deny-secret","effect":"deny","clients":["agent"],"operations":["repo.tree.list"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"private","paths":["docs/secret.txt"]}]},
+		{"id":"list-docs","effect":"request","clients":["agent"],"operations":["repo.tree.list"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"private","paths":["docs"]}],"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}
+	]}`
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+	body := `{"idempotency_key":"tree-approved","operation":"repo.tree.list","target":{"kind":"repo","type":"dataset","owner":"alice","name":"private"},"arguments":{"path":"docs","recursive":true},"reason":"list documentation"}`
+	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
+	var operation agentv1.Operation
+	if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil || operation.ApprovalID == "" {
+		t.Fatalf("submit = %d %s", response.StatusCode, text)
+	}
+	grant, err := handler.grants.Get(operation.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-tree",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	operation = waitForTestOperation(t, server.URL, operation.ID)
+	if operation.State != agentv1.StateSucceeded || !strings.Contains(string(operation.Result), "docs/README.md") ||
+		strings.Contains(string(operation.Result), "docs/secret.txt") {
+		t.Fatalf("tree operation = %#v error=%+v", operation, operation.Error)
+	}
+}
+
 func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	var mu sync.Mutex
 	createHits := 0

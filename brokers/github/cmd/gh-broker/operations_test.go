@@ -367,7 +367,7 @@ func TestOperationSurfaceFailureBoundaries(t *testing.T) {
 		}
 	}
 
-	connection := operationConnection{baseURL: "http://127.0.0.1:1", secret: operationTestSecret}
+	connection := operationConnection{endpoint: "tcp://127.0.0.1:1", secret: operationTestSecret}
 	if _, err := connection.uploadStream(t.Context(), "repo.metadata.read", "request", missing, "application/octet-stream"); err == nil {
 		t.Fatal("non-stream operation accepted upload")
 	}
@@ -398,7 +398,7 @@ func TestStreamAndSealedResponsesRejectInvalidBrokerData(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	connection := operationConnection{baseURL: server.URL, secret: operationTestSecret}
+	connection := operationConnection{endpoint: ghTestEndpoint(server.URL), secret: operationTestSecret}
 	if _, err := connection.uploadSealedPayload(t.Context(), "repo.delete", "request", []byte(`{}`)); err == nil {
 		t.Fatal("invalid sealed payload reference accepted")
 	}

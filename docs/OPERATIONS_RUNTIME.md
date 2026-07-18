@@ -77,16 +77,27 @@ loss or process restart. Wait defaults to 25 seconds, never exceeds 25 seconds,
 and returns the latest known state on timeout. List defaults to 20, is capped at
 50, uses validated opaque cursors, and supports exact request-ID recovery.
 
-`capability` owns host compatibility classification and bidirectional JSON
-Pointer projection mechanics. `mcpoperation` owns request-ID generation,
-operation/page projections, bounded recovery, and structured conflicts.
-Providers own semantic field aliases and canonical provider validation. Pinned
-OpenClaw redaction fixtures and full-catalog audits prevent a newly generated
-public field from silently becoming unreplayable.
+`mcpserver` owns bounded JSON-RPC and MCP stdio mechanics. `agentmcp` owns the
+closed operation envelope, submission, and lifecycle utility dispatch.
+`agentclient` owns authenticated Agent V1, sealed-payload, and stream
+transport. `capability` owns host compatibility classification and
+bidirectional JSON Pointer projection mechanics. `mcpoperation` owns
+request-ID generation, operation/page projections, bounded recovery, and
+structured conflicts. Providers own semantic field aliases, schemas,
+runtime adapters, result projection, and canonical provider validation.
 
-Capability catalogs may also expose window-mode grant request tools for actions
-performed later through Git, HTTP, or another protocol. Those tools remain on
-the shared grant lifecycle and return grants, not synthetic operations.
+Every ordinary provider operation tool enters Agent Operations V1. Static
+allow, active window grant, approval request, and deny are authorization
+outcomes inside that lifecycle; they are not separate MCP dispatch modes. An
+allowed operation executes immediately without creating approval state. An
+approved request resumes the original durable operation. Explicitly named
+grant lifecycle tools remain only for clients intentionally managing native
+protocol access outside a bounded operation call.
+
+The advertised MCP set is the intersection of agent-facing catalog entries,
+client exposure, policy vocabulary, and registered runtime adapters. Catalog
+entries without an executor are discoverable as documentation, not runnable
+tools.
 
 ## Service
 

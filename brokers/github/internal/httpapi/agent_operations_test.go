@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operatorv1"
+	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 type lifecycleContextKey struct{}
@@ -110,6 +111,44 @@ func TestGeneratedAgentDirectAllowAndDenial(t *testing.T) {
 	denied, _, err := deniedServer.submitAgentOperation(t.Context(), "bob", generatedPullRequestSubmission("deny"))
 	if err != nil || denied.State != agentv1.StateDenied || denied.Error == nil || denied.Error.Code != "operation_policy_denied" {
 		t.Fatalf("denied submit = %#v, %v", denied, err)
+	}
+}
+
+func TestReusedRuntimeGrantBounds(t *testing.T) {
+	for name, test := range map[string]struct {
+		grant        grants.Grant
+		mode         corepolicy.GrantMode
+		wantDuration time.Duration
+		wantErr      bool
+	}{
+		"requested duration": {
+			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeWindow)},
+				RequestedDuration: 5 * time.Minute, Duration: 10 * time.Minute, PendingTimeout: time.Minute},
+			mode: corepolicy.GrantModeWindow, wantDuration: 5 * time.Minute,
+		},
+		"legacy duration fallback": {
+			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeWindow)},
+				Duration: 10 * time.Minute, PendingTimeout: time.Minute},
+			mode: corepolicy.GrantModeWindow, wantDuration: 10 * time.Minute,
+		},
+		"mismatched mode": {
+			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeExecution)}},
+			mode:  corepolicy.GrantModeWindow, wantErr: true,
+		},
+		"execution grant": {
+			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeExecution)}},
+			mode:  corepolicy.GrantModeExecution, wantErr: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			duration, pending, err := reusedRuntimeGrantBounds(test.grant, test.mode)
+			if (err != nil) != test.wantErr || duration != test.wantDuration {
+				t.Fatalf("bounds = %s, %s, %v", duration, pending, err)
+			}
+			if !test.wantErr && pending != time.Minute {
+				t.Fatalf("pending = %s", pending)
+			}
+		})
 	}
 }
 

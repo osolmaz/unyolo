@@ -227,6 +227,19 @@ func TestStorePersistsDirectOperationAsApproved(t *testing.T) {
 	}
 }
 
+func TestStoreAtomicallyBindsReusableGrant(t *testing.T) {
+	store := newTestStore(t, time.Now, func() (string, error) { return "op_reused", nil })
+	canonical := []byte(`{"api_version":"provider.io/plan/v1","operation":"repo.read"}`)
+	plan := state.PlanRecord{Digest: plandigest.Digest(canonical), SchemaName: "provider.io/plan/v1", Canonical: canonical, CreatedAt: time.Now().UTC()}
+	created, fresh, err := store.SubmitApprovedWithGrantPlan(validSubmit("reused"), plan, "grant-shared")
+	if err != nil || !fresh || created.State != agentv1.StateApproved || created.ApprovalID != "grant-shared" || created.PlanDigest != plan.Digest {
+		t.Fatalf("SubmitApprovedWithGrantPlan() = %+v, %v, %v", created, fresh, err)
+	}
+	if _, _, err := store.SubmitApprovedWithGrantPlan(validSubmit("missing-grant"), plan, ""); err == nil {
+		t.Fatal("missing reusable grant accepted")
+	}
+}
+
 func TestStoreBindsPlanAfterRecoverableOperationInsert(t *testing.T) {
 	now := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
 	store := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_binding", nil })

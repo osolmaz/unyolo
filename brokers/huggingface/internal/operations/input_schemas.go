@@ -24,6 +24,10 @@ type inputSchemaExamples struct {
 }
 
 var customInputSchemaExamples = map[string]inputSchemaExamples{
+	"repo.contents.read":      {repositoryTarget{}, repoContentsArguments{}, nil},
+	"repo.list":               {repositoryTarget{}, repoListArguments{}, nil},
+	"repo.metadata.read":      {repositoryTarget{}, emptyArguments{}, nil},
+	"repo.tree.list":          {repositoryTarget{}, repoTreeArguments{}, nil},
 	"repo.create":             {repositoryTarget{}, repoCreateArguments{}, nil},
 	"repo.delete":             {repositoryTarget{}, emptyArguments{}, nil},
 	"repo.gating.update":      {repositoryTarget{}, gatingArguments{}, nil},
@@ -68,7 +72,12 @@ func CustomInputSchemas(name string) (InputSchemas, bool) {
 	if !found {
 		return InputSchemas{}, false
 	}
-	return InputSchemas{Target: structuralSchema(examples.target), Arguments: structuralSchema(examples.arguments), Sealed: optionalStructuralSchema(examples.sealed)}, true
+	target := structuralSchema(examples.target)
+	if name == "repo.list" {
+		properties := target["properties"].(map[string]any)
+		properties["name"] = map[string]any{"type": "string", "pattern": `^(?:\*|[A-Za-z0-9][A-Za-z0-9._-]{0,95})$`}
+	}
+	return InputSchemas{Target: target, Arguments: structuralSchema(examples.arguments), Sealed: optionalStructuralSchema(examples.sealed)}, true
 }
 
 // WindowTargetSchema is the closed provider policy target accepted by bounded

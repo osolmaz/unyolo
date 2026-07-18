@@ -579,11 +579,10 @@ Unknown fields are rejected fail-closed, so a typo cannot silently widen
 access. There is no API to read or reload this file at runtime; changing
 scope is edit-file-then-restart.
 
-The grantable operations include `repo.create`, `git.push.force`,
-`git.ref.delete`, and `git.tag.update`. Repository creation is available only
-through Agent Operations V1 and an immutable execution plan. The broker does
-not expose repository settings, members, deletion, transfer, or a generic Hub
-API proxy.
+Agent-facing operations are advertised only when a typed runtime adapter is
+registered. Repository creation, deletion, settings, membership, and other
+supported administrative actions execute through Agent Operations V1 and an
+immutable plan. The broker does not expose a generic Hub API proxy.
 
 ## Request Handling
 
@@ -627,7 +626,11 @@ a registered typed adapter. Approval binds the operation revision, canonical
 target, closed arguments, observed preconditions, credential selector, client,
 expiry, use limit, and immutable plan digest. hf-broker executes only that
 stored plan with the upstream credential and returns a bounded, redacted
-result. Read and protocol operations use separately bounded window grants.
+result. Ordinary read and administrative tools use the same operation
+lifecycle. Authorization policy may allow them directly, authorize them with
+an active window grant, require approval, or deny them; authorization mode
+does not choose a separate MCP or CLI dispatch path. Native Git and LFS remain
+bounded protocol data planes and are not advertised as completed JSON actions.
 
 Hub and Git paths map by repo type:
 

@@ -685,6 +685,25 @@ func TestRuntimeCancelsPendingAndRevokesActiveGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	grant, _ = grantStore.Get(active.ApprovalID)
+	storedPlan, err := runtime.options.StoredPlan(runtime.options.PlanDigest(grant))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, _, err := runtime.options.Operations.SubmitApprovedWithGrantPlan(agentops.Submit{
+		ID: "op_shared_grant", Broker: "test-broker", ClientID: "agent", IdempotencyKey: "shared-grant",
+		Operation: active.Operation, Target: active.Target, Arguments: active.Arguments, Reason: active.Reason,
+		Presentation: active.Presentation,
+	}, storedPlan, grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canceled, err := runtime.Cancel(t.Context(), "agent", shared.ID); err != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("cancel shared operation = %+v, %v", canceled, err)
+	}
+	grant, _ = grantStore.Get(active.ApprovalID)
+	if grant.Status != grants.StatusActive {
+		t.Fatalf("shared grant was revoked with operation: %s", grant.Status)
+	}
 	if err := runtime.CancelGrant(grant, "agent"); err != nil {
 		t.Fatal(err)
 	}

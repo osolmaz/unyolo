@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/agentclient"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agentmcp"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
@@ -19,37 +18,17 @@ import (
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/mcpoperation"
+	"github.com/osolmaz/brokerkit/mcpserver"
 	"github.com/osolmaz/brokerkit/streamstore"
 )
 
-type mcpRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-type mcpResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *mcpError       `json:"error,omitempty"`
-}
-type mcpError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-type mcpToolCall struct {
-	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
-}
 type mcpOperationInput struct {
 	Target          json.RawMessage     `json:"target"`
 	Arguments       json.RawMessage     `json:"arguments"`
 	SealedArguments json.RawMessage     `json:"sealed_arguments"`
 	CredentialSlot  string              `json:"credential_slot"`
 	StreamInput     *mcpStreamReference `json:"stream_input"`
-	Reason          string              `json:"reason"`
-	RequestID       string              `json:"request_id"`
+	RequestID       string              `json:"-"`
 }
 
 type mcpStreamReference struct {
@@ -73,122 +52,51 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 	if len(args) != 0 {
 		return exitError{code: 64, message: "usage: gh-broker mcp"}
 	}
-	scanner := bufio.NewScanner(stdin)
-	scanner.Buffer(make([]byte, 4096), 4<<20)
-	encoder := json.NewEncoder(stdout)
-	lastTools, _ := mcpToolSignature(getenv)
-	for scanner.Scan() {
-		nextTools, err := handleMCPLine(ctx, getenv, encoder, lastTools, scanner.Bytes())
-		if err != nil {
-			return err
-		}
-		lastTools = nextTools
-	}
-	return scanner.Err()
-}
-
-func handleMCPLine(ctx context.Context, getenv func(string) string, encoder *json.Encoder, lastTools string, line []byte) (string, error) {
-	request, ok := parseMCPRequest(line)
-	if !ok {
-		return lastTools, encoder.Encode(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: -32700, Message: "Parse error"}})
-	}
-	if len(request.ID) == 0 {
-		return lastTools, nil
-	}
-	nextTools, err := notifyMCPToolChanges(getenv, encoder, lastTools)
+	bridge, err := newGitHubMCPBridge(getenv)
 	if err != nil {
-		return lastTools, err
+		return err
 	}
-	return nextTools, encoder.Encode(handleMCP(ctx, getenv, request))
-}
-
-func parseMCPRequest(line []byte) (mcpRequest, bool) {
-	var request mcpRequest
-	if strictjson.Decode(line, &request, true) != nil {
-		return mcpRequest{}, false
-	}
-	return request, true
-}
-
-func notifyMCPToolChanges(getenv func(string) string, encoder *json.Encoder, lastTools string) (string, error) {
-	currentTools, signatureErr := mcpToolSignature(getenv)
-	if signatureErr != nil {
-		return lastTools, signatureErr
-	}
-	if currentTools == lastTools {
-		return lastTools, nil
-	}
-	return currentTools, encoder.Encode(map[string]any{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
-}
-
-func mcpToolSignature(getenv func(string) string) (string, error) {
-	tools, err := configuredMCPTools(getenv)
+	server, err := mcpserver.New(mcpserver.Config{
+		Name: "gh-broker", Version: version, ListChanged: true,
+		Tools: func(context.Context) ([]map[string]any, error) { return configuredMCPTools(getenv) },
+		Call:  bridge.Call,
+		Resources: func(context.Context) ([]map[string]any, error) {
+			return []map[string]any{{"uri": "github://operations?limit=50", "name": "GitHub operation catalog", "description": "Paged exhaustive GitHub capability catalog", "mimeType": "application/json"}}, nil
+		},
+		ReadResource: func(_ context.Context, input mcpserver.ResourceRead) (any, error) {
+			return readMCPResource(input.URI)
+		},
+		ErrorValue: func(err error) any { return mcpoperation.ErrorValue(err) },
+	})
 	if err != nil {
-		return "", err
+		return err
 	}
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		name, _ := tool["name"].(string)
-		names = append(names, name)
-	}
-	return strings.Join(names, "\x00"), nil
+	return server.Serve(ctx, stdin, stdout)
 }
 
-func handleMCP(ctx context.Context, getenv func(string) string, request mcpRequest) mcpResponse {
-	response := mcpResponse{JSONRPC: "2.0", ID: request.ID}
-	switch request.Method {
-	case "initialize":
-		response.Result = mcpInitializeResult()
-	case "ping":
-		response.Result = map[string]any{}
-	case "tools/list":
-		response.Result, response.Error = handleMCPToolsList(getenv)
-	case "tools/call":
-		response.Result, response.Error = handleMCPToolsCall(ctx, getenv, request.Params)
-	case "resources/list":
-		response.Result = mcpResourcesListResult()
-	case "resources/read":
-		response.Result, response.Error = handleMCPResourcesRead(request.Params)
-	default:
-		response.Error = &mcpError{Code: -32601, Message: "Method not found"}
-	}
-	return response
-}
-
-func mcpInitializeResult() map[string]any {
-	return map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{"listChanged": true}, "resources": map[string]any{}}, "serverInfo": map[string]any{"name": "gh-broker", "version": version}}
-}
-
-func handleMCPToolsList(getenv func(string) string) (any, *mcpError) {
-	tools, err := configuredMCPTools(getenv)
-	if err != nil {
-		return nil, &mcpError{Code: -32603, Message: err.Error()}
-	}
-	return map[string]any{"tools": tools}, nil
-}
-
-func handleMCPToolsCall(ctx context.Context, getenv func(string) string, params json.RawMessage) (any, *mcpError) {
-	var call mcpToolCall
-	if strictjson.Decode(params, &call, true) != nil {
-		return nil, &mcpError{Code: -32602, Message: "Invalid tool call"}
-	}
-	value, err := callMCP(ctx, getenv, call)
-	if err != nil {
-		value = mcpoperation.ErrorValue(err)
-	}
-	return mcpToolResult(value, err), nil
-}
-
-func mcpResourcesListResult() map[string]any {
-	return map[string]any{"resources": []map[string]any{{"uri": "github://operations?limit=50", "name": "GitHub operation catalog", "description": "Paged exhaustive GitHub capability catalog", "mimeType": "application/json"}}}
-}
-
-func handleMCPResourcesRead(params json.RawMessage) (any, *mcpError) {
-	value, err := readMCPResource(params)
-	if err != nil {
-		return nil, &mcpError{Code: -32602, Message: err.Error()}
-	}
-	return value, nil
+func newGitHubMCPBridge(getenv func(string) string) (*agentmcp.Bridge, error) {
+	return agentmcp.New(agentmcp.Config{
+		Prefix: "gh_",
+		Client: func(context.Context) (*agentclient.Client, error) {
+			connection, err := loadOperationConnection(getenv)
+			if err != nil {
+				return nil, err
+			}
+			return connection.client()
+		},
+		Select: func(tool string) (agentmcp.Selection, error) {
+			descriptor, err := selectedMCPDescriptor(getenv, tool)
+			return agentmcp.Selection{Operation: descriptor.Name, Provider: descriptor}, err
+		},
+		Prepare: func(ctx context.Context, selection agentmcp.Selection, input *agentmcp.Input) error {
+			descriptor, ok := selection.Provider.(opcatalog.Descriptor)
+			if !ok {
+				return errors.New("invalid GitHub MCP descriptor")
+			}
+			return prepareGitHubMCPInput(ctx, getenv, descriptor, input)
+		},
+		Project: mcpprojection.ResultToMCP,
+	})
 }
 
 func configuredMCPTools(getenv func(string) string) ([]map[string]any, error) {
@@ -230,56 +138,6 @@ func csvSet(value string) map[string]bool {
 	return result
 }
 
-func callMCP(ctx context.Context, getenv func(string) string, call mcpToolCall) (any, error) {
-	if mcpUtilityTool(call.Name) {
-		return callMCPUtilityWithEnv(ctx, getenv, call)
-	}
-	descriptor, err := selectedMCPDescriptor(getenv, call.Name)
-	if err != nil {
-		return nil, err
-	}
-	input, requestID, err := prepareMCPSubmissionInput(descriptor, call.Arguments)
-	if err != nil {
-		return nil, err
-	}
-	connection, err := loadOperationConnection(getenv)
-	if err != nil {
-		return nil, err
-	}
-	if err := prepareMCPArguments(ctx, descriptor, &input, connection); err != nil {
-		return nil, err
-	}
-	return submitMCPApplicationOperation(ctx, connection, descriptor, input, requestID)
-}
-
-func submitMCPApplicationOperation(ctx context.Context, connection operationConnection, descriptor opcatalog.Descriptor, input mcpOperationInput, requestID string) (any, error) {
-	client, err := connection.client()
-	if err != nil {
-		return nil, err
-	}
-	operation, err := client.Submit(ctx, agentv1.SubmitRequest{IdempotencyKey: requestID, Operation: descriptor.Name, Target: input.Target, Arguments: input.Arguments, Reason: input.Reason})
-	if err != nil {
-		return nil, mcpoperation.Conflict(ctx, client, requestID, err)
-	}
-	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
-}
-
-func mcpUtilityTool(name string) bool {
-	return name == "gh_operation_get" || name == "gh_operation_wait" || name == "gh_operation_list"
-}
-
-func callMCPUtilityWithEnv(ctx context.Context, getenv func(string) string, call mcpToolCall) (any, error) {
-	connection, err := loadOperationConnection(getenv)
-	if err != nil {
-		return nil, err
-	}
-	client, err := connection.client()
-	if err != nil {
-		return nil, err
-	}
-	return callMCPUtility(ctx, client, call)
-}
-
 func selectedMCPDescriptor(getenv func(string) string, tool string) (opcatalog.Descriptor, error) {
 	selected, err := mcpcatalog.Selected(mcpExposure(getenv), mcpEnabled(getenv))
 	if err != nil {
@@ -293,48 +151,32 @@ func selectedMCPDescriptor(getenv func(string) string, tool string) (opcatalog.D
 	return opcatalog.Descriptor{}, errors.New("tool is not advertised for this client and deployment")
 }
 
-func prepareMCPSubmissionInput(descriptor opcatalog.Descriptor, raw json.RawMessage) (mcpOperationInput, string, error) {
-	var input mcpOperationInput
-	if strictjson.Decode(raw, &input, true) != nil || strings.TrimSpace(input.Reason) == "" || len(input.Reason) > 2000 {
-		return mcpOperationInput{}, "", errors.New("invalid typed tool arguments")
+func prepareGitHubMCPInput(ctx context.Context, getenv func(string) string, descriptor opcatalog.Descriptor, shared *agentmcp.Input) error {
+	input := mcpOperationInput{
+		Target: shared.Target, Arguments: shared.Arguments, SealedArguments: shared.SealedArguments,
+		CredentialSlot: shared.CredentialSlot, RequestID: shared.RequestID,
 	}
-	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if len(shared.StreamInput) != 0 {
+		var reference mcpStreamReference
+		if strictjson.Decode(shared.StreamInput, &reference, true) != nil {
+			return errors.New("stream_input is invalid")
+		}
+		input.StreamInput = &reference
+	}
+	canonical, err := mcpprojection.ArgumentsToCanonical(descriptor.Descriptor, input.Arguments)
 	if err != nil {
-		return mcpOperationInput{}, "", err
+		return err
 	}
-	if len(input.Arguments) == 0 {
-		input.Arguments = json.RawMessage(`{}`)
+	input.Arguments = canonical
+	connection, err := loadOperationConnection(getenv)
+	if err != nil {
+		return err
 	}
-	input.RequestID = requestID
-	input.Arguments, err = mcpprojection.ArgumentsToCanonical(descriptor.Descriptor, input.Arguments)
-	return input, requestID, err
-}
-
-func callMCPUtility(ctx context.Context, client *agentclient.Client, call mcpToolCall) (any, error) {
-	switch call.Name {
-	case "gh_operation_get":
-		return callMCPUtilityInput(call.Arguments, func(input mcpoperation.GetInput) (any, error) {
-			return mcpoperation.Get(ctx, client, input, mcpprojection.ResultToMCP)
-		})
-	case "gh_operation_wait":
-		return callMCPUtilityInput(call.Arguments, func(input mcpoperation.WaitInput) (any, error) {
-			return mcpoperation.Wait(ctx, client, input, mcpprojection.ResultToMCP)
-		})
-	case "gh_operation_list":
-		return callMCPUtilityInput(call.Arguments, func(input mcpoperation.ListInput) (any, error) {
-			return mcpoperation.List(ctx, client, input)
-		})
-	default:
-		return nil, errors.New("unknown operation utility")
+	if err := prepareMCPArguments(ctx, descriptor, &input, connection); err != nil {
+		return err
 	}
-}
-
-func callMCPUtilityInput[T any](raw json.RawMessage, execute func(T) (any, error)) (any, error) {
-	var input T
-	if strictjson.Decode(raw, &input, true) != nil {
-		return nil, errors.New("invalid tool arguments")
-	}
-	return execute(input)
+	shared.Target, shared.Arguments = input.Target, input.Arguments
+	return nil
 }
 
 func prepareMCPArguments(ctx context.Context, descriptor opcatalog.Descriptor, input *mcpOperationInput, connection operationConnection) error {
@@ -399,14 +241,8 @@ func prepareMCPSealedArguments(ctx context.Context, descriptor opcatalog.Descrip
 	return err
 }
 
-func readMCPResource(raw json.RawMessage) (map[string]any, error) {
-	var input struct {
-		URI string `json:"uri"`
-	}
-	if strictjson.Decode(raw, &input, true) != nil {
-		return nil, errors.New("invalid resource request")
-	}
-	parsed, err := url.Parse(input.URI)
+func readMCPResource(uri string) (map[string]any, error) {
+	parsed, err := url.Parse(uri)
 	if err != nil || parsed.Scheme != "github" || parsed.Host != "operations" {
 		return nil, errors.New("unknown resource URI")
 	}
@@ -422,10 +258,5 @@ func readMCPResource(raw json.RawMessage) (map[string]any, error) {
 		return nil, err
 	}
 	data, _ := json.Marshal(page)
-	return map[string]any{"contents": []map[string]any{{"uri": input.URI, "mimeType": "application/json", "text": string(data)}}}, nil
-}
-
-func mcpToolResult(value any, err error) map[string]any {
-	data, _ := json.Marshal(value)
-	return map[string]any{"content": []map[string]any{{"type": "text", "text": string(data)}}, "structuredContent": value, "isError": err != nil}
+	return map[string]any{"contents": []map[string]any{{"uri": uri, "mimeType": "application/json", "text": string(data)}}}, nil
 }

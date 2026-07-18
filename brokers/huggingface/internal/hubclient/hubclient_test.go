@@ -50,6 +50,125 @@ func TestTypedRepositoryCallsAreBoundedAndAuthenticated(t *testing.T) {
 	}
 }
 
+func TestTypedRepositoryReadCallsUseClosedRoutes(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		switch requests {
+		case 1:
+			if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "acme" || r.URL.Query().Get("limit") != "7" {
+				t.Fatalf("list request = %s?%s", r.URL.Path, r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`[{"id":"acme/private","sha":"abc","private":true}]`))
+		case 2:
+			if r.URL.Path != "/api/datasets/acme/private/tree/main/docs" || r.URL.Query().Get("recursive") != "true" {
+				t.Fatalf("tree request = %s?%s", r.URL.Path, r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`[{"type":"file","path":"docs/README.md","oid":"abc","size":5}]`))
+		case 3:
+			if r.URL.Path != "/datasets/acme/private/resolve/main/README.md" {
+				t.Fatalf("file request = %s", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Repo-Commit", "abc")
+			_, _ = w.Write([]byte("hello"))
+		default:
+			t.Fatalf("unexpected request %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := RepoRef{Type: RepoTypeDataset, Owner: "acme", Name: "private"}
+	if repos, err := client.ListRepos(t.Context(), RepoTypeDataset, "acme", 7); err != nil || len(repos) != 1 || !repos[0].Private {
+		t.Fatalf("ListRepos() = %+v, %v", repos, err)
+	}
+	if tree, err := client.RepoTree(t.Context(), ref, "main", "docs", true); err != nil || len(tree) != 1 || tree[0].Path != "docs/README.md" {
+		t.Fatalf("RepoTree() = %+v, %v", tree, err)
+	}
+	if file, err := client.RepoFile(t.Context(), ref, "main", "README.md"); err != nil || string(file.Content) != "hello" || file.Commit != "abc" {
+		t.Fatalf("RepoFile() = %+v, %v", file, err)
+	}
+}
+
+func TestRepositoryReadCallsRejectInvalidQueriesAndResponses(t *testing.T) {
+	client, err := New("https://huggingface.co", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListRepos(t.Context(), RepoType("bad"), "acme", 0); err == nil {
+		t.Fatal("invalid list query accepted")
+	}
+	if validateRepoTreeEntries(make([]RepoTreeEntry, 1001)) == nil {
+		t.Fatal("oversized tree accepted")
+	}
+	if validateRepoTreeEntries([]RepoTreeEntry{{Type: "other", Path: "file", Size: 1}}) == nil {
+		t.Fatal("invalid tree entry accepted")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/datasets":
+			_, _ = w.Write([]byte(`[{"id":""}]`))
+		case "/datasets/acme/private/resolve/main/large.bin":
+			_, _ = w.Write([]byte("too large"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err = New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ListRepos(t.Context(), RepoTypeDataset, "acme", 1); err == nil {
+		t.Fatal("invalid upstream list accepted")
+	}
+	client, err = New(server.URL, "secret", WithHTTPTransport(server.Client().Transport), WithMaxResponseBytes(4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := RepoRef{Type: RepoTypeDataset, Owner: "acme", Name: "private"}
+	if _, err := client.RepoFile(t.Context(), ref, "main", "large.bin"); err == nil {
+		t.Fatal("oversized file accepted")
+	}
+}
+
+func TestRepoFileFollowsTrustedRedirectWithoutCredential(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/datasets/acme/private/resolve/main/README.md":
+			if r.Header.Get("Authorization") != "Bearer secret" {
+				t.Fatalf("initial authorization = %q", r.Header.Get("Authorization"))
+			}
+			http.Redirect(w, r, "/resolve-cache/README.md", http.StatusTemporaryRedirect)
+		case "/resolve-cache/README.md":
+			if r.Header.Get("Authorization") != "" {
+				t.Fatalf("redirect leaked authorization = %q", r.Header.Get("Authorization"))
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Repo-Commit", "abc")
+			_, _ = w.Write([]byte("redirected"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "secret", WithHTTPTransport(server.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := client.RepoFile(t.Context(), RepoRef{Type: RepoTypeDataset, Owner: "acme", Name: "private"}, "main", "README.md")
+	if err != nil || string(file.Content) != "redirected" || file.ContentType != "text/plain" || file.Commit != "abc" {
+		t.Fatalf("RepoFile() = %+v, %v", file, err)
+	}
+}
+
 func TestTypedKernelRepositoryCallsUseKernelPathsAndType(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

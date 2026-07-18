@@ -400,7 +400,10 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 	if err != nil {
 		return err
 	}
-	r.operationRegistry, err = newOperationRegistry(r.hub, upstream.String(), r.sealedPayloadStore, r.credentialSlots)
+	authorize := func(client string, operation policy.Operation, target policy.Target, authority *grants.Grant) bool {
+		return policyAllowsRepositoryResult(client, opts.Scope, target, operation, authority, r.planValidator, opts.Now())
+	}
+	r.operationRegistry, err = newOperationRegistry(r.hub, upstream.String(), r.sealedPayloadStore, r.credentialSlots, authorize)
 	if err != nil {
 		return err
 	}
@@ -421,8 +424,8 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 	return nil
 }
 
-func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store) (*operations.Registry, error) {
-	providerAdapters, err := providerAdapters(hub, upstream, sealed, credentialSlots)
+func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store, authorize operations.RepositoryAuthorization) (*operations.Registry, error) {
+	providerAdapters, err := providerAdapters(hub, upstream, sealed, credentialSlots, authorize)
 	if err != nil {
 		return nil, err
 	}
@@ -436,8 +439,9 @@ func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealed
 	return registry, nil
 }
 
-func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store) ([]operations.Adapter, error) {
+func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store, authorize operations.RepositoryAuthorization) ([]operations.Adapter, error) {
 	factories := []func() ([]operations.Adapter, error){
+		func() ([]operations.Adapter, error) { return operations.NewRepositoryReadAdapters(hub, authorize) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryAdapters(hub, upstream) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositorySettingsAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewRefsAdapters(hub) },

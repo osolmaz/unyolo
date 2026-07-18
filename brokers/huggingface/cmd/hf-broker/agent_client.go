@@ -9,23 +9,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agentclient"
 	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/clienthttp"
 )
 
 const defaultClientWait = 15 * time.Minute
 
 type agentClient struct {
 	operations  *agentclient.Client
-	baseURL     string
-	secret      string
-	httpClient  *http.Client
 	grantClient *hfGrantClient
 }
 
@@ -112,13 +107,7 @@ func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	baseURL, httpClient, err := clienthttp.ForEndpoint(endpointURI, nil)
-	if err != nil {
-		return nil, err
-	}
-	return &agentClient{operations: operations, baseURL: baseURL, secret: secret,
-		httpClient:  httpClient,
-		grantClient: grantClient}, nil
+	return &agentClient{operations: operations, grantClient: grantClient}, nil
 }
 
 func loadAgentSecret(getenv func(string) string) (string, error) {

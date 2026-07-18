@@ -258,6 +258,14 @@ unlimited uses only until the required expiry. Omitting a requested
 `max_uses` selects the finite default; an explicit request `null` selects
 unlimited use. Execution grants remain exactly single-use.
 
+Grant mode is authorization metadata, not a transport selector. Agent-facing
+MCP and CLI operation calls always submit through Agent Operations V1. During
+admission or execution, a matching active window grant can authorize the
+stored operation and reserve one use atomically. A requestable operation
+without an active grant creates one approval linked to that operation; an
+allowed operation executes directly; and a denied operation makes no provider
+request.
+
 ## Validation
 
 An explicitly empty `rules` array is a valid deny-all policy. Policy loading

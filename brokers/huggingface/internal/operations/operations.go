@@ -9,6 +9,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operationruntime"
 )
 
@@ -27,6 +28,7 @@ type Plan struct {
 	Presentation      agentv1.Presentation
 	Policy            hfpolicy.Request
 	PolicyDecision    PolicyDecision
+	ReservedGrant     *grants.Grant
 }
 
 // PolicyDecision is the immutable policy context selected at submission.
@@ -168,7 +170,7 @@ type Registry struct {
 
 func NewRegistry(adapters ...Adapter) (*Registry, error) {
 	registry, err := operationruntime.NewRegistry(operationruntime.RegistryOptions{
-		Provider: "Hugging Face", Descriptor: opcatalog.ByName,
+		Provider: "Hugging Face", Descriptor: opcatalog.ByName, RequiresAdapter: AgentRuntimeBound,
 	}, adapters...)
 	if err != nil {
 		return nil, err
@@ -176,9 +178,16 @@ func NewRegistry(adapters ...Adapter) (*Registry, error) {
 	return &Registry{Registry: registry}, nil
 }
 
+// AgentRuntimeBound reports whether the catalog explicitly binds an operation
+// to an Agent Operations executor. Native protocol bindings remain on their
+// provider data plane and are not advertised as bounded MCP executions.
+func AgentRuntimeBound(descriptor opcatalog.Descriptor) bool {
+	return descriptor.Implementation == opcatalog.StatusImplemented &&
+		(descriptor.ExecutorKind == "inline" || descriptor.ExecutorKind == "credential")
+}
+
 // ValidateCoverage ensures every catalog entry advertised as an implemented
-// execution operation has an adapter. Existing bounded protocol operations do
-// not enter this registry.
+// operation with an Agent Operations binding has an adapter.
 func (r *Registry) ValidateCoverage() error {
 	return r.Registry.ValidateCoverage("Hugging Face", opcatalog.MustAll())
 }

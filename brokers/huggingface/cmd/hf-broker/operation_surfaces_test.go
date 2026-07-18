@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,7 +27,7 @@ import (
 
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	descriptors := agentFacingDescriptors()
-	if len(descriptors) != 257 {
+	if len(descriptors) != 144 {
 		t.Fatalf("descriptors=%d", len(descriptors))
 	}
 	for _, descriptor := range descriptors {
@@ -60,11 +62,7 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 			}
 			properties := schema["properties"].(map[string]any)
 			assertClosedSchema(t, descriptor.Name+" target", properties["target"])
-			if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-				assertClosedSchema(t, descriptor.Name+" arguments", properties["arguments"])
-			} else {
-				assertClosedSchema(t, descriptor.Name+" attrs", properties["attrs"])
-			}
+			assertClosedSchema(t, descriptor.Name+" arguments", properties["arguments"])
 			if sealed, found := properties["sealed_arguments"]; found {
 				assertClosedSchema(t, descriptor.Name+" sealed arguments", sealed)
 			}
@@ -74,7 +72,7 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 		return
 	}
 	tools := catalogMCPTools()
-	if len(tools) != len(descriptors)+3 {
+	if len(tools) != len(descriptors)+4 {
 		t.Fatalf("descriptors=%d tools=%d", len(descriptors), len(tools))
 	}
 }
@@ -146,7 +144,7 @@ func TestMCPCompatibilityManifestMatchesCatalog(t *testing.T) {
 	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "huggingface" ||
 		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1"}) ||
 		manifest.AgentFacingOperations != len(agentFacingDescriptors()) || manifest.OperationTools != len(agentFacingDescriptors()) ||
-		manifest.UtilityTools != 3 || !slices.Equal(manifest.ProjectedOperations, projected) ||
+		manifest.UtilityTools != 4 || !slices.Equal(manifest.ProjectedOperations, projected) ||
 		manifest.ProjectedWindowOperations != windows || manifest.UnresolvedCollisions != 0 {
 		t.Fatalf("compatibility manifest drifted: %+v", manifest)
 	}
@@ -272,17 +270,19 @@ func TestSubmitWaitTimeoutReturnsResumableOperation(t *testing.T) {
 	}
 }
 
-func TestMCPWindowOperationRequestsExactGrant(t *testing.T) {
+func TestMCPWindowOperationSubmitsAgentOperation(t *testing.T) {
 	var submitted map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/grants" || request.Method != http.MethodPost {
+		if request.URL.Path != "/api/agent/v1/operations" || request.Method != http.MethodPost {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
 		if err := json.NewDecoder(request.Body).Decode(&submitted); err != nil {
 			t.Fatal(err)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"status":"success","data":{"grant":{"id":"grant-1","status":"pending","operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"mode":"window","minutes":5,"max_uses":1,"uses_remaining":1,"used_count":0}}}`))
+		operation := testAgentOperation(agentv1.StatePending)
+		operation.Operation = "repo.contents.read"
+		_ = json.NewEncoder(writer).Encode(operation)
 	}))
 	defer server.Close()
 	client, err := loadAgentClient(agentClientTestEnv(server.URL))
@@ -290,10 +290,10 @@ func TestMCPWindowOperationRequestsExactGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_contents_read", Arguments: json.RawMessage(
-		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"attrs":{},"reason":"inspect data","request_id":"read-1","minutes":5,"max_uses":1}`)})
-	grant, ok := value.(hfClientGrant)
-	if err != nil || !ok || grant.Operation != "repo.contents.read" || submitted["operation"] != "repo.contents.read" {
-		t.Fatalf("grant=%#v submitted=%#v err=%v", value, submitted, err)
+		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"arguments":{"path":"README.md"},"reason":"inspect data","request_id":"read-1"}`)})
+	operation, ok := value.(mcpoperation.Operation)
+	if err != nil || !ok || operation.Operation != "repo.contents.read" || submitted["operation"] != "repo.contents.read" {
+		t.Fatalf("operation=%#v submitted=%#v err=%v", value, submitted, err)
 	}
 }
 
@@ -309,8 +309,10 @@ func TestMCPSealedOperationSeparatesSecretFromPlan(t *testing.T) {
 				t.Fatalf("sealed idempotency key = %q", request.Header.Get("X-Broker-Idempotency-Key"))
 			}
 			sealedBody = body.Bytes()
+			digest := sha256.Sum256(sealedBody)
 			writer.WriteHeader(http.StatusCreated)
-			_, _ = writer.Write([]byte(`{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","request_key":"secret-1","digest":"digest","size":40,"expires_at":9999999999}`))
+			_, _ = fmt.Fprintf(writer, `{"id":"sealed_abcdefghijklmnopqrstuvwx","owner":"agent","purpose":"space.secret.set","request_key":"secret-1","digest":%q,"size":%d,"expires_at":9999999999}`,
+				hex.EncodeToString(digest[:]), len(sealedBody))
 		case "/api/agent/v1/operations":
 			operationBody = body.Bytes()
 			operation := testAgentOperation(agentv1.StatePending)
@@ -355,6 +357,25 @@ func TestCatalogSchemaUsesPinnedBindingWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestCatalogSchemaUsesCustomAndNativeProtocolTargets(t *testing.T) {
+	read, found := opcatalog.ByName("repo.contents.read")
+	if !found {
+		t.Fatal("repo.contents.read missing")
+	}
+	target, arguments, _ := catalogOperationInputSchemas(read)
+	if target == nil || arguments == nil {
+		t.Fatal("custom repository schema missing")
+	}
+	native, found := opcatalog.ByName("git.push.force")
+	if !found {
+		t.Fatal("git.push.force missing")
+	}
+	target, arguments, sealed := catalogOperationInputSchemas(native)
+	if target == nil || arguments != nil || sealed != nil {
+		t.Fatalf("native protocol schema = %#v, %#v, %#v", target, arguments, sealed)
+	}
+}
+
 func TestCredentialOutputToolRequiresSlotAndHidesSealedInput(t *testing.T) {
 	descriptor, found := opcatalog.ByName("service_account.token.create")
 	if !found || descriptor.CredentialOutputKind == nil {
@@ -376,11 +397,13 @@ func TestCatalogCLIExecutionAndWindowOperations(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/api/agent/v1/operations":
+			var submitted struct {
+				Operation string `json:"operation"`
+			}
+			_ = json.NewDecoder(request.Body).Decode(&submitted)
 			operation := testAgentOperation(agentv1.StateSucceeded)
-			operation.Operation = "repo.delete"
+			operation.Operation = submitted.Operation
 			_ = json.NewEncoder(writer).Encode(operation)
-		case "/api/grants":
-			_, _ = writer.Write([]byte(`{"status":"success","data":{"grant":{"id":"grant-1","status":"pending","operation":"repo.contents.read","target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"mode":"window","minutes":5,"max_uses":1,"uses_remaining":1,"used_count":0}}}`))
 		default:
 			t.Fatalf("unexpected CLI request: %s %s", request.Method, request.URL.Path)
 		}
@@ -405,11 +428,11 @@ func TestCatalogCLIExecutionAndWindowOperations(t *testing.T) {
 	readDescriptor, _ := opcatalog.ByName("repo.contents.read")
 	if err := runCatalogOperation(t.Context(), client, &stdout, &stderr, readDescriptor, []string{
 		"--target-json", `{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"}`,
-		"--attrs-json", `{}`, "--minutes", "5", "--max-uses", "1", "--request-id", "read-1", "--wait=false", "--json",
+		"--arguments-json", `{"path":"README.md"}`, "--request-id", "read-1", "--wait=false", "--json",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), `"operation":"repo.contents.read"`) {
+	if !strings.Contains(stdout.String(), `"operation": "repo.contents.read"`) {
 		t.Fatalf("window output = %q", stdout.String())
 	}
 }

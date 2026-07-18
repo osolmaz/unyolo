@@ -16,7 +16,16 @@ import (
 
 func TestAPIReposListsOnlyPolicyMetadata(t *testing.T) {
 	var auditLog bytes.Buffer
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/datasets" || r.URL.Query().Get("author") != "acme" || r.URL.Query().Get("limit") != "100" || r.Header.Get("Authorization") != "Bearer "+testToken {
+			t.Fatalf("upstream list request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`[{"id":"acme/secret"},{"id":"acme/repo","private":true},{"id":"acme/split"},{"id":"acme/other"}]`))
+	}))
+	defer upstream.Close()
 	policyJSON := `{"rules":[
+		{"id":"deny-secret","effect":"deny","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"secret"}]},
+		{"id":"deny-other","effect":"deny","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"other"}]},
 		{"id":"list-repo","effect":"allow","clients":["agent"],"operations":["repo.list","repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}]},
 		{"id":"list-split","effect":"allow","clients":["agent"],"operations":["repo.list"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"split"}]},
 		{"id":"metadata-split","effect":"allow","clients":["agent"],"operations":["repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"split"}]},
@@ -40,7 +49,7 @@ func TestAPIReposListsOnlyPolicyMetadata(t *testing.T) {
 		},
 		Scope:           scp,
 		Audit:           audit.New(&auditLog),
-		UpstreamBaseURL: "http://127.0.0.1:1",
+		UpstreamBaseURL: upstream.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +64,10 @@ func TestAPIReposListsOnlyPolicyMetadata(t *testing.T) {
 	}
 	if strings.Contains(body, "refs/") || strings.Contains(body, "commit") || strings.Contains(body, "README") {
 		t.Fatalf("repo list leaked content metadata: %s", body)
+	}
+	resp, body = doRequest(t, http.MethodGet, broker.URL+"/api/repos?type=dataset&owner=acme&limit=1", "Bearer "+testSecret, nil)
+	if limited := decodeAPIRepoList(t, body); resp.StatusCode != http.StatusOK || !repoNamesEqual(limited, []string{"repo"}) {
+		t.Fatalf("filtered limited repo list = %d %s", resp.StatusCode, body)
 	}
 	if got := auditLog.String(); !strings.Contains(got, `"operation":"repo.list"`) ||
 		!strings.Contains(got, `"target":"repos"`) ||

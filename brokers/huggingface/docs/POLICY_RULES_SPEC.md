@@ -434,7 +434,7 @@ directly. Arbitrary partial operation globs such as `repo.*.read` or
 
 | Operation | Default grant mode | Meaning |
 |-----------|--------------------|---------|
-| `repo.list` | none | List repositories explicitly disclosed by exact policy targets. |
+| `repo.list` | none | Query repositories for one exact owner and type, then disclose only policy-matching results. |
 | `repo.create` | execution | Create one exact model, dataset, or Space repository through the typed Agent Operations API. |
 | `repo.delete` | execution | Delete one exact repository after a one-use approval and absence reconciliation. |
 | `repo.metadata.read` | none | Read broker-exposed repository metadata: type, owner, and name only. |
@@ -498,21 +498,21 @@ Success response:
 }
 ```
 
-The endpoint returns local policy metadata only: type, owner, and
-name for exact repo targets that have both `repo.list` and
-`repo.metadata.read` allowed for the authenticated client. It does not
-call the Hub list API, expand wildcard targets, include visibility, tags,
-timestamps, counters, branches, commits, siblings, or files, or return
-raw upstream metadata.
+The endpoint queries the authenticated Hub, then filters each repository
+through policy before returning its type, owner, and name. Exact targets
+disclose only that repository. A wildcard name can discover matching
+repositories for one exact owner and type. Specific deny rules override a
+broader allow rule. The response does not include visibility, tags,
+timestamps, counters, branches, commits, siblings, files, or raw upstream
+metadata.
 
 Contents include: file paths, file contents, README text, model card
 text, dataset card text, dataset rows, branches, tags, commit ids, commit
 messages, raw blobs, LFS metadata, and sibling/file-tree listings.
 Contents require `repo.contents.read` or `git.fetch`.
 
-Wildcard targets authorize matching future requests, but they do not
-create list rows by themselves. A repo is listed
-only when an exact policy target for that repo is visible to the client.
+Wildcard targets can disclose matching upstream list results, but they do not
+authorize repository content. Each content request is evaluated separately.
 
 Public repositories are not special when accessed through the broker.
 Broker-routed public reads still require policy. Agents may read public

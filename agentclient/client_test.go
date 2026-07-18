@@ -63,7 +63,8 @@ func TestClientWaitReturnsLastOperationOnCancellation(t *testing.T) {
 func TestClientListsOperationSummaries(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Query().Get("idempotency_key") != "request" || request.URL.Query().Get("limit") != "1" {
+		if request.URL.Query().Get("idempotency_key") != "request" || request.URL.Query().Get("limit") != "1" ||
+			request.URL.Query().Get("state") != "pending" || request.URL.Query().Get("cursor") != "next" {
 			t.Fatalf("query = %s", request.URL.RawQuery)
 		}
 		operation := testOperation(agentv1.StatePending)
@@ -77,9 +78,28 @@ func TestClientListsOperationSummaries(t *testing.T) {
 	}))
 	defer server.Close()
 	client := newTestClient(t, server.URL, nil)
-	page, err := client.List(t.Context(), agentv1.ListOptions{IdempotencyKey: "request", Limit: 1})
+	page, err := client.List(t.Context(), agentv1.ListOptions{IdempotencyKey: "request", State: agentv1.StatePending, Limit: 1, Cursor: "next"})
 	if err != nil || len(page.Operations) != 1 || page.Operations[0].ID != "op" || page.NextCursor == nil {
 		t.Fatalf("List() = %+v, %v", page, err)
+	}
+}
+
+func TestClientCancelsOperationAndFormatsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/agent/v1/operations/op/cancel" {
+			http.NotFound(writer, request)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(testOperation(agentv1.StateCanceled))
+	}))
+	defer server.Close()
+	client := newTestClient(t, server.URL, nil)
+	operation, err := client.Cancel(t.Context(), "op")
+	if err != nil || operation.State != agentv1.StateCanceled {
+		t.Fatalf("Cancel() = %+v, %v", operation, err)
+	}
+	if message := (&Error{Message: "denied"}).Error(); message != "denied" {
+		t.Fatalf("Error() = %q", message)
 	}
 }
 

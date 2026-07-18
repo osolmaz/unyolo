@@ -40,7 +40,7 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 		t.Fatal("unknown CLI command matched")
 	}
 	tools := MCPTools(options)
-	if len(tools) != 6 || tools[0]["description"] != "Run repo.read" || tools[5]["name"] != "test_operation_list" {
+	if len(tools) != 7 || tools[0]["description"] != "Run repo.read" || tools[5]["name"] != "test_operation_list" || tools[6]["name"] != "test_operation_cancel" {
 		t.Fatalf("MCP tools = %#v", tools)
 	}
 

@@ -42,6 +42,7 @@ const (
 	OpRepoCreate        Operation = "repo.create"
 	OpRepoMetadataRead  Operation = "repo.metadata.read"
 	OpRepoContentsRead  Operation = "repo.contents.read"
+	OpRepoTreeList      Operation = "repo.tree.list"
 	OpGitFetch          Operation = "git.fetch"
 	OpGitPushAppend     Operation = "git.push.append"
 	OpGitPushForce      Operation = "git.push.force"
@@ -501,7 +502,7 @@ func ValidateRequest(req Request) error {
 	if req.Target.Kind != info.targetKind {
 		return fmt.Errorf("operation %s requires %s target", req.Operation, info.targetKind)
 	}
-	if err := validateRequestTarget(req.Target); err != nil {
+	if err := validatePolicyRequestTarget(req); err != nil {
 		return err
 	}
 	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
@@ -511,6 +512,20 @@ func ValidateRequest(req Request) error {
 		return err
 	}
 	return hfRegistry().ValidateRequest(AuthorizationRequest(req))
+}
+
+func validatePolicyRequestTarget(req Request) error {
+	if isWildcardRepoList(req) {
+		if !validConcreteRepoType(req.Target.Type) || !validRequestSegment(req.Target.Owner) {
+			return errors.New("invalid repo list target")
+		}
+		return nil
+	}
+	return validateRequestTarget(req.Target)
+}
+
+func isWildcardRepoList(req Request) bool {
+	return req.Operation == OpRepoList && req.Target.Kind == KindRepo && req.Target.Name == "*"
 }
 
 func validateExactTargetConstraints(target Target) error {

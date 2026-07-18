@@ -1,19 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +20,6 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/clienthttp"
 	"github.com/osolmaz/brokerkit/credentialstore"
 	"github.com/osolmaz/brokerkit/httpx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
@@ -325,15 +319,11 @@ func parseStreamDownloadArgs(args []string) (string, string, error) {
 }
 
 func (connection operationConnection) downloadStream(ctx context.Context, id, output string) error {
-	response, err := connection.openStreamDownload(ctx, id)
+	client, err := connection.client()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = response.Body.Close() }()
-	if !validStreamDownloadResponse(response) {
-		return errors.New("broker rejected stream download")
-	}
-	temporary, err := writeStreamDownloadTemp(response, output)
+	temporary, err := writeStreamDownloadTemp(ctx, client, id, output)
 	if err != nil {
 		return err
 	}
@@ -346,30 +336,7 @@ func (connection operationConnection) downloadStream(ctx context.Context, id, ou
 	return nil
 }
 
-func (connection operationConnection) openStreamDownload(ctx context.Context, id string) (*http.Response, error) {
-	base, err := url.Parse(connection.baseURL)
-	if err != nil {
-		return nil, err
-	}
-	// #nosec G704 -- ParseBaseURL accepted an explicit HTTP(S) broker origin and the path is fixed.
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base.String(), "/")+"/api/agent/v1/streams/"+url.PathEscape(id), http.NoBody)
-	if err != nil {
-		return nil, errors.New("create stream download request")
-	}
-	request.Header.Set("Authorization", "Bearer "+connection.secret)
-	// #nosec G704 -- the validated broker origin is intentional; Secure disables credential-forwarding redirects.
-	response, err := connection.streamClient(10 * time.Minute).Do(request)
-	if err != nil {
-		return nil, errors.New("download stream")
-	}
-	return response, nil
-}
-
-func validStreamDownloadResponse(response *http.Response) bool {
-	return response.StatusCode == http.StatusOK && response.ContentLength > 0 && response.ContentLength <= maxStreamDownloadBytes
-}
-
-func writeStreamDownloadTemp(response *http.Response, output string) (string, error) {
+func writeStreamDownloadTemp(ctx context.Context, client *agentclient.Client, id, output string) (string, error) {
 	file, err := os.CreateTemp(filepath.Dir(output), ".gh-broker-stream-*")
 	if err != nil {
 		return "", errors.New("create stream output")
@@ -381,20 +348,14 @@ func writeStreamDownloadTemp(response *http.Response, output string) (string, er
 		_ = os.Remove(temporary)
 		return "", errors.New("secure stream output")
 	}
-	hash := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, maxStreamDownloadBytes+1))
+	_, copyErr := client.DownloadStream(ctx, id, file, maxStreamDownloadBytes)
 	closeErr := file.Close()
-	if !validStreamDownloadBody(response, hash.Sum(nil), written, copyErr, closeErr) {
+	if copyErr != nil || closeErr != nil {
 		// #nosec G703 -- temporary is the name returned by CreateTemp above.
 		_ = os.Remove(temporary)
 		return "", errors.New("stream download failed integrity validation")
 	}
 	return temporary, nil
-}
-
-func validStreamDownloadBody(response *http.Response, digest []byte, written int64, copyErr, closeErr error) bool {
-	return copyErr == nil && closeErr == nil && written == response.ContentLength && written <= maxStreamDownloadBytes &&
-		hex.EncodeToString(digest) == response.Header.Get("X-Broker-Content-SHA256")
 }
 
 func loadOperationClient(getenv func(string) string) (*agentclient.Client, error) {
@@ -407,9 +368,7 @@ func loadOperationClient(getenv func(string) string) (*agentclient.Client, error
 
 type operationConnection struct {
 	endpoint string
-	baseURL  string
 	secret   string
-	http     *http.Client
 }
 
 func loadOperationConnection(getenv func(string) string) (operationConnection, error) {
@@ -428,26 +387,14 @@ func loadOperationConnection(getenv func(string) string) (operationConnection, e
 	if endpointURI == "" || secret == "" {
 		return operationConnection{}, errors.New("GH Broker client endpoint and credential are not configured")
 	}
-	baseURL, httpClient, err := clienthttp.ForEndpoint(endpointURI, nil)
-	if err != nil {
+	if _, err := agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret}); err != nil {
 		return operationConnection{}, err
 	}
-	return operationConnection{endpoint: endpointURI, baseURL: baseURL, secret: secret, http: httpClient}, nil
+	return operationConnection{endpoint: endpointURI, secret: secret}, nil
 }
 
 func (connection operationConnection) client() (*agentclient.Client, error) {
 	return agentclient.New(agentclient.Options{Endpoint: connection.endpoint, Credential: connection.secret})
-}
-
-func (connection operationConnection) streamClient(timeout time.Duration) *http.Client {
-	if connection.http == nil {
-		client := clienthttp.Secure(nil)
-		client.Timeout = timeout
-		return client
-	}
-	client := *connection.http
-	client.Timeout = timeout
-	return &client
 }
 
 func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
@@ -554,65 +501,41 @@ func (connection operationConnection) wrapSealedArguments(ctx context.Context, o
 }
 
 func (connection operationConnection) uploadSealedPayload(ctx context.Context, operation, requestKey string, payload []byte) (sealedstore.Reference, error) {
-	request, err := connection.newUploadRequest(ctx, "/api/agent/v1/sealed-payloads", operation, requestKey, bytes.NewReader(payload), int64(len(payload)), "application/octet-stream")
+	client, err := connection.client()
 	if err != nil {
-		return sealedstore.Reference{}, errors.New("create sealed payload request")
-	}
-	response, err := connection.streamClient(30 * time.Second).Do(request)
-	if err != nil {
-		return sealedstore.Reference{}, errors.New("upload sealed payload")
-	}
-	defer func() { _ = response.Body.Close() }()
-	var reference sealedstore.Reference
-	if err := decodeCreatedReference(response, &reference, "broker rejected sealed payload"); err != nil {
 		return sealedstore.Reference{}, err
 	}
-	if reference.ID == "" || reference.Purpose != operation || reference.RequestKey != requestKey {
-		return sealedstore.Reference{}, errors.New("broker returned an invalid sealed payload reference")
-	}
-	return reference, nil
+	return client.UploadSealedPayload(ctx, operation, requestKey, payload)
 }
 
 func (connection operationConnection) uploadStream(ctx context.Context, operation, requestKey, path, mediaType string) (streamstore.Reference, error) {
-	file, size, err := openStreamUploadFile(operation, path)
+	file, size, limit, err := openStreamUploadFile(operation, path)
 	if err != nil {
 		return streamstore.Reference{}, err
 	}
 	defer func() { _ = file.Close() }()
-	request, err := connection.newUploadRequest(ctx, "/api/agent/v1/streams", operation, requestKey, file, size, mediaType)
+	client, err := connection.client()
 	if err != nil {
-		return streamstore.Reference{}, errors.New("create stream upload request")
-	}
-	response, err := connection.streamClient(10 * time.Minute).Do(request)
-	if err != nil {
-		return streamstore.Reference{}, errors.New("upload stream")
-	}
-	defer func() { _ = response.Body.Close() }()
-	var reference streamstore.Reference
-	if err := decodeCreatedReference(response, &reference, "broker rejected stream upload"); err != nil {
 		return streamstore.Reference{}, err
 	}
-	if !validStreamUploadReference(reference, operation, requestKey) {
-		return streamstore.Reference{}, errors.New("broker rejected stream upload")
-	}
-	return reference, nil
+	return client.UploadStream(ctx, operation, requestKey, mediaType, file, size, limit)
 }
 
-func openStreamUploadFile(operation, path string) (*os.File, int64, error) {
+func openStreamUploadFile(operation, path string) (*os.File, int64, int64, error) {
 	limit, err := streamUploadLimit(operation)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	file, err := os.Open(path) // #nosec G304 -- explicit caller-selected upload file.
 	if err != nil {
-		return nil, 0, errors.New("stream upload file could not be read")
+		return nil, 0, 0, errors.New("stream upload file could not be read")
 	}
 	info, err := file.Stat()
 	if err != nil || !validStreamUploadFile(info, limit) {
 		_ = file.Close()
-		return nil, 0, errors.New("stream upload file exceeds its bounded size")
+		return nil, 0, 0, errors.New("stream upload file exceeds its bounded size")
 	}
-	return file, info.Size(), nil
+	return file, info.Size(), limit, nil
 }
 
 func streamUploadLimit(operation string) (int64, error) {
@@ -625,35 +548,6 @@ func streamUploadLimit(operation string) (int64, error) {
 
 func validStreamUploadFile(info os.FileInfo, limit int64) bool {
 	return info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= limit
-}
-
-func validStreamUploadReference(reference streamstore.Reference, operation, requestKey string) bool {
-	return reference.Owner != "" && reference.Purpose == operation && reference.RequestKey == requestKey
-}
-
-func (connection operationConnection) newUploadRequest(ctx context.Context, path, operation, requestKey string, body io.Reader, size int64, mediaType string) (*http.Request, error) {
-	base, err := url.Parse(connection.baseURL)
-	if err != nil {
-		return nil, err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base.String(), "/")+path, body)
-	if err != nil {
-		return nil, err
-	}
-	request.ContentLength = size
-	request.Header.Set("Authorization", "Bearer "+connection.secret)
-	request.Header.Set("Content-Type", mediaType)
-	request.Header.Set("X-Broker-Operation", operation)
-	request.Header.Set("X-Broker-Idempotency-Key", requestKey)
-	return request, nil
-}
-
-func decodeCreatedReference[T any](response *http.Response, reference *T, rejectMessage string) error {
-	data, readErr := httpx.ReadLimited(response.Body, 1<<20)
-	if readErr != nil || response.StatusCode != http.StatusCreated || strictjson.Decode(data, reference, true) != nil {
-		return errors.New(rejectMessage)
-	}
-	return nil
 }
 
 func operationRequestID() (string, error) {

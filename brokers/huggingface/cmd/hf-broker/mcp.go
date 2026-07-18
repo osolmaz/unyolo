@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,34 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agentclient"
+	"github.com/osolmaz/brokerkit/agentmcp"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/mcpoperation"
+	"github.com/osolmaz/brokerkit/mcpserver"
 )
-
-type mcpRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type mcpResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *mcpError       `json:"error,omitempty"`
-}
-
-type mcpError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type mcpToolCall struct {
-	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
-}
 
 func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout, _ io.Writer, args []string) error {
 	if len(args) != 0 {
@@ -47,61 +26,76 @@ func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, st
 	if err != nil {
 		return err
 	}
-	scanner := bufio.NewScanner(stdin)
-	scanner.Buffer(make([]byte, 4096), 1024*1024)
-	encoder := json.NewEncoder(stdout)
-	for scanner.Scan() {
-		if err := handleMCPLine(ctx, client, encoder, scanner.Bytes()); err != nil {
-			return err
+	bridge, err := newHFMCPBridge(client)
+	if err != nil {
+		return err
+	}
+	server, err := mcpserver.New(mcpserver.Config{
+		Name: "hf-broker", Version: version,
+		Tools: func(context.Context) ([]map[string]any, error) { return mcpTools(), nil },
+		Call:  bridge.Call, ErrorValue: func(err error) any { return mcpoperation.ErrorValue(err) },
+	})
+	if err != nil {
+		return err
+	}
+	return server.Serve(ctx, stdin, stdout)
+}
+
+func newHFMCPBridge(client *agentClient) (*agentmcp.Bridge, error) {
+	if client == nil || client.operations == nil || client.grantClient == nil {
+		return nil, errors.New("HF MCP client is incomplete")
+	}
+	utilities := map[string]func(context.Context, json.RawMessage) (any, error){}
+	for _, action := range []string{"get", "wait", "cancel", "revoke"} {
+		name := "hf_grant_" + action
+		utilities[name] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+			return callMCPGrantLifecycle(ctx, client.grantClient, name, raw)
 		}
 	}
-	return scanner.Err()
+	return agentmcp.New(agentmcp.Config{
+		Prefix: "hf_", Client: func(context.Context) (*agentclient.Client, error) { return client.operations, nil },
+		Select: func(tool string) (agentmcp.Selection, error) {
+			descriptor, found := descriptorByMCPTool(tool)
+			if !found {
+				return agentmcp.Selection{}, fmt.Errorf("unknown tool %q", tool)
+			}
+			return agentmcp.Selection{Operation: descriptor.Name, Provider: descriptor}, nil
+		},
+		Prepare: func(ctx context.Context, selection agentmcp.Selection, input *agentmcp.Input) error {
+			descriptor, ok := selection.Provider.(opcatalog.Descriptor)
+			if !ok {
+				return errors.New("invalid Hugging Face MCP descriptor")
+			}
+			return prepareHFMCPInput(ctx, client, descriptor, input)
+		},
+		Project: mcpprojection.ResultToMCP, Utilities: utilities,
+	})
 }
 
-func handleMCPLine(ctx context.Context, client *agentClient, encoder *json.Encoder, line []byte) error {
-	var request mcpRequest
-	if err := json.Unmarshal(line, &request); err != nil {
-		return encoder.Encode(mcpResponse{JSONRPC: "2.0", Error: &mcpError{Code: -32700, Message: "Parse error"}})
+func prepareHFMCPInput(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, input *agentmcp.Input) error {
+	local := mcpCatalogOperationInput{
+		Target: input.Target, Arguments: input.Arguments, SealedArguments: input.SealedArguments,
+		CredentialSlot: input.CredentialSlot, Reason: input.Reason, RequestID: input.RequestID,
 	}
-	if len(request.ID) == 0 {
-		return nil
+	if err := validateMCPCatalogOperation(descriptor, local); err != nil {
+		return err
 	}
-	return encoder.Encode(handleMCPRequest(ctx, client, request))
-}
-
-func handleMCPRequest(ctx context.Context, client *agentClient, request mcpRequest) mcpResponse {
-	response := mcpResponse{JSONRPC: "2.0", ID: request.ID}
-	switch request.Method {
-	case "initialize":
-		response.Result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "hf-broker", "version": version}}
-	case "ping":
-		response.Result = map[string]any{}
-	case "tools/list":
-		response.Result = map[string]any{"tools": mcpTools()}
-	case "tools/call":
-		response.Result, response.Error = handleMCPToolCall(ctx, client, request.Params)
-	default:
-		response.Error = &mcpError{Code: -32601, Message: "Method not found"}
-	}
-	return response
-}
-
-func handleMCPToolCall(ctx context.Context, client *agentClient, params json.RawMessage) (any, *mcpError) {
-	var call mcpToolCall
-	if json.Unmarshal(params, &call) != nil {
-		return nil, &mcpError{Code: -32602, Message: "Invalid tool call"}
-	}
-	result, err := callMCPTool(ctx, client, call)
+	arguments, err := mcpprojection.ArgumentsToCanonical(descriptor, local.Arguments)
 	if err != nil {
-		return mcpToolResult(mcpoperation.ErrorValue(err), true), nil
+		return err
 	}
-	return mcpToolResult(result, false), nil
+	request, err := buildOperationSubmitRequest(ctx, client, descriptor, local.Target, arguments, "", local.SealedArguments,
+		local.CredentialSlot, local.Reason, local.RequestID)
+	if err != nil {
+		return err
+	}
+	input.Target, input.Arguments = request.Target, request.Arguments
+	return nil
 }
 
 func mcpTools() []map[string]any {
 	tools := catalogMCPTools()
 	return append(tools,
-		map[string]any{"name": "hf_operation_cancel", "description": "Cancel a pending or approved HF Broker operation.", "inputSchema": mcpIDSchema("operation_id", false)},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait briefly for a temporary HF Broker grant decision, then call again if it remains pending.", "inputSchema": mcpIDSchema("grant_id", true)},
 		map[string]any{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
@@ -117,20 +111,6 @@ func mcpIDSchema(idField string, wait bool) map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{idField}, "properties": properties}
 }
 
-func callMCPTool(ctx context.Context, client *agentClient, call mcpToolCall) (any, error) {
-	if descriptor, found := descriptorByMCPTool(call.Name); found {
-		return callMCPCatalogOperation(ctx, client, descriptor, call.Arguments)
-	}
-	switch call.Name {
-	case "hf_operation_get", "hf_operation_wait", "hf_operation_list", "hf_operation_cancel":
-		return callMCPOperation(ctx, client, call.Name, call.Arguments)
-	case "hf_grant_get", "hf_grant_wait", "hf_grant_cancel", "hf_grant_revoke":
-		return callMCPGrantLifecycle(ctx, client.grantClient, call.Name, call.Arguments)
-	default:
-		return nil, fmt.Errorf("unknown tool %q", call.Name)
-	}
-}
-
 func callMCPGrantLifecycle(ctx context.Context, client *hfGrantClient, name string, raw json.RawMessage) (hfClientGrant, error) {
 	input, err := decodeMCPGrantLifecycle(raw)
 	if err != nil {
@@ -143,7 +123,7 @@ func callMCPGrantLifecycle(ctx context.Context, client *hfGrantClient, name stri
 	if input.WaitSeconds != 0 {
 		return hfClientGrant{}, errors.New("wait_seconds is valid only for hf_grant_wait")
 	}
-	return performGrantAction(ctx, client, action, input.GrantID, time.Duration(input.WaitSeconds)*time.Second)
+	return performGrantAction(ctx, client, action, input.GrantID, 0)
 }
 
 type mcpGrantLifecycleInput struct {
@@ -179,69 +159,9 @@ func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, time
 	return grant, err
 }
 
-func callMCPOperation(ctx context.Context, client *agentClient, name string, raw json.RawMessage) (any, error) {
-	call, found := mcpOperationCalls[name]
-	if !found {
-		return nil, fmt.Errorf("unknown operation tool %q", name)
-	}
-	return call(ctx, client, raw)
-}
-
-type mcpOperationCall func(context.Context, *agentClient, json.RawMessage) (any, error)
-
-var mcpOperationCalls = map[string]mcpOperationCall{
-	"hf_operation_get":    decodedMCPCall(executeMCPGetOperation),
-	"hf_operation_list":   callMCPListOperation,
-	"hf_operation_wait":   decodedMCPCall(executeMCPWaitOperation),
-	"hf_operation_cancel": callMCPCancelOperation,
-}
-
-func callMCPListOperation(ctx context.Context, client *agentClient, raw json.RawMessage) (any, error) {
-	var input mcpoperation.ListInput
-	if err := decodeMCPArguments(raw, &input); err != nil {
-		return nil, err
-	}
-	return mcpoperation.List(ctx, client.operations, input)
-}
-
-func executeMCPWaitOperation(ctx context.Context, client *agentClient, input mcpoperation.WaitInput) (any, error) {
-	return mcpoperation.Wait(ctx, client.operations, input, mcpprojection.ResultToMCP)
-}
-
-func executeMCPGetOperation(ctx context.Context, client *agentClient, input mcpoperation.GetInput) (any, error) {
-	return mcpoperation.Get(ctx, client.operations, input, mcpprojection.ResultToMCP)
-}
-
-func decodedMCPCall[T any](execute func(context.Context, *agentClient, T) (any, error)) mcpOperationCall {
-	return func(ctx context.Context, client *agentClient, raw json.RawMessage) (any, error) {
-		var input T
-		if err := decodeMCPArguments(raw, &input); err != nil {
-			return nil, err
-		}
-		return execute(ctx, client, input)
-	}
-}
-
-func callMCPCancelOperation(ctx context.Context, client *agentClient, raw json.RawMessage) (any, error) {
-	var input mcpoperation.GetInput
-	if err := decodeMCPArguments(raw, &input); err != nil {
-		return nil, err
-	}
-	operation, err := client.cancel(ctx, input.OperationID)
-	if err != nil {
-		return nil, err
-	}
-	return mcpoperation.Project(operation, mcpprojection.ResultToMCP)
-}
-
 func decodeMCPArguments(raw json.RawMessage, out any) error {
 	if err := strictjson.Decode(raw, out, true); err != nil {
 		return errors.New("invalid tool arguments")
 	}
 	return nil
-}
-
-func mcpToolResult(value any, isError bool) map[string]any {
-	data, _ := json.Marshal(value)
-	return map[string]any{"content": []map[string]any{{"type": "text", "text": string(data)}}, "structuredContent": value, "isError": isError}
 }
