@@ -5,7 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestReplaceCredentialWritesExactFiles(t *testing.T) {
@@ -72,6 +75,105 @@ func TestReplaceCredentialRejectsSymlink(t *testing.T) {
 	}})
 	if err := ReplaceCredential(context.Background(), plan); err == nil {
 		t.Fatal("ReplaceCredential() accepted symlink")
+	}
+}
+
+func TestValidateCredentialReplacePlanFailures(t *testing.T) {
+	dir := t.TempDir()
+	valid := credentialTestPlan(dir, []ManagedFile{{Area: ManagedFileConfig, Name: "token", Data: []byte("value"), Mode: 0o600,
+		Owner: ManagedFileOwnerService, CredentialClass: "provider-access"}})
+	tests := []struct {
+		name   string
+		mutate func(*CredentialReplacePlan)
+	}{
+		{"provider", func(plan *CredentialReplacePlan) { plan.Provider = "" }},
+		{"relative directory", func(plan *CredentialReplacePlan) { plan.ConfigDir = "relative" }},
+		{"root directory", func(plan *CredentialReplacePlan) { plan.ConfigDir = "/" }},
+		{"user", func(plan *CredentialReplacePlan) { plan.User = "" }},
+		{"group", func(plan *CredentialReplacePlan) { plan.Group = "" }},
+		{"files", func(plan *CredentialReplacePlan) { plan.Files = nil }},
+		{"area", func(plan *CredentialReplacePlan) { plan.Files[0].Area = ManagedFileState }},
+		{"name", func(plan *CredentialReplacePlan) { plan.Files[0].Name = "../token" }},
+		{"class", func(plan *CredentialReplacePlan) { plan.Files[0].CredentialClass = "" }},
+		{"duplicate", func(plan *CredentialReplacePlan) { plan.Files = append(plan.Files, plan.Files[0]) }},
+		{"mode", func(plan *CredentialReplacePlan) { plan.Files[0].Mode = 0o777 }},
+	}
+	if runtime.GOOS == "linux" {
+		tests = append(tests, struct {
+			name   string
+			mutate func(*CredentialReplacePlan)
+		}{"unit", func(plan *CredentialReplacePlan) { plan.SystemdUnit = "bad" }})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := valid
+			plan.Files = append([]ManagedFile(nil), valid.Files...)
+			test.mutate(&plan)
+			if err := validateCredentialReplacePlan(plan); err == nil {
+				t.Fatal("invalid replacement plan succeeded")
+			}
+		})
+	}
+}
+
+func TestCredentialReplacementHelpersRestoreAndCheckReadiness(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "old"), []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := openCredentialRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	files := []ManagedFile{
+		{Area: ManagedFileConfig, Name: "old", Data: []byte("after"), Mode: 0o600, Owner: ManagedFileOwnerService, CredentialClass: "test"},
+		{Area: ManagedFileConfig, Name: "new", Data: []byte("new"), Mode: 0o600, Owner: ManagedFileOwnerService, CredentialClass: "test"},
+	}
+	snapshots, err := captureCredentialFiles(root, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clearCredentialSnapshots(snapshots)
+	if err := writeCredentialFiles(root, files, os.Geteuid(), os.Getegid(), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreCredentialFiles(root, snapshots, os.Geteuid(), os.Getegid(), true); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "old"))
+	if string(data) != "before" {
+		t.Fatalf("restored old file = %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new file remained after restore: %v", err)
+	}
+
+	plan := credentialTestPlan(dir, files)
+	plan.AllowNonRoot = false
+	plan.ReadyCheck = func(context.Context) error { return nil }
+	if err := waitForCredentialReady(t.Context(), plan); err != nil {
+		t.Fatal(err)
+	}
+	plan.ReadyCheck = func(context.Context) error { return errors.New("not ready") }
+	plan.ReadyTimeout, plan.ReadyInterval = time.Nanosecond, time.Nanosecond
+	if err := waitForCredentialReady(t.Context(), plan); !errors.Is(err, errServiceReadinessFailed) {
+		t.Fatalf("readiness error = %v", err)
+	}
+	runner := &credentialRecordingRunner{}
+	plan.Runner = runner
+	if err := restartCredentialService(t.Context(), runner, plan); err != nil || len(runner.calls) != 1 || !strings.Contains(runner.calls[0], "hf-broker.service") {
+		t.Fatalf("restart calls = %v, %v", runner.calls, err)
+	}
+}
+
+func TestOpenCredentialRootRejectsRegularFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openCredentialRoot(path); err == nil {
+		t.Fatal("regular file accepted as credential root")
 	}
 }
 

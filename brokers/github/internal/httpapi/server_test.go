@@ -27,6 +27,7 @@ import (
 	bkaudit "github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/notify"
@@ -1689,6 +1690,29 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 	}
 	if gotAuthorization != githubGitAuthorization("ghs_repo_token") {
 		t.Fatalf("authorization = %q, want GitHub App installation git auth", gotAuthorization)
+	}
+}
+
+func TestAgentDiscoveryAdvertisesGitHubAppOperations(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(http.ResponseWriter, *http.Request) {
+		t.Fatal("credential discovery made an upstream request")
+	})
+	server.githubCredentials = newTestGitHubAppManager(t, server)
+
+	descriptor := server.discoverAgent("agent")
+	if !descriptor.Credential.Ready || descriptor.Credential.Provider != "github" ||
+		descriptor.Credential.CredentialKind != string(githubauth.KindInstallation) {
+		t.Fatalf("credential descriptor = %+v", descriptor.Credential)
+	}
+	if len(descriptor.Operations) == 0 {
+		t.Fatal("GitHub App discovery advertised no operations")
+	}
+	for _, operation := range descriptor.Operations {
+		descriptor, found := opcatalog.ByName(operation)
+		if !found || !descriptor.AgentFacing || descriptor.CredentialKind == string(githubauth.KindUser) {
+			t.Fatalf("invalid advertised operation %q", operation)
+		}
 	}
 }
 

@@ -35,3 +35,23 @@ func TestSubmitRoundTrip(t *testing.T) {
 		t.Fatalf("round trip = %+v, %v", output, err)
 	}
 }
+
+func TestDescriptorAndPageRoundTrip(t *testing.T) {
+	descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.read"},
+		Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "test", CredentialKind: "app", Generation: 2, VerificationState: "valid"}}
+	wireDescriptor := DescriptorToWire(descriptor)
+	if output := DescriptorFromWire(wireDescriptor); output.Credential.Generation != 2 || len(output.Operations) != 1 {
+		t.Fatalf("descriptor round trip = %+v", output)
+	}
+	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	cursor := "next"
+	page := agentv1.OperationPage{APIVersion: agentv1.APIVersion, NextCursor: &cursor, Operations: []agentv1.OperationSummary{{
+		APIVersion: agentv1.APIVersion, ID: "op", Broker: "test", ClientID: "agent", IdempotencyKey: "request", Operation: "repo.read",
+		State: agentv1.StatePending, Revision: 1, CreatedAt: now, UpdatedAt: now, Presentation: agentv1.Presentation{Title: "Read"},
+	}}}
+	wirePage := OperationPageToWire(page)
+	output := OperationPageFromWire(wirePage)
+	if output.NextCursor == nil || *output.NextCursor != cursor || len(output.Operations) != 1 || output.Operations[0].Presentation.Title != "Read" {
+		t.Fatalf("page round trip = %+v", output)
+	}
+}

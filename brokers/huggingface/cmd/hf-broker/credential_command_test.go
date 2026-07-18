@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -170,6 +172,52 @@ func TestCredentialInputAndPresentationFailures(t *testing.T) {
 		t.Fatal("credential upstream selection failed")
 	}
 	clearString(nil)
+}
+
+func TestDefaultCredentialDependenciesAndTextOutput(t *testing.T) {
+	deps := defaultCredentialDependencies()
+	if deps.inspect == nil || deps.replace == nil || deps.openURL == nil || deps.readHidden == nil ||
+		deps.euid == nil || deps.runElevated == nil || deps.readFile == nil {
+		t.Fatal("default credential dependency is nil")
+	}
+	if _, err := readHiddenCredential(strings.NewReader("token"), io.Discard); err == nil {
+		t.Fatal("non-terminal hidden credential input was accepted")
+	}
+	snapshot, err := credentialTestDependencies().inspect(t.Context(), "", "hf_candidate", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := printCredentialSnapshot(&output, snapshot, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "alice: fine_grained_user_token") || !strings.Contains(output.String(), "generation 4") {
+		t.Fatalf("text snapshot = %q", output.String())
+	}
+}
+
+func TestActiveCredentialServiceInspectsConfiguredAuthority(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/whoami-v2" || request.Header.Get("Authorization") != "Bearer hf_candidate" {
+			t.Fatalf("unexpected credential inspection request: %s %s", request.Method, request.URL.Path)
+		}
+		_, _ = io.WriteString(writer, `{"name":"alice","auth":{"accessToken":{"role":"fineGrained","fineGrained":{"global":["repo.content.read"],"scoped":[]}}}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	credential, err := activeCredentialService(t.Context(), config.Config{
+		HFToken: "hf_candidate", UpstreamHubURL: server.URL, HFTimeout: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := credential.Snapshot()
+	if err != nil || snapshot.Subject != "alice" || snapshot.Generation != 1 || snapshot.VerificationState != providercredential.VerificationValid {
+		t.Fatalf("active credential snapshot = %+v, %v", snapshot, err)
+	}
+	if _, err := activeCredentialService(t.Context(), config.Config{UpstreamHubURL: server.URL}); err == nil {
+		t.Fatal("empty configured credential was accepted")
+	}
 }
 
 func credentialTestDependencies() credentialDependencies {

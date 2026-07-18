@@ -48,6 +48,32 @@ func TestClientSubmitGetAndWait(t *testing.T) {
 	}
 }
 
+func TestClientDiscoversCredentialCeiling(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/.well-known/brokerkit-agent" || request.Header.Get("Authorization") != "Bearer "+testCredential {
+			http.NotFound(writer, request)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.read"},
+			Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "test", CredentialKind: "app", Generation: 2, VerificationState: "valid"}})
+	}))
+	defer server.Close()
+	descriptor, err := newTestClient(t, server.URL, nil).Discover(t.Context())
+	if err != nil || descriptor.Credential.Generation != 2 || len(descriptor.Operations) != 1 {
+		t.Fatalf("Discover() = %+v, %v", descriptor, err)
+	}
+}
+
+func TestClientRejectsInvalidDiscovery(t *testing.T) {
+	for _, body := range []string{`{"api_version":"old","operations":[],"credential":{"ready":false,"provider":"","credential_kind":"","generation":0,"verification_state":""}}`, `{}`} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) { _, _ = writer.Write([]byte(body)) }))
+		if _, err := newTestClient(t, server.URL, nil).Discover(t.Context()); err == nil {
+			t.Fatalf("invalid discovery %s succeeded", body)
+		}
+		server.Close()
+	}
+}
+
 func TestClientWaitReturnsLastOperationOnCancellation(t *testing.T) {
 	t.Parallel()
 	client := newTestClient(t, "tcp://127.0.0.1:1", nil)

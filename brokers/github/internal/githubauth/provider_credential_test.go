@@ -70,3 +70,25 @@ func TestProviderAdapterInspectsAppAndInstallations(t *testing.T) {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
 }
+
+func TestProviderAdapterContractMetadata(t *testing.T) {
+	adapter := ProviderAdapter{}
+	if adapter.Provider() != "github" {
+		t.Fatal("unexpected provider")
+	}
+	enrollment, err := adapter.Enrollment(t.Context())
+	if err != nil || enrollment.URL != appEnrollmentURL || enrollment.Instructions == "" {
+		t.Fatalf("enrollment = %+v, %v", enrollment, err)
+	}
+	valid := providercredential.Snapshot{VerificationState: providercredential.VerificationValid}
+	if probe, err := adapter.Probe(t.Context(), valid); err != nil || probe.State != providercredential.ProbeValid {
+		t.Fatalf("valid probe = %+v, %v", probe, err)
+	}
+	valid.VerificationState = providercredential.VerificationUnavailable
+	if probe, err := adapter.Probe(t.Context(), valid); err == nil || probe.State != providercredential.ProbeInvalid {
+		t.Fatalf("invalid probe = %+v, %v", probe, err)
+	}
+	if githubAccess("admin") != providercredential.AccessWrite || githubAccess("unknown") != providercredential.AccessNone {
+		t.Fatal("GitHub access normalization failed")
+	}
+}
