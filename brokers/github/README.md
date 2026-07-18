@@ -232,8 +232,9 @@ gh-broker operations describe repo.visibility.update
 
 ### MCP server
 
-`gh-broker mcp` runs a stdio MCP server backed by the same catalog and broker
-credential. `tools/list` advertises only the intersection of the client's
+`gh-broker mcp` runs BrokerKit's shared strict stdio MCP server and Agent
+Operations bridge, backed by the same catalog and broker credential.
+`tools/list` advertises only the intersection of the client's
 enabled operations, policy-visible operations, runtime capabilities, and the
 operator exposure profile; the full catalog stays browsable through the paged
 `github://operations` resource. Submissions accept an optional `request_id`
@@ -241,6 +242,11 @@ and return a durable operation immediately; recover after a disconnect with
 `gh_operation_get`, `gh_operation_wait`, and `gh_operation_list`. Tokens and
 other credentials remain sealed or slot-backed and never appear in tool
 output.
+
+GitHub retains only provider-specific selection, schemas, projections, API
+execution, resources, and file-boundary decisions. JSON-RPC handling,
+operation lifecycle utilities, sealed-payload upload, and bounded stream
+transport are shared with the Hugging Face broker.
 
 ## Policy
 

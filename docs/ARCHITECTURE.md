@@ -40,6 +40,10 @@ brokerkit/
 ├── grants/     # Durable short-lived grant records.
 ├── audit/      # Secret-safe audit event helpers.
 ├── httpx/      # Header filtering and body-limit helpers.
+├── agentclient/ # Authenticated Agent Operations and bounded transfer client.
+├── agentmcp/    # Provider-neutral MCP-to-Agent-Operations bridge.
+├── mcpserver/   # Strict bounded JSON-RPC/MCP stdio transport.
+├── operationruntime/ # Durable provider adapter registry and execution runtime.
 ├── approvalview/   # Bounded channel-neutral operator presentation.
 ├── approvalnotify/ # Semantic approval notification projection.
 ├── notify/         # Typed notification lifecycle and channel adapters.
@@ -73,6 +77,8 @@ brokerkit may contain:
 - generic Git pkt-line, receive-pack command, ref update classification, and
   pack/body redaction helpers
 - provider-neutral Agent Operations V1 wire types and schemas
+- strict MCP stdio protocol handling and Agent Operations lifecycle projection
+- bounded authenticated sealed-payload and stream transfer clients
 
 ## What Does Not Belong Here
 
@@ -90,6 +96,12 @@ brokerkit must not contain:
 ## Provider Responsibilities
 
 Each broker must register its own vocabulary.
+
+MCP-enabled brokers also register provider-owned schemas, projections, and
+runtime adapters. `mcpserver` owns JSON-RPC mechanics, `agentmcp` owns durable
+operation submission and recovery, and `agentclient` owns authenticated wire
+transport. Authorization mode remains policy data; it never selects a
+provider-specific MCP dispatch path.
 
 `hf-broker` owns:
 

@@ -371,11 +371,13 @@ real secrets remain sealed or credential-slot-backed. The checked-in provider
 compatibility manifests summarize catalog-wide conformance against the pinned
 host profile.
 
-Window-mode capability requests are grants, not executable operations. They
-return the durable grant immediately and use the provider's grant get, wait,
-cancel, and revoke tools. They must not be wrapped in a synthetic Agent
-operation, because that would duplicate lifecycle state and consume or settle
-the grant incorrectly.
+Authorization mode does not select MCP dispatch. Every ordinary operation tool
+submits one durable Agent V1 operation. A matching active window grant may
+authorize that operation; otherwise policy may allow, request approval, or
+deny it. Approval resumes the stored operation, and retrying its `request_id`
+cannot create a second execution. Explicit grant lifecycle tools are reserved
+for callers intentionally managing access used later by a native protocol
+such as Git. They are not an automatic preflight for operation tools.
 
 ## Audit
 

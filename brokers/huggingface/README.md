@@ -170,14 +170,21 @@ waits. Resume it after a disconnect with:
 hf-broker client operation wait <operation-id>
 ```
 
-Run `hf-broker mcp` as a stdio MCP server to expose one explicit tool for
-every agent-facing operation in the capability catalog, plus operation and
-grant lifecycle tools. The same catalog generates the CLI command tree and
-policy vocabulary. Tool descriptions explicitly tell agents not to request a
-Hugging Face token. MCP submissions accept an optional `request_id` and
-return immediately; recover interrupted calls with `hf_operation_get`,
-`hf_operation_wait`, or `hf_operation_list`, and use the `hf_grant_*` tools
-for temporary-grant lifecycles.
+Run `hf-broker mcp` as a stdio MCP server. It advertises only agent-facing
+catalog operations with registered runtime adapters, plus operation and grant
+lifecycle tools. Every ordinary tool submits through the shared Agent
+Operations lifecycle, including safe reads and window-authorized operations.
+An allowed private-repository read executes immediately with the broker token;
+it does not ask for a grant or expose that token. MCP submissions accept an
+optional `request_id` and return immediately; recover interrupted calls with
+`hf_operation_get`, `hf_operation_wait`, or `hf_operation_list`. The explicit
+`hf_grant_*` tools are only for deliberate temporary-grant management.
+
+`repo.list` queries the authenticated Hub and filters every result through the
+calling client's policy before projection. Use a target name of `*` to
+discover bounded repositories for one exact owner and repository type.
+Specific deny rules override wildcard discovery. Repository content requires
+its own authorization.
 
 The checked-in OpenAPI snapshot is monitored against the official Hub schema
 without automatic updates. See

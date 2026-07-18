@@ -35,6 +35,7 @@ component documentation.
 
 ## Implementation Records
 
+- [Provider-neutral MCP execution cutover](2026-07-18-provider-neutral-mcp-execution-cutover-plan.md)
 - [Approval presentation cutover](2026-07-17-approval-presentation-cutover-plan.md)
 - [Browser session transport cutover](2026-07-14-browser-session-transport-plan.md)
 - [Production-readiness cutover](2026-07-14-production-readiness-cutover-plan.md)
