@@ -43,17 +43,20 @@ declared by the root module:
 go install ./brokers/huggingface/cmd/hf-broker
 ```
 
-HF Broker owns the versioned upstream credential ceiling for its complete
-operation surface. Consumers can print the canonical, secret-free requirements
-document from the same pinned binary they deploy:
+HF Broker treats the permissions and resource scopes on its dedicated
+fine-grained token as a hard upstream authority ceiling. Inspect a candidate
+without installing it, repair an installed service, or inspect active
+secret-free status with:
 
 ```sh
-hf-broker credential requirements
+printf '%s\n' "$CANDIDATE_TOKEN" | hf-broker credential inspect --token-stdin --json
+sudo hf-broker credential repair
+hf-broker credential status
 ```
 
-The document drives fine-grained token setup and verification. It is an
-upstream capability ceiling, not an authorization policy: BrokerKit policy and
-operator approval still gate every protected operation.
+The token form starts empty: the operator chooses the permissions and resources
+the broker may use. BrokerKit policy and operator approval can narrow that
+authority but can never expand it.
 
 ## Run in development
 

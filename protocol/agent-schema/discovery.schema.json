@@ -5,13 +5,61 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "api_version"
+    "api_version",
+    "operations",
+    "credential"
   ],
   "properties": {
     "api_version": {
       "type": "string",
       "const": "brokerkit.io/agent/v1"
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "credential": {
+      "$ref": "#/$defs/CredentialDescriptor"
     }
   },
-  "$defs": {}
+  "$defs": {
+    "CredentialDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "provider",
+        "credential_kind",
+        "generation",
+        "verification_state"
+      ],
+      "properties": {
+        "ready": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "credential_kind": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verification_state": {
+          "type": "string",
+          "maxLength": 32
+        }
+      }
+    }
+  }
 }

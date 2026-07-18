@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 	"github.com/osolmaz/brokerkit/usebudget"
 )
@@ -53,7 +54,8 @@ type Plan struct {
 }
 
 type CredentialSelector struct {
-	Name string `json:"name"`
+	Name    string                     `json:"name"`
+	Binding providercredential.Binding `json:"binding"`
 }
 
 type Authorization struct {
@@ -77,9 +79,14 @@ type grantArguments struct {
 }
 
 type Store struct {
-	database *state.Database
-	now      func() time.Time
+	database   *state.Database
+	now        func() time.Time
+	credential *providercredential.Service
 }
+
+// SetCredentialService binds every subsequently prepared plan to the active
+// provider authority ceiling.
+func (s *Store) SetCredentialService(service *providercredential.Service) { s.credential = service }
 
 func NewStore(database *state.Database) (*Store, error) { return newStore(database, time.Now) }
 
@@ -202,6 +209,13 @@ func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (gra
 		return grants.ImmutablePlan{}, errors.New("HF grant request is required")
 	}
 	plan := FromRequest(*request, createdAt)
+	if s.credential != nil {
+		binding, err := s.credential.Binding()
+		if err != nil {
+			return grants.ImmutablePlan{}, errors.New("HF credential binding is unavailable")
+		}
+		plan.CredentialSelector.Binding = binding
+	}
 	prepared, err := Prepare(plan)
 	if err != nil {
 		return grants.ImmutablePlan{}, err
@@ -230,7 +244,11 @@ func BindPrepared(request *grants.Request, prepared grants.ImmutablePlan) {
 	request.Metadata[MetadataDigest] = prepared.Digest
 }
 
-type Validator struct{ Store *Store }
+type Validator struct {
+	Store       *Store
+	Credential  *providercredential.Service
+	Requirement func(string) (providercredential.Requirement, bool)
+}
 
 func (v Validator) ValidateActivation(_ context.Context, grant grants.Grant, constraints grants.ApprovalConstraints) error {
 	return v.validate(grant, constraints)
@@ -254,6 +272,19 @@ func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConst
 	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
 		return errors.New("HF grant does not match its immutable plan")
+	}
+	if v.Credential != nil {
+		if v.Credential.Validate(plan.CredentialSelector.Binding) != nil {
+			return errors.New("HF credential binding is stale")
+		}
+		if v.Requirement == nil {
+			return errors.New("HF credential requirement map is unavailable")
+		}
+		requirement, found := v.Requirement(plan.Operation)
+		target, targetErr := providercredential.TargetFromJSON(plan.Target)
+		if !found || targetErr != nil || !v.Credential.Evaluate(requirement, target).Allowed {
+			return errors.New("HF credential does not cover the operation target")
+		}
 	}
 	if constraints.Duration > requestedDuration || useConstraintExceeds(constraints, requestedMaxUses) {
 		return grants.ErrConstraintExceeded
@@ -351,8 +382,14 @@ func validPlanIdentity(plan Plan) bool {
 		strings.TrimSpace(plan.ClientID) != "" &&
 		strings.TrimSpace(plan.ClientRequestID) != "" &&
 		plan.CredentialSelector.Name == "primary" &&
+		validCredentialBinding(plan.CredentialSelector.Binding) &&
 		!plan.CreatedAt.IsZero() &&
 		plan.ExpiresAt.After(plan.CreatedAt)
+}
+
+func validCredentialBinding(binding providercredential.Binding) bool {
+	return binding.Generation == 0 && binding.CapabilityDigest == "" ||
+		binding.Generation > 0 && len(binding.CapabilityDigest) == 64
 }
 
 func validPlanPresentation(presentation agentv1.Presentation) bool {

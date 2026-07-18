@@ -29,7 +29,18 @@ const (
 )
 
 type Descriptor struct {
-	APIVersion string `json:"api_version"`
+	APIVersion string               `json:"api_version"`
+	Operations []string             `json:"operations"`
+	Credential CredentialDescriptor `json:"credential"`
+}
+
+// CredentialDescriptor is the client-safe credential readiness projection.
+type CredentialDescriptor struct {
+	Ready             bool   `json:"ready"`
+	Provider          string `json:"provider"`
+	CredentialKind    string `json:"credential_kind"`
+	Generation        uint64 `json:"generation"`
+	VerificationState string `json:"verification_state"`
 }
 
 type Presentation struct {

@@ -118,9 +118,20 @@ func (e State) Valid() bool {
 	}
 }
 
+// CredentialDescriptor defines model for CredentialDescriptor.
+type CredentialDescriptor struct {
+	CredentialKind    string `json:"credential_kind"`
+	Generation        int    `json:"generation"`
+	Provider          string `json:"provider"`
+	Ready             bool   `json:"ready"`
+	VerificationState string `json:"verification_state"`
+}
+
 // Descriptor defines model for Descriptor.
 type Descriptor struct {
 	ApiVersion DescriptorApiVersion `json:"api_version"`
+	Credential CredentialDescriptor `json:"credential"`
+	Operations []string             `json:"operations"`
 }
 
 // DescriptorApiVersion defines model for Descriptor.ApiVersion.

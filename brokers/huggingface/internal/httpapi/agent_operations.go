@@ -13,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/agentv1"
 	"github.com/osolmaz/brokerkit/audit"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -22,6 +23,7 @@ import (
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/operationruntime"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/state"
 )
 
@@ -86,8 +88,15 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 		return bkauthorization.GrantIntent{}, err
 	}
 	ruleIDs := runtimePolicyRuleIDs(preparation)
+	var binding providercredential.Binding
+	if s.credential != nil {
+		binding, err = s.credential.Binding()
+		if err != nil {
+			return bkauthorization.GrantIntent{}, errors.New("HF credential binding is unavailable")
+		}
+	}
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan),
-		string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt)
+		string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt, binding)
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
@@ -160,12 +169,16 @@ func reusedPreparationBounds(grant grants.Grant, mode corepolicy.GrantMode) (tim
 	return duration, grant.PendingTimeout, int(grant.RequestedMaxUses), nil
 }
 
-func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time) (grants.ImmutablePlan, error) {
+func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time, bindings ...providercredential.Binding) (grants.ImmutablePlan, error) {
 	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
+	var binding providercredential.Binding
+	if len(bindings) > 0 {
+		binding = bindings[0]
+	}
 	return hfplan.Prepare(hfplan.Plan{
 		APIVersion: hfplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
 		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
-		Preconditions: provider.Preconditions, CredentialSelector: hfplan.CredentialSelector{Name: "primary"}, Presentation: presentation,
+		Preconditions: provider.Preconditions, CredentialSelector: hfplan.CredentialSelector{Name: "primary", Binding: binding}, Presentation: presentation,
 		Authorization: hfplan.Authorization{Mode: request.Metadata["hf_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
 			Target: hfplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
@@ -279,7 +292,42 @@ func (s *Server) agentLifecycleContext(fallback context.Context) context.Context
 }
 
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
+	if s.credential != nil {
+		requirement, found := (credentialauth.Adapter{}).Requirement(request.Operation)
+		target, err := providercredential.TargetFromJSON(request.Target)
+		if !found || err != nil {
+			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", "Operation credential requirement is unavailable")
+		}
+		if evaluation := s.credential.Evaluate(requirement, target); !evaluation.Allowed {
+			return agentv1.Operation{}, false, operationAPIError(http.StatusForbidden, "operation_credential_capability_missing", "Provider credential does not cover this operation target: "+strings.Join(evaluation.Missing, ", "))
+		}
+	}
 	return s.operationRuntime.Submit(s.agentLifecycleContext(ctx), client, request)
+}
+
+func (s *Server) discoverAgent(_ string) agentv1.Descriptor {
+	descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{}}
+	if s.credential == nil {
+		return descriptor
+	}
+	snapshot, err := s.credential.Snapshot()
+	if err != nil {
+		return descriptor
+	}
+	descriptor.Credential = agentv1.CredentialDescriptor{Ready: snapshot.VerificationState == providercredential.VerificationValid,
+		Provider: snapshot.Provider, CredentialKind: snapshot.CredentialKind, Generation: snapshot.Generation,
+		VerificationState: string(snapshot.VerificationState)}
+	adapter := credentialauth.Adapter{}
+	for _, operation := range opcatalog.MustAll() {
+		if !operation.AgentFacing || !operations.AgentRuntimeBound(operation) {
+			continue
+		}
+		requirement, found := adapter.Requirement(operation.Name)
+		if found && s.credential.CanSatisfy(requirement, s.utcNow()) {
+			descriptor.Operations = append(descriptor.Operations, operation.Name)
+		}
+	}
+	return descriptor
 }
 
 func (s *Server) cancelAgentOperation(ctx context.Context, client, id string) (agentv1.Operation, error) {

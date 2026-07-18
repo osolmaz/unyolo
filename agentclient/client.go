@@ -36,6 +36,28 @@ type Client struct {
 	transfer   *http.Client
 }
 
+// Discover returns the authenticated operation and credential readiness view.
+func (c *Client) Discover(ctx context.Context) (agentv1.Descriptor, error) {
+	//nolint:bodyclose // readResponse owns and closes generated responses.
+	response, requestErr := c.api.DiscoverAgent(ctx)
+	status, data, err := readResponse(response, requestErr)
+	if err != nil {
+		return agentv1.Descriptor{}, err
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return agentv1.Descriptor{}, decodeError(status, data)
+	}
+	var wire agentwire.Descriptor
+	if strictjson.Decode(data, &wire, false) != nil {
+		return agentv1.Descriptor{}, errors.New("agent source returned invalid discovery metadata")
+	}
+	descriptor := agentv1wire.DescriptorFromWire(wire)
+	if descriptor.APIVersion != agentv1.APIVersion {
+		return agentv1.Descriptor{}, errors.New("agent source returned unsupported discovery metadata")
+	}
+	return descriptor, nil
+}
+
 // Error is one stable Agent V1 error envelope.
 type Error struct {
 	Status  int

@@ -10,6 +10,29 @@ import (
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
 )
 
+func DescriptorToWire(input agentv1.Descriptor) agentwire.Descriptor {
+	return agentwire.Descriptor{
+		ApiVersion: agentwire.DescriptorApiVersionBrokerkitIoagentv1,
+		Operations: append([]string(nil), input.Operations...),
+		Credential: agentwire.CredentialDescriptor{
+			Ready: input.Credential.Ready, Provider: input.Credential.Provider,
+			CredentialKind: input.Credential.CredentialKind, Generation: int(input.Credential.Generation),
+			VerificationState: input.Credential.VerificationState,
+		},
+	}
+}
+
+func DescriptorFromWire(input agentwire.Descriptor) agentv1.Descriptor {
+	return agentv1.Descriptor{
+		APIVersion: string(input.ApiVersion), Operations: append([]string(nil), input.Operations...),
+		Credential: agentv1.CredentialDescriptor{
+			Ready: input.Credential.Ready, Provider: input.Credential.Provider,
+			CredentialKind: input.Credential.CredentialKind, Generation: uint64(input.Credential.Generation),
+			VerificationState: input.Credential.VerificationState,
+		},
+	}
+}
+
 func SubmitToWire(input agentv1.SubmitRequest) (agentwire.SubmitRequest, error) {
 	target, err := decodeObject(input.Target)
 	if err != nil {

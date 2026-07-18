@@ -22,6 +22,7 @@ import (
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
@@ -37,6 +38,7 @@ import (
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 	"github.com/osolmaz/brokerkit/operatorapi"
 	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/providercredential"
 	"github.com/osolmaz/brokerkit/sealedpayload"
 	"github.com/osolmaz/brokerkit/sealedstore"
 	"github.com/osolmaz/brokerkit/state"
@@ -78,6 +80,7 @@ type Options struct {
 	OperatorAudit         operatorapi.AuditRecorder
 	Now                   func() time.Time
 	NewLFSActionID        func() (string, error)
+	Credential            *providercredential.Service
 }
 
 // Server is an Echo-backed http.Handler for the broker.
@@ -108,6 +111,7 @@ type Server struct {
 	agentAPI            *agentapi.Handler
 	database            *state.Database
 	planValidator       hfplan.Validator
+	credential          *providercredential.Service
 	notifier            bkapprovalnotify.Notifier
 	operatorConfigured  bool
 	lifecycleContext    context.Context
@@ -390,7 +394,8 @@ func (r *serverResources) configureStores(opts Options) error {
 		Now: opts.Now,
 	})
 	r.plans, err = hfplan.NewStoreWithClock(r.database, opts.Now)
-	r.planValidator = hfplan.Validator{Store: r.plans}
+	r.plans.SetCredentialService(opts.Credential)
+	r.planValidator = hfplan.Validator{Store: r.plans, Credential: opts.Credential, Requirement: (credentialauth.Adapter{}).Requirement}
 	return err
 }
 
@@ -494,6 +499,7 @@ func (r *serverResources) newServer(opts Options, upstream, routerUpstream *url.
 		credentialStore:    r.credentialSlots,
 		database:           r.database,
 		planValidator:      r.planValidator,
+		credential:         opts.Credential,
 		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
 		lfsActions:         map[string]lfsAction{},
@@ -521,6 +527,7 @@ func (s *Server) attachServices(opts Options, resources *serverResources) error 
 	agentAPI, agentAPIErr := agentapi.New(agentapi.Options{
 		Store: s.operations, Authenticate: resources.control.Clients.AuthenticateHeader,
 		Submit: s.submitAgentOperation, Cancel: s.cancelAgentOperation, Realm: "hf-broker",
+		Discover: s.discoverAgent,
 		AuthFailure: func() {
 			s.record("system", "agent.authenticate", "", audit.DecisionRefused, "authentication failed", 0)
 		},
@@ -548,6 +555,12 @@ func newRouter(server *Server) *echo.Echo {
 	router.POST("/api/agent/v1/sealed-payloads", server.uploadSealedPayload)
 	router.GET("/healthz", func(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "application/json")
+		if server.credential != nil {
+			snapshot, err := server.credential.Snapshot()
+			if err != nil || snapshot.VerificationState != providercredential.VerificationValid || snapshot.ExpiresAt != nil && !snapshot.ExpiresAt.After(server.utcNow()) {
+				return c.JSON(http.StatusServiceUnavailable, map[string]bool{"ok": false})
+			}
+		}
 		_, err := c.Response().Write([]byte(`{"ok": true}`))
 		return err
 	})

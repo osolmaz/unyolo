@@ -71,7 +71,7 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const expected = "fd4b6fe4595c07215d1a88949b10ea33d3cab5d6289c7f7112314b13a2cf94df"
+	const expected = "e45fbf6a9cf6e1023026b56b82bbb8d3f2a8716e60297ec4f1760ded8dc5e2b0"
 	if got := plandigest.Digest(encoded); got != expected {
 		t.Fatalf("canonical digest = %s, want %s\n%s", got, expected, encoded)
 	}

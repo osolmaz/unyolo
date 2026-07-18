@@ -45,7 +45,26 @@
     "parameters": {"OperationID": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}},
     "responses": {"ErrorResponse": {"description": "Stable error envelope", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}}},
     "schemas": {
-      "Descriptor": {"type": "object", "additionalProperties": false, "required": ["api_version"], "properties": {"api_version": {"type": "string", "const": "brokerkit.io/agent/v1"}}},
+      "Descriptor": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "operations", "credential"],
+        "properties": {
+          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"},
+          "operations": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+          "credential": {"$ref": "#/components/schemas/CredentialDescriptor"}
+        }
+      },
+      "CredentialDescriptor": {
+        "type": "object", "additionalProperties": false,
+        "required": ["ready", "provider", "credential_kind", "generation", "verification_state"],
+        "properties": {
+          "ready": {"type": "boolean"},
+          "provider": {"type": "string", "maxLength": 64},
+          "credential_kind": {"type": "string", "maxLength": 64},
+          "generation": {"type": "integer", "minimum": 0},
+          "verification_state": {"type": "string", "maxLength": 32}
+        }
+      },
       "State": {"type": "string", "enum": ["pending", "approved", "executing", "succeeded", "failed", "denied", "expired", "canceled"]},
       "Presentation": {"type": "object", "additionalProperties": false, "required": ["title"], "properties": {"title": {"type": "string", "minLength": 1, "maxLength": 160}, "summary": {"type": "string", "maxLength": 500}}},
       "OperationError": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string", "minLength": 1, "maxLength": 64}, "message": {"type": "string", "minLength": 1, "maxLength": 500}}},
