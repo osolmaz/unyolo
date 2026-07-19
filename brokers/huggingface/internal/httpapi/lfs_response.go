@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func (s *Server) rewriteLFSBatchActions(r *http.Request, rt route, payload map[string]any) {
+func (s *Server) rewriteLFSBatchActions(r *http.Request, client string, rt route, payload map[string]any) {
 	objects, ok := payload["objects"].([]any)
 	if !ok {
 		return
@@ -20,11 +20,11 @@ func (s *Server) rewriteLFSBatchActions(r *http.Request, rt route, payload map[s
 		if !ok {
 			continue
 		}
-		s.rewriteLFSObjectActions(r, rt, object)
+		s.rewriteLFSObjectActions(r, client, rt, object)
 	}
 }
 
-func (s *Server) rewriteLFSObjectActions(r *http.Request, rt route, object map[string]any) {
+func (s *Server) rewriteLFSObjectActions(r *http.Request, client string, rt route, object map[string]any) {
 	oid, _ := object["oid"].(string)
 	size, _ := lfsObjectSizeString(object["size"])
 	actions, ok := object["actions"].(map[string]any)
@@ -37,7 +37,7 @@ func (s *Server) rewriteLFSObjectActions(r *http.Request, rt route, object map[s
 			delete(actions, name)
 			continue
 		}
-		actionID, ok := s.registerLFSAction(rt, oid, size, name, action)
+		actionID, ok := s.registerLFSAction(client, rt, oid, size, name, action)
 		if !ok {
 			delete(actions, name)
 			continue
@@ -52,16 +52,8 @@ func (s *Server) rewriteLFSObjectActions(r *http.Request, rt route, object map[s
 	}
 }
 
-func (s *Server) registerLFSAction(rt route, oid, size, name string, action map[string]any) (string, bool) {
-	href, ok := action["href"].(string)
-	if !ok {
-		return "", false
-	}
-	parsed, err := url.Parse(href)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "", false
-	}
-	actionRoute, ok := brokerLFSActionRoute(rt, oid, size, name)
+func (s *Server) registerLFSAction(client string, rt route, oid, size, name string, action map[string]any) (string, bool) {
+	href, actionRoute, ok := validatedLFSAction(client, rt, oid, size, name, action)
 	if !ok {
 		return "", false
 	}
@@ -73,8 +65,21 @@ func (s *Server) registerLFSAction(rt route, oid, size, name string, action map[
 	defer s.lfsMu.Unlock()
 	now := s.utcNow()
 	s.pruneExpiredLFSActions(now)
-	s.lfsActions[id] = lfsAction{url: href, headers: parseLFSActionHeaders(action["header"]), route: actionRoute, created: now}
+	s.lfsActions[id] = lfsAction{url: href, headers: parseLFSActionHeaders(action["header"]), route: actionRoute, client: client, created: now}
 	return id, true
+}
+
+func validatedLFSAction(client string, rt route, oid, size, name string, action map[string]any) (string, route, bool) {
+	href, ok := action["href"].(string)
+	if client == "" || !ok {
+		return "", route{}, false
+	}
+	parsed, err := url.Parse(href)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", route{}, false
+	}
+	actionRoute, ok := brokerLFSActionRoute(rt, oid, size, name)
+	return href, actionRoute, ok
 }
 
 func (s *Server) lookupLFSAction(id string) (lfsAction, bool) {

@@ -145,6 +145,7 @@ type lfsAction struct {
 	url     string
 	headers http.Header
 	route   route
+	client  string
 	created time.Time
 }
 
@@ -619,6 +620,11 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, b
 	if err == nil {
 		return client, true
 	}
+	if errors.Is(err, bkauth.ErrMissing) {
+		if client, handled := s.authenticateLFSAction(w, r); handled {
+			return client, client != ""
+		}
+	}
 	status := http.StatusForbidden
 	if errors.Is(err, bkauth.ErrMissing) {
 		status = http.StatusUnauthorized
@@ -627,6 +633,21 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, b
 	writePlain(w, status, "hf-broker: authentication failed\n")
 	s.recordAudit(audit.Event{Operation: "unknown", Decision: audit.DecisionRefused, Reason: "authentication failed"})
 	return "", false
+}
+
+func (s *Server) authenticateLFSAction(w http.ResponseWriter, r *http.Request) (string, bool) {
+	actionID := r.URL.Query().Get(lfsActionQuery)
+	if actionID == "" {
+		return "", false
+	}
+	action, ok := s.lookupLFSAction(actionID)
+	rt, routeOK := parseRepoRoute(r.URL.Path)
+	if !ok || !routeOK || !sameRoute(action.route, rt) || action.client == "" {
+		writePlain(w, http.StatusForbidden, "hf-broker: "+errInvalidLFSAction.Error()+"\n")
+		s.recordAudit(audit.Event{Operation: "unknown", Decision: audit.DecisionRefused, Reason: errInvalidLFSAction.Error()})
+		return "", true
+	}
+	return action.client, true
 }
 
 func (s *Server) authenticateAPI(w http.ResponseWriter, r *http.Request) (string, bool) {

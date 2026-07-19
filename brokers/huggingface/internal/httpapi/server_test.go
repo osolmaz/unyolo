@@ -52,7 +52,7 @@ func TestServerRuntimeInputsControlLFSState(t *testing.T) {
 	if got := server.utcNow(); !got.Equal(now) || got.Location() != time.UTC {
 		t.Fatalf("utcNow() = %v", got)
 	}
-	if _, ok := server.registerLFSAction(route{repoType: policy.TypeModel, owner: "alice", name: "model"}, strings.Repeat("a", 64), "1", "download", map[string]any{"href": "https://huggingface.co/file"}); ok {
+	if _, ok := server.registerLFSAction("alice", route{repoType: policy.TypeModel, owner: "alice", name: "model"}, strings.Repeat("a", 64), "1", "download", map[string]any{"href": "https://huggingface.co/file"}); ok {
 		t.Fatal("registerLFSAction() succeeded after entropy failure")
 	}
 }
@@ -431,11 +431,12 @@ func TestLFSPassThroughAndPolicy(t *testing.T) {
 	upstream := newGitUpstream(t, upstreamRepo, testToken)
 	defer upstream.server.Close()
 	var auditLog bytes.Buffer
-	broker := newTestBroker(t, dir, upstream.server.URL, &auditLog, datasetPolicyJSON(
+	handler := newTestHandler(t, dir, upstream.server.URL, &auditLog, datasetPolicyJSON(
 		appendOnlyDataset("repo"),
 		appendOnlyDataset("other"),
 		readOnlyDataset("readonly"),
 	))
+	broker := httptest.NewServer(handler)
 	defer broker.Close()
 
 	oid := strings.Repeat("a", 64)
@@ -457,7 +458,25 @@ func TestLFSPassThroughAndPolicy(t *testing.T) {
 	if got := resp.Header.Values("Set-Cookie"); len(got) != 0 {
 		t.Fatalf("broker forwarded upstream cookies: %q", got)
 	}
-	assertLFSActionHref(t, body, "download", broker.URL+"/datasets/acme/repo.git/info/lfs/objects/"+oid)
+	downloadHref := assertLFSActionHref(t, body, "download", broker.URL+"/datasets/acme/repo.git/info/lfs/objects/"+oid)
+	beforeCredentialFreeAction := upstream.totalHits()
+	resp, body = doRequest(t, http.MethodGet, downloadHref, "", nil)
+	if resp.StatusCode != http.StatusOK || upstream.totalHits() != beforeCredentialFreeAction+1 {
+		t.Fatalf("credential-free LFS action = %d %q, upstream hits = %d, want 200 and %d", resp.StatusCode, body, upstream.totalHits(), beforeCredentialFreeAction+1)
+	}
+	mismatchedRequest := httptest.NewRequest(http.MethodGet, downloadHref, nil)
+	mismatchedRoute, _ := parseRepoRoute(mismatchedRequest.URL.Path)
+	beforeMismatchedClient := upstream.totalHits()
+	_, mismatchedErr := handler.forward(httptest.NewRecorder(), mismatchedRequest, "other-agent", mismatchedRoute, nil, false)
+	if !errors.Is(mismatchedErr, errInvalidLFSAction) || upstream.totalHits() != beforeMismatchedClient {
+		t.Fatalf("cross-client LFS action error = %v, upstream hits = %d, want invalid action and %d", mismatchedErr, upstream.totalHits(), beforeMismatchedClient)
+	}
+	tamperedDownloadHref := strings.Replace(downloadHref, "/datasets/acme/repo.git/", "/datasets/acme/other.git/", 1)
+	beforeTamperedDownload := upstream.totalHits()
+	resp, _ = doRequest(t, http.MethodGet, tamperedDownloadHref, "", nil)
+	if resp.StatusCode != http.StatusForbidden || upstream.totalHits() != beforeTamperedDownload {
+		t.Fatalf("tampered credential-free LFS action status = %d, upstream hits = %d, want 403 and %d", resp.StatusCode, upstream.totalHits(), beforeTamperedDownload)
+	}
 	resp, body = doRequest(t, http.MethodPost, batchURL, "Bearer "+testSecret, strings.NewReader(fmt.Sprintf(`{"operation":"upload","objects":[{"oid":%q,"size":123}]}`, oid)))
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "upload") {
 		t.Fatalf("upload batch = %d %q", resp.StatusCode, body)

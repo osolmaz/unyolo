@@ -421,7 +421,7 @@ func (s *Server) forwardWithMatchedGrant(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) forwardAndRecord(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target, decision, reason string, policyDecision policy.Decision) {
-	statusCode, err := s.forward(w, r, classified.route, classified.body, classified.bodyRead)
+	statusCode, err := s.forward(w, r, client, classified.route, classified.body, classified.bodyRead)
 	if s.recordForwardError(w, client, classified, target, statusCode, err, policyDecision) {
 		return
 	}
@@ -440,7 +440,7 @@ func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request
 		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant is not active", 0)
 		return
 	}
-	statusCode, err := s.forward(w, r, classified.route, classified.body, classified.bodyRead)
+	statusCode, err := s.forward(w, r, client, classified.route, classified.body, classified.bodyRead)
 	if errors.Is(err, errInvalidLFSAction) {
 		_, _ = s.grants.ReleaseUse(reserved.ID)
 	} else if err != nil {
