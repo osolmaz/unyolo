@@ -40,6 +40,15 @@ func TestLoadRejectsNonTCPGitEndpoint(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsGitEndpointCollision(t *testing.T) {
+	values := developmentValues()
+	values["GH_BROKER_AGENT_ENDPOINT"] = "tcp://127.0.0.1:32193"
+	values["GH_BROKER_GIT_ENDPOINT"] = values["GH_BROKER_AGENT_ENDPOINT"]
+	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("shared Git endpoint error = %v", err)
+	}
+}
+
 func TestLoadRejectsMalformedPresentValues(t *testing.T) {
 	for name, value := range map[string]string{
 		"GH_BROKER_DEVELOPMENT":            "yes",

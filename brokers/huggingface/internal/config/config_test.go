@@ -46,6 +46,11 @@ func TestLoadReadsAndValidatesGitEndpoint(t *testing.T) {
 	if err != nil || cfg.GitEndpoint == nil || cfg.GitEndpoint.String() != "tcp://127.0.0.1:0" {
 		t.Fatalf("Git endpoint = %+v, %v", cfg.GitEndpoint, err)
 	}
+	env["HF_BROKER_AGENT_ENDPOINT"] = "tcp://127.0.0.1:32192"
+	env["HF_BROKER_GIT_ENDPOINT"] = env["HF_BROKER_AGENT_ENDPOINT"]
+	if _, err := Load(testGetenv(env)); err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("shared Git endpoint error = %v", err)
+	}
 	env["HF_BROKER_GIT_ENDPOINT"] = "unix:///tmp/git.sock"
 	if _, err := Load(testGetenv(env)); err == nil || !strings.Contains(err.Error(), "must use tcp") {
 		t.Fatalf("invalid Git endpoint error = %v", err)
