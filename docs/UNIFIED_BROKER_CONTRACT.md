@@ -233,7 +233,7 @@ Every broker should expose the same client setup concept:
 <broker> setup client \
   --client agent-a \
   --endpoint unix:///run/brokerkit/<provider>/agent/broker.sock \
-  --git-endpoint "tcp://127.0.0.1:${BROKER_GIT_PORT}" \
+  --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/<broker>/secrets \
   --home-dir /home/agent-a
 ```

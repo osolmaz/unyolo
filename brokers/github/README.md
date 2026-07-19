@@ -39,7 +39,7 @@ sudo gh-broker setup systemd \
   --operator operator-a \
   --agent-user agent-a \
   --operator-user operator-a \
-  --git-endpoint "tcp://127.0.0.1:${BROKER_GIT_PORT}"
+  --git-endpoint tcp://127.0.0.1:38471
 ```
 
 Setup writes protected files under `/etc/gh-broker` (`secrets`,
@@ -89,7 +89,7 @@ Write a client config file for an agent account:
 sudo gh-broker setup client \
   --client agent-a \
   --endpoint unix:///run/brokerkit/github/agent/broker.sock \
-  --git-endpoint "tcp://127.0.0.1:${BROKER_GIT_PORT}" \
+  --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/gh-broker/secrets \
   --home-dir /home/agent-a
 ```
