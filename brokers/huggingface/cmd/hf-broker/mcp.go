@@ -109,7 +109,8 @@ func mcpTools(operations []string) []map[string]any {
 	for _, tool := range tools {
 		name, _ := tool["name"].(string)
 		descriptor, found := descriptorByMCPTool(name)
-		if _, allowed := available[descriptor.Name]; found && allowed {
+		_, allowed := available[descriptor.Name]
+		if found && allowed || len(available) > 0 && strings.HasPrefix(name, "hf_operation_") {
 			filtered = append(filtered, tool)
 		}
 	}

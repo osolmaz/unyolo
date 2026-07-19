@@ -234,6 +234,25 @@ func TestMCPToolsDoNotTreatEmptyDiscoveryAsFullAccess(t *testing.T) {
 	}
 }
 
+func TestMCPToolsAdvertiseLifecycleForAvailableOperations(t *testing.T) {
+	tools := mcpTools([]string{"repo.create"})
+	names := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		name, _ := tool["name"].(string)
+		names[name] = true
+	}
+	for _, name := range []string{
+		"hf_repo_create", "hf_operation_get", "hf_operation_wait", "hf_operation_list", "hf_operation_cancel",
+	} {
+		if !names[name] {
+			t.Fatalf("available operation tools omit %q: %v", name, names)
+		}
+	}
+	if names["hf_repo_delete"] {
+		t.Fatalf("discovery exposed unavailable repository deletion: %v", names)
+	}
+}
+
 func TestLoadAgentClientRejectsMissingCredential(t *testing.T) {
 	_, err := loadAgentClient(func(name string) string {
 		if name == "HF_BROKER_AGENT_ENDPOINT" {
