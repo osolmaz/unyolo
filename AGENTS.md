@@ -36,6 +36,12 @@ under a component directory may add stricter requirements.
 
 ## Required Checks
 
+- Do not report work as complete until the original user-visible workflow has
+  been reproduced and verified end to end in its real target environment.
+  Tests, mocks, CI, health checks, successful builds, and deployments are
+  supporting evidence, not substitutes. If full verification is impossible,
+  state that clearly and report the work as unverified.
+
 Run these before finishing code changes:
 
 ```sh

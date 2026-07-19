@@ -219,7 +219,7 @@ function emitOperatorValidators(components) {
   }
   emit(
     path.join(root, "plugins/openclaw/src/generated/operator-validators.ts"),
-    `/* eslint-disable */\n// @ts-nocheck -- generated Ajv standalone code\n// Generated from protocol/openapi/operator-v1.yaml. Do not edit.\nimport formatsModule from "ajv-formats/dist/formats.js";\nimport equal from "ajv/dist/runtime/equal.js";\nimport ucs2length from "ajv/dist/runtime/ucs2length.js";\nconst formats = formatsModule.fullFormats;\n${generated}\n`,
+    `/* eslint-disable */\n// @ts-nocheck -- generated Ajv standalone code\n// Generated from protocol/openapi/operator-v1.yaml. Do not edit.\nimport formatsModule from "ajv-formats/dist/formats.js";\nimport equalModule from "ajv/dist/runtime/equal.js";\nimport ucs2lengthModule from "ajv/dist/runtime/ucs2length.js";\nconst formats = formatsModule.fullFormats;\nconst equal = equalModule.default ?? equalModule;\nconst ucs2length = ucs2lengthModule.default ?? ucs2lengthModule;\n${generated}\n`,
   );
 }
 
