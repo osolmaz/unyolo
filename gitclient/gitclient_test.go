@@ -225,6 +225,11 @@ func TestPrepareHomeAndProviderValidation(t *testing.T) {
 	if _, err := prepareHome(valid, &Options{HomeDir: "relative"}); err == nil {
 		t.Fatal("prepareHome accepted a relative home")
 	}
+	for _, repository := range []string{"relative", t.TempDir() + "/../repository"} {
+		if _, err := prepareHome(valid, &Options{HomeDir: t.TempDir(), Repository: repository}); err == nil {
+			t.Fatalf("prepareHome accepted repository %q", repository)
+		}
+	}
 	if runner, err := prepareHome(valid, &Options{HomeDir: t.TempDir()}); err != nil || runner == nil {
 		t.Fatalf("prepareHome valid options = %T, %v", runner, err)
 	}
@@ -320,6 +325,75 @@ func TestDoctorRejectsModifiedEffectiveConfiguration(t *testing.T) {
 	}
 	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil {
 		t.Fatal("Doctor accepted modified credential isolation")
+	}
+}
+
+func TestDoctorRejectsRepositoryTransportOverrides(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name      string
+		configure func(string)
+	}{
+		{name: "local LFS URL", configure: func(repo string) {
+			runner := commandRunner{home: home}
+			if _, err := runner.Run(t.Context(), "-C", repo, "config", "--local", "lfs.url", "https://direct.example/lfs"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "local URL rewrite", configure: func(repo string) {
+			runner := commandRunner{home: home}
+			if _, err := runner.Run(t.Context(), "-C", repo, "config", "--local", "url.https://direct.example/.insteadOf", "https://github.com/owner/"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: ".lfsconfig", configure: func(repo string) {
+			if err := os.WriteFile(filepath.Join(repo, ".lfsconfig"), []byte("[lfs]\n\turl = https://direct.example/lfs\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repo := t.TempDir()
+			runner := commandRunner{home: home}
+			if _, err := runner.Run(t.Context(), "-C", repo, "init"); err != nil {
+				t.Fatal(err)
+			}
+			test.configure(repo)
+			if _, err := Doctor(t.Context(), provider, Options{HomeDir: home, Repository: repo}); err == nil {
+				t.Fatal("Doctor accepted a repository transport override")
+			}
+		})
+	}
+}
+
+func TestDoctorAcceptsCleanRepositoryAndOptionalNonRepository(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	runner := commandRunner{home: home}
+	if _, err := runner.Run(t.Context(), "-C", repo, "init"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home, Repository: repo}); err != nil {
+		t.Fatalf("Doctor rejected a clean repository: %v", err)
+	}
+	nonRepository := t.TempDir()
+	if _, err := Doctor(t.Context(), provider, Options{
+		HomeDir: home, Repository: nonRepository, repositoryOptional: true,
+	}); err != nil {
+		t.Fatalf("Doctor rejected an optional non-repository: %v", err)
+	}
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home, Repository: nonRepository}); err == nil {
+		t.Fatal("Doctor accepted a required non-repository")
 	}
 }
 

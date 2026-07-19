@@ -41,11 +41,13 @@ const (
 
 // Options controls an install, status, doctor, or uninstall operation.
 type Options struct {
-	HomeDir string
-	Mode    Mode
-	Replace bool
-	Runner  Runner
-	HTTP    *http.Client
+	HomeDir            string
+	Repository         string
+	Mode               Mode
+	Replace            bool
+	Runner             Runner
+	HTTP               *http.Client
+	repositoryOptional bool
 }
 
 // Status is the installed state for one provider.
@@ -159,6 +161,9 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 	if err := validateDoctorInstallation(ctx, provider, status, origin, runner); err != nil {
 		return Status{}, err
 	}
+	if err := verifyRepository(ctx, provider, opts, runner); err != nil {
+		return Status{}, err
+	}
 	if err := checkIdentity(ctx, opts.HTTP, origin, client.SharedSecret, provider.ID); err != nil {
 		return Status{}, err
 	}
@@ -206,18 +211,34 @@ func prepareHome(provider Provider, opts *Options) (Runner, error) {
 }
 
 func normalizeOptions(opts *Options) error {
-	if opts.HomeDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("resolve home directory: %w", err)
-		}
-		opts.HomeDir = home
+	home, err := configuredHome(opts.HomeDir)
+	if err != nil {
+		return err
 	}
-	if !filepath.IsAbs(opts.HomeDir) {
-		return errors.New("home directory must be absolute")
+	opts.HomeDir = home
+	if opts.Repository != "" && !normalizedAbsolutePath(opts.Repository) {
+		return errors.New("repository path must be absolute and normalized")
 	}
 	opts.Mode = ModeAll
 	return nil
+}
+
+func configuredHome(home string) (string, error) {
+	if home == "" {
+		resolved, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home directory: %w", err)
+		}
+		home = resolved
+	}
+	if !filepath.IsAbs(home) {
+		return "", errors.New("home directory must be absolute")
+	}
+	return home, nil
+}
+
+func normalizedAbsolutePath(path string) bool {
+	return filepath.IsAbs(path) && filepath.Clean(path) == path
 }
 
 func validateProvider(provider Provider) error {
@@ -349,6 +370,10 @@ func rejectRewriteScope(ctx context.Context, runner Runner, scope string, prefix
 	if err != nil && !isMissingConfig(err) {
 		return err
 	}
+	return rejectRewriteRecords(output, prefixes, expected)
+}
+
+func rejectRewriteRecords(output []byte, prefixes []string, expected map[string]bool) error {
 	for _, record := range bytes.Split(output, []byte{0}) {
 		key, value, conflict := conflictingRewrite(record, prefixes, expected)
 		if conflict {
@@ -356,6 +381,77 @@ func rejectRewriteScope(ctx context.Context, runner Runner, scope string, prefix
 		}
 	}
 	return nil
+}
+
+func verifyRepository(ctx context.Context, provider Provider, opts Options, runner Runner) error {
+	if opts.Repository == "" {
+		return nil
+	}
+	root, found, err := repositoryRoot(ctx, opts.Repository, opts.repositoryOptional, runner)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if err := rejectRepositoryRewrites(ctx, provider, root, runner); err != nil {
+		return err
+	}
+	if err := rejectRepositoryTransportConfig(ctx, root, "--local", runner); err != nil {
+		return err
+	}
+	return rejectRepositoryLFSConfig(ctx, root, runner)
+}
+
+func repositoryRoot(ctx context.Context, repository string, optional bool, runner Runner) (string, bool, error) {
+	output, err := runner.Run(ctx, "-C", repository, "rev-parse", "--show-toplevel")
+	if err != nil {
+		if optional && strings.Contains(err.Error(), "not a git repository") {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("inspect repository: %w", err)
+	}
+	root := strings.TrimSpace(string(output))
+	if !normalizedAbsolutePath(root) {
+		return "", false, errors.New("git returned an invalid repository root")
+	}
+	return root, true, nil
+}
+
+func rejectRepositoryLFSConfig(ctx context.Context, root string, runner Runner) error {
+	lfsConfig := filepath.Join(root, ".lfsconfig")
+	_, err := os.Stat(lfsConfig)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect repository .lfsconfig: %w", err)
+	}
+	return rejectRepositoryTransportConfig(ctx, root, "--file", runner, lfsConfig)
+}
+
+func rejectRepositoryRewrites(ctx context.Context, provider Provider, root string, runner Runner) error {
+	output, err := runner.Run(ctx, "-C", root, "config", "--local", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
+	if err != nil && !isMissingConfig(err) {
+		return fmt.Errorf("inspect repository URL routing: %w", err)
+	}
+	return rejectRewriteRecords(output, provider.CanonicalPrefixes, nil)
+}
+
+func rejectRepositoryTransportConfig(ctx context.Context, root, scope string, runner Runner, scopeArgs ...string) error {
+	args := []string{"-C", root, "config", scope}
+	args = append(args, scopeArgs...)
+	args = append(args, "--null", "--get-regexp", "^(lfs\\.(url|pushurl)|remote\\..*\\.(pushurl|lfsurl|lfspushurl))$")
+	output, err := runner.Run(ctx, args...)
+	if err != nil {
+		if isMissingConfig(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect repository transport configuration: %w", err)
+	}
+	record := bytes.Split(output, []byte{0})[0]
+	key, _, _ := bytes.Cut(record, []byte{'\n'})
+	return fmt.Errorf("repository Git transport override %s bypasses BrokerKit", key)
 }
 
 func conflictingRewrite(record []byte, prefixes []string, expected map[string]bool) ([]byte, []byte, bool) {

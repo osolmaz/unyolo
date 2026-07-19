@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -33,6 +34,7 @@ func parseCommandOptions(provider Provider, args []string, stderr io.Writer) (st
 	options := Options{}
 	jsonOutput := false
 	flags.StringVar(&options.HomeDir, "home-dir", "", "home directory to configure")
+	flags.StringVar(&options.Repository, "repository", "", "repository to inspect for transport overrides")
 	flags.BoolVar(&options.Replace, "replace", false, "replace an existing BrokerKit-owned installation")
 	flags.BoolVar(&jsonOutput, "json", false, "print machine-readable status")
 	if err := flags.Parse(args[1:]); err != nil {
@@ -40,6 +42,17 @@ func parseCommandOptions(provider Provider, args []string, stderr io.Writer) (st
 	}
 	if flags.NArg() != 0 {
 		return "", Options{}, false, errors.New("git command does not accept positional arguments")
+	}
+	if command != "doctor" && options.Repository != "" {
+		return "", Options{}, false, errors.New("--repository is only valid with git doctor")
+	}
+	if command == "doctor" && options.Repository == "" {
+		workingDirectory, getwdErr := os.Getwd()
+		if getwdErr != nil {
+			return "", Options{}, false, fmt.Errorf("resolve working directory: %w", getwdErr)
+		}
+		options.Repository = workingDirectory
+		options.repositoryOptional = true
 	}
 	return command, options, jsonOutput, nil
 }
