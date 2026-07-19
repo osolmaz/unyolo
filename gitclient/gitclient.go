@@ -374,7 +374,7 @@ func rejectConflicts(ctx context.Context, provider Provider, origin string, mode
 		return err
 	}
 	for _, scope := range []string{"--system", "--global"} {
-		if err := rejectProviderWideLFSOverrides(ctx, runner, scope); err != nil {
+		if err := rejectInheritedTransportOverrides(ctx, runner, scope); err != nil {
 			return err
 		}
 		if err := rejectScopedProxyOverrides(ctx, runner, origin, scope, ""); err != nil {
@@ -444,7 +444,7 @@ func verifyRepositoryInheritedConfig(ctx context.Context, provider Provider, ori
 		return err
 	}
 	for _, scope := range []string{"--system", "--global"} {
-		if err := rejectProviderWideLFSOverrides(ctx, runner, scope, root); err != nil {
+		if err := rejectInheritedTransportOverrides(ctx, runner, scope, root); err != nil {
 			return err
 		}
 		if err := rejectScopedProxyOverrides(ctx, runner, origin, scope, root); err != nil {
@@ -473,8 +473,8 @@ func verifyRepositoryWorktreeConfig(ctx context.Context, provider Provider, orig
 	return nil
 }
 
-func rejectProviderWideLFSOverrides(ctx context.Context, runner Runner, scope string, roots ...string) error {
-	args := []string{"config", scope, "--includes", "--null", "--get-regexp", "^lfs\\.(url|pushurl)$"}
+func rejectInheritedTransportOverrides(ctx context.Context, runner Runner, scope string, roots ...string) error {
+	args := []string{"config", scope, "--includes", "--null", "--get-regexp", "^(lfs\\.(url|pushurl)|remote\\..*\\.(pushurl|lfsurl|lfspushurl))$"}
 	if len(roots) > 0 {
 		args = append([]string{"-C", roots[0]}, args...)
 	}

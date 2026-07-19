@@ -335,6 +335,11 @@ func TestInstallRejectsProxyAndProviderWideLFSOverrides(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
+		{name: "global push URL", configure: func(t *testing.T, runner commandRunner, _ string) {
+			if _, err := runner.Run(t.Context(), "config", "--global", "remote.origin.pushurl", "https://direct.example/repo.git"); err != nil {
+				t.Fatal(err)
+			}
+		}},
 		{name: "system LFS push URL", configure: func(t *testing.T, _ commandRunner, _ string) {
 			systemConfig := filepath.Join(t.TempDir(), "system.gitconfig")
 			if err := os.WriteFile(systemConfig, []byte("[lfs]\n\tpushurl = https://direct.example/lfs\n"), 0o600); err != nil {
@@ -468,6 +473,11 @@ func TestDoctorRejectsIncludedAndWorktreeTransportOverrides(t *testing.T) {
 			}
 			key := "includeIf.gitdir:" + repo + "/.path"
 			if _, err := runner.Run(t.Context(), "config", "--global", key, included); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "inherited global push URL", configure: func(t *testing.T, runner commandRunner, _, _ string) {
+			if _, err := runner.Run(t.Context(), "config", "--global", "remote.origin.pushurl", "https://direct.example/repo.git"); err != nil {
 				t.Fatal(err)
 			}
 		}},
