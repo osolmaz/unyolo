@@ -24,6 +24,24 @@ pnpm --filter openclaw-brokerkit build
 openclaw plugins install --link ./plugins/openclaw
 ```
 
+## Operator V1 consumers
+
+Trusted hosts can consume the same generated Operator V1 types and runtime
+validators as the plugin without installing OpenClaw:
+
+```ts
+import {
+  parseRequestPage,
+  type RequestPage,
+} from "openclaw-brokerkit/operator-v1";
+
+const page: RequestPage = parseRequestPage(await response.json());
+```
+
+The subpath is generated from BrokerKit's canonical OpenAPI document. Its
+standalone validators use no runtime code generation and reject unknown fields,
+invalid bounds, unsafe integers, and protocol drift.
+
 ## Choose a trust mode
 
 - `direct` trusts the OpenClaw process with operator SecretRefs and enables

@@ -18,11 +18,29 @@ import type {
   Snapshot,
   SnapshotEvent,
 } from "./types.js";
+import type { Discovery, ErrorEnvelope } from "./generated/operator-v1.js";
+
+export {
+  OPERATOR_V1_SCHEMA_SHA256,
+  operatorV1,
+} from "./generated/operator-v1.js";
+export type {
+  BrokerEvent,
+  BrokerRequest,
+  Decision,
+  Discovery,
+  ErrorEnvelope,
+  Presentation,
+  RequestPage,
+  UISnapshot,
+  UISnapshotEvent,
+  UISummary,
+} from "./generated/operator-v1.js";
 
 type Validate = (value: unknown) => boolean;
 
-export function parseDescriptor(value: unknown): { api_version: string } {
-  return validated(validateDescriptor, value) as { api_version: string };
+export function parseDescriptor(value: unknown): Discovery {
+  return validated(validateDescriptor, value) as Discovery;
 }
 
 export function parseHealth(value: unknown): { status: string } {
@@ -67,12 +85,8 @@ export function parseUISummary(value: unknown): {
   };
 }
 
-export function parseErrorEnvelope(
-  value: unknown,
-): { error: { code: string; message: string } } | undefined {
-  return validateErrorEnvelope(value)
-    ? (value as { error: { code: string; message: string } })
-    : undefined;
+export function parseErrorEnvelope(value: unknown): ErrorEnvelope | undefined {
+  return validateErrorEnvelope(value) ? (value as ErrorEnvelope) : undefined;
 }
 
 function validated(validate: Validate, value: unknown): unknown {

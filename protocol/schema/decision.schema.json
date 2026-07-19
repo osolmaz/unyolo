@@ -11,7 +11,8 @@
   "properties": {
     "expected_revision": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "maximum": 9007199254740991
     },
     "idempotency_key": {
       "type": "string",
@@ -36,14 +37,16 @@
       "properties": {
         "duration_seconds": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "max_uses": {
           "type": [
             "integer",
             "null"
           ],
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       }
     },
@@ -77,11 +80,14 @@
           "maxLength": 200
         },
         "chat_id": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
         },
         "message_id": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "text": {
           "type": "string",

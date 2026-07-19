@@ -1,6 +1,6 @@
 {
   "name": "openclaw-brokerkit",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Provider-neutral BrokerKit approvals for OpenClaw",
   "repository": {
     "type": "git",
@@ -21,10 +21,16 @@
     "README.md"
   ],
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "import": "./dist/index.js"
+    },
+    "./operator-v1": {
+      "types": "./dist/src/operator-v1.d.ts",
+      "import": "./dist/src/operator-v1.js"
+    }
   },
   "scripts": {
-    "build": "pnpm run clean && vite build && tsc -p tsconfig.build.json",
+    "build": "pnpm run clean && vite build && tsc -p tsconfig.build.json && tsc -p tsconfig.operator-contract.json",
     "check": "pnpm run generate:check && pnpm run typecheck && pnpm run lint && pnpm run format:check",
     "clean": "rm -rf dist",
     "test": "vitest run --config vitest.config.ts",
@@ -39,6 +45,11 @@
   },
   "peerDependencies": {
     "openclaw": ">=2026.7.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "9.31.0",
