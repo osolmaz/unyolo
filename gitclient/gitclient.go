@@ -417,22 +417,14 @@ func verifyRepository(ctx context.Context, provider Provider, origin string, opt
 	if !found {
 		return nil
 	}
-	if err := verifyRepositoryInheritedConfig(ctx, provider, origin, root, runner); err != nil {
-		return err
-	}
-	if err := rejectRepositoryRewrites(ctx, provider, root, runner); err != nil {
-		return err
-	}
-	if err := rejectRepositoryTransportConfig(ctx, root, "--local", runner); err != nil {
-		return err
-	}
-	if err := rejectScopedProxyOverrides(ctx, runner, origin, "--local", root); err != nil {
-		return err
-	}
-	if err := verifyRepositoryWorktreeConfig(ctx, provider, origin, root, runner); err != nil {
-		return err
-	}
-	return rejectRepositoryLFSConfig(ctx, root, runner)
+	return runRepositoryChecks(
+		func() error { return verifyRepositoryInheritedConfig(ctx, provider, origin, root, runner) },
+		func() error { return rejectRepositoryRewrites(ctx, provider, root, runner) },
+		func() error { return rejectRepositoryTransportConfig(ctx, root, "--local", runner) },
+		func() error { return rejectScopedProxyOverrides(ctx, runner, origin, "--local", root) },
+		func() error { return verifyRepositoryWorktreeConfig(ctx, provider, origin, root, runner) },
+		func() error { return rejectRepositoryLFSConfig(ctx, root, runner) },
+	)
 }
 
 func verifyRepositoryInheritedConfig(ctx context.Context, provider Provider, origin, root string, runner Runner) error {
@@ -456,17 +448,19 @@ func verifyRepositoryInheritedConfig(ctx context.Context, provider Provider, ori
 
 func verifyRepositoryWorktreeConfig(ctx context.Context, provider Provider, origin, root string, runner Runner) error {
 	worktreeConfig, err := repositoryWorktreeConfigEnabled(ctx, root, runner)
-	if err != nil {
+	if err != nil || !worktreeConfig {
 		return err
 	}
-	if worktreeConfig {
-		if err := rejectRepositoryRewritesAtScope(ctx, provider, root, "--worktree", runner); err != nil {
-			return err
-		}
-		if err := rejectRepositoryTransportConfig(ctx, root, "--worktree", runner); err != nil {
-			return err
-		}
-		if err := rejectScopedProxyOverrides(ctx, runner, origin, "--worktree", root); err != nil {
+	return runRepositoryChecks(
+		func() error { return rejectRepositoryRewritesAtScope(ctx, provider, root, "--worktree", runner) },
+		func() error { return rejectRepositoryTransportConfig(ctx, root, "--worktree", runner) },
+		func() error { return rejectScopedProxyOverrides(ctx, runner, origin, "--worktree", root) },
+	)
+}
+
+func runRepositoryChecks(checks ...func() error) error {
+	for _, check := range checks {
+		if err := check(); err != nil {
 			return err
 		}
 	}
