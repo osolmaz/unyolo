@@ -254,6 +254,33 @@ func TestCredentialAuditFileIsProtectedAndAppended(t *testing.T) {
 	}
 }
 
+func TestCredentialRootRepairIncrementsInstalledGeneration(t *testing.T) {
+	deps := credentialTestDependencies()
+	deps.euid = func() int { return 0 }
+	existing, err := deps.inspect(t.Context(), "", "hf_candidate", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(credentialStatus{Status: "valid", Snapshot: existing})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps.readFile = func(string) ([]byte, error) { return metadata, nil }
+	inspect := deps.inspect
+	inspectedGeneration := uint64(0)
+	deps.inspect = func(ctx context.Context, baseURL, token string, generation uint64) (providercredential.Snapshot, error) {
+		inspectedGeneration = generation
+		return inspect(ctx, baseURL, token, generation)
+	}
+	command := commandContext{ctx: t.Context(), stdin: strings.NewReader("hf_candidate\n"), stdout: io.Discard, stderr: io.Discard}
+	if err := runCredential(command, []string{"repair", "--no-open", "--token-stdin"}, deps); err != nil {
+		t.Fatal(err)
+	}
+	if inspectedGeneration != 8 {
+		t.Fatalf("root repair generation = %d, want 8", inspectedGeneration)
+	}
+}
+
 func TestCredentialActivationRefusesCorruptGenerationMetadata(t *testing.T) {
 	deps := credentialTestDependencies()
 	deps.euid = func() int { return 0 }
@@ -360,6 +387,12 @@ func TestCredentialStatusElevatesWithoutReadingToken(t *testing.T) {
 	if err := runCredential(command, []string{"status", "--token-stdin"}, deps); err == nil {
 		t.Fatal("status accepted token input")
 	}
+	var output strings.Builder
+	command.stdout = &output
+	if err := runCredential(command, []string{"status", "--token-stdin", "--json"}, deps); err == nil ||
+		!strings.Contains(output.String(), `"code":"credential_usage_invalid"`) {
+		t.Fatalf("JSON status usage error = %v, output=%q", err, output.String())
+	}
 }
 
 func TestCredentialErrorClassificationAndPresentationHelpers(t *testing.T) {
@@ -388,8 +421,15 @@ func TestCredentialErrorClassificationAndPresentationHelpers(t *testing.T) {
 	if width := credentialTerminalWidth(&strings.Builder{}); width != defaultCredentialWidth {
 		t.Fatalf("nonterminal width = %d", width)
 	}
-	if credentialFlagPresent([]string{"--json=false"}, "--json") || !credentialFlagPresent([]string{"--json=true"}, "--json") {
-		t.Fatal("JSON flag values were classified incorrectly")
+	for _, args := range [][]string{{"--json"}, {"-json"}, {"--json=true"}, {"-json=1"}, {"--json=True"}} {
+		if !credentialFlagPresent(args, "--json") {
+			t.Fatalf("JSON flag %v was not recognized", args)
+		}
+	}
+	for _, args := range [][]string{{"--json=false"}, {"-json=0"}, {"--json=invalid"}} {
+		if credentialFlagPresent(args, "--json") {
+			t.Fatalf("disabled or invalid JSON flag %v was enabled", args)
+		}
 	}
 	failure := presentCredentialError(commandContext{stdout: io.Discard}, []string{"repair"}, errors.New("post-activation failure hf_secret_value"))
 	if !strings.Contains(failure.Error(), "Credential repair failed") || strings.Contains(failure.Error(), "hf_secret_value") {

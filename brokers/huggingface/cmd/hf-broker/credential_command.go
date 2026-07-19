@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -200,7 +201,7 @@ func presentCredentialRepair(command commandContext, options credentialOptions, 
 }
 
 func credentialRepairGeneration(deps credentialDependencies, activating bool) (uint64, error) {
-	if !activating {
+	if !activating && deps.euid() != 0 {
 		return 1, nil
 	}
 	return nextCredentialGeneration(deps)
@@ -626,9 +627,10 @@ var credentialSafeErrors = map[string]credentialSafeError{
 	"credential repair --json requires --token-stdin": {
 		code: "credential_usage_invalid",
 	},
-	"invalid credential inspect options": {code: "credential_usage_invalid"},
-	"invalid credential repair options":  {code: "credential_usage_invalid"},
-	"invalid credential status options":  {code: "credential_usage_invalid"},
+	"invalid credential inspect options":              {code: "credential_usage_invalid"},
+	"invalid credential repair options":               {code: "credential_usage_invalid"},
+	"invalid credential status options":               {code: "credential_usage_invalid"},
+	"credential status does not accept --token-stdin": {code: "credential_usage_invalid"},
 	"noninteractive credential repair must run with root privileges; invoke hf-broker through an approved privilege boundary": {
 		code: "credential_privilege_required",
 	},
@@ -674,10 +676,17 @@ func safeCredentialError(err error) (string, string) {
 }
 
 func credentialFlagPresent(args []string, wanted string) bool {
+	short := strings.TrimPrefix(wanted, "--")
 	for _, arg := range args {
-		if arg == wanted || arg == wanted+"=true" {
+		name, rawValue, hasValue := strings.Cut(arg, "=")
+		if name != wanted && name != "-"+short {
+			continue
+		}
+		if !hasValue {
 			return true
 		}
+		value, err := strconv.ParseBool(rawValue)
+		return err == nil && value
 	}
 	return false
 }
