@@ -44,19 +44,36 @@ go install ./brokers/huggingface/cmd/hf-broker
 ```
 
 HF Broker treats the permissions and resource scopes on its dedicated
-fine-grained token as a hard upstream authority ceiling. Inspect a candidate
-without installing it, repair an installed service, or inspect active
-secret-free status with:
+fine-grained token as a hard upstream authority ceiling. Repair an installed
+service interactively with:
+
+```sh
+hf-broker credential repair
+```
+
+The command opens Hugging Face's fine-grained token form, prints the exact URL,
+and reads the token through a hidden terminal prompt. Its final panel reports
+only the verified subject and capability count. The token form starts empty:
+the operator chooses the permissions and resources the broker may use.
+BrokerKit policy and operator approval can narrow that authority but can never
+expand it.
+
+For inspection or automation, use bounded standard input and explicit JSON
+output. Noninteractive repair never invokes `sudo` itself, so the caller must
+enter an approved privilege boundary explicitly:
 
 ```sh
 printf '%s\n' "$CANDIDATE_TOKEN" | hf-broker credential inspect --token-stdin --json
-sudo hf-broker credential repair
+printf '%s\n' "$CANDIDATE_TOKEN" | sudo hf-broker credential repair --no-open --token-stdin --json
 hf-broker credential status
 ```
 
-The token form starts empty: the operator chooses the permissions and resources
-the broker may use. BrokerKit policy and operator approval can narrow that
-authority but can never expand it.
+`--json` keeps standard output machine-readable and does not open a browser or
+print interactive instructions. Credential lifecycle events remain in the
+protected append-only `credential-lifecycle.jsonl` file in the installed
+broker config directory (`/etc/hf-broker` on Linux). They are not mixed into
+normal terminal output; add `--verbose` to mirror those secret-safe JSON audit
+records to standard error while troubleshooting.
 
 ## Run in development
 
