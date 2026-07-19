@@ -516,14 +516,13 @@ func (s *Server) GitHandler() (http.Handler, error) {
 
 func githubGitRoute(method, requestPath string) bool {
 	parts := strings.Split(strings.TrimPrefix(requestPath, "/"), "/")
-	if len(parts) != 4 || parts[0] == "" || parts[1] == "" || !strings.HasSuffix(parts[1], ".git") {
+	if len(parts) < 3 || parts[0] == "" || parts[1] == "" || !strings.HasSuffix(parts[1], ".git") {
 		return false
 	}
-	tail := strings.Join(parts[2:], "/")
-	switch tail {
-	case "info/refs":
+	switch {
+	case len(parts) == 4 && parts[2] == "info" && parts[3] == "refs":
 		return method == http.MethodGet
-	case "git-upload-pack", "git-receive-pack":
+	case len(parts) == 3 && (parts[2] == "git-upload-pack" || parts[2] == "git-receive-pack"):
 		return method == http.MethodPost
 	default:
 		return false

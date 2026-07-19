@@ -30,3 +30,24 @@ func TestGitHandlerHidesAgentAndWebhookRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestGitHubGitRoute(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		method string
+		path   string
+		want   bool
+	}{
+		{http.MethodGet, "/owner/repo.git/info/refs", true},
+		{http.MethodPost, "/owner/repo.git/git-upload-pack", true},
+		{http.MethodPost, "/owner/repo.git/git-receive-pack", true},
+		{http.MethodGet, "/owner/repo.git/git-receive-pack", false},
+		{http.MethodPost, "/owner/repo/info/refs", false},
+		{http.MethodPost, "/owner/repo.git/git-receive-pack/extra", false},
+	}
+	for _, test := range tests {
+		if got := githubGitRoute(test.method, test.path); got != test.want {
+			t.Errorf("githubGitRoute(%q, %q) = %t, want %t", test.method, test.path, got, test.want)
+		}
+	}
+}
