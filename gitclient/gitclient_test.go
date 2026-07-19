@@ -93,3 +93,15 @@ func TestCredentialRefusesAnotherOrigin(t *testing.T) {
 		t.Fatalf("Credential() = %q, %v", output.String(), err)
 	}
 }
+
+func TestCommandRunnerUsesConfiguredHomeAsWorkingDirectory(t *testing.T) {
+	home := t.TempDir()
+	output, err := (commandRunner{home: home}).Run(t.Context(), "sh", "-c", "printf '%s\\n%s' \"$HOME\" \"$PWD\"")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(output), "\n")
+	if len(lines) != 2 || lines[0] != home || lines[1] != home {
+		t.Fatalf("HOME and PWD = %q, want %q", output, home)
+	}
+}

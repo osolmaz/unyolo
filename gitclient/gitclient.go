@@ -67,6 +67,7 @@ type commandRunner struct{ home string }
 func (r commandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, name, args...)
 	command.Env = append(os.Environ(), "HOME="+r.home)
+	command.Dir = r.home
 	output, err := command.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
