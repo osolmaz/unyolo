@@ -233,6 +233,7 @@ Every broker should expose the same client setup concept:
 <broker> setup client \
   --client agent-a \
   --endpoint unix:///run/brokerkit/<provider>/agent/broker.sock \
+  --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/<broker>/secrets \
   --home-dir /home/agent-a
 ```
@@ -246,12 +247,15 @@ That command should write a client-owned config file under:
 The file should contain only:
 
 ```text
-export <PREFIX>_ENDPOINT=<endpoint-uri>
+export <PREFIX>_AGENT_ENDPOINT=<endpoint-uri>
 export <PREFIX>_SHARED_SECRET=<client-secret>
+export <PREFIX>_GIT_ENDPOINT=<explicit-loopback-tcp-uri>
 ```
 
-It may also write Git credential helper snippets when the broker speaks Git.
-The client setup must not write upstream provider credentials.
+For Git-speaking brokers, `<broker> git install` owns the user-level URL
+rewrites and exact-origin credential-helper configuration. `setup client`
+does not edit Git configuration. Neither command writes upstream provider
+credentials.
 The client can source this protected file directly; both values must be
 exported to broker client processes.
 

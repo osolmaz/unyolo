@@ -25,7 +25,7 @@ const setupUsage = `usage:
 	  hf-broker setup systemd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
 	  hf-broker setup systemd --hf-token-file <path> --repo <owner/name> --repo-type <model|dataset|space> [flags]
   hf-broker setup launchd --hf-token-file <path> [--policy-preset request-all-agent-operations] [flags]
-  hf-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
+	  hf-broker setup client --client <name> --endpoint <uri> --git-endpoint <loopback-tcp-uri> --secret-file <path> [--home-dir <path>]`
 
 var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
@@ -46,6 +46,7 @@ type setupSystemdOptions struct {
 	OperatorSecretFile    string
 	OperatorSecret        string
 	OperatorEndpoint      string
+	GitEndpoint           string
 	CommandRunner         bkservice.CommandRunner
 	Lifecycle             *credentiallifecycle.Reporter
 }
@@ -121,6 +122,7 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.StringVar(&opts.OperatorName, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
 	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/huggingface/operator/broker.sock", "operator inbox endpoint URI")
+	fs.StringVar(&opts.GitEndpoint, "git-endpoint", "", "explicit loopback TCP endpoint for native Git clients")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = io.Copy(stderr, strings.NewReader(flagOutput.String()))
@@ -171,6 +173,11 @@ func validateSetupRequired(opts setupSystemdOptions) error {
 	}
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}
+	}
+	if opts.GitEndpoint != "" {
+		if err := clientconfig.ValidateGitEndpoint(opts.GitEndpoint); err != nil {
+			return exitError{code: 64, message: "--git-endpoint: " + err.Error()}
+		}
 	}
 	return validateOperatorSetup(opts)
 }

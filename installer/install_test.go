@@ -131,6 +131,27 @@ func TestInstallerPlacesCompanionBinaryInLibexec(t *testing.T) {
 	}
 }
 
+func TestInstallerPlacesGitCredentialHelperOnPath(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAssetEntries(t, filepath.Join(releaseDir, asset), map[string]string{
+		"test-broker": "#!/bin/sh\necho v1.2.3\n", "git-credential-brokerkit": "#!/bin/sh\nexit 0\n",
+	})
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	installDir := filepath.Join(t.TempDir(), "bin")
+	command := installerCommand(t, installDir, server.URL, "v1.2.3")
+	command.Env = append(command.Env, "PATH_COMPANION_BINARIES=git-credential-brokerkit")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("installer failed: %v\n%s", err, output)
+	}
+	if info, err := os.Stat(filepath.Join(installDir, "git-credential-brokerkit")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("credential helper info = %+v err=%v", info, err)
+	}
+}
+
 func TestInstallerRejectsChecksumMismatch(t *testing.T) {
 	asset := "test-broker_linux_amd64.tar.gz"
 	releaseDir := t.TempDir()

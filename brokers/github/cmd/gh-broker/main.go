@@ -48,7 +48,7 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 	if found, err := runGeneratedCLI(ctx, stdout, args); found {
 		return err
 	}
-	return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|policy|operations|operation|stream|mcp|state]")
+	return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|git|policy|operations|operation|stream|mcp|state]")
 }
 
 func runNamedCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) (error, bool) {
@@ -66,6 +66,7 @@ func namedCommands() map[string]cliCommand {
 		"setup": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 			return runSetupWithContext(ctx, stdout, stderr, args)
 		},
+		"git": runGitCommand,
 		"doctor": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 			return runDoctor(ctx, stdout, stderr, args)
 		},
@@ -173,6 +174,9 @@ func listenGitHubEndpoints(cfg config.Config) (map[string]net.Listener, error) {
 	if cfg.OperatorSecret != "" {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
 	}
+	if cfg.GitEndpoint != nil {
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "git", Endpoint: *cfg.GitEndpoint})
+	}
 	return endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
 }
 
@@ -188,6 +192,17 @@ func newGitHubServers(api *httpapi.Server, listeners map[string]net.Listener, op
 			return nil, serverErr
 		}
 		servers = append(servers, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	if gitListener := listeners["git"]; gitListener != nil {
+		gitHandler, handlerErr := api.GitHandler()
+		if handlerErr != nil {
+			return nil, handlerErr
+		}
+		gitServer, serverErr := serverhttp.New(gitHandler, serverhttp.ProfileStreaming)
+		if serverErr != nil {
+			return nil, serverErr
+		}
+		servers = append(servers, serverhttp.Binding{Server: gitServer, Listener: gitListener})
 	}
 	return servers, nil
 }

@@ -38,7 +38,8 @@ sudo gh-broker setup systemd \
   --client agent-a \
   --operator operator-a \
   --agent-user agent-a \
-  --operator-user operator-a
+  --operator-user operator-a \
+  --git-endpoint tcp://127.0.0.1:38471
 ```
 
 Setup writes protected files under `/etc/gh-broker` (`secrets`,
@@ -88,17 +89,31 @@ Write a client config file for an agent account:
 sudo gh-broker setup client \
   --client agent-a \
   --endpoint unix:///run/brokerkit/github/agent/broker.sock \
+  --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/gh-broker/secrets \
   --home-dir /home/agent-a
 ```
 
-The generated `~/.config/gh-broker/client.env` contains only
-`GH_BROKER_AGENT_ENDPOINT` and `GH_BROKER_SHARED_SECRET`; it does not contain
-GitHub credentials. The agent loads it with:
+The generated `~/.config/gh-broker/client.env` contains the broker endpoints
+and broker client secret; it does not contain GitHub credentials. The agent
+loads it with:
 
 ```sh
 . "$HOME/.config/gh-broker/client.env"
 ```
+
+Then configure standard Git once for that user:
+
+```sh
+gh-broker git install
+gh-broker git doctor
+```
+
+Normal `https://github.com/OWNER/REPO.git` and GitHub SSH-form remotes now use
+the broker for clone, fetch, pull, and push. `gh-broker git status --json`
+reports the owned configuration, and `gh-broker git uninstall` removes only
+that exact provider installation. The listener port is selected and persisted
+by the deployment; BrokerKit has no fixed Git port.
 
 ### Development token fallback
 
@@ -182,12 +197,13 @@ curl --unix-socket /run/brokerkit/github/agent/broker.sock \
   http://localhost/healthz
 ```
 
-Git fetch through the broker. The broker secret is the only credential the
-agent holds:
+Standard Git uses the one-time client installation described above. Remotes
+remain ordinary GitHub URLs and the broker secret is supplied only by the
+scoped credential helper:
 
 ```sh
-git -c http.extraHeader="Authorization: Bearer $GH_BROKER_SHARED_SECRET" \
-  ls-remote https://github-broker.example.com/osolmaz/brokerkit.git
+gh-broker git install
+git ls-remote https://github.com/osolmaz/brokerkit.git
 ```
 
 Discrete GitHub operations use the typed Agent V1 CLI. It reads

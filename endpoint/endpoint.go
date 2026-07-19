@@ -189,6 +189,9 @@ func (e Endpoint) Address() string {
 // ClientCapable reports whether clients can dial the endpoint directly.
 func (e Endpoint) ClientCapable() bool { return e.scheme == SchemeUnix || e.scheme == SchemeTCP }
 
+// Ephemeral reports whether e asks the operating system to allocate a TCP port.
+func (e Endpoint) Ephemeral() bool { return e.scheme == SchemeTCP && e.port == 0 }
+
 // Resolved returns the concrete endpoint represented by an acquired listener.
 // It resolves development port zero while preserving stable Unix and activated names.
 func Resolved(configured Endpoint, listener net.Listener) (Endpoint, error) {

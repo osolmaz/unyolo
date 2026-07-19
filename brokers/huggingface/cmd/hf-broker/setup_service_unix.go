@@ -373,6 +373,9 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"HF_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
 		"HF_BROKER_AGENT_ENDPOINT=activation://agent\n"
+	if opts.GitEndpoint != "" {
+		body += "HF_BROKER_GIT_ENDPOINT=" + opts.GitEndpoint + "\n"
+	}
 	body += "HF_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
 		"HF_BROKER_OPERATOR_ENDPOINT=activation://operator\n"
 	if opts.TelegramBotTokenFile != "" {
@@ -537,9 +540,19 @@ Operator inbox endpoint:
 Operator credential file:
   %s
 
+Git endpoint:
+  %s
+
 Configure a client without exposing its secret:
-  sudo hf-broker setup client --client %s --endpoint %s --secret-file %s --home-dir '/home/<user>'
-`, setupBrokerURL(opts), policySummary, opts.OperatorEndpoint, filepath.Join(opts.ConfigDir, operatorSecretsFileName), shellQuote(opts.ClientName), shellQuote(opts.Endpoint), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+  sudo hf-broker setup client --client %s --endpoint %s --git-endpoint %s --secret-file %s --home-dir '/home/<user>'
+`, setupBrokerURL(opts), policySummary, opts.OperatorEndpoint, filepath.Join(opts.ConfigDir, operatorSecretsFileName), configuredGitEndpoint(opts.GitEndpoint), shellQuote(opts.ClientName), shellQuote(opts.Endpoint), shellQuote(opts.GitEndpoint), shellQuote(filepath.Join(opts.ConfigDir, secretsFileName)))
+}
+
+func configuredGitEndpoint(value string) string {
+	if value == "" {
+		return "(not configured)"
+	}
+	return value
 }
 
 func setupBrokerURL(opts setupSystemdOptions) string {

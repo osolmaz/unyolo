@@ -434,6 +434,9 @@ func renderEnvFile(plan systemdPlan) string {
 		"GH_BROKER_GITHUB_HTTP_TIMEOUT=30\n" +
 		"GH_BROKER_GITHUB_STREAM_TIMEOUT=600\n" +
 		"GH_BROKER_MAX_RECEIVE_PACK_BYTES=26214400\n"
+	if opts.GitEndpoint != "" {
+		body += "GH_BROKER_GIT_ENDPOINT=" + opts.GitEndpoint + "\n"
+	}
 	if opts.TelegramBotTokenFile != "" {
 		body += "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
 			"GH_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
@@ -610,9 +613,10 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   state dir:       %s
   unit file:       %s
   broker endpoint: %s
+  git endpoint:    %s
   agent access:    %s (%s)
   operator access: %s (%s)
-%s`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, plan.opts.Endpoint, plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
+%s`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, plan.opts.Endpoint, showPath(plan.opts.GitEndpoint != "", plan.opts.GitEndpoint), plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
 	if err != nil {
 		return err
 	}
@@ -640,9 +644,12 @@ Operator inbox:
   endpoint: %s
   credential file: %s
 
+Git endpoint:
+  %s
+
 Write the client config with:
-  gh-broker setup client --client %s --endpoint %s --secret-file %s --home-dir %s
-`, plan.opts.Endpoint, plan.opts.ClientName, plan.secretsPath, plan.opts.OperatorEndpoint, plan.operatorSecretsPath, shellQuote(plan.opts.ClientName), shellQuote(plan.opts.Endpoint), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
+  gh-broker setup client --client %s --endpoint %s --git-endpoint %s --secret-file %s --home-dir %s
+`, plan.opts.Endpoint, plan.opts.ClientName, plan.secretsPath, plan.opts.OperatorEndpoint, plan.operatorSecretsPath, showPath(plan.opts.GitEndpoint != "", plan.opts.GitEndpoint), shellQuote(plan.opts.ClientName), shellQuote(plan.opts.Endpoint), shellQuote(plan.opts.GitEndpoint), shellQuote(plan.secretsPath), shellQuote(filepath.Join("/home", plan.opts.ClientName)))
 }
 
 func shellQuote(value string) string {

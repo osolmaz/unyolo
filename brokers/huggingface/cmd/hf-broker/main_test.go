@@ -132,6 +132,7 @@ func TestRunWithContextStartsOperatorListener(t *testing.T) {
 		"HF_BROKER_AGENT_ENDPOINT":        agentEndpoint,
 		"HF_BROKER_OPERATOR_SECRETS_FILE": operatorPath,
 		"HF_BROKER_OPERATOR_ENDPOINT":     operatorEndpoint,
+		"HF_BROKER_GIT_ENDPOINT":          "tcp://127.0.0.1:0",
 		"HF_BROKER_DEVELOPMENT":           "true",
 	}
 	ctx, cancel := context.WithCancel(context.Background())

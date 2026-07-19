@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -67,7 +68,7 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 func runCommandInput(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	run, found := commandRunners[args[0]]
 	if !found {
-		return exitError{code: 64, message: "usage: hf-broker [--version|version|credential|doctor|setup|policy|client|mcp|state]"}
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|credential|doctor|setup|git|policy|client|mcp|state]"}
 	}
 	return run(commandContext{ctx: ctx, getenv: getenv, stdin: stdin, stdout: stdout, stderr: stderr}, args[1:])
 }
@@ -85,6 +86,7 @@ var commandRunners = map[string]func(commandContext, []string) error{
 	"credential":               runCredentialCommand,
 	"doctor":                   runDoctorCommand,
 	"setup":                    runSetupCommand,
+	"git":                      runGitCommand,
 	"policy":                   runPolicyCommand,
 	"client":                   runClientTopLevelCommand,
 	"mcp":                      runMCPCommand,
@@ -277,27 +279,52 @@ func decodeActiveCredentialStatus(data []byte) (*credentialStatus, error) {
 }
 
 func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverhttp.Binding, error) {
+	listeners, err := listenServerEndpoints(cfg)
+	if err != nil {
+		return nil, err
+	}
+	bindings, err := newServerBindings(handler, cfg, listeners)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		return nil, err
+	}
+	return bindings, nil
+}
+
+func listenServerEndpoints(cfg config.Config) (map[string]net.Listener, error) {
 	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
 	if len(cfg.Operators) > 0 {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
 	}
-	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
-	if err != nil {
-		return nil, err
+	if cfg.GitEndpoint != nil {
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "git", Endpoint: *cfg.GitEndpoint})
 	}
+	return endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+}
+
+func newServerBindings(handler *httpapi.Server, cfg config.Config, listeners map[string]net.Listener) ([]serverhttp.Binding, error) {
 	agentServer, err := serverhttp.New(handler, serverhttp.ProfileStreaming)
 	if err != nil {
-		_ = endpoint.CloseSet(listeners)
 		return nil, err
 	}
 	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
 	if len(cfg.Operators) > 0 {
 		operatorServer, serverErr := serverhttp.New(handler.OperatorHandler(), serverhttp.ProfileOperator)
 		if serverErr != nil {
-			_ = endpoint.CloseSet(listeners)
 			return nil, serverErr
 		}
 		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
+	}
+	if gitListener := listeners["git"]; gitListener != nil {
+		gitHandler, handlerErr := handler.GitHandler()
+		if handlerErr != nil {
+			return nil, handlerErr
+		}
+		gitServer, serverErr := serverhttp.New(gitHandler, serverhttp.ProfileStreaming)
+		if serverErr != nil {
+			return nil, serverErr
+		}
+		bindings = append(bindings, serverhttp.Binding{Server: gitServer, Listener: gitListener})
 	}
 	return bindings, nil
 }
@@ -314,6 +341,14 @@ func writeReadiness(stdout io.Writer, cfg config.Config, bindings []serverhttp.B
 			return resolveErr
 		}
 		record["operator_endpoint"] = operator.String()
+	}
+	if cfg.GitEndpoint != nil {
+		gitIndex := len(bindings) - 1
+		git, resolveErr := endpoint.Resolved(*cfg.GitEndpoint, bindings[gitIndex].Listener)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		record["git_endpoint"] = git.String()
 	}
 	return json.NewEncoder(stdout).Encode(record)
 }

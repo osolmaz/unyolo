@@ -23,7 +23,7 @@ const setupUsage = `usage:
   gh-broker setup launchd [--policy-preset request-all-agent-operations | --scope-file FILE] (--dev-token-fallback --github-token-file FILE | --github-app-id-file FILE --github-app-private-key-file FILE --github-webhook-secret-file FILE) [flags]
   gh-broker setup github-user enroll|rotate --state-dir DIR --credential-file FILE --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup github-user revoke --state-dir DIR --user-id ID --github-app-client-id-file FILE --github-app-client-secret-file FILE
-  gh-broker setup client --client <name> --endpoint <uri> --secret-file <path> [--home-dir <path>]`
+  gh-broker setup client --client <name> --endpoint <uri> --git-endpoint <loopback-tcp-uri> --secret-file <path> [--home-dir <path>]`
 
 type setupClientOptions = bksetup.ClientOptions
 type setupCommand func(context.Context, io.Writer, io.Writer, []string) error
@@ -48,6 +48,7 @@ type setupSystemdOptions struct {
 	OperatorSecretFile        string
 	OperatorSecret            string
 	OperatorEndpoint          string
+	GitEndpoint               string
 	TelegramBotTokenFile      string
 	TelegramChatID            int64
 	DevTokenFallback          bool
@@ -179,6 +180,7 @@ func bindGitHubSystemdFlags(fs *flag.FlagSet, opts *setupSystemdOptions) {
 	fs.StringVar(&opts.OperatorID, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
 	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/github/operator/broker.sock", "operator inbox endpoint URI")
+	fs.StringVar(&opts.GitEndpoint, "git-endpoint", "", "explicit loopback TCP endpoint for native Git clients")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 }
@@ -224,11 +226,22 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 		validateTelegramSetupOptions,
 		validateSetupOperatorCredentials,
 		validateSetupOperatorListener,
+		validateSetupGitListener,
 	}
 	for _, check := range checks {
 		if err := check(opts); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateSetupGitListener(opts setupSystemdOptions) error {
+	if opts.GitEndpoint == "" {
+		return nil
+	}
+	if err := clientconfig.ValidateGitEndpoint(opts.GitEndpoint); err != nil {
+		return fmt.Errorf("--git-endpoint: %w", err)
 	}
 	return nil
 }

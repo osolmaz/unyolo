@@ -84,6 +84,7 @@ prints the resolved endpoint in its readiness record.
 ```sh
 export HF_BROKER_DEVELOPMENT=true
 export HF_BROKER_AGENT_ENDPOINT=tcp://127.0.0.1:0
+export HF_BROKER_GIT_ENDPOINT=tcp://127.0.0.1:0
 export HF_BROKER_HF_TOKEN=hf_...          # upstream write token, outbound only
 export HF_BROKER_SHARED_SECRET=$(openssl rand -hex 32)
 export HF_BROKER_SCOPE_FILE=scope.json
@@ -132,15 +133,21 @@ See [scope.example.json](scope.example.json) for read, request, and
 inference rules, and [docs/POLICY_RULES_SPEC.md](docs/POLICY_RULES_SPEC.md)
 for the full rule vocabulary.
 
-## Point a Git client at it
+## Configure Git
 
-Expose the agent listener through an explicitly configured HTTPS ingress.
-The broker secret is the password:
+Give the service a deployment-selected loopback TCP listener with
+`--git-endpoint`, include the same endpoint when running `setup client`, then
+configure standard Git once for the user:
 
 ```sh
-git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped-news
-git config credential.helper '!f() { echo username=default; echo password=$HF_BROKER_SHARED_SECRET; }; f'
+hf-broker git install
+hf-broker git doctor
 ```
+
+Normal `https://huggingface.co/...` and Hugging Face SSH-form remotes now use
+the broker for clone, fetch, pull, push, and supported Git LFS routes. Remotes
+contain no broker or provider credential. The listener port belongs to the
+deployment; BrokerKit defines no fixed Git port.
 
 Clones, pulls, fast-forward pushes, new branches, and new tags work as
 normal. A history rewrite is refused with a message at the terminal:

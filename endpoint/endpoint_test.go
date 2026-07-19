@@ -51,7 +51,7 @@ func TestParseRejectsUnsafeEndpoints(t *testing.T) {
 
 func TestEphemeralTCPRequiresDevelopmentOption(t *testing.T) {
 	value, err := Parse("tcp://127.0.0.1:0", ParseOptions{AllowEphemeralTCP: true})
-	if err != nil || value.Address() != "127.0.0.1:0" {
+	if err != nil || value.Address() != "127.0.0.1:0" || !value.Ephemeral() {
 		t.Fatalf("Parse() = %#v, %v", value, err)
 	}
 	listener, err := Listen(value, ListenOptions{Development: true})

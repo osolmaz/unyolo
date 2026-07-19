@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -248,12 +249,25 @@ func TestBuildServersAddsDedicatedOperatorEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.OperatorEndpoint = &operator
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitAddress := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gitEndpoint, err := endpoint.Parse("tcp://"+gitAddress, endpoint.ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.GitEndpoint = &gitEndpoint
 	servers, err := buildServers(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = serverhttp.Shutdown(servers) })
-	if len(servers) != 2 || servers[1].Listener.Addr().Network() != "unix" || servers[1].Server.WriteTimeout != 0 || servers[1].Server.ReadTimeout != 15*time.Second {
+	if len(servers) != 3 || servers[1].Listener.Addr().Network() != "unix" || servers[1].Server.WriteTimeout != 0 || servers[1].Server.ReadTimeout != 15*time.Second || servers[2].Listener.Addr().Network() != "tcp" {
 		t.Fatalf("servers = %+v", servers)
 	}
 }

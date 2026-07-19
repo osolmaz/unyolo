@@ -32,6 +32,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/gitserver"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/slicex"
 	bknotify "github.com/osolmaz/brokerkit/notify"
@@ -239,6 +240,37 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 
 // OperatorHandler builds the shared inbox over the same canonical grant store.
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
+
+// GitHandler exposes only Hugging Face smart-HTTP and LFS routes.
+func (s *Server) GitHandler() (http.Handler, error) {
+	return gitserver.New("huggingface", s.control.Clients, s.router, huggingFaceGitRoute, huggingFaceDelegatesAuthentication)
+}
+
+func huggingFaceDelegatesAuthentication(request *http.Request) bool {
+	return request.Header.Get("Authorization") == "" && request.URL.Query().Get(lfsActionQuery) != ""
+}
+
+func huggingFaceGitRoute(method, requestPath string) bool {
+	route, ok := parseRepoRoute(requestPath)
+	if !ok {
+		return false
+	}
+	switch route.tail {
+	case "info/refs":
+		return method == http.MethodGet
+	case "git-upload-pack", "git-receive-pack":
+		return method == http.MethodPost
+	}
+	if !strings.HasPrefix(route.tail, "info/lfs/") {
+		return false
+	}
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch:
+		return true
+	default:
+		return false
+	}
+}
 
 func (s *Server) utcNow() time.Time {
 	if s.now == nil {

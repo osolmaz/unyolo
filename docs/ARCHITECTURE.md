@@ -48,6 +48,8 @@ brokerkit/
 ├── approvalnotify/ # Semantic approval notification projection.
 ├── notify/         # Typed notification lifecycle and channel adapters.
 ├── store/      # Atomic local stores and locks.
+├── gitclient/  # Standard Git URL routing and credential-helper integration.
+├── gitserver/  # Git-only listener isolation and identity handshake.
 └── gitx/       # Generic Git smart-HTTP parsing helpers.
 ```
 
@@ -76,6 +78,8 @@ brokerkit may contain:
 - proxy-safe HTTP header filters
 - generic Git pkt-line, receive-pack command, ref update classification, and
   pack/body redaction helpers
+- exact user-level Git URL rewrites, credential-helper protocol handling, and
+  a route-restricted Git listener boundary
 - provider-neutral Agent Operations V1 wire types and schemas
 - strict MCP stdio protocol handling and Agent Operations lifecycle projection
 - bounded authenticated sealed-payload and stream transfer clients
@@ -145,3 +149,17 @@ brokerkit must preserve these invariants:
 
 Shared packages must expose provider-neutral behavior and tests. Provider
 classifiers, credentials, execution, and wording remain in their broker.
+
+## Native Git Path
+
+Git-speaking brokers use three distinct listeners: Agent V1, Operator V1, and
+Git data plane. The Git listener is an explicit deployment-selected TCP
+endpoint. BrokerKit defines no default port. Its shared route gate exposes only
+an authenticated identity handshake and provider-approved smart-HTTP, LFS, or
+Xet routes; agent operations, grants, webhooks, browser sessions, and operator
+routes are unreachable on that listener.
+
+`<broker> git install` writes exact user-level `url.*.insteadOf` mappings and a
+credential helper scoped to that listener. Remotes keep their normal provider
+URLs, provider credentials remain server-side, and an unavailable broker fails
+closed instead of falling back to the provider.

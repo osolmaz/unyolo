@@ -21,6 +21,7 @@ type Config struct {
 	Environment               string
 	Development               bool
 	AgentEndpoint             endpoint.Endpoint
+	GitEndpoint               *endpoint.Endpoint
 	ClientID                  string
 	SharedSecret              string
 	SecretsFile               string
@@ -68,6 +69,9 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err := loadOperatorEndpoint(env, &cfg, development, networkExposure); err != nil {
 		return Config{}, err
 	}
+	if err := loadGitEndpoint(env, &cfg, development, networkExposure); err != nil {
+		return Config{}, err
+	}
 	if err := cfg.loadCredentialFiles(); err != nil {
 		return Config{}, err
 	}
@@ -78,6 +82,25 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func loadGitEndpoint(env environment, cfg *Config, development, networkExposure bool) error {
+	value := env.value("GH_BROKER_GIT_ENDPOINT", "")
+	if value == "" {
+		return nil
+	}
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: networkExposure})
+	if err != nil {
+		return fmt.Errorf("GH_BROKER_GIT_ENDPOINT: %w", err)
+	}
+	if parsed.Scheme() != endpoint.SchemeTCP {
+		return errors.New("GH_BROKER_GIT_ENDPOINT must use tcp")
+	}
+	if !parsed.Ephemeral() && (parsed.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && parsed.String() == cfg.OperatorEndpoint.String()) {
+		return errors.New("git, agent, and operator endpoints must differ")
+	}
+	cfg.GitEndpoint = &parsed
+	return nil
 }
 
 func loadBaseConfig(env environment) (Config, bool, bool, error) {
