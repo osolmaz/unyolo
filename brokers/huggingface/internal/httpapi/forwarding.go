@@ -28,17 +28,17 @@ func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {
 	return nil, false, err
 }
 
-func (s *Server) forward(w http.ResponseWriter, r *http.Request, rt route, body []byte, bodyRead bool) (int, error) {
+func (s *Server) forward(w http.ResponseWriter, r *http.Request, client string, rt route, body []byte, bodyRead bool) (int, error) {
 	if actionID := r.URL.Query().Get(lfsActionQuery); actionID != "" {
 		action, ok := s.lookupLFSAction(actionID)
-		if !ok || !sameRoute(action.route, rt) {
+		if !ok || action.client != client || !sameRoute(action.route, rt) {
 			writePlain(w, http.StatusForbidden, "hf-broker: "+errInvalidLFSAction.Error()+"\n")
 			return 0, errInvalidLFSAction
 		}
-		return s.forwardToURL(w, r, rt, action.url, body, bodyRead, action.headers, s.lfsActionNeedsHFToken(action.url, rt))
+		return s.forwardToURL(w, r, client, rt, action.url, body, bodyRead, action.headers, s.lfsActionNeedsHFToken(action.url, rt))
 	}
 	upstreamURL := s.upstreamRequestURL(r, rt)
-	return s.forwardToURL(w, r, rt, upstreamURL, body, bodyRead, nil, true)
+	return s.forwardToURL(w, r, client, rt, upstreamURL, body, bodyRead, nil, true)
 }
 
 func (s *Server) lfsActionNeedsHFToken(rawURL string, rt route) bool {
@@ -52,7 +52,7 @@ func (s *Server) lfsActionNeedsHFToken(rawURL string, rt route) bool {
 		(parsed.Path == repoPath || strings.HasPrefix(parsed.Path, repoPath+"/"))
 }
 
-func (s *Server) forwardToURL(w http.ResponseWriter, r *http.Request, rt route, upstreamURL string, body []byte, bodyRead bool, extraHeaders http.Header, injectHFToken bool) (int, error) {
+func (s *Server) forwardToURL(w http.ResponseWriter, r *http.Request, client string, rt route, upstreamURL string, body []byte, bodyRead bool, extraHeaders http.Header, injectHFToken bool) (int, error) {
 	req, err := s.newForwardRequest(r, upstreamURL, body, bodyRead, extraHeaders, injectHFToken)
 	if err != nil {
 		return 0, err
@@ -64,7 +64,7 @@ func (s *Server) forwardToURL(w http.ResponseWriter, r *http.Request, rt route, 
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	return s.writeForwardResponse(w, r, rt, resp)
+	return s.writeForwardResponse(w, r, client, rt, resp)
 }
 
 func (s *Server) forwardReceivePack(w http.ResponseWriter, r *http.Request, rt route, push gitproxy.ReceivePackRequest, body []byte) (int, bool, string, bool, error) {
@@ -149,10 +149,10 @@ func setForwardContentLength(req, original *http.Request, body []byte, bodyRead 
 	}
 }
 
-func (s *Server) writeForwardResponse(w http.ResponseWriter, r *http.Request, rt route, resp *http.Response) (int, error) {
+func (s *Server) writeForwardResponse(w http.ResponseWriter, r *http.Request, client string, rt route, resp *http.Response) (int, error) {
 	copyResponseHeaders(w.Header(), resp.Header)
 	if shouldRewriteLFSBatchResponse(r, rt, resp.StatusCode) {
-		body, err := s.rewriteLFSBatchResponse(r, rt, resp.Body)
+		body, err := s.rewriteLFSBatchResponse(r, client, rt, resp.Body)
 		if err != nil {
 			return resp.StatusCode, err
 		}
@@ -170,11 +170,11 @@ func shouldRewriteLFSBatchResponse(r *http.Request, rt route, statusCode int) bo
 	return statusCode >= 200 && statusCode < 300 && r.Method == http.MethodPost && rt.tail == "info/lfs/objects/batch"
 }
 
-func (s *Server) rewriteLFSBatchResponse(r *http.Request, rt route, body io.Reader) ([]byte, error) {
+func (s *Server) rewriteLFSBatchResponse(r *http.Request, client string, rt route, body io.Reader) ([]byte, error) {
 	var payload map[string]any
 	if err := httpx.DecodeJSON(body, maxLFSBatchBytes, &payload, false); err != nil {
 		return nil, fmt.Errorf("could not sanitize LFS batch response: %w", err)
 	}
-	s.rewriteLFSBatchActions(r, rt, payload)
+	s.rewriteLFSBatchActions(r, client, rt, payload)
 	return json.Marshal(payload)
 }
