@@ -393,6 +393,15 @@ func TestCredentialStatusElevatesWithoutReadingToken(t *testing.T) {
 		!strings.Contains(output.String(), `"code":"credential_usage_invalid"`) {
 		t.Fatalf("JSON status usage error = %v, output=%q", err, output.String())
 	}
+	output.Reset()
+	deps.runElevated = func(_ context.Context, _ string, _ []string, stdout, _ io.Writer) error {
+		_, _ = io.WriteString(stdout, `{"schema_version":1,"status":"error"}`+"\n")
+		return credentialPresentedError{code: 1}
+	}
+	if err := runCredential(command, []string{"status", "--json"}, deps); err == nil ||
+		strings.Count(output.String(), `"status":"error"`) != 1 {
+		t.Fatalf("elevated JSON status error = %v, output=%q", err, output.String())
+	}
 }
 
 func TestCredentialErrorClassificationAndPresentationHelpers(t *testing.T) {

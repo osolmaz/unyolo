@@ -94,6 +94,10 @@ func runCredential(command commandContext, args []string, deps credentialDepende
 	if err == nil {
 		return nil
 	}
+	var presented credentialPresentedError
+	if errors.As(err, &presented) {
+		return exitError{code: presented.code}
+	}
 	return presentCredentialError(command, args, err)
 }
 
@@ -334,9 +338,17 @@ func runElevatedCredential(ctx context.Context, token string, args []string, std
 	command.Stdin = strings.NewReader(token)
 	command.Stdout, command.Stderr = stdout, stderr
 	if err := command.Run(); err != nil {
-		return errors.New("privileged HF Broker credential activation failed")
+		return elevatedCredentialRunError(err)
 	}
 	return nil
+}
+
+func elevatedCredentialRunError(err error) error {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return credentialPresentedError{code: exit.ExitCode()}
+	}
+	return errors.New("privileged HF Broker credential activation failed")
 }
 
 func activateCredential(command commandContext, deps credentialDependencies, options credentialOptions, token string, snapshot providercredential.Snapshot) (resultErr error) {
@@ -566,6 +578,10 @@ func browserCommand(rawURL string) (string, []string, error) {
 	}
 	return name, args, nil
 }
+
+type credentialPresentedError struct{ code int }
+
+func (err credentialPresentedError) Error() string { return "credential error was already presented" }
 
 type credentialJSONError struct {
 	SchemaVersion int    `json:"schema_version"`
