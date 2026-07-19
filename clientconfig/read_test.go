@@ -47,3 +47,25 @@ func TestReadRejectsInjectedAndDuplicateAssignments(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateClientFileRejectsUnsafePaths(t *testing.T) {
+	home := t.TempDir()
+	missing := filepath.Join(home, "missing")
+	if err := validateClientFile(missing, home); err == nil {
+		t.Fatal("validateClientFile accepted a missing file")
+	}
+	directory := filepath.Join(home, "client.env")
+	if err := os.Mkdir(directory, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateClientFile(directory, home); err == nil {
+		t.Fatal("validateClientFile accepted a directory")
+	}
+	file := filepath.Join(home, "regular.env")
+	if err := os.WriteFile(file, []byte("test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateClientFile(file, filepath.Join(home, "unknown-home")); err == nil {
+		t.Fatal("validateClientFile accepted a missing home")
+	}
+}

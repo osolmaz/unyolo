@@ -97,7 +97,7 @@ func loadGitEndpoint(env environment, cfg *Config, development, networkExposure 
 		return errors.New("GH_BROKER_GIT_ENDPOINT must use tcp")
 	}
 	if parsed.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && parsed.String() == cfg.OperatorEndpoint.String() {
-		return errors.New("Git, agent, and operator endpoints must differ")
+		return errors.New("git, agent, and operator endpoints must differ")
 	}
 	cfg.GitEndpoint = &parsed
 	return nil

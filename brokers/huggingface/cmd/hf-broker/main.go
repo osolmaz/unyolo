@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -278,6 +279,19 @@ func decodeActiveCredentialStatus(data []byte) (*credentialStatus, error) {
 }
 
 func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverhttp.Binding, error) {
+	listeners, err := listenServerEndpoints(cfg)
+	if err != nil {
+		return nil, err
+	}
+	bindings, err := newServerBindings(handler, cfg, listeners)
+	if err != nil {
+		_ = endpoint.CloseSet(listeners)
+		return nil, err
+	}
+	return bindings, nil
+}
+
+func listenServerEndpoints(cfg config.Config) (map[string]net.Listener, error) {
 	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
 	if len(cfg.Operators) > 0 {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
@@ -285,20 +299,18 @@ func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverht
 	if cfg.GitEndpoint != nil {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "git", Endpoint: *cfg.GitEndpoint})
 	}
-	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
-	if err != nil {
-		return nil, err
-	}
+	return endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+}
+
+func newServerBindings(handler *httpapi.Server, cfg config.Config, listeners map[string]net.Listener) ([]serverhttp.Binding, error) {
 	agentServer, err := serverhttp.New(handler, serverhttp.ProfileStreaming)
 	if err != nil {
-		_ = endpoint.CloseSet(listeners)
 		return nil, err
 	}
 	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
 	if len(cfg.Operators) > 0 {
 		operatorServer, serverErr := serverhttp.New(handler.OperatorHandler(), serverhttp.ProfileOperator)
 		if serverErr != nil {
-			_ = endpoint.CloseSet(listeners)
 			return nil, serverErr
 		}
 		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
@@ -306,12 +318,10 @@ func buildServerBindings(handler *httpapi.Server, cfg config.Config) ([]serverht
 	if gitListener := listeners["git"]; gitListener != nil {
 		gitHandler, handlerErr := handler.GitHandler()
 		if handlerErr != nil {
-			_ = endpoint.CloseSet(listeners)
 			return nil, handlerErr
 		}
 		gitServer, serverErr := serverhttp.New(gitHandler, serverhttp.ProfileStreaming)
 		if serverErr != nil {
-			_ = endpoint.CloseSet(listeners)
 			return nil, serverErr
 		}
 		bindings = append(bindings, serverhttp.Binding{Server: gitServer, Listener: gitListener})

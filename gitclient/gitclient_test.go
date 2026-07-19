@@ -55,7 +55,7 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
 		t.Fatalf("idempotent Install() error = %v", err)
 	}
-	rewrites, err := commandRunner{home: home}.Run(t.Context(), "git", "config", "--global", "--get-all", "url."+server.URL+"/.insteadOf")
+	rewrites, err := commandRunner{home: home}.Run(t.Context(), "config", "--global", "--get-all", "url."+server.URL+"/.insteadOf")
 	if err != nil || strings.Count(strings.TrimSpace(string(rewrites)), "\n") != 1 {
 		t.Fatalf("idempotent rewrites = %q, %v", rewrites, err)
 	}
@@ -97,13 +97,16 @@ func TestCredentialRefusesAnotherOrigin(t *testing.T) {
 
 func TestCommandRunnerUsesConfiguredHomeAsWorkingDirectory(t *testing.T) {
 	home := t.TempDir()
-	output, err := (commandRunner{home: home}).Run(t.Context(), "sh", "-c", "printf '%s\\n%s' \"$HOME\" \"$PWD\"")
+	runner := commandRunner{home: home}
+	if _, err := runner.Run(t.Context(), "init"); err != nil {
+		t.Fatal(err)
+	}
+	output, err := runner.Run(t.Context(), "rev-parse", "--show-toplevel")
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(string(output), "\n")
-	if len(lines) != 2 || lines[0] != home || lines[1] != home {
-		t.Fatalf("HOME and PWD = %q, want %q", output, home)
+	if strings.TrimSpace(string(output)) != home {
+		t.Fatalf("working directory = %q, want %q", output, home)
 	}
 }
 
@@ -181,4 +184,116 @@ func TestCredentialIgnoresPersistenceActions(t *testing.T) {
 	if err := Credential(provider, t.TempDir(), "invalid", strings.NewReader(""), &strings.Builder{}); err == nil {
 		t.Fatal("Credential(invalid) error = nil")
 	}
+}
+
+func TestCredentialHandlesUnavailableAndIncompleteConfiguration(t *testing.T) {
+	provider := testProvider()
+	if err := Credential(provider, t.TempDir(), "get", strings.NewReader(""), &strings.Builder{}); err == nil {
+		t.Fatal("Credential accepted a missing client configuration")
+	}
+	home := t.TempDir()
+	if _, err := clientconfig.Write(clientconfig.Config{
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		Secret: strings.Repeat("s", 32), HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := Credential(provider, home, "get", strings.NewReader("protocol=http\nhost=127.0.0.1:1\npath=owner/repo\n\n"), &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "quit=true\n" {
+		t.Fatalf("Credential output = %q", output.String())
+	}
+}
+
+func TestPrepareHomeAndProviderValidation(t *testing.T) {
+	valid := testProvider()
+	for _, provider := range []Provider{
+		{},
+		{ID: "github", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", CanonicalPrefixes: []string{"relative"}},
+		{ID: "github", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", CanonicalPrefixes: []string{"git@github.com:\n"}},
+	} {
+		if _, err := prepareHome(provider, &Options{HomeDir: t.TempDir()}); err == nil {
+			t.Fatalf("prepareHome accepted provider %+v", provider)
+		}
+	}
+	if _, err := prepareHome(valid, &Options{HomeDir: "relative"}); err == nil {
+		t.Fatal("prepareHome accepted a relative home")
+	}
+	if _, err := prepareHome(valid, &Options{HomeDir: t.TempDir(), Mode: "invalid"}); err == nil {
+		t.Fatal("prepareHome accepted an invalid mode")
+	}
+	if runner, err := prepareHome(valid, &Options{HomeDir: t.TempDir(), Mode: ModePushOnly}); err != nil || runner == nil {
+		t.Fatalf("prepareHome valid options = %T, %v", runner, err)
+	}
+}
+
+func TestInstallReplacementAndDoctorFailures(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home, Mode: ModePushOnly}); err == nil {
+		t.Fatal("Install replaced different settings without --replace")
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home, Mode: ModePushOnly, Replace: true}); err != nil {
+		t.Fatal(err)
+	}
+	server.Close()
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Doctor accepted an unavailable listener")
+	}
+	otherHome, otherServer := writeGitClientFixture(t, provider, "github")
+	defer otherServer.Close()
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: otherHome}); err == nil {
+		t.Fatal("Doctor accepted an uninstalled client")
+	}
+}
+
+func TestCheckIdentityRejectsInvalidResponses(t *testing.T) {
+	for _, response := range []struct {
+		status int
+		body   string
+	}{
+		{status: http.StatusForbidden, body: `{}`},
+		{status: http.StatusOK, body: `{`},
+		{status: http.StatusOK, body: `{"provider":"huggingface"}`},
+		{status: http.StatusOK, body: `{"provider":"github"}{}`},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(response.status)
+			_, _ = writer.Write([]byte(response.body))
+		}))
+		err := checkIdentity(t.Context(), server.Client(), server.URL, strings.Repeat("s", 32), "github")
+		server.Close()
+		if err == nil {
+			t.Fatalf("checkIdentity accepted HTTP %d body %q", response.status, response.body)
+		}
+	}
+}
+
+func testProvider() Provider {
+	return Provider{ID: "github", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", CanonicalPrefixes: []string{"https://github.com/", "git@github.com:"}}
+}
+
+func writeGitClientFixture(t *testing.T, provider Provider, identity string) (string, *httptest.Server) {
+	t.Helper()
+	secret := strings.Repeat("s", 32)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]string{"provider": identity})
+	}))
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	if _, err := clientconfig.Write(clientconfig.Config{
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		GitEndpoint: "tcp://" + parsed.Host, Secret: secret, HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return home, server
 }

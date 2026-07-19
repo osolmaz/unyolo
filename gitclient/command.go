@@ -15,6 +15,18 @@ func RunCommand(ctx context.Context, provider Provider, args []string, stdout, s
 	if len(args) == 0 {
 		return errors.New("usage: git install|uninstall|status|doctor")
 	}
+	command, options, jsonOutput, err := parseCommandOptions(provider, args, stderr)
+	if err != nil {
+		return err
+	}
+	status, err := executeCommand(ctx, provider, command, options)
+	if err != nil {
+		return err
+	}
+	return writeCommandStatus(stdout, provider, status, jsonOutput)
+}
+
+func parseCommandOptions(provider Provider, args []string, stderr io.Writer) (string, Options, bool, error) {
 	command := args[0]
 	flags := flag.NewFlagSet(provider.BrokerName+" git "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -26,37 +38,39 @@ func RunCommand(ctx context.Context, provider Provider, args []string, stdout, s
 	flags.BoolVar(&options.Replace, "replace", false, "replace an existing BrokerKit-owned installation")
 	flags.BoolVar(&jsonOutput, "json", false, "print machine-readable status")
 	if err := flags.Parse(args[1:]); err != nil {
-		return err
+		return "", Options{}, false, err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("git command does not accept positional arguments")
+		return "", Options{}, false, errors.New("git command does not accept positional arguments")
 	}
 	options.Mode = Mode(mode)
-	var status Status
-	var err error
+	return command, options, jsonOutput, nil
+}
+
+func executeCommand(ctx context.Context, provider Provider, command string, options Options) (Status, error) {
 	switch command {
 	case "install":
-		status, err = Install(ctx, provider, options)
+		return Install(ctx, provider, options)
 	case "uninstall":
-		status, err = Uninstall(ctx, provider, options)
+		return Uninstall(ctx, provider, options)
 	case "status":
-		status, err = Inspect(ctx, provider, options)
+		return Inspect(ctx, provider, options)
 	case "doctor":
-		status, err = Doctor(ctx, provider, options)
+		return Doctor(ctx, provider, options)
 	default:
-		return errors.New("usage: git install|uninstall|status|doctor")
+		return Status{}, errors.New("usage: git install|uninstall|status|doctor")
 	}
-	if err != nil {
-		return err
-	}
+}
+
+func writeCommandStatus(stdout io.Writer, provider Provider, status Status, jsonOutput bool) error {
 	if jsonOutput {
 		return json.NewEncoder(stdout).Encode(status)
 	}
 	if status.Installed {
-		_, err = fmt.Fprintf(stdout, "%s Git routing ready\n  provider: %s\n  mode: %s\n  listener: %s\n", provider.BrokerName, status.Provider, status.Mode, status.Origin)
+		_, err := fmt.Fprintf(stdout, "%s Git routing ready\n  provider: %s\n  mode: %s\n  listener: %s\n", provider.BrokerName, status.Provider, status.Mode, status.Origin)
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "%s Git routing is not installed\n", provider.BrokerName)
+	_, err := fmt.Fprintf(stdout, "%s Git routing is not installed\n", provider.BrokerName)
 	return err
 }
 
@@ -64,23 +78,30 @@ func RunCommand(ctx context.Context, provider Provider, args []string, stdout, s
 func ParseCredentialArgs(args []string) (string, string, error) {
 	provider := ""
 	action := ""
-	for index := 0; index < len(args); index++ {
-		switch args[index] {
-		case "--provider":
-			index++
-			if index >= len(args) || provider != "" {
-				return "", "", errors.New("--provider requires one value")
-			}
-			provider = args[index]
-		default:
-			if strings.HasPrefix(args[index], "-") || action != "" {
-				return "", "", errors.New("invalid credential-helper arguments")
-			}
-			action = args[index]
+	for len(args) > 0 {
+		consumed, err := consumeCredentialArg(args, &provider, &action)
+		if err != nil {
+			return "", "", err
 		}
+		args = args[consumed:]
 	}
 	if provider == "" || action == "" {
 		return "", "", errors.New("provider and credential-helper action are required")
 	}
 	return provider, action, nil
+}
+
+func consumeCredentialArg(args []string, provider, action *string) (int, error) {
+	if args[0] == "--provider" {
+		if len(args) < 2 || *provider != "" {
+			return 0, errors.New("--provider requires one value")
+		}
+		*provider = args[1]
+		return 2, nil
+	}
+	if strings.HasPrefix(args[0], "-") || *action != "" {
+		return 0, errors.New("invalid credential-helper arguments")
+	}
+	*action = args[0]
+	return 1, nil
 }

@@ -59,13 +59,14 @@ type Status struct {
 
 // Runner executes Git configuration commands.
 type Runner interface {
-	Run(context.Context, string, ...string) ([]byte, error)
+	Run(context.Context, ...string) ([]byte, error)
 }
 
 type commandRunner struct{ home string }
 
-func (r commandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	command := exec.CommandContext(ctx, name, args...)
+func (r commandRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+	// #nosec G204 -- the executable is fixed and callers assemble structured Git config arguments.
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Env = append(os.Environ(), "HOME="+r.home)
 	command.Dir = r.home
 	output, err := command.CombinedOutput()
@@ -92,24 +93,33 @@ func Install(ctx context.Context, provider Provider, opts Options) (Status, erro
 	if err != nil {
 		return Status{}, err
 	}
-	if current.Installed && (current.Origin != origin || current.Mode != opts.Mode) {
-		if !opts.Replace {
-			return Status{}, errors.New("BrokerKit Git routing already exists with different settings; rerun with --replace")
-		}
-	}
-	if err := rejectConflicts(ctx, provider, origin, opts.Mode, runner); err != nil {
+	if err := validateReplacement(current, origin, opts); err != nil {
 		return Status{}, err
 	}
+	if err := rejectConflicts(ctx, provider, origin, opts.Mode, current, runner); err != nil {
+		return Status{}, err
+	}
+	return replaceInstallation(ctx, provider, current, origin, opts.Mode, runner)
+}
+
+func validateReplacement(current Status, origin string, opts Options) error {
+	if current.Installed && (current.Origin != origin || current.Mode != opts.Mode) && !opts.Replace {
+		return errors.New("BrokerKit Git routing already exists with different settings; rerun with --replace")
+	}
+	return nil
+}
+
+func replaceInstallation(ctx context.Context, provider Provider, current Status, origin string, mode Mode, runner Runner) (Status, error) {
 	if current.Installed {
 		if err := remove(ctx, provider, current, runner); err != nil {
 			return Status{}, err
 		}
 	}
-	if err := writeConfig(ctx, provider, origin, opts.Mode, runner); err != nil {
-		_ = remove(ctx, provider, Status{Provider: provider.ID, Mode: opts.Mode, Origin: origin, Installed: true}, runner)
+	if err := writeConfig(ctx, provider, origin, mode, runner); err != nil {
+		_ = remove(ctx, provider, Status{Provider: provider.ID, Mode: mode, Origin: origin, Installed: true}, runner)
 		return Status{}, err
 	}
-	return Status{Provider: provider.ID, Mode: opts.Mode, Origin: origin, Installed: true}, nil
+	return Status{Provider: provider.ID, Mode: mode, Origin: origin, Installed: true}, nil
 }
 
 // Uninstall removes only configuration recorded as owned by BrokerKit.
@@ -150,7 +160,7 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 	if !status.Installed || status.Origin != origin {
 		return Status{}, errors.New("BrokerKit Git routing is not installed for the configured listener")
 	}
-	if err := rejectConflicts(ctx, provider, origin, status.Mode, runner); err != nil {
+	if err := rejectConflicts(ctx, provider, origin, status.Mode, status, runner); err != nil {
 		return Status{}, err
 	}
 	if err := checkIdentity(ctx, opts.HTTP, origin, client.SharedSecret, provider.ID); err != nil {
@@ -179,21 +189,8 @@ func prepareHome(provider Provider, opts *Options) (Runner, error) {
 	if err := validateProvider(provider); err != nil {
 		return nil, err
 	}
-	if opts.HomeDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("resolve home directory: %w", err)
-		}
-		opts.HomeDir = home
-	}
-	if !filepath.IsAbs(opts.HomeDir) {
-		return nil, errors.New("home directory must be absolute")
-	}
-	if opts.Mode == "" {
-		opts.Mode = ModeAll
-	}
-	if opts.Mode != ModeAll && opts.Mode != ModePushOnly {
-		return nil, errors.New("mode must be all or push-only")
+	if err := normalizeOptions(opts); err != nil {
+		return nil, err
 	}
 	runner := opts.Runner
 	if runner == nil {
@@ -202,26 +199,50 @@ func prepareHome(provider Provider, opts *Options) (Runner, error) {
 	return runner, nil
 }
 
+func normalizeOptions(opts *Options) error {
+	if opts.HomeDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolve home directory: %w", err)
+		}
+		opts.HomeDir = home
+	}
+	if !filepath.IsAbs(opts.HomeDir) {
+		return errors.New("home directory must be absolute")
+	}
+	if opts.Mode == "" {
+		opts.Mode = ModeAll
+	}
+	if opts.Mode != ModeAll && opts.Mode != ModePushOnly {
+		return errors.New("mode must be all or push-only")
+	}
+	return nil
+}
+
 func validateProvider(provider Provider) error {
 	if provider.ID == "" || provider.BrokerName == "" || provider.EnvPrefix == "" || len(provider.CanonicalPrefixes) == 0 {
 		return errors.New("complete Git provider descriptor is required")
 	}
 	for _, prefix := range provider.CanonicalPrefixes {
-		if strings.Contains(prefix, "@") && strings.Contains(prefix, ":") && !strings.ContainsAny(prefix, "\r\n") {
-			continue
-		}
-		parsed, err := url.Parse(prefix)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		if !validCanonicalPrefix(prefix) {
 			return errors.New("provider contains an invalid canonical Git prefix")
 		}
 	}
 	return nil
 }
 
+func validCanonicalPrefix(prefix string) bool {
+	if strings.Contains(prefix, "@") && strings.Contains(prefix, ":") {
+		return !strings.ContainsAny(prefix, "\r\n")
+	}
+	parsed, err := url.Parse(prefix)
+	return err == nil && parsed.Scheme != "" && parsed.Host != ""
+}
+
 func gitOrigin(raw string) (string, error) {
 	parsed, err := endpoint.Parse(raw, endpoint.ParseOptions{})
 	if err != nil || parsed.Scheme() != endpoint.SchemeTCP || parsed.Exposure() != endpoint.ExposureLoopback {
-		return "", errors.New("Git listener must be a loopback tcp endpoint")
+		return "", errors.New("git listener must be a loopback tcp endpoint")
 	}
 	return "http://" + parsed.Address(), nil
 }
@@ -239,7 +260,7 @@ func checkIdentity(ctx context.Context, client *http.Client, origin, secret, pro
 	if err != nil {
 		return fmt.Errorf("reach BrokerKit Git listener: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("BrokerKit Git listener returned HTTP %d", response.StatusCode)
 	}
@@ -249,10 +270,10 @@ func checkIdentity(ctx context.Context, client *http.Client, origin, secret, pro
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 4097))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&identity); err != nil || identity.Provider != provider {
-		return errors.New("Git listener identity does not match the requested provider")
+		return errors.New("git listener identity does not match the requested provider")
 	}
 	if decoder.Decode(&struct{}{}) != io.EOF {
-		return errors.New("Git listener identity response has trailing data")
+		return errors.New("git listener identity response has trailing data")
 	}
 	return nil
 }
@@ -260,7 +281,7 @@ func checkIdentity(ctx context.Context, client *http.Client, origin, secret, pro
 func writeConfig(ctx context.Context, provider Provider, origin string, mode Mode, runner Runner) error {
 	rewriteKey := "url." + origin + "/." + rewriteField(mode)
 	for _, prefix := range provider.CanonicalPrefixes {
-		if _, err := runner.Run(ctx, "git", "config", "--global", "--add", rewriteKey, prefix); err != nil {
+		if _, err := runner.Run(ctx, "config", "--global", "--add", rewriteKey, prefix); err != nil {
 			return fmt.Errorf("write Git URL routing: %w", err)
 		}
 	}
@@ -273,7 +294,7 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 		{"config", "--global", statusKey(provider, "mode"), string(mode)},
 	}
 	for _, command := range commands {
-		if _, err := runner.Run(ctx, "git", command...); err != nil {
+		if _, err := runner.Run(ctx, command...); err != nil {
 			return fmt.Errorf("write BrokerKit Git configuration: %w", err)
 		}
 	}
@@ -283,12 +304,12 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 func remove(ctx context.Context, provider Provider, status Status, runner Runner) error {
 	key := "url." + status.Origin + "/." + rewriteField(status.Mode)
 	for _, prefix := range provider.CanonicalPrefixes {
-		if _, err := runner.Run(ctx, "git", "config", "--global", "--fixed-value", "--unset-all", key, prefix); err != nil && !isMissingConfig(err) {
+		if _, err := runner.Run(ctx, "config", "--global", "--fixed-value", "--unset-all", key, prefix); err != nil && !isMissingConfig(err) {
 			return fmt.Errorf("remove Git URL routing: %w", err)
 		}
 	}
 	for _, section := range []string{"credential." + status.Origin, "brokerkit.git." + provider.ID} {
-		if _, err := runner.Run(ctx, "git", "config", "--global", "--remove-section", section); err != nil && !isMissingConfig(err) {
+		if _, err := runner.Run(ctx, "config", "--global", "--remove-section", section); err != nil && !isMissingConfig(err) {
 			return fmt.Errorf("remove BrokerKit Git configuration: %w", err)
 		}
 	}
@@ -311,26 +332,34 @@ func readStatus(ctx context.Context, provider Provider, runner Runner) (Status, 
 	return Status{Provider: provider.ID, Origin: origin, Mode: mode, Installed: true}, nil
 }
 
-func rejectConflicts(ctx context.Context, provider Provider, origin string, mode Mode, runner Runner) error {
-	output, err := runner.Run(ctx, "git", "config", "--global", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
+func rejectConflicts(ctx context.Context, provider Provider, origin string, mode Mode, current Status, runner Runner) error {
+	output, err := runner.Run(ctx, "config", "--global", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
 	if err != nil && !isMissingConfig(err) {
 		return err
 	}
-	expectedKey := strings.ToLower("url." + origin + "/." + rewriteField(mode))
+	expectedKeys := map[string]bool{strings.ToLower("url." + origin + "/." + rewriteField(mode)): true}
+	if current.Installed {
+		expectedKeys[strings.ToLower("url."+current.Origin+"/."+rewriteField(current.Mode))] = true
+	}
 	for _, record := range bytes.Split(output, []byte{0}) {
-		key, value, ok := bytes.Cut(record, []byte{'\n'})
-		if !ok || !slices.Contains(provider.CanonicalPrefixes, string(value)) {
-			continue
-		}
-		if strings.ToLower(string(key)) != expectedKey {
-			return fmt.Errorf("Git URL %q is already routed by %s", value, key)
+		key, value, conflict := conflictingRewrite(record, provider.CanonicalPrefixes, expectedKeys)
+		if conflict {
+			return fmt.Errorf("git URL %q is already routed by %s", value, key)
 		}
 	}
 	return nil
 }
 
+func conflictingRewrite(record []byte, prefixes []string, expected map[string]bool) ([]byte, []byte, bool) {
+	key, value, ok := bytes.Cut(record, []byte{'\n'})
+	if !ok || !slices.Contains(prefixes, string(value)) {
+		return nil, nil, false
+	}
+	return key, value, !expected[strings.ToLower(string(key))]
+}
+
 func configValue(ctx context.Context, runner Runner, key string) (string, error) {
-	output, err := runner.Run(ctx, "git", "config", "--global", "--get", key)
+	output, err := runner.Run(ctx, "config", "--global", "--get", key)
 	return strings.TrimSpace(string(output)), err
 }
 

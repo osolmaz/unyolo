@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/osolmaz/brokerkit/clientconfig"
@@ -16,23 +17,33 @@ const maxCredentialInputBytes = 16 * 1024
 
 // Credential serves Git's credential-helper protocol for one provider.
 func Credential(provider Provider, homeDir, action string, stdin io.Reader, stdout io.Writer) error {
-	if action == "capability" || action == "store" || action == "erase" {
+	if slices.Contains([]string{"capability", "store", "erase"}, action) {
 		return nil
 	}
 	if action != "get" {
 		return errors.New("unsupported credential-helper action")
 	}
+	return getCredential(provider, homeDir, stdin, stdout)
+}
+
+func getCredential(provider Provider, homeDir string, stdin io.Reader, stdout io.Writer) error {
 	request, err := readCredentialRequest(stdin)
 	if err != nil {
 		return err
 	}
 	client, err := clientconfig.Read(homeDir, provider.BrokerName, provider.EnvPrefix)
-	if err != nil || client.GitEndpoint == "" {
+	if err != nil {
+		return errors.New("broker client configuration is unavailable")
+	}
+	if client.GitEndpoint == "" {
 		_, _ = fmt.Fprintln(stdout, "quit=true")
 		return nil
 	}
 	origin, err := gitOrigin(client.GitEndpoint)
-	if err != nil || !credentialMatches(request, origin) {
+	if err != nil {
+		return errors.New("broker Git endpoint is invalid")
+	}
+	if !credentialMatches(request, origin) {
 		return nil
 	}
 	_, err = fmt.Fprintf(stdout, "username=brokerkit\npassword=%s\n", client.SharedSecret)

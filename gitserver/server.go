@@ -21,37 +21,56 @@ func New(provider string, authenticator *auth.Authenticator, next http.Handler, 
 	if provider == "" || authenticator == nil || next == nil || allow == nil {
 		return nil, errors.New("complete Git listener configuration is required")
 	}
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if !normalizedPath(request) {
-			http.Error(response, "invalid Git route", http.StatusBadRequest)
-			return
-		}
-		if request.Method == http.MethodGet && request.URL.Path == IdentityPath {
-			if _, err := authenticator.AuthenticateRequest(request); err != nil {
-				response.Header().Set("WWW-Authenticate", `Basic realm="brokerkit-git"`)
-				http.Error(response, "authentication required", http.StatusUnauthorized)
-				return
-			}
-			response.Header().Set("Cache-Control", "no-store")
-			response.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(response).Encode(map[string]string{"provider": provider})
-			return
-		}
-		if !allow(request.Method, request.URL.Path) {
-			http.NotFound(response, request)
-			return
-		}
-		if _, err := authenticator.AuthenticateRequest(request); err != nil {
-			if errors.Is(err, auth.ErrMissing) {
-				response.Header().Set("WWW-Authenticate", `Basic realm="brokerkit-git"`)
-				http.Error(response, "authentication required", http.StatusUnauthorized)
-				return
-			}
-			http.Error(response, "authentication failed", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(response, request)
-	}), nil
+	return gitHandler{provider: provider, authenticator: authenticator, next: next, allow: allow}, nil
+}
+
+type gitHandler struct {
+	provider      string
+	authenticator *auth.Authenticator
+	next          http.Handler
+	allow         AllowRoute
+}
+
+func (h gitHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if !normalizedPath(request) {
+		http.Error(response, "invalid Git route", http.StatusBadRequest)
+		return
+	}
+	if request.Method == http.MethodGet && request.URL.Path == IdentityPath {
+		h.serveIdentity(response, request)
+		return
+	}
+	if !h.allow(request.Method, request.URL.Path) {
+		http.NotFound(response, request)
+		return
+	}
+	if !h.authenticate(response, request) {
+		return
+	}
+	h.next.ServeHTTP(response, request)
+}
+
+func (h gitHandler) serveIdentity(response http.ResponseWriter, request *http.Request) {
+	if !h.authenticate(response, request) {
+		return
+	}
+	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(response).Encode(map[string]string{"provider": h.provider})
+}
+
+func (h gitHandler) authenticate(response http.ResponseWriter, request *http.Request) bool {
+	_, err := h.authenticator.AuthenticateRequest(request)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, auth.ErrMissing) {
+		response.Header().Set("WWW-Authenticate", `Basic realm="brokerkit-git"`)
+		http.Error(response, "authentication required", http.StatusUnauthorized)
+		return false
+	}
+	http.Error(response, "authentication failed", http.StatusForbidden)
+	return false
 }
 
 func normalizedPath(request *http.Request) bool {

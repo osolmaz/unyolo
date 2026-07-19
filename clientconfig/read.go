@@ -71,19 +71,30 @@ func parseClientEnv(data []byte, prefix string) (Client, error) {
 	wanted[prefix+"_SHARED_SECRET"] = &client.SharedSecret
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
-		name, value, ok := strings.Cut(raw, "=")
-		name = strings.TrimPrefix(name, "export ")
-		destination, expected := wanted[name]
-		if !ok || !expected || seen[name] {
-			return Client{}, errors.New("broker client configuration has an unsupported assignment")
+		if err := parseClientAssignment(raw, wanted, seen); err != nil {
+			return Client{}, err
 		}
-		decoded, err := decodeShellQuoted(value)
-		if err != nil {
-			return Client{}, errors.New("broker client configuration has an invalid quoted value")
-		}
-		*destination = decoded
-		seen[name] = true
 	}
+	return validateParsedClient(client)
+}
+
+func parseClientAssignment(raw string, wanted map[string]*string, seen map[string]bool) error {
+	name, value, ok := strings.Cut(raw, "=")
+	name = strings.TrimPrefix(name, "export ")
+	destination, expected := wanted[name]
+	if !ok || !expected || seen[name] {
+		return errors.New("broker client configuration has an unsupported assignment")
+	}
+	decoded, err := decodeShellQuoted(value)
+	if err != nil {
+		return errors.New("broker client configuration has an invalid quoted value")
+	}
+	*destination = decoded
+	seen[name] = true
+	return nil
+}
+
+func validateParsedClient(client Client) (Client, error) {
 	if client.AgentEndpoint == "" || client.SharedSecret == "" {
 		return Client{}, errors.New("broker client configuration is incomplete")
 	}
