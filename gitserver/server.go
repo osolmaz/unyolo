@@ -41,6 +41,15 @@ func New(provider string, authenticator *auth.Authenticator, next http.Handler, 
 			http.NotFound(response, request)
 			return
 		}
+		if _, err := authenticator.AuthenticateRequest(request); err != nil {
+			if errors.Is(err, auth.ErrMissing) {
+				response.Header().Set("WWW-Authenticate", `Basic realm="brokerkit-git"`)
+				http.Error(response, "authentication required", http.StatusUnauthorized)
+				return
+			}
+			http.Error(response, "authentication failed", http.StatusForbidden)
+			return
+		}
 		next.ServeHTTP(response, request)
 	}), nil
 }

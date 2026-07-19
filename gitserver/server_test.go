@@ -41,4 +41,18 @@ func TestHandlerExposesOnlyIdentityAndAllowedGitRoutes(t *testing.T) {
 			t.Fatalf("route %q returned %d", request.URL.Path, response.Code)
 		}
 	}
+
+	gitRequest := httptest.NewRequest(http.MethodPost, "/owner/repo.git/git-upload-pack", nil)
+	gitResponse := httptest.NewRecorder()
+	handler.ServeHTTP(gitResponse, gitRequest)
+	if gitResponse.Code != http.StatusUnauthorized || gitResponse.Header().Get("WWW-Authenticate") != `Basic realm="brokerkit-git"` {
+		t.Fatalf("unauthenticated Git response = %d, challenge %q", gitResponse.Code, gitResponse.Header().Get("WWW-Authenticate"))
+	}
+
+	gitRequest.SetBasicAuth("bob", strings.Repeat("s", 32))
+	gitResponse = httptest.NewRecorder()
+	handler.ServeHTTP(gitResponse, gitRequest)
+	if gitResponse.Code != http.StatusNoContent {
+		t.Fatalf("authenticated Git response = %d", gitResponse.Code)
+	}
 }
