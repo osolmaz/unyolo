@@ -27,24 +27,30 @@ import (
 )
 
 const (
-	credentialStatusFileName = "credential-status.json" // #nosec G101 -- this is a metadata filename, not a credential.
+	credentialStatusFileName = "credential-status.json"     // #nosec G101 -- this is a metadata filename, not a credential.
+	credentialAuditFileName  = "credential-lifecycle.jsonl" // #nosec G101 -- this is an audit filename, not a credential.
 	maxCredentialStatusBytes = 256 * 1024
+	defaultCredentialWidth   = 80
+	maxCredentialTextWidth   = 72
 )
 
 type credentialDependencies struct {
-	inspect     func(context.Context, string, string, uint64) (providercredential.Snapshot, error)
-	replace     func(context.Context, bkservice.CredentialReplacePlan) error
-	openURL     func(context.Context, string) error
-	readHidden  func(io.Reader, io.Writer) (string, error)
-	euid        func() int
-	runElevated func(context.Context, string, []string, io.Writer, io.Writer) error
-	readFile    func(string) ([]byte, error)
+	inspect       func(context.Context, string, string, uint64) (providercredential.Snapshot, error)
+	replace       func(context.Context, bkservice.CredentialReplacePlan) error
+	openURL       func(context.Context, string) error
+	readHidden    func(io.Reader, io.Writer) (string, error)
+	euid          func() int
+	runElevated   func(context.Context, string, []string, io.Writer, io.Writer) error
+	readFile      func(string) ([]byte, error)
+	openAudit     func(string, io.Writer) (io.WriteCloser, error)
+	terminalWidth func(io.Writer) int
 }
 
 type credentialOptions struct {
 	jsonOutput bool
 	noOpen     bool
 	tokenStdin bool
+	verbose    bool
 }
 
 type credentialStatus struct {
@@ -64,12 +70,14 @@ func defaultCredentialDependencies() credentialDependencies {
 			defer secret.Clear()
 			return (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: baseURL, Client: client}, Generation: generation}).Inspect(ctx, secret)
 		},
-		replace:     bkservice.ReplaceCredential,
-		openURL:     openCredentialURL,
-		readHidden:  readHiddenCredential,
-		euid:        os.Geteuid,
-		runElevated: runElevatedCredential,
-		readFile:    os.ReadFile,
+		replace:       bkservice.ReplaceCredential,
+		openURL:       openCredentialURL,
+		readHidden:    readHiddenCredential,
+		euid:          os.Geteuid,
+		runElevated:   runElevatedCredential,
+		readFile:      os.ReadFile,
+		openAudit:     openCredentialAudit,
+		terminalWidth: credentialTerminalWidth,
 	}
 }
 
@@ -81,7 +89,11 @@ func runCredential(command commandContext, args []string, deps credentialDepende
 	if !found {
 		return credentialUsage()
 	}
-	return runner(command, args[1:], deps)
+	err := runner(command, args[1:], deps)
+	if err == nil {
+		return nil
+	}
+	return presentCredentialError(command, args, err)
 }
 
 type credentialSubcommand func(commandContext, []string, credentialDependencies) error
@@ -174,6 +186,9 @@ func validateCredentialRepairInput(options credentialOptions, activating bool) e
 	if activating && !options.tokenStdin {
 		return exitError{code: 64, message: "credential activation requires --token-stdin"}
 	}
+	if !activating && options.jsonOutput && !options.tokenStdin {
+		return exitError{code: 64, message: "credential repair --json requires --token-stdin"}
+	}
 	return nil
 }
 
@@ -194,17 +209,18 @@ func credentialRepairGeneration(deps credentialDependencies, activating bool) (u
 func finishCredentialRepair(command commandContext, deps credentialDependencies, options credentialOptions, token string,
 	snapshot providercredential.Snapshot, activating bool) error {
 	if !activating && deps.euid() != 0 {
+		if options.tokenStdin {
+			return exitError{code: 1, message: "noninteractive credential repair must run with root privileges; invoke hf-broker through an approved privilege boundary"}
+		}
 		return elevateCredentialRepair(command, options, deps, token)
 	}
-	if err := activateCredential(command, deps, token, snapshot); err != nil {
+	if err := activateCredential(command, deps, options, token, snapshot); err != nil {
 		return err
 	}
 	if options.jsonOutput {
 		return json.NewEncoder(command.stdout).Encode(credentialStatus{Status: "valid", Snapshot: snapshot})
 	}
-	_, err := fmt.Fprintf(command.stdout, "HF Broker credential ready for %s (%d capabilities, generation %d).\n",
-		snapshot.Subject, len(snapshot.Capabilities), snapshot.Generation)
-	return err
+	return printCredentialSuccess(command.stdout, snapshot, deps.terminalWidth(command.stdout))
 }
 
 func parseCredentialOptions(command string, args []string, allowOpen bool) (credentialOptions, error) {
@@ -213,6 +229,9 @@ func parseCredentialOptions(command string, args []string, allowOpen bool) (cred
 	flags.SetOutput(io.Discard)
 	flags.BoolVar(&options.jsonOutput, "json", false, "emit JSON")
 	flags.BoolVar(&options.tokenStdin, "token-stdin", false, "read the token from stdin")
+	if command == "repair" {
+		flags.BoolVar(&options.verbose, "verbose", false, "also print credential lifecycle audit records")
+	}
 	if allowOpen {
 		flags.BoolVar(&options.noOpen, "no-open", false, "do not open the token form")
 	}
@@ -223,14 +242,28 @@ func parseCredentialOptions(command string, args []string, allowOpen bool) (cred
 }
 
 func presentCredentialForm(command commandContext, options credentialOptions, deps credentialDependencies) error {
-	if !options.noOpen {
-		if err := deps.openURL(command.ctx, credentialauth.TokenFormURL); err != nil {
-			_, _ = fmt.Fprintln(command.stderr, "Could not open a browser; use the URL printed below.")
-		}
+	if options.jsonOutput || options.tokenStdin {
+		return nil
 	}
-	_, err := fmt.Fprintf(command.stdout,
-		"Create a dedicated fine-grained Hugging Face token. Choose the permissions and resources this broker may use.\n%s\n",
-		credentialauth.TokenFormURL)
+	browserOpened := options.noOpen || deps.openURL(command.ctx, credentialauth.TokenFormURL) == nil
+	if err := writeCredentialForm(command.stdout, deps.terminalWidth(command.stdout)); err != nil {
+		return err
+	}
+	if !browserOpened {
+		_, _ = fmt.Fprintln(command.stderr, "Browser opening was unavailable. Open the URL shown above.")
+	}
+	return nil
+}
+
+func writeCredentialForm(output io.Writer, width int) error {
+	if _, err := io.WriteString(output, "Hugging Face credential repair\n\n"); err != nil {
+		return err
+	}
+	if err := writeWrappedCredentialText(output,
+		"Create a dedicated fine-grained token for HF Broker. Choose only the permissions and resources this broker may use.", width); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(output, "\nOpen this page in your browser:\n%s\n\n", credentialauth.TokenFormURL)
 	return err
 }
 
@@ -263,7 +296,7 @@ func readHiddenCredential(stdin io.Reader, stdout io.Writer) (string, error) {
 }
 
 func readHiddenCredentialFile(file *os.File, stdout io.Writer, readPassword func(int) ([]byte, error)) (string, error) {
-	if _, err := fmt.Fprint(stdout, "Paste the new Hugging Face broker token: "); err != nil {
+	if _, err := fmt.Fprint(stdout, "Hugging Face token (input hidden): "); err != nil {
 		return "", err
 	}
 	data, err := readPassword(int(file.Fd()))
@@ -288,6 +321,9 @@ func elevateCredentialRepair(command commandContext, options credentialOptions, 
 	if options.jsonOutput {
 		args = append(args, "--json")
 	}
+	if options.verbose {
+		args = append(args, "--verbose")
+	}
 	return deps.runElevated(command.ctx, token+"\n", args, command.stdout, command.stderr)
 }
 
@@ -302,14 +338,23 @@ func runElevatedCredential(ctx context.Context, token string, args []string, std
 	return nil
 }
 
-func activateCredential(command commandContext, deps credentialDependencies, token string, snapshot providercredential.Snapshot) error {
+func activateCredential(command commandContext, deps credentialDependencies, options credentialOptions, token string, snapshot providercredential.Snapshot) (resultErr error) {
 	deployment := installedCredentialDeployment()
 	metadata, err := json.MarshalIndent(credentialStatus{Status: "valid", Snapshot: snapshot}, "", "  ")
 	if err != nil {
 		return errors.New("encode credential status")
 	}
 	metadata = append(metadata, '\n')
-	reporter, err := credentiallifecycle.New(audit.New(command.stderr), "hf-broker", "local-operator")
+	var verboseOutput io.Writer
+	if options.verbose {
+		verboseOutput = command.stderr
+	}
+	auditOutput, err := deps.openAudit(deployment.configDir, verboseOutput)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, auditOutput.Close()) }()
+	reporter, err := credentiallifecycle.New(audit.New(auditOutput), "hf-broker", "local-operator")
 	if err != nil {
 		return err
 	}
@@ -398,6 +443,82 @@ func printCredentialSnapshot(stdout io.Writer, snapshot providercredential.Snaps
 	return err
 }
 
+func printCredentialSuccess(stdout io.Writer, snapshot providercredential.Snapshot, width int) error {
+	panelWidth := normalizedCredentialWidth(width)
+	if panelWidth > 56 {
+		panelWidth = 56
+	}
+	innerWidth := panelWidth - 4
+	rows := []string{"Credential ready"}
+	rows = append(rows, credentialPanelRows("Subject: ", snapshot.Subject, innerWidth)...)
+	rows = append(rows, fmt.Sprintf("Capabilities: %d", len(snapshot.Capabilities)))
+	border := "+" + strings.Repeat("-", panelWidth-2) + "+\n"
+	if _, err := io.WriteString(stdout, "\n"+border); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if _, err := fmt.Fprintf(stdout, "| %-*s |\n", innerWidth, row); err != nil {
+			return err
+		}
+	}
+	_, err := io.WriteString(stdout, border)
+	return err
+}
+
+func credentialPanelRows(prefix, value string, width int) []string {
+	if width <= len(prefix) {
+		return []string{prefix}
+	}
+	remaining := []rune(value)
+	firstWidth := width - len(prefix)
+	first := min(len(remaining), firstWidth)
+	rows := []string{prefix + string(remaining[:first])}
+	remaining = remaining[first:]
+	for len(remaining) > 0 {
+		end := min(len(remaining), width)
+		rows = append(rows, string(remaining[:end]))
+		remaining = remaining[end:]
+	}
+	return rows
+}
+
+func writeWrappedCredentialText(output io.Writer, text string, width int) error {
+	width = normalizedCredentialWidth(width)
+	words := strings.Fields(text)
+	line := ""
+	for _, word := range words {
+		if line != "" && len(line)+1+len(word) > width {
+			if _, err := fmt.Fprintln(output, line); err != nil {
+				return err
+			}
+			line = word
+			continue
+		}
+		if line != "" {
+			line += " "
+		}
+		line += word
+	}
+	if line == "" {
+		return nil
+	}
+	_, err := fmt.Fprintln(output, line)
+	return err
+}
+
+func normalizedCredentialWidth(width int) int {
+	if width <= 0 {
+		width = defaultCredentialWidth
+	}
+	if width > maxCredentialTextWidth {
+		width = maxCredentialTextWidth
+	}
+	if width < 24 {
+		width = 24
+	}
+	return width
+}
+
 func nextCredentialGeneration(deps credentialDependencies) (uint64, error) {
 	path := filepath.Join(installedCredentialDeployment().configDir, credentialStatusFileName)
 	data, err := deps.readFile(path)
@@ -443,6 +564,176 @@ func browserCommand(rawURL string) (string, []string, error) {
 		return "", nil, errors.New("browser opening is not supported")
 	}
 	return name, args, nil
+}
+
+type credentialJSONError struct {
+	SchemaVersion int    `json:"schema_version"`
+	Status        string `json:"status"`
+	Error         struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func presentCredentialError(command commandContext, args []string, cause error) error {
+	code := credentialErrorExitCode(cause)
+	errorCode, message := safeCredentialError(cause)
+	if credentialFlagPresent(args[1:], "--json") {
+		output := credentialJSONError{SchemaVersion: 1, Status: "error"}
+		output.Error.Code, output.Error.Message = errorCode, message
+		if err := json.NewEncoder(command.stdout).Encode(output); err != nil {
+			return err
+		}
+		return exitError{code: code}
+	}
+	if args[0] == "repair" {
+		heading := "Credential repair failed"
+		if credentialFailureLeavesActiveUnchanged(errorCode) {
+			heading = "Credential not changed"
+		}
+		return exitError{code: code, message: heading + "\n\n" + message}
+	}
+	return cause
+}
+
+func credentialFailureLeavesActiveUnchanged(code string) bool {
+	switch code {
+	case "credential_usage_invalid", "credential_privilege_required", "credential_input_invalid",
+		"credential_kind_unsupported", "credential_authentication_failed", "credential_provider_unavailable",
+		"credential_status_invalid", "credential_status_unavailable":
+		return true
+	default:
+		return false
+	}
+}
+
+func credentialErrorExitCode(err error) int {
+	var value exitError
+	if errors.As(err, &value) {
+		return value.code
+	}
+	return 1
+}
+
+type credentialSafeError struct {
+	code    string
+	message string
+}
+
+var credentialSafeErrors = map[string]credentialSafeError{
+	"credential activation requires --token-stdin": {code: "credential_usage_invalid"},
+	"credential inspect requires --token-stdin":    {code: "credential_usage_invalid"},
+	"credential repair --json requires --token-stdin": {
+		code: "credential_usage_invalid",
+	},
+	"invalid credential inspect options": {code: "credential_usage_invalid"},
+	"invalid credential repair options":  {code: "credential_usage_invalid"},
+	"invalid credential status options":  {code: "credential_usage_invalid"},
+	"noninteractive credential repair must run with root privileges; invoke hf-broker through an approved privilege boundary": {
+		code: "credential_privilege_required",
+	},
+	"Hugging Face token is required":                                 {code: "credential_input_invalid"},
+	"Hugging Face token has an invalid format":                       {code: "credential_input_invalid"},
+	"Hugging Face token exceeds the size limit":                      {code: "credential_input_invalid"},
+	"Hugging Face token input is unavailable":                        {code: "credential_input_invalid"},
+	"Hugging Face token input is unavailable or too large":           {code: "credential_input_invalid"},
+	"interactive token input requires a terminal; use --token-stdin": {code: "credential_input_invalid"},
+	"HF Broker requires a dedicated fine-grained Hugging Face token": {
+		code: "credential_kind_unsupported", message: "HF Broker requires a dedicated fine-grained Hugging Face token. Create one with the URL shown above and try again.",
+	},
+	"Hugging Face did not accept this token": {
+		code: "credential_authentication_failed", message: "Hugging Face did not accept this token. Check the token and try again.",
+	},
+	"Hugging Face credential inspection was rate limited": {
+		code: "credential_provider_unavailable", message: "Hugging Face could not validate the token right now. Try again later.",
+	},
+	"Hugging Face credential inspection is unavailable": {
+		code: "credential_provider_unavailable", message: "Hugging Face could not validate the token right now. Try again later.",
+	},
+	"HF Broker credential status is invalid; run hf-broker credential repair": {
+		code: "credential_status_invalid",
+	},
+	"HF Broker credential status is invalid; repair was not applied": {
+		code: "credential_status_invalid",
+	},
+	"HF Broker credential status is unavailable; run hf-broker credential repair": {
+		code: "credential_status_unavailable",
+	},
+}
+
+func safeCredentialError(err error) (string, string) {
+	message := err.Error()
+	classified, found := credentialSafeErrors[message]
+	if !found {
+		return "credential_repair_failed", "HF Broker could not validate or install the credential. The token was not exposed."
+	}
+	if classified.message == "" {
+		classified.message = message
+	}
+	return classified.code, classified.message
+}
+
+func credentialFlagPresent(args []string, wanted string) bool {
+	for _, arg := range args {
+		if arg == wanted || arg == wanted+"=true" {
+			return true
+		}
+	}
+	return false
+}
+
+func credentialTerminalWidth(output io.Writer) int {
+	file, ok := output.(*os.File)
+	if !ok || !term.IsTerminal(int(file.Fd())) {
+		return defaultCredentialWidth
+	}
+	width, _, err := term.GetSize(int(file.Fd()))
+	if err != nil {
+		return defaultCredentialWidth
+	}
+	return width
+}
+
+type credentialAuditOutput struct {
+	root    *os.Root
+	file    *os.File
+	verbose io.Writer
+}
+
+func openCredentialAudit(configDir string, verbose io.Writer) (io.WriteCloser, error) {
+	root, err := os.OpenRoot(configDir)
+	if err != nil {
+		return nil, errors.New("open credential lifecycle audit directory")
+	}
+	file, err := root.OpenFile(credentialAuditFileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		_ = root.Close()
+		return nil, errors.New("open credential lifecycle audit log")
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		_ = root.Close()
+		return nil, errors.New("secure credential lifecycle audit log")
+	}
+	return &credentialAuditOutput{root: root, file: file, verbose: verbose}, nil
+}
+
+func (output *credentialAuditOutput) Write(data []byte) (int, error) {
+	written, err := output.file.Write(data)
+	if err != nil {
+		return written, err
+	}
+	if err := output.file.Sync(); err != nil {
+		return written, err
+	}
+	if output.verbose != nil {
+		_, _ = output.verbose.Write(data)
+	}
+	return written, nil
+}
+
+func (output *credentialAuditOutput) Close() error {
+	return errors.Join(output.file.Sync(), output.file.Close(), output.root.Close())
 }
 
 func clearString(value *string) {

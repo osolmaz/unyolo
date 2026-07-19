@@ -97,6 +97,25 @@ The real Hugging Face token is copied to:
 
 That file is owned by `hf-broker:hf-broker` and mode `0600`.
 
+After installation, rotate or repair this credential with the hidden-input
+interactive flow:
+
+```sh
+hf-broker credential repair
+```
+
+For automation, pipe the token to an explicitly privileged command and request
+pure JSON output:
+
+```sh
+printf '%s\n' "$CANDIDATE_TOKEN" | sudo hf-broker credential repair --no-open --token-stdin --json
+```
+
+Noninteractive repair does not invoke `sudo` implicitly. Successful lifecycle
+events are appended to `/etc/hf-broker/credential-lifecycle.jsonl` with mode
+`0600`; raw audit JSON is shown in the terminal only when `--verbose` is
+requested.
+
 The operator inbox credential is generated independently at
 `/etc/hf-broker/operator-secrets`, also mode `0600`. Systemd owns separate
 agent and operator sockets under `/run/brokerkit/huggingface/`, with access
