@@ -161,7 +161,7 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 	if err := validateDoctorInstallation(ctx, provider, status, origin, runner); err != nil {
 		return Status{}, err
 	}
-	if err := verifyRepository(ctx, provider, opts, runner); err != nil {
+	if err := verifyRepository(ctx, provider, origin, opts, runner); err != nil {
 		return Status{}, err
 	}
 	if err := checkIdentity(ctx, opts.HTTP, origin, client.SharedSecret, provider.ID); err != nil {
@@ -312,6 +312,7 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 		{"config", "--global", "--replace-all", credentialKey + ".helper", ""},
 		{"config", "--global", "--add", credentialKey + ".helper", "brokerkit --provider " + provider.ID},
 		{"config", "--global", credentialKey + ".useHttpPath", "true"},
+		{"config", "--global", "http." + origin + ".proxy", ""},
 		{"config", "--global", statusKey(provider, "origin"), origin},
 		{"config", "--global", statusKey(provider, "mode"), string(mode)},
 	}
@@ -334,6 +335,13 @@ func remove(ctx context.Context, provider Provider, status Status, runner Runner
 		if _, err := runner.Run(ctx, "config", "--global", "--remove-section", section); err != nil && !isMissingConfig(err) {
 			return fmt.Errorf("remove BrokerKit Git configuration: %w", err)
 		}
+	}
+	return removeProxyIsolation(ctx, status.Origin, runner)
+}
+
+func removeProxyIsolation(ctx context.Context, origin string, runner Runner) error {
+	if _, err := runner.Run(ctx, "config", "--global", "--unset-all", "http."+origin+".proxy"); err != nil && !isMissingConfig(err) {
+		return fmt.Errorf("remove Git proxy isolation: %w", err)
 	}
 	return nil
 }
@@ -362,7 +370,18 @@ func rejectConflicts(ctx context.Context, provider Provider, origin string, mode
 	if err := rejectRewriteScope(ctx, runner, "--system", provider.CanonicalPrefixes, nil); err != nil {
 		return err
 	}
-	return rejectRewriteScope(ctx, runner, "--global", provider.CanonicalPrefixes, expectedKeys)
+	if err := rejectRewriteScope(ctx, runner, "--global", provider.CanonicalPrefixes, expectedKeys); err != nil {
+		return err
+	}
+	for _, scope := range []string{"--system", "--global"} {
+		if err := rejectProviderWideLFSOverrides(ctx, runner, scope); err != nil {
+			return err
+		}
+		if err := rejectScopedProxyOverrides(ctx, runner, origin, scope, ""); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func rejectRewriteScope(ctx context.Context, runner Runner, scope string, prefixes []string, expected map[string]bool) error {
@@ -383,7 +402,7 @@ func rejectRewriteRecords(output []byte, prefixes []string, expected map[string]
 	return nil
 }
 
-func verifyRepository(ctx context.Context, provider Provider, opts Options, runner Runner) error {
+func verifyRepository(ctx context.Context, provider Provider, origin string, opts Options, runner Runner) error {
 	if opts.Repository == "" {
 		return nil
 	}
@@ -400,7 +419,64 @@ func verifyRepository(ctx context.Context, provider Provider, opts Options, runn
 	if err := rejectRepositoryTransportConfig(ctx, root, "--local", runner); err != nil {
 		return err
 	}
+	if err := rejectScopedProxyOverrides(ctx, runner, origin, "--local", root); err != nil {
+		return err
+	}
 	return rejectRepositoryLFSConfig(ctx, root, runner)
+}
+
+func rejectProviderWideLFSOverrides(ctx context.Context, runner Runner, scope string) error {
+	output, err := runner.Run(ctx, "config", scope, "--null", "--get-regexp", "^lfs\\.(url|pushurl)$")
+	if err != nil {
+		if isMissingConfig(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect %s Git LFS configuration: %w", strings.TrimPrefix(scope, "--"), err)
+	}
+	key, _, _ := bytes.Cut(bytes.Split(output, []byte{0})[0], []byte{'\n'})
+	return fmt.Errorf("%s Git transport override %s bypasses BrokerKit", strings.TrimPrefix(scope, "--"), key)
+}
+
+func rejectScopedProxyOverrides(ctx context.Context, runner Runner, origin, scope, root string) error {
+	args := []string{"config", scope, "--null", "--get-regexp", "^http\\..*\\.proxy$"}
+	if root != "" {
+		args = append([]string{"-C", root}, args...)
+	}
+	output, err := runner.Run(ctx, args...)
+	if err != nil {
+		if isMissingConfig(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect Git proxy configuration: %w", err)
+	}
+	return rejectScopedProxyRecords(output, origin, scope)
+}
+
+func rejectScopedProxyRecords(output []byte, origin, scope string) error {
+	ownedKey := strings.ToLower("http." + origin + ".proxy")
+	for _, record := range bytes.Split(output, []byte{0}) {
+		key, value, ok := bytes.Cut(record, []byte{'\n'})
+		if !ok || !proxyKeyMatchesOrigin(string(key), origin) {
+			continue
+		}
+		if scope == "--global" && strings.ToLower(string(key)) == ownedKey && len(value) == 0 {
+			continue
+		}
+		return fmt.Errorf("git proxy override %s could expose the BrokerKit client credential", key)
+	}
+	return nil
+}
+
+func proxyKeyMatchesOrigin(key, origin string) bool {
+	lower := strings.ToLower(key)
+	if !strings.HasPrefix(lower, "http.") || !strings.HasSuffix(lower, ".proxy") {
+		return false
+	}
+	rawURL := key[len("http.") : len(key)-len(".proxy")]
+	candidate, candidateErr := url.Parse(rawURL)
+	listener, listenerErr := url.Parse(origin)
+	return candidateErr == nil && listenerErr == nil &&
+		strings.EqualFold(candidate.Scheme, listener.Scheme) && strings.EqualFold(candidate.Host, listener.Host)
 }
 
 func repositoryRoot(ctx context.Context, repository string, optional bool, runner Runner) (string, bool, error) {
@@ -485,7 +561,15 @@ func verifyInstallation(ctx context.Context, provider Provider, status Status, r
 	if err != nil || usePath != "true" {
 		return errors.New("BrokerKit Git credential path isolation is incomplete or modified")
 	}
-	return nil
+	proxy, err := configValue(ctx, runner, "http."+status.Origin+".proxy")
+	return verifyProxyIsolation(proxy, err)
+}
+
+func verifyProxyIsolation(value string, err error) error {
+	if err == nil && value == "" {
+		return nil
+	}
+	return errors.New("BrokerKit Git proxy isolation is incomplete or modified")
 }
 
 func configValues(ctx context.Context, runner Runner, key string) ([]string, error) {

@@ -38,6 +38,10 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := Provider{ID: "github", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", CanonicalPrefixes: []string{"https://github.com/", "git@github.com:"}}
+	runner := commandRunner{home: home}
+	if _, err := runner.Run(t.Context(), "config", "--global", "http.proxy", "http://proxy.example"); err != nil {
+		t.Fatal(err)
+	}
 	status, err := Install(t.Context(), provider, Options{HomeDir: home})
 	if err != nil {
 		t.Fatal(err)
@@ -51,6 +55,10 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 	}
 	if !strings.Contains(string(config), "brokerkit --provider github") || !strings.Contains(string(config), "https://github.com/") {
 		t.Fatalf("git config = %s", config)
+	}
+	proxy, err := runner.Run(t.Context(), "config", "--get-urlmatch", "http.proxy", server.URL+"/owner/repo.git")
+	if err != nil || strings.TrimSpace(string(proxy)) != "" {
+		t.Fatalf("broker listener proxy = %q, %v", proxy, err)
 	}
 	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
 		t.Fatalf("idempotent Install() error = %v", err)
@@ -311,6 +319,42 @@ func TestInstallAndDoctorRejectSystemRewrite(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsProxyAndProviderWideLFSOverrides(t *testing.T) {
+	provider := testProvider()
+	for _, test := range []struct {
+		name      string
+		configure func(*testing.T, commandRunner, string)
+	}{
+		{name: "scoped proxy", configure: func(t *testing.T, runner commandRunner, origin string) {
+			if _, err := runner.Run(t.Context(), "config", "--global", "http."+origin+"/owner.proxy", "http://proxy.example"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "global LFS URL", configure: func(t *testing.T, runner commandRunner, _ string) {
+			if _, err := runner.Run(t.Context(), "config", "--global", "lfs.url", "https://direct.example/lfs"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "system LFS push URL", configure: func(t *testing.T, _ commandRunner, _ string) {
+			systemConfig := filepath.Join(t.TempDir(), "system.gitconfig")
+			if err := os.WriteFile(systemConfig, []byte("[lfs]\n\tpushurl = https://direct.example/lfs\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_CONFIG_SYSTEM", systemConfig)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home, server := writeGitClientFixture(t, provider, "github")
+			defer server.Close()
+			runner := commandRunner{home: home}
+			test.configure(t, runner, server.URL)
+			if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil {
+				t.Fatal("Install accepted a Git transport bypass")
+			}
+		})
+	}
+}
+
 func TestDoctorRejectsModifiedEffectiveConfiguration(t *testing.T) {
 	provider := testProvider()
 	home, server := writeGitClientFixture(t, provider, "github")
@@ -353,6 +397,12 @@ func TestDoctorRejectsRepositoryTransportOverrides(t *testing.T) {
 		}},
 		{name: ".lfsconfig", configure: func(repo string) {
 			if err := os.WriteFile(filepath.Join(repo, ".lfsconfig"), []byte("[lfs]\n\turl = https://direct.example/lfs\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "listener proxy", configure: func(repo string) {
+			runner := commandRunner{home: home}
+			if _, err := runner.Run(t.Context(), "-C", repo, "config", "--local", "http."+server.URL+"/owner.proxy", "http://proxy.example"); err != nil {
 				t.Fatal(err)
 			}
 		}},
