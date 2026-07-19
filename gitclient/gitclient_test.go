@@ -1,6 +1,7 @@
 package gitclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -103,5 +104,81 @@ func TestCommandRunnerUsesConfiguredHomeAsWorkingDirectory(t *testing.T) {
 	lines := strings.Split(string(output), "\n")
 	if len(lines) != 2 || lines[0] != home || lines[1] != home {
 		t.Fatalf("HOME and PWD = %q, want %q", output, home)
+	}
+}
+
+func TestRunCommandLifecycle(t *testing.T) {
+	secret := strings.Repeat("s", 32)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, password, ok := request.BasicAuth()
+		if request.URL.Path != identityPath || !ok || password != secret {
+			http.Error(response, "denied", http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(response).Encode(map[string]string{"provider": "github"})
+	}))
+	defer server.Close()
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	if _, err := clientconfig.Write(clientconfig.Config{
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///tmp/agent.sock",
+		GitEndpoint: "tcp://" + parsed.Host, Secret: secret, HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	provider := Provider{ID: "github", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", CanonicalPrefixes: []string{"https://github.com/"}}
+	var stdout, stderr bytes.Buffer
+	if err := RunCommand(t.Context(), provider, []string{"status", "--home-dir", home, "--json"}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"installed":false`) {
+		t.Fatalf("initial status = %q", stdout.String())
+	}
+	for _, args := range [][]string{
+		{"install", "--home-dir", home},
+		{"doctor", "--home-dir", home, "--json"},
+		{"uninstall", "--home-dir", home},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if err := RunCommand(t.Context(), provider, args, &stdout, &stderr); err != nil {
+			t.Fatalf("RunCommand(%v) error = %v, stderr = %q", args, err, stderr.String())
+		}
+	}
+	for _, args := range [][]string{{}, {"unknown"}, {"status", "extra"}, {"status", "--mode", "invalid"}} {
+		if err := RunCommand(t.Context(), provider, args, &stdout, &stderr); err == nil {
+			t.Fatalf("RunCommand(%v) error = nil", args)
+		}
+	}
+}
+
+func TestParseCredentialArgs(t *testing.T) {
+	provider, action, err := ParseCredentialArgs([]string{"--provider", "github", "get"})
+	if err != nil || provider != "github" || action != "get" {
+		t.Fatalf("ParseCredentialArgs() = %q, %q, %v", provider, action, err)
+	}
+	for _, args := range [][]string{
+		{}, {"get"}, {"--provider"}, {"--provider", "github"},
+		{"--provider", "github", "--provider", "huggingface", "get"},
+		{"--provider", "github", "get", "store"}, {"--bad", "github", "get"},
+	} {
+		if _, _, err := ParseCredentialArgs(args); err == nil {
+			t.Fatalf("ParseCredentialArgs(%v) error = nil", args)
+		}
+	}
+}
+
+func TestCredentialIgnoresPersistenceActions(t *testing.T) {
+	provider := Provider{ID: "github", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", CanonicalPrefixes: []string{"https://github.com/"}}
+	for _, action := range []string{"capability", "store", "erase"} {
+		if err := Credential(provider, t.TempDir(), action, strings.NewReader(""), &strings.Builder{}); err != nil {
+			t.Fatalf("Credential(%q) error = %v", action, err)
+		}
+	}
+	if err := Credential(provider, t.TempDir(), "invalid", strings.NewReader(""), &strings.Builder{}); err == nil {
+		t.Fatal("Credential(invalid) error = nil")
 	}
 }

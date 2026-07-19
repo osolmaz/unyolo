@@ -40,14 +40,14 @@ jobs:
               echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/huggingface" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/hf-broker" >> "$GITHUB_OUTPUT"
-              extra="--extra-command=git-credential-brokerkit=./cmd/git-credential-brokerkit"
+              extra="--extra-command=git-credential-brokerkit=../../cmd/git-credential-brokerkit"
               path_companions="git-credential-brokerkit"
               ;;
             gh-broker/*)
               echo "broker=gh-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/github" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/gh-broker" >> "$GITHUB_OUTPUT"
-              extra="--extra-command=git-credential-brokerkit=./cmd/git-credential-brokerkit"
+              extra="--extra-command=git-credential-brokerkit=../../cmd/git-credential-brokerkit"
               path_companions="git-credential-brokerkit"
               ;;
             sudo-broker/*)
