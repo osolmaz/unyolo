@@ -36,8 +36,7 @@ type Provider struct {
 type Mode string
 
 const (
-	ModeAll      Mode = "all"
-	ModePushOnly Mode = "push-only"
+	ModeAll Mode = "all"
 )
 
 // Options controls an install, status, doctor, or uninstall operation.
@@ -157,16 +156,23 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 	if err != nil {
 		return Status{}, err
 	}
-	if !status.Installed || status.Origin != origin {
-		return Status{}, errors.New("BrokerKit Git routing is not installed for the configured listener")
-	}
-	if err := rejectConflicts(ctx, provider, origin, status.Mode, status, runner); err != nil {
+	if err := validateDoctorInstallation(ctx, provider, status, origin, runner); err != nil {
 		return Status{}, err
 	}
 	if err := checkIdentity(ctx, opts.HTTP, origin, client.SharedSecret, provider.ID); err != nil {
 		return Status{}, err
 	}
 	return status, nil
+}
+
+func validateDoctorInstallation(ctx context.Context, provider Provider, status Status, origin string, runner Runner) error {
+	if !status.Installed || status.Origin != origin {
+		return errors.New("BrokerKit Git routing is not installed for the configured listener")
+	}
+	if err := rejectConflicts(ctx, provider, origin, status.Mode, status, runner); err != nil {
+		return err
+	}
+	return verifyInstallation(ctx, provider, status, runner)
 }
 
 func prepare(provider Provider, opts *Options) (clientconfig.Client, string, Runner, error) {
@@ -210,12 +216,7 @@ func normalizeOptions(opts *Options) error {
 	if !filepath.IsAbs(opts.HomeDir) {
 		return errors.New("home directory must be absolute")
 	}
-	if opts.Mode == "" {
-		opts.Mode = ModeAll
-	}
-	if opts.Mode != ModeAll && opts.Mode != ModePushOnly {
-		return errors.New("mode must be all or push-only")
-	}
+	opts.Mode = ModeAll
 	return nil
 }
 
@@ -279,7 +280,7 @@ func checkIdentity(ctx context.Context, client *http.Client, origin, secret, pro
 }
 
 func writeConfig(ctx context.Context, provider Provider, origin string, mode Mode, runner Runner) error {
-	rewriteKey := "url." + origin + "/." + rewriteField(mode)
+	rewriteKey := "url." + origin + "/.insteadOf"
 	for _, prefix := range provider.CanonicalPrefixes {
 		if _, err := runner.Run(ctx, "config", "--global", "--add", rewriteKey, prefix); err != nil {
 			return fmt.Errorf("write Git URL routing: %w", err)
@@ -302,7 +303,7 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 }
 
 func remove(ctx context.Context, provider Provider, status Status, runner Runner) error {
-	key := "url." + status.Origin + "/." + rewriteField(status.Mode)
+	key := "url." + status.Origin + "/.insteadOf"
 	for _, prefix := range provider.CanonicalPrefixes {
 		if _, err := runner.Run(ctx, "config", "--global", "--fixed-value", "--unset-all", key, prefix); err != nil && !isMissingConfig(err) {
 			return fmt.Errorf("remove Git URL routing: %w", err)
@@ -326,7 +327,7 @@ func readStatus(ctx context.Context, provider Provider, runner Runner) (Status, 
 		return Status{}, errors.New("BrokerKit Git ownership metadata is incomplete")
 	}
 	mode := Mode(modeValue)
-	if mode != ModeAll && mode != ModePushOnly {
+	if mode != ModeAll {
 		return Status{}, errors.New("BrokerKit Git ownership metadata has an invalid mode")
 	}
 	return Status{Provider: provider.ID, Origin: origin, Mode: mode, Installed: true}, nil
@@ -337,9 +338,9 @@ func rejectConflicts(ctx context.Context, provider Provider, origin string, mode
 	if err != nil && !isMissingConfig(err) {
 		return err
 	}
-	expectedKeys := map[string]bool{strings.ToLower("url." + origin + "/." + rewriteField(mode)): true}
+	expectedKeys := map[string]bool{strings.ToLower("url." + origin + "/.insteadOf"): true}
 	if current.Installed {
-		expectedKeys[strings.ToLower("url."+current.Origin+"/."+rewriteField(current.Mode))] = true
+		expectedKeys[strings.ToLower("url."+current.Origin+"/.insteadOf")] = true
 	}
 	for _, record := range bytes.Split(output, []byte{0}) {
 		key, value, conflict := conflictingRewrite(record, provider.CanonicalPrefixes, expectedKeys)
@@ -352,22 +353,49 @@ func rejectConflicts(ctx context.Context, provider Provider, origin string, mode
 
 func conflictingRewrite(record []byte, prefixes []string, expected map[string]bool) ([]byte, []byte, bool) {
 	key, value, ok := bytes.Cut(record, []byte{'\n'})
-	if !ok || !slices.Contains(prefixes, string(value)) {
+	if !ok || !overlapsCanonicalPrefix(string(value), prefixes) {
 		return nil, nil, false
 	}
 	return key, value, !expected[strings.ToLower(string(key))]
 }
 
+func overlapsCanonicalPrefix(value string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if value == prefix || strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func verifyInstallation(ctx context.Context, provider Provider, status Status, runner Runner) error {
+	rewrites, err := configValues(ctx, runner, "url."+status.Origin+"/.insteadOf")
+	if err != nil || !slices.Equal(rewrites, provider.CanonicalPrefixes) {
+		return errors.New("BrokerKit Git URL routing is incomplete or modified")
+	}
+	helpers, err := configValues(ctx, runner, "credential."+status.Origin+".helper")
+	wantHelpers := []string{"", "brokerkit --provider " + provider.ID}
+	if err != nil || !slices.Equal(helpers, wantHelpers) {
+		return errors.New("BrokerKit Git credential helper is incomplete or modified")
+	}
+	usePath, err := configValue(ctx, runner, "credential."+status.Origin+".useHttpPath")
+	if err != nil || usePath != "true" {
+		return errors.New("BrokerKit Git credential path isolation is incomplete or modified")
+	}
+	return nil
+}
+
+func configValues(ctx context.Context, runner Runner, key string) ([]string, error) {
+	output, err := runner.Run(ctx, "config", "--global", "--get-all", key)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(strings.TrimSuffix(string(output), "\n"), "\n"), nil
+}
+
 func configValue(ctx context.Context, runner Runner, key string) (string, error) {
 	output, err := runner.Run(ctx, "config", "--global", "--get", key)
 	return strings.TrimSpace(string(output)), err
-}
-
-func rewriteField(mode Mode) string {
-	if mode == ModePushOnly {
-		return "pushInsteadOf"
-	}
-	return "insteadOf"
 }
 
 func statusKey(provider Provider, field string) string {

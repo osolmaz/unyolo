@@ -151,7 +151,7 @@ func TestRunCommandLifecycle(t *testing.T) {
 			t.Fatalf("RunCommand(%v) error = %v, stderr = %q", args, err, stderr.String())
 		}
 	}
-	for _, args := range [][]string{{}, {"unknown"}, {"status", "extra"}, {"status", "--mode", "invalid"}} {
+	for _, args := range [][]string{{}, {"unknown"}, {"status", "extra"}, {"status", "--mode", "push-only"}} {
 		if err := RunCommand(t.Context(), provider, args, &stdout, &stderr); err == nil {
 			t.Fatalf("RunCommand(%v) error = nil", args)
 		}
@@ -188,8 +188,12 @@ func TestCredentialIgnoresPersistenceActions(t *testing.T) {
 
 func TestCredentialHandlesUnavailableAndIncompleteConfiguration(t *testing.T) {
 	provider := testProvider()
-	if err := Credential(provider, t.TempDir(), "get", strings.NewReader(""), &strings.Builder{}); err == nil {
+	var missingOutput strings.Builder
+	if err := Credential(provider, t.TempDir(), "get", strings.NewReader(""), &missingOutput); err == nil {
 		t.Fatal("Credential accepted a missing client configuration")
+	}
+	if missingOutput.String() != "quit=true\n" {
+		t.Fatalf("missing configuration output = %q", missingOutput.String())
 	}
 	home := t.TempDir()
 	if _, err := clientconfig.Write(clientconfig.Config{
@@ -221,10 +225,7 @@ func TestPrepareHomeAndProviderValidation(t *testing.T) {
 	if _, err := prepareHome(valid, &Options{HomeDir: "relative"}); err == nil {
 		t.Fatal("prepareHome accepted a relative home")
 	}
-	if _, err := prepareHome(valid, &Options{HomeDir: t.TempDir(), Mode: "invalid"}); err == nil {
-		t.Fatal("prepareHome accepted an invalid mode")
-	}
-	if runner, err := prepareHome(valid, &Options{HomeDir: t.TempDir(), Mode: ModePushOnly}); err != nil || runner == nil {
+	if runner, err := prepareHome(valid, &Options{HomeDir: t.TempDir()}); err != nil || runner == nil {
 		t.Fatalf("prepareHome valid options = %T, %v", runner, err)
 	}
 }
@@ -232,16 +233,30 @@ func TestPrepareHomeAndProviderValidation(t *testing.T) {
 func TestInstallReplacementAndDoctorFailures(t *testing.T) {
 	provider := testProvider()
 	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
 	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Install(t.Context(), provider, Options{HomeDir: home, Mode: ModePushOnly}); err == nil {
-		t.Fatal("Install replaced different settings without --replace")
-	}
-	if _, err := Install(t.Context(), provider, Options{HomeDir: home, Mode: ModePushOnly, Replace: true}); err != nil {
+	replacement := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]string{"provider": "github"})
+	}))
+	parsedReplacement, err := url.Parse(replacement.URL)
+	if err != nil {
 		t.Fatal(err)
 	}
-	server.Close()
+	if _, err := clientconfig.Write(clientconfig.Config{
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		GitEndpoint: "tcp://" + parsedReplacement.Host, Secret: strings.Repeat("s", 32), HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Install replaced different settings without --replace")
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home, Replace: true}); err != nil {
+		t.Fatal(err)
+	}
+	replacement.Close()
 	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil {
 		t.Fatal("Doctor accepted an unavailable listener")
 	}
@@ -249,6 +264,36 @@ func TestInstallReplacementAndDoctorFailures(t *testing.T) {
 	defer otherServer.Close()
 	if _, err := Doctor(t.Context(), provider, Options{HomeDir: otherHome}); err == nil {
 		t.Fatal("Doctor accepted an uninstalled client")
+	}
+}
+
+func TestInstallRejectsHigherPriorityRewrite(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	runner := commandRunner{home: home}
+	if _, err := runner.Run(t.Context(), "config", "--global", "--add", "url.http://127.0.0.1:1/.insteadOf", "https://github.com/owner/"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Install accepted a higher-priority URL rewrite")
+	}
+}
+
+func TestDoctorRejectsModifiedEffectiveConfiguration(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	status, err := Install(t.Context(), provider, Options{HomeDir: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := commandRunner{home: home}
+	if _, err := runner.Run(t.Context(), "config", "--global", "--unset", "credential."+status.Origin+".useHttpPath"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Doctor accepted modified credential isolation")
 	}
 }
 

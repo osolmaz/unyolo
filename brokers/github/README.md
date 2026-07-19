@@ -110,8 +110,7 @@ gh-broker git doctor
 ```
 
 Normal `https://github.com/OWNER/REPO.git` and GitHub SSH-form remotes now use
-the broker for clone, fetch, pull, and push. Use `--mode push-only` only when
-reads should deliberately bypass the broker. `gh-broker git status --json`
+the broker for clone, fetch, pull, and push. `gh-broker git status --json`
 reports the owned configuration, and `gh-broker git uninstall` removes only
 that exact provider installation. The listener port is selected and persisted
 by the deployment; BrokerKit has no fixed Git port.

@@ -146,8 +146,7 @@ hf-broker git doctor
 
 Normal `https://huggingface.co/...` and Hugging Face SSH-form remotes now use
 the broker for clone, fetch, pull, push, and supported Git LFS routes. Remotes
-contain no broker or provider credential. Use `--mode push-only` only when reads
-should deliberately bypass the broker. The listener port belongs to the
+contain no broker or provider credential. The listener port belongs to the
 deployment; BrokerKit defines no fixed Git port.
 
 Clones, pulls, fast-forward pushes, new branches, and new tags work as

@@ -33,10 +33,11 @@ func getCredential(provider Provider, homeDir string, stdin io.Reader, stdout io
 	}
 	client, err := clientconfig.Read(homeDir, provider.BrokerName, provider.EnvPrefix)
 	if err != nil {
+		writeQuit(stdout)
 		return errors.New("broker client configuration is unavailable")
 	}
 	if client.GitEndpoint == "" {
-		_, _ = fmt.Fprintln(stdout, "quit=true")
+		writeQuit(stdout)
 		return nil
 	}
 	origin, err := gitOrigin(client.GitEndpoint)
@@ -49,6 +50,8 @@ func getCredential(provider Provider, homeDir string, stdin io.Reader, stdout io
 	_, err = fmt.Fprintf(stdout, "username=brokerkit\npassword=%s\n", client.SharedSecret)
 	return err
 }
+
+func writeQuit(output io.Writer) { _, _ = fmt.Fprintln(output, "quit=true") }
 
 func readCredentialRequest(input io.Reader) (map[string]string, error) {
 	limited := io.LimitReader(input, maxCredentialInputBytes+1)

@@ -31,10 +31,8 @@ func parseCommandOptions(provider Provider, args []string, stderr io.Writer) (st
 	flags := flag.NewFlagSet(provider.BrokerName+" git "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	options := Options{}
-	mode := string(ModeAll)
 	jsonOutput := false
 	flags.StringVar(&options.HomeDir, "home-dir", "", "home directory to configure")
-	flags.StringVar(&mode, "mode", mode, "routing mode: all or push-only")
 	flags.BoolVar(&options.Replace, "replace", false, "replace an existing BrokerKit-owned installation")
 	flags.BoolVar(&jsonOutput, "json", false, "print machine-readable status")
 	if err := flags.Parse(args[1:]); err != nil {
@@ -43,7 +41,6 @@ func parseCommandOptions(provider Provider, args []string, stderr io.Writer) (st
 	if flags.NArg() != 0 {
 		return "", Options{}, false, errors.New("git command does not accept positional arguments")
 	}
-	options.Mode = Mode(mode)
 	return command, options, jsonOutput, nil
 }
 

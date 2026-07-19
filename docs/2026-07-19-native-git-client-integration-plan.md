@@ -177,18 +177,13 @@ After setup:
 - a missing or unhealthy broker fails closed without retrying the provider
   directly.
 
-### Optional push-only mode
+### Single enforceable routing mode
 
-Support an explicit installation mode for users who intentionally retain
-direct read credentials:
-
-```sh
-gh-broker git install --mode push-only
-```
-
-This uses `pushInsteadOf` instead of `insteadOf`. It is not the default. The
-default is `all`, because a broker-only client must also be able to clone and
-fetch private repositories without a provider token.
+Route reads and writes with `insteadOf`. Do not offer a `pushInsteadOf` mode:
+repository-local `remote.*.pushurl` settings take precedence over it and can
+bypass the broker while global installation appears healthy. Deployments that
+need direct reads should use a separate Git configuration boundary rather than
+weaken this installation's enforcement contract.
 
 ## Shared Package Boundaries
 
@@ -560,7 +555,7 @@ authorization headers.
 Provider binaries expose the same command shape:
 
 ```text
-<broker> git install [--mode all|push-only] [--home-dir PATH]
+<broker> git install [--home-dir PATH]
 <broker> git uninstall [--home-dir PATH]
 <broker> git doctor [--home-dir PATH] [--repository PATH]
 <broker> git status [--home-dir PATH]
