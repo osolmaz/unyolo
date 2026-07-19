@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-wordmark.svg" alt="BrokerKit" width="760">
+  <img src="assets/logo-wordmark.svg" alt="BrokerKit" width="520">
 </p>
 
 # BrokerKit
