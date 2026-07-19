@@ -280,6 +280,32 @@ func TestInstallRejectsHigherPriorityRewrite(t *testing.T) {
 	}
 }
 
+func TestInstallAndDoctorRejectSystemRewrite(t *testing.T) {
+	provider := testProvider()
+	systemConfig := filepath.Join(t.TempDir(), "system.gitconfig")
+	t.Setenv("GIT_CONFIG_SYSTEM", systemConfig)
+	if err := os.WriteFile(systemConfig, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
+		t.Fatal(err)
+	}
+	conflict := "[url \"http://127.0.0.1:1/\"]\n\tinsteadOf = https://github.com/owner/\n"
+	if err := os.WriteFile(systemConfig, []byte(conflict), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Doctor accepted a higher-priority system URL rewrite")
+	}
+	otherHome, otherServer := writeGitClientFixture(t, provider, "github")
+	defer otherServer.Close()
+	if _, err := Install(t.Context(), provider, Options{HomeDir: otherHome}); err == nil {
+		t.Fatal("Install accepted a higher-priority system URL rewrite")
+	}
+}
+
 func TestDoctorRejectsModifiedEffectiveConfiguration(t *testing.T) {
 	provider := testProvider()
 	home, server := writeGitClientFixture(t, provider, "github")

@@ -334,16 +334,23 @@ func readStatus(ctx context.Context, provider Provider, runner Runner) (Status, 
 }
 
 func rejectConflicts(ctx context.Context, provider Provider, origin string, mode Mode, current Status, runner Runner) error {
-	output, err := runner.Run(ctx, "config", "--global", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
-	if err != nil && !isMissingConfig(err) {
-		return err
-	}
 	expectedKeys := map[string]bool{strings.ToLower("url." + origin + "/.insteadOf"): true}
 	if current.Installed {
 		expectedKeys[strings.ToLower("url."+current.Origin+"/.insteadOf")] = true
 	}
+	if err := rejectRewriteScope(ctx, runner, "--system", provider.CanonicalPrefixes, nil); err != nil {
+		return err
+	}
+	return rejectRewriteScope(ctx, runner, "--global", provider.CanonicalPrefixes, expectedKeys)
+}
+
+func rejectRewriteScope(ctx context.Context, runner Runner, scope string, prefixes []string, expected map[string]bool) error {
+	output, err := runner.Run(ctx, "config", scope, "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
+	if err != nil && !isMissingConfig(err) {
+		return err
+	}
 	for _, record := range bytes.Split(output, []byte{0}) {
-		key, value, conflict := conflictingRewrite(record, provider.CanonicalPrefixes, expectedKeys)
+		key, value, conflict := conflictingRewrite(record, prefixes, expected)
 		if conflict {
 			return fmt.Errorf("git URL %q is already routed by %s", value, key)
 		}
