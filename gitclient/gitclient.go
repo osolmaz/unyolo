@@ -384,8 +384,12 @@ func rejectConflicts(ctx context.Context, provider Provider, origin string, mode
 	return nil
 }
 
-func rejectRewriteScope(ctx context.Context, runner Runner, scope string, prefixes []string, expected map[string]bool) error {
-	output, err := runner.Run(ctx, "config", scope, "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
+func rejectRewriteScope(ctx context.Context, runner Runner, scope string, prefixes []string, expected map[string]bool, roots ...string) error {
+	args := []string{"config", scope, "--includes", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$"}
+	if len(roots) > 0 {
+		args = append([]string{"-C", roots[0]}, args...)
+	}
+	output, err := runner.Run(ctx, args...)
 	if err != nil && !isMissingConfig(err) {
 		return err
 	}
@@ -413,6 +417,9 @@ func verifyRepository(ctx context.Context, provider Provider, origin string, opt
 	if !found {
 		return nil
 	}
+	if err := verifyRepositoryInheritedConfig(ctx, provider, origin, root, runner); err != nil {
+		return err
+	}
 	if err := rejectRepositoryRewrites(ctx, provider, root, runner); err != nil {
 		return err
 	}
@@ -422,11 +429,56 @@ func verifyRepository(ctx context.Context, provider Provider, origin string, opt
 	if err := rejectScopedProxyOverrides(ctx, runner, origin, "--local", root); err != nil {
 		return err
 	}
+	if err := verifyRepositoryWorktreeConfig(ctx, provider, origin, root, runner); err != nil {
+		return err
+	}
 	return rejectRepositoryLFSConfig(ctx, root, runner)
 }
 
-func rejectProviderWideLFSOverrides(ctx context.Context, runner Runner, scope string) error {
-	output, err := runner.Run(ctx, "config", scope, "--null", "--get-regexp", "^lfs\\.(url|pushurl)$")
+func verifyRepositoryInheritedConfig(ctx context.Context, provider Provider, origin, root string, runner Runner) error {
+	expectedKeys := map[string]bool{strings.ToLower("url." + origin + "/.insteadOf"): true}
+	if err := rejectRewriteScope(ctx, runner, "--system", provider.CanonicalPrefixes, nil, root); err != nil {
+		return err
+	}
+	if err := rejectRewriteScope(ctx, runner, "--global", provider.CanonicalPrefixes, expectedKeys, root); err != nil {
+		return err
+	}
+	for _, scope := range []string{"--system", "--global"} {
+		if err := rejectProviderWideLFSOverrides(ctx, runner, scope, root); err != nil {
+			return err
+		}
+		if err := rejectScopedProxyOverrides(ctx, runner, origin, scope, root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyRepositoryWorktreeConfig(ctx context.Context, provider Provider, origin, root string, runner Runner) error {
+	worktreeConfig, err := repositoryWorktreeConfigEnabled(ctx, root, runner)
+	if err != nil {
+		return err
+	}
+	if worktreeConfig {
+		if err := rejectRepositoryRewritesAtScope(ctx, provider, root, "--worktree", runner); err != nil {
+			return err
+		}
+		if err := rejectRepositoryTransportConfig(ctx, root, "--worktree", runner); err != nil {
+			return err
+		}
+		if err := rejectScopedProxyOverrides(ctx, runner, origin, "--worktree", root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectProviderWideLFSOverrides(ctx context.Context, runner Runner, scope string, roots ...string) error {
+	args := []string{"config", scope, "--includes", "--null", "--get-regexp", "^lfs\\.(url|pushurl)$"}
+	if len(roots) > 0 {
+		args = append([]string{"-C", roots[0]}, args...)
+	}
+	output, err := runner.Run(ctx, args...)
 	if err != nil {
 		if isMissingConfig(err) {
 			return nil
@@ -438,7 +490,7 @@ func rejectProviderWideLFSOverrides(ctx context.Context, runner Runner, scope st
 }
 
 func rejectScopedProxyOverrides(ctx context.Context, runner Runner, origin, scope, root string) error {
-	args := []string{"config", scope, "--null", "--get-regexp", "^http\\..*\\.proxy$"}
+	args := []string{"config", scope, "--includes", "--null", "--get-regexp", "^http\\..*\\.proxy$"}
 	if root != "" {
 		args = append([]string{"-C", root}, args...)
 	}
@@ -507,17 +559,32 @@ func rejectRepositoryLFSConfig(ctx context.Context, root string, runner Runner) 
 }
 
 func rejectRepositoryRewrites(ctx context.Context, provider Provider, root string, runner Runner) error {
-	output, err := runner.Run(ctx, "-C", root, "config", "--local", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
+	return rejectRepositoryRewritesAtScope(ctx, provider, root, "--local", runner)
+}
+
+func rejectRepositoryRewritesAtScope(ctx context.Context, provider Provider, root, scope string, runner Runner) error {
+	output, err := runner.Run(ctx, "-C", root, "config", scope, "--includes", "--null", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$")
 	if err != nil && !isMissingConfig(err) {
 		return fmt.Errorf("inspect repository URL routing: %w", err)
 	}
 	return rejectRewriteRecords(output, provider.CanonicalPrefixes, nil)
 }
 
+func repositoryWorktreeConfigEnabled(ctx context.Context, root string, runner Runner) (bool, error) {
+	output, err := runner.Run(ctx, "-C", root, "config", "--local", "--bool", "extensions.worktreeConfig")
+	if err != nil {
+		if isMissingConfig(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspect repository worktree configuration: %w", err)
+	}
+	return strings.TrimSpace(string(output)) == "true", nil
+}
+
 func rejectRepositoryTransportConfig(ctx context.Context, root, scope string, runner Runner, scopeArgs ...string) error {
 	args := []string{"-C", root, "config", scope}
 	args = append(args, scopeArgs...)
-	args = append(args, "--null", "--get-regexp", "^(lfs\\.(url|pushurl)|remote\\..*\\.(pushurl|lfsurl|lfspushurl))$")
+	args = append(args, "--includes", "--null", "--get-regexp", "^(lfs\\.(url|pushurl)|remote\\..*\\.(pushurl|lfsurl|lfspushurl))$")
 	output, err := runner.Run(ctx, args...)
 	if err != nil {
 		if isMissingConfig(err) {

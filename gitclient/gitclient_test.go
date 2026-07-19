@@ -355,6 +355,23 @@ func TestInstallRejectsProxyAndProviderWideLFSOverrides(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsOverridesFromIncludedGlobalConfig(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	included := filepath.Join(home, "included.gitconfig")
+	if err := os.WriteFile(included, []byte("[url \"https://direct.example/\"]\n\tinsteadOf = https://github.com/owner/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := commandRunner{home: home}
+	if _, err := runner.Run(t.Context(), "config", "--global", "include.path", included); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Install accepted a URL rewrite from an included global config")
+	}
+}
+
 func TestDoctorRejectsModifiedEffectiveConfiguration(t *testing.T) {
 	provider := testProvider()
 	home, server := writeGitClientFixture(t, provider, "github")
@@ -416,6 +433,59 @@ func TestDoctorRejectsRepositoryTransportOverrides(t *testing.T) {
 			test.configure(repo)
 			if _, err := Doctor(t.Context(), provider, Options{HomeDir: home, Repository: repo}); err == nil {
 				t.Fatal("Doctor accepted a repository transport override")
+			}
+		})
+	}
+}
+
+func TestDoctorRejectsIncludedAndWorktreeTransportOverrides(t *testing.T) {
+	provider := testProvider()
+	for _, test := range []struct {
+		name      string
+		configure func(*testing.T, commandRunner, string, string)
+	}{
+		{name: "included local push URL", configure: func(t *testing.T, runner commandRunner, repo, home string) {
+			included := filepath.Join(home, "repo-include.gitconfig")
+			if err := os.WriteFile(included, []byte("[remote \"origin\"]\n\tpushurl = https://github.com/bypass/repo.git\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runner.Run(t.Context(), "-C", repo, "config", "--local", "include.path", included); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "worktree URL rewrite", configure: func(t *testing.T, runner commandRunner, repo, _ string) {
+			if _, err := runner.Run(t.Context(), "-C", repo, "config", "--local", "extensions.worktreeConfig", "true"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runner.Run(t.Context(), "-C", repo, "config", "--worktree", "url.https://direct.example/.insteadOf", "https://github.com/owner/"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "conditional global rewrite", configure: func(t *testing.T, runner commandRunner, repo, home string) {
+			included := filepath.Join(home, "conditional.gitconfig")
+			if err := os.WriteFile(included, []byte("[url \"https://direct.example/\"]\n\tinsteadOf = https://github.com/owner/\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			key := "includeIf.gitdir:" + repo + "/.path"
+			if _, err := runner.Run(t.Context(), "config", "--global", key, included); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home, server := writeGitClientFixture(t, provider, "github")
+			defer server.Close()
+			if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
+				t.Fatal(err)
+			}
+			repo := t.TempDir()
+			runner := commandRunner{home: home}
+			if _, err := runner.Run(t.Context(), "-C", repo, "init"); err != nil {
+				t.Fatal(err)
+			}
+			test.configure(t, runner, repo, home)
+			if _, err := Doctor(t.Context(), provider, Options{HomeDir: home, Repository: repo}); err == nil {
+				t.Fatal("Doctor accepted a repository transport bypass")
 			}
 		})
 	}

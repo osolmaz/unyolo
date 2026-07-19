@@ -39,7 +39,9 @@ func TestGitHubGitRoute(t *testing.T) {
 		want   bool
 	}{
 		{http.MethodGet, "/owner/repo.git/info/refs", true},
+		{http.MethodGet, "/owner/repo/info/refs", true},
 		{http.MethodPost, "/owner/repo.git/git-upload-pack", true},
+		{http.MethodPost, "/owner/repo/git-upload-pack", true},
 		{http.MethodPost, "/owner/repo.git/git-receive-pack", true},
 		{http.MethodGet, "/owner/repo.git/git-receive-pack", false},
 		{http.MethodPost, "/owner/repo/info/refs", false},

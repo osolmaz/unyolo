@@ -516,7 +516,7 @@ func (s *Server) GitHandler() (http.Handler, error) {
 
 func githubGitRoute(method, requestPath string) bool {
 	parts := strings.Split(strings.TrimPrefix(requestPath, "/"), "/")
-	if len(parts) < 3 || parts[0] == "" || parts[1] == "" || !strings.HasSuffix(parts[1], ".git") {
+	if len(parts) < 3 || parts[0] == "" || parts[1] == "" {
 		return false
 	}
 	routes := map[string]string{
