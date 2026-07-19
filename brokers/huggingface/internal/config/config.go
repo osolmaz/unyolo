@@ -53,6 +53,7 @@ type Config struct {
 	Clients           []Client
 	Operators         []Client
 	AgentEndpoint     endpoint.Endpoint
+	GitEndpoint       *endpoint.Endpoint
 	OperatorEndpoint  *endpoint.Endpoint
 	Development       bool
 	ScopeFile         string
@@ -161,6 +162,19 @@ func loadRuntimeEndpoints(getenv func(string) string, cfg *Config, parseOptions 
 			return errors.New("operator and agent endpoints must differ")
 		}
 		cfg.OperatorEndpoint = &operatorEndpoint
+	}
+	if raw := brokerEnv(getenv, "GIT_ENDPOINT"); raw != "" {
+		gitEndpoint, parseErr := endpoint.Parse(raw, parseOptions)
+		if parseErr != nil {
+			return fmt.Errorf("%s: %w", brokerEnvName("GIT_ENDPOINT"), parseErr)
+		}
+		if gitEndpoint.Scheme() != endpoint.SchemeTCP {
+			return fmt.Errorf("%s must use tcp", brokerEnvName("GIT_ENDPOINT"))
+		}
+		if gitEndpoint.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && gitEndpoint.String() == cfg.OperatorEndpoint.String() {
+			return errors.New("Git, agent, and operator endpoints must differ")
+		}
+		cfg.GitEndpoint = &gitEndpoint
 	}
 	return nil
 }

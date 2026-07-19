@@ -21,12 +21,13 @@ type ClientDefaults struct {
 
 // ClientOptions is one parsed setup client request.
 type ClientOptions struct {
-	BrokerName string
-	EnvPrefix  string
-	ClientName string
-	Endpoint   string
-	SecretFile string
-	HomeDir    string
+	BrokerName  string
+	EnvPrefix   string
+	ClientName  string
+	Endpoint    string
+	GitEndpoint string
+	SecretFile  string
+	HomeDir     string
 }
 
 // ParseClient parses the broker-family setup client flags. Help is true when
@@ -42,6 +43,7 @@ func ParseClient(stderr io.Writer, args []string, defaults ClientDefaults) (opts
 	fs.SetOutput(&flagOutput)
 	fs.StringVar(&opts.ClientName, "client", opts.ClientName, "broker client name to read from the secrets file")
 	fs.StringVar(&opts.Endpoint, "endpoint", "", "broker client endpoint URI")
+	fs.StringVar(&opts.GitEndpoint, "git-endpoint", "", "broker Git listener endpoint URI")
 	fs.StringVar(&opts.SecretFile, "secret-file", "", "file containing broker client secrets")
 	fs.StringVar(&opts.HomeDir, "home-dir", "", "home directory that receives the broker client config")
 	if parseErr := fs.Parse(args); parseErr != nil {
@@ -74,6 +76,11 @@ func (opts ClientOptions) Validate() error {
 	}
 	if err := clientconfig.ValidateEndpoint(opts.Endpoint); err != nil {
 		return fmt.Errorf("--endpoint: %w", err)
+	}
+	if opts.GitEndpoint != "" {
+		if err := clientconfig.ValidateGitEndpoint(opts.GitEndpoint); err != nil {
+			return fmt.Errorf("--git-endpoint: %w", err)
+		}
 	}
 	return validateClientLocations(opts)
 }
@@ -116,15 +123,19 @@ func ConfigureClient(stdout io.Writer, opts ClientOptions) (string, error) {
 		return "", fmt.Errorf("client secret: %w", err)
 	}
 	path, err := clientconfig.WriteForHomeOwner(clientconfig.Config{
-		BrokerName: opts.BrokerName,
-		EnvPrefix:  opts.EnvPrefix,
-		Endpoint:   opts.Endpoint,
-		Secret:     secret,
-		HomeDir:    opts.HomeDir,
+		BrokerName:  opts.BrokerName,
+		EnvPrefix:   opts.EnvPrefix,
+		Endpoint:    opts.Endpoint,
+		GitEndpoint: opts.GitEndpoint,
+		Secret:      secret,
+		HomeDir:     opts.HomeDir,
 	})
 	if err != nil {
 		return "", err
 	}
 	_, err = fmt.Fprintf(stdout, "%s client config written\n  client: %s\n  file: %s\n  endpoint: %s\n", opts.BrokerName, opts.ClientName, path, opts.Endpoint)
+	if err == nil && opts.GitEndpoint != "" {
+		_, err = fmt.Fprintf(stdout, "  git endpoint: %s\n", opts.GitEndpoint)
+	}
 	return path, err
 }

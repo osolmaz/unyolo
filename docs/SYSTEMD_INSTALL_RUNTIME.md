@@ -33,6 +33,15 @@ Consumers own:
 - selecting root-owned or service-owned file semantics;
 - provider-specific dry-run and summary text;
 - provider-specific service hardening choices exposed by typed Brokerkit APIs.
+- selecting and persisting any explicit loopback TCP Git listener; BrokerKit
+  assigns no fixed Git port.
+
+Git-speaking services may bind one explicit loopback TCP endpoint from their
+root-owned environment file. That endpoint is separate from the
+permission-scoped agent and operator Unix sockets and exposes only the shared
+Git route gate. A missing Git endpoint disables native Git routing; a conflict
+or non-loopback endpoint fails setup or startup instead of selecting another
+port.
 
 The default unit uses `ProtectSystem=strict`. A privileged execution broker may
 explicitly select `HostFilesystemAccessAllow`, which renders

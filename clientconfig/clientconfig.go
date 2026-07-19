@@ -24,11 +24,12 @@ const (
 
 // Config describes one broker client environment file.
 type Config struct {
-	BrokerName string
-	EnvPrefix  string
-	Endpoint   string
-	Secret     string
-	HomeDir    string
+	BrokerName  string
+	EnvPrefix   string
+	Endpoint    string
+	GitEndpoint string
+	Secret      string
+	HomeDir     string
 }
 
 // SecretFromFile reads path and returns the configured secret for client.
@@ -111,6 +112,9 @@ func Render(cfg Config) ([]byte, error) {
 	prefix := normalizeEnvPrefix(cfg.EnvPrefix)
 	body := "export " + prefix + "_AGENT_ENDPOINT=" + shellQuote(cfg.Endpoint) + "\n" +
 		"export " + prefix + "_SHARED_SECRET=" + shellQuote(cfg.Secret) + "\n"
+	if cfg.GitEndpoint != "" {
+		body += "export " + prefix + "_GIT_ENDPOINT=" + shellQuote(cfg.GitEndpoint) + "\n"
+	}
 	return []byte(body), nil
 }
 
@@ -216,8 +220,23 @@ func (cfg Config) validate() error {
 	if err := ValidateEndpoint(cfg.Endpoint); err != nil {
 		return err
 	}
+	if cfg.GitEndpoint != "" {
+		if err := ValidateGitEndpoint(cfg.GitEndpoint); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(cfg.Secret) == "" {
 		return errors.New("client secret is required")
+	}
+	return nil
+}
+
+// ValidateGitEndpoint accepts directly dialable loopback TCP endpoints. Git's
+// smart HTTP client cannot connect to Unix sockets directly.
+func ValidateGitEndpoint(value string) error {
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{})
+	if err != nil || parsed.Scheme() != endpoint.SchemeTCP || parsed.Exposure() != endpoint.ExposureLoopback {
+		return errors.New("git endpoint must be a loopback tcp endpoint")
 	}
 	return nil
 }

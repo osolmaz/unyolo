@@ -35,6 +35,7 @@ component documentation.
 
 ## Implementation Records
 
+- [Native Git client integration](2026-07-19-native-git-client-integration-plan.md)
 - [Provider credential lifecycle](2026-07-18-provider-credential-lifecycle-plan.md)
 - [Hugging Face credential lifecycle](2026-07-18-hugging-face-credential-lifecycle-plan.md)
 - [Provider-neutral MCP execution](2026-07-18-provider-neutral-mcp-execution-plan.md)

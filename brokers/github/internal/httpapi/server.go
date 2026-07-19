@@ -37,6 +37,7 @@ import (
 	"github.com/osolmaz/brokerkit/controlplane"
 	"github.com/osolmaz/brokerkit/credentiallifecycle"
 	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/gitserver"
 	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/httpx"
 	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
@@ -506,6 +507,27 @@ func stopGitHubRedirect(_ *http.Request, _ []*http.Request) error {
 
 func (s *Server) Handler() http.Handler {
 	return s.echo
+}
+
+// GitHandler exposes only GitHub smart-HTTP routes on the dedicated listener.
+func (s *Server) GitHandler() (http.Handler, error) {
+	return gitserver.New("github", s.control.Clients, s.echo, githubGitRoute)
+}
+
+func githubGitRoute(method, requestPath string) bool {
+	parts := strings.Split(strings.TrimPrefix(requestPath, "/"), "/")
+	if len(parts) != 4 || parts[0] == "" || parts[1] == "" || !strings.HasSuffix(parts[1], ".git") {
+		return false
+	}
+	tail := strings.Join(parts[2:], "/")
+	switch tail {
+	case "info/refs":
+		return method == http.MethodGet
+	case "git-upload-pack", "git-receive-pack":
+		return method == http.MethodPost
+	default:
+		return false
+	}
 }
 
 // Close releases the broker's durable state lease and database handles.

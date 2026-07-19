@@ -4,7 +4,8 @@ set -eu
 BROKER=hf-broker
 REPO="${REPO:-osolmaz/brokerkit}"
 TAG_PREFIX="${TAG_PREFIX:-hf-broker/}"
-export BROKER REPO TAG_PREFIX
+PATH_COMPANION_BINARIES="${PATH_COMPANION_BINARIES:-git-credential-brokerkit}"
+export BROKER REPO TAG_PREFIX PATH_COMPANION_BINARIES
 
 if [ -n "${BROKERKIT_INSTALLER_FILE:-}" ]; then
   exec sh "$BROKERKIT_INSTALLER_FILE"

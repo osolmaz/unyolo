@@ -20,6 +20,7 @@ jobs:
       broker: ${{ steps.component.outputs.broker }}
       command: ${{ steps.component.outputs.command }}
       companions: ${{ steps.component.outputs.companions }}
+      path_companions: ${{ steps.component.outputs.path_companions }}
       directory: ${{ steps.component.outputs.directory }}
       extra: ${{ steps.component.outputs.extra }}
       version: ${{ steps.component.outputs.version }}
@@ -32,17 +33,22 @@ jobs:
           tag=${GITHUB_REF_NAME}
           version=${tag#*/}
           companions=""
+          path_companions=""
           extra=""
           case "$tag" in
             hf-broker/*)
               echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/huggingface" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/hf-broker" >> "$GITHUB_OUTPUT"
+              extra="--extra-command=git-credential-brokerkit=./cmd/git-credential-brokerkit"
+              path_companions="git-credential-brokerkit"
               ;;
             gh-broker/*)
               echo "broker=gh-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/github" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/gh-broker" >> "$GITHUB_OUTPUT"
+              extra="--extra-command=git-credential-brokerkit=./cmd/git-credential-brokerkit"
+              path_companions="git-credential-brokerkit"
               ;;
             sudo-broker/*)
               echo "broker=sudo-broker" >> "$GITHUB_OUTPUT"
@@ -59,6 +65,7 @@ jobs:
             *) exit 64 ;;
           esac
           echo "companions=$companions" >> "$GITHUB_OUTPUT"
+          echo "path_companions=$path_companions" >> "$GITHUB_OUTPUT"
           echo "extra=$extra" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -137,5 +144,6 @@ jobs:
           BROKERKIT_VERIFY_ONLY: "true"
           BROKERKIT_VERIFY_RELEASE_SET: "true"
           COMPANION_BINARIES: ${{ needs.prepare.outputs.companions }}
+          PATH_COMPANION_BINARIES: ${{ needs.prepare.outputs.path_companions }}
           GH_TOKEN: ${{ github.token }}
         run: sh installer/install.sh

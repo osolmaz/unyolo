@@ -54,3 +54,8 @@ surface. Readiness verifies required durable and local privilege dependencies.
 Operator health and readiness remain authenticated. Audit records security
 evidence; metrics report aggregate operation, capacity, and dependency behavior
 and are not an audit substitute.
+
+Native Git discovery, upload-pack, receive-pack, and LFS requests continue to
+emit the provider's existing policy and proxy audit records. The dedicated Git
+listener identity response contains only the provider id. Credential-helper
+input, output, and Basic credentials are never logged.

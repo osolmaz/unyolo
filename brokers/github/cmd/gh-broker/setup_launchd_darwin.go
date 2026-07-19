@@ -123,6 +123,9 @@ func ghLaunchdEnvironment(plan systemdPlan) map[string]string {
 		"GH_BROKER_OPERATOR_ENDPOINT": "activation://operator", "GH_BROKER_GITHUB_HTTP_TIMEOUT": "30",
 		"GH_BROKER_GITHUB_STREAM_TIMEOUT": "600", "GH_BROKER_MAX_RECEIVE_PACK_BYTES": "26214400",
 	}
+	if plan.opts.GitEndpoint != "" {
+		values["GH_BROKER_GIT_ENDPOINT"] = plan.opts.GitEndpoint
+	}
 	addGHLaunchdCredentials(values, plan)
 	if plan.opts.TelegramBotTokenFile != "" {
 		values["GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"] = plan.telegramTokenPath

@@ -7,6 +7,7 @@ INSTALL_DIR="${INSTALL_DIR:-}"
 VERSION="${VERSION:-}"
 TAG_PREFIX="${TAG_PREFIX:-}"
 COMPANION_BINARIES="${COMPANION_BINARIES:-}"
+PATH_COMPANION_BINARIES="${PATH_COMPANION_BINARIES:-}"
 LIBEXEC_DIR="${LIBEXEC_DIR:-}"
 BROKERKIT_VERIFY_ONLY="${BROKERKIT_VERIFY_ONLY:-false}"
 BROKERKIT_VERIFY_RELEASE_SET="${BROKERKIT_VERIFY_RELEASE_SET:-false}"
@@ -71,7 +72,7 @@ validate_inputs() {
     esac
     [ -x "$BROKERKIT_VERIFIER_FILE" ] || fail "BROKERKIT_VERIFIER_FILE must be executable"
   fi
-  for binary in $COMPANION_BINARIES; do
+  for binary in $COMPANION_BINARIES $PATH_COMPANION_BINARIES; do
     case "$binary" in
       "" | *[!a-z0-9-]* | "$BROKER") fail "COMPANION_BINARIES contains an invalid binary name" ;;
     esac
@@ -257,7 +258,7 @@ validate_archive() {
       "$BROKER" | README.md | LICENSE) ;;
       *)
         allowed=false
-        for binary in $COMPANION_BINARIES; do
+        for binary in $COMPANION_BINARIES $PATH_COMPANION_BINARIES; do
           if [ "$entry" = "$binary" ]; then allowed=true; fi
         done
         [ "$allowed" = true ] || fail "release archive contains unexpected path: ${entry}"
@@ -265,7 +266,7 @@ validate_archive() {
     esac
   done < "$listing"
   [ "$(awk -v name="$BROKER" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${BROKER} exactly once"
-  for binary in $COMPANION_BINARIES; do
+  for binary in $COMPANION_BINARIES $PATH_COMPANION_BINARIES; do
     [ "$(awk -v name="$binary" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${binary} exactly once"
   done
 }
@@ -328,6 +329,11 @@ if [ -n "$COMPANION_BINARIES" ]; then
     "${libexec_dir}/${binary}" --version
   done
 fi
+
+for binary in $PATH_COMPANION_BINARIES; do
+  install_binary "${tmp_dir}/${binary}" "$main_dest_dir" "$binary"
+  echo "Installed ${binary} to ${main_dest_dir}/${binary}"
+done
 
 echo "Installed ${BROKER} to ${main_dest_dir}/${BROKER}"
 "${main_dest_dir}/${BROKER}" --version
