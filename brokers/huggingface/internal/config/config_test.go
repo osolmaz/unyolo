@@ -39,10 +39,11 @@ func TestLoadRequiresRuntimeAndAppliesTuningDefaults(t *testing.T) {
 func TestLoadReadsAndValidatesGitEndpoint(t *testing.T) {
 	env := map[string]string{
 		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_GIT_ENDPOINT": "tcp://127.0.0.1:32192",
+		"HF_BROKER_DEVELOPMENT": "true", "HF_BROKER_AGENT_ENDPOINT": "tcp://127.0.0.1:0",
+		"HF_BROKER_GIT_ENDPOINT": "tcp://127.0.0.1:0",
 	}
 	cfg, err := Load(testGetenv(env))
-	if err != nil || cfg.GitEndpoint == nil || cfg.GitEndpoint.String() != "tcp://127.0.0.1:32192" {
+	if err != nil || cfg.GitEndpoint == nil || cfg.GitEndpoint.String() != "tcp://127.0.0.1:0" {
 		t.Fatalf("Git endpoint = %+v, %v", cfg.GitEndpoint, err)
 	}
 	env["HF_BROKER_GIT_ENDPOINT"] = "unix:///tmp/git.sock"

@@ -10,7 +10,7 @@ import (
 
 func TestLoadFromLookupReadsExplicitDevelopmentConfiguration(t *testing.T) {
 	values := developmentValues()
-	values["GH_BROKER_GIT_ENDPOINT"] = "tcp://127.0.0.1:32193"
+	values["GH_BROKER_GIT_ENDPOINT"] = "tcp://127.0.0.1:0"
 	values["GH_BROKER_GITHUB_HTTP_TIMEOUT"] = "11"
 	values["GH_BROKER_GITHUB_STREAM_TIMEOUT"] = "601"
 	values["GH_BROKER_MAX_RECEIVE_PACK_BYTES"] = "12345"
@@ -21,7 +21,7 @@ func TestLoadFromLookupReadsExplicitDevelopmentConfiguration(t *testing.T) {
 	if !cfg.Development || cfg.Environment != "development" || cfg.AgentEndpoint.String() != "tcp://127.0.0.1:0" {
 		t.Fatalf("runtime config = %+v", cfg)
 	}
-	if cfg.GitEndpoint == nil || cfg.GitEndpoint.String() != "tcp://127.0.0.1:32193" {
+	if cfg.GitEndpoint == nil || cfg.GitEndpoint.String() != "tcp://127.0.0.1:0" {
 		t.Fatalf("Git endpoint = %+v", cfg.GitEndpoint)
 	}
 	if cfg.ClientID != "agent-a" || cfg.ScopeFile != "scope.json" || cfg.StateDir != "state" {

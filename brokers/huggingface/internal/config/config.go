@@ -178,7 +178,7 @@ func loadGitEndpoint(getenv func(string) string, cfg *Config, parseOptions endpo
 	if gitEndpoint.Scheme() != endpoint.SchemeTCP {
 		return fmt.Errorf("%s must use tcp", brokerEnvName("GIT_ENDPOINT"))
 	}
-	if gitEndpoint.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && gitEndpoint.String() == cfg.OperatorEndpoint.String() {
+	if !gitEndpoint.Ephemeral() && (gitEndpoint.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && gitEndpoint.String() == cfg.OperatorEndpoint.String()) {
 		return errors.New("git, agent, and operator endpoints must differ")
 	}
 	cfg.GitEndpoint = &gitEndpoint
