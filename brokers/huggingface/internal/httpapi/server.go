@@ -243,7 +243,11 @@ func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandl
 
 // GitHandler exposes only Hugging Face smart-HTTP and LFS routes.
 func (s *Server) GitHandler() (http.Handler, error) {
-	return gitserver.New("huggingface", s.control.Clients, s.router, huggingFaceGitRoute)
+	return gitserver.New("huggingface", s.control.Clients, s.router, huggingFaceGitRoute, huggingFaceDelegatesAuthentication)
+}
+
+func huggingFaceDelegatesAuthentication(request *http.Request) bool {
+	return request.Header.Get("Authorization") == "" && request.URL.Query().Get(lfsActionQuery) != ""
 }
 
 func huggingFaceGitRoute(method, requestPath string) bool {

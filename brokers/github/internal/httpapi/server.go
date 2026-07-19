@@ -511,7 +511,7 @@ func (s *Server) Handler() http.Handler {
 
 // GitHandler exposes only GitHub smart-HTTP routes on the dedicated listener.
 func (s *Server) GitHandler() (http.Handler, error) {
-	return gitserver.New("github", s.control.Clients, s.echo, githubGitRoute)
+	return gitserver.New("github", s.control.Clients, s.echo, githubGitRoute, nil)
 }
 
 func githubGitRoute(method, requestPath string) bool {

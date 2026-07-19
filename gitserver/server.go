@@ -16,12 +16,16 @@ const IdentityPath = "/_brokerkit/git/v1"
 // AllowRoute classifies one provider-owned Git, LFS, or Xet route.
 type AllowRoute func(method, requestPath string) bool
 
+// DelegateAuthentication identifies routes whose provider handler validates a
+// broker-issued, one-time capability instead of the shared client credential.
+type DelegateAuthentication func(*http.Request) bool
+
 // New returns a handler that exposes only the provider's Git data plane.
-func New(provider string, authenticator *auth.Authenticator, next http.Handler, allow AllowRoute) (http.Handler, error) {
+func New(provider string, authenticator *auth.Authenticator, next http.Handler, allow AllowRoute, delegate DelegateAuthentication) (http.Handler, error) {
 	if provider == "" || authenticator == nil || next == nil || allow == nil {
 		return nil, errors.New("complete Git listener configuration is required")
 	}
-	return gitHandler{provider: provider, authenticator: authenticator, next: next, allow: allow}, nil
+	return gitHandler{provider: provider, authenticator: authenticator, next: next, allow: allow, delegate: delegate}, nil
 }
 
 type gitHandler struct {
@@ -29,6 +33,7 @@ type gitHandler struct {
 	authenticator *auth.Authenticator
 	next          http.Handler
 	allow         AllowRoute
+	delegate      DelegateAuthentication
 }
 
 func (h gitHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -44,7 +49,7 @@ func (h gitHandler) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		http.NotFound(response, request)
 		return
 	}
-	if !h.authenticate(response, request) {
+	if (h.delegate == nil || !h.delegate(request)) && !h.authenticate(response, request) {
 		return
 	}
 	h.next.ServeHTTP(response, request)

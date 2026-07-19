@@ -18,7 +18,7 @@ func TestHandlerExposesOnlyIdentityAndAllowedGitRoutes(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}), func(method, path string) bool {
 		return method == http.MethodPost && strings.HasSuffix(path, "/git-upload-pack")
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,5 +54,40 @@ func TestHandlerExposesOnlyIdentityAndAllowedGitRoutes(t *testing.T) {
 	handler.ServeHTTP(gitResponse, gitRequest)
 	if gitResponse.Code != http.StatusNoContent {
 		t.Fatalf("authenticated Git response = %d", gitResponse.Code)
+	}
+}
+
+func TestHandlerDelegatesCapabilityAuthenticationAfterRouteValidation(t *testing.T) {
+	authenticator, err := auth.New(map[string]string{"bob": strings.Repeat("s", 32)}, auth.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New("huggingface", authenticator, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), func(method, requestPath string) bool {
+		return method == http.MethodGet && strings.HasSuffix(requestPath, "/info/lfs/objects/object")
+	}, func(request *http.Request) bool {
+		return request.URL.Query().Get("action") != ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	delegated := httptest.NewRequest(http.MethodGet, "/owner/repo/info/lfs/objects/object?action=one-time", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, delegated)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delegated response = %d", response.Code)
+	}
+
+	for _, target := range []string{
+		"/owner/repo/info/lfs/objects/object",
+		"/api/grants?action=one-time",
+	} {
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+		if response.Code < 400 {
+			t.Fatalf("undelegated route %q returned %d", target, response.Code)
+		}
 	}
 }

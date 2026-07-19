@@ -33,3 +33,25 @@ func TestGitHandlerHidesAgentAndInferenceRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestGitHandlerAcceptsBrokerLFSActionCapability(t *testing.T) {
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	server := newTestHandler(t, t.TempDir(), upstream.URL, io.Discard, emptyPolicyJSON())
+	server.lfsActions["action"] = lfsAction{
+		url: upstream.URL + "/object", client: "agent",
+		route:   route{owner: "owner", name: "repo", tail: "info/lfs/objects/" + strings.Repeat("a", 64)},
+		created: server.utcNow(),
+	}
+	handler, err := server.GitHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet,
+		"/owner/repo/info/lfs/objects/"+strings.Repeat("a", 64)+"?"+lfsActionQuery+"=action", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code == http.StatusUnauthorized {
+		t.Fatalf("broker LFS action was rejected before provider authentication: %s", response.Body.String())
+	}
+}
