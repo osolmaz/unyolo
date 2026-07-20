@@ -1,6 +1,7 @@
 package grants
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -347,16 +348,23 @@ func decisionToSQLite(record decisionRecord) (state.GrantDecisionRecord, error) 
 	if !ok {
 		return state.GrantDecisionRecord{}, ErrUnsupportedState
 	}
-	result, err := json.Marshal(record.Result)
+	result, err := preservedDecisionJSON(record.resultJSON, record.Result)
 	if err != nil {
 		return state.GrantDecisionRecord{}, err
 	}
-	previous, err := json.Marshal(record.Previous)
+	previous, err := preservedDecisionJSON(record.previousJSON, record.Previous)
 	if err != nil {
 		return state.GrantDecisionRecord{}, err
 	}
 	return state.GrantDecisionRecord{Scope: record.Scope, RequestID: requestID, Action: action, IdempotencyKey: key,
 		CommandHash: record.CommandHash, ResultJSON: result, PreviousJSON: previous, EventCursor: record.EventCursor, CommittedAt: record.CommittedAt}, nil
+}
+
+func preservedDecisionJSON(raw []byte, value Grant) ([]byte, error) {
+	if len(raw) > 0 {
+		return bytes.Clone(raw), nil
+	}
+	return json.Marshal(value)
 }
 
 func decisionFromSQLite(record state.GrantDecisionRecord) (decisionRecord, error) {
@@ -369,7 +377,8 @@ func decisionFromSQLite(record state.GrantDecisionRecord) (decisionRecord, error
 		return decisionRecord{}, ErrUnsupportedState
 	}
 	return decisionRecord{Scope: record.Scope, CommandHash: record.CommandHash, Result: result, Previous: previous,
-		EventCursor: record.EventCursor, CommittedAt: record.CommittedAt}, nil
+		EventCursor: record.EventCursor, CommittedAt: record.CommittedAt,
+		resultJSON: bytes.Clone(record.ResultJSON), previousJSON: bytes.Clone(record.PreviousJSON)}, nil
 }
 
 func decodeDecisionGrants(record state.GrantDecisionRecord) (Grant, Grant, error) {

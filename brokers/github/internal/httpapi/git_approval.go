@@ -37,6 +37,8 @@ func (s *Server) authorizeGitMutation(c echo.Context, request policy.Request) (p
 		if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
 			return decision, nil, nil
 		}
+		s.logger.Error("authorize Git push", "operation", request.Operation, "target", request.Target.Owner+"/"+request.Target.Name, "error", err)
+		s.audit(c, request, "error", "could not authorize git push", 0, decision.MatchedRuleIDs)
 		return policy.Decision{}, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not authorize git push")
 	}
 	if result.Request.Grant.ID == "" {
