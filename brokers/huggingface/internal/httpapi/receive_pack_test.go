@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	approvalnotify "github.com/osolmaz/brokerkit/approval/notification"
 	"github.com/osolmaz/brokerkit/approval/notifier"
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	rootpolicy "github.com/osolmaz/brokerkit/authorization/policy"
@@ -175,50 +176,30 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 
 	runClientGit(t, clone, "reset", "--hard", initial)
 	beforeGrant := upstream.receivePackHits()
-	output, err := runClientGitErr(clone, "push", "--force", "origin", "main")
-	if err == nil || !strings.Contains(output, "hf-broker") {
-		t.Fatalf("force push without grant err=%v output:\n%s", err, output)
+	type pushResult struct {
+		output string
+		err    error
 	}
-	if got := upstream.receivePackHits(); got != beforeGrant {
-		t.Fatalf("force push without grant reached upstream: hits=%d want %d", got, beforeGrant)
-	}
-	automatic, err := handler.grants.ListForClient("agent")
-	if err != nil || len(automatic) != 1 || automatic[0].Status != grants.StatusPending || !strings.Contains(output, automatic[0].ID) {
-		t.Fatalf("automatic approval = %+v, err=%v, output=%q", automatic, err, output)
-	}
-	output, err = runClientGitErr(clone, "push", "--force", "origin", "main")
-	if err == nil || !strings.Contains(output, automatic[0].ID) {
-		t.Fatalf("automatic approval retry err=%v output=%q", err, output)
-	}
-	replayed, err := handler.grants.ListForClient("agent")
-	if err != nil || len(replayed) != 1 || replayed[0].ID != automatic[0].ID {
-		t.Fatalf("automatic approval replay = %+v, err=%v", replayed, err)
-	}
-	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
-		t.Fatal(err)
-	}
-
-	resp, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover main", "recover-main", 5, 0)))
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("grant request = %d %q, want 202", resp.StatusCode, body)
-	}
-	if len(notifier.messages) != 1 {
-		t.Fatalf("notifier messages = %+v, want one", notifier.messages)
-	}
-	msg := notifier.messages[0]
-	if strings.Contains(body, msg.DecisionToken) {
-		t.Fatalf("grant response leaked decision token: %s", body)
-	}
-	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover main", "recover-main", 5, 0)))
-	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("idempotent grant status=%d messages=%d, want 202 and one message", resp.StatusCode, len(notifier.messages))
-	}
+	result := make(chan pushResult, 1)
+	go func() {
+		output, pushErr := runClientGitErr(clone, "push", "--force", "origin", "main")
+		result <- pushResult{output: output, err: pushErr}
+	}()
+	msg := waitForHFPushApproval(t, handler, notifier)
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
 	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram answer = %+v", answer)
 	}
+	approved := <-result
+	if approved.err != nil {
+		t.Fatalf("approved push failed: %v", approved.err)
+	}
+	if got := upstream.receivePackHits(); got != beforeGrant+1 {
+		t.Fatalf("approved push hits=%d want=%d", got, beforeGrant+1)
+	}
+	beforeGrant++
 
-	output, err = runClientGitErrAs(testOtherSecret, clone, "push", "--force", "origin", "main")
+	output, err := runClientGitErrAs(testOtherSecret, clone, "push", "--force", "origin", "main")
 	if err == nil || !strings.Contains(output, "hf-broker") {
 		t.Fatalf("cross-client force push used grant err=%v output:\n%s", err, output)
 	}
@@ -232,8 +213,9 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	if upstreamRef := strings.TrimSpace(runGit(t, upstreamRepo, "rev-parse", "refs/heads/main")); upstreamRef != initial {
 		t.Fatalf("upstream main after grant = %s, want %s", upstreamRef, initial)
 	}
-	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusConsumed {
-		t.Fatalf("grant use notification updates = %+v", notifier.updates)
+	_, updates := notifier.snapshot()
+	if len(updates) != 1 || updates[0].Kind != notify.StatusConsumed {
+		t.Fatalf("grant use notification updates = %+v", updates)
 	}
 	output, err = runClientGitErr(clone, "push", "origin", ":main")
 	if err == nil {
@@ -261,6 +243,24 @@ func assertHistoryRewriteGrantDoesNotAllowDeletion(t *testing.T, clone string, u
 	if got := upstream.receivePackHits(); got != wantHits {
 		t.Fatalf("branch deletion with history-rewrite grant reached upstream: hits=%d want %d", got, wantHits)
 	}
+}
+
+func waitForHFPushApproval(t *testing.T, handler *Server, notifier *captureGrantNotifier) approvalnotify.Approval {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		messages, _ := notifier.snapshot()
+		clientGrants, err := handler.grants.ListForClient("agent")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(messages) == 1 && len(clientGrants) == 1 && clientGrants[0].Status == grants.StatusPending {
+			return messages[0]
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for HF Git push approval")
+	return approvalnotify.Approval{}
 }
 
 func TestDenyRuleOverridesActiveGrant(t *testing.T) {
