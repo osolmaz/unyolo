@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/git/protocol"
 	"github.com/osolmaz/brokerkit/transport/http"
 )
 
@@ -14,6 +16,34 @@ const upstreamDispatchedContextKey = "gh_broker_upstream_dispatched"
 
 func markUpstreamDispatched(c echo.Context) {
 	c.Set(upstreamDispatchedContextKey, true)
+}
+
+func (s *Server) proxyReceivePackAdvertisement(c echo.Context) error {
+	c.Request().Header.Del("Accept-Encoding")
+	response, err := s.forwardGit(c)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
+		return copyUpstreamResponse(c, response)
+	}
+	body, err := httpx.ReadLimited(response.Body, s.maxReceivePackBytes)
+	if err != nil {
+		if errors.Is(err, httpx.ErrBodyTooLarge) {
+			return echo.NewHTTPError(http.StatusBadGateway, "Git receive-pack advertisement is too large")
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, "read Git receive-pack advertisement")
+	}
+	rewritten, err := gitx.RemoveAdvertisementCapability(body, "thin-pack")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, "parse Git receive-pack advertisement")
+	}
+	httpx.CopyHeaders(c.Response().Header(), response.Header, httpx.DropAny(githubProxyResponseHeader, httpx.RewrittenBodyHeader))
+	c.Response().WriteHeader(response.StatusCode)
+	_, err = c.Response().Write(rewritten)
+	return err
 }
 
 func upstreamWasDispatched(c echo.Context) bool {

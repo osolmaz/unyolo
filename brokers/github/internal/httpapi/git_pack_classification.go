@@ -14,14 +14,19 @@ const (
 	maxGitHubPushObjectBytes = 64 << 20
 )
 
-func receivePackProvesFastForward(ctx context.Context, oldOID, newOID string, pack []byte, maxPackBytes int64) bool {
-	if len(oldOID) != 40 || len(newOID) != 40 || len(pack) < 4 || !bytes.Equal(pack[:4], []byte("PACK")) {
-		return false
+type receivePackGraph struct {
+	parents map[string][]string
+	valid   bool
+}
+
+func inspectReceivePackGraph(ctx context.Context, pack []byte, maxPackBytes int64) receivePackGraph {
+	if len(pack) < 4 || !bytes.Equal(pack[:4], []byte("PACK")) {
+		return receivePackGraph{}
 	}
 	limits := githubPushPackLimits(maxPackBytes)
 	objects, err := gitx.ExtractCommitAndTagObjects(ctx, pack, limits, nil)
 	if err != nil {
-		return false
+		return receivePackGraph{}
 	}
 	parents := make(map[string][]string, len(objects))
 	for _, object := range objects {
@@ -29,7 +34,11 @@ func receivePackProvesFastForward(ctx context.Context, oldOID, newOID string, pa
 			parents[object.Hash] = commitParents(object.Data)
 		}
 	}
-	return commitGraphContains(parents, newOID, oldOID)
+	return receivePackGraph{parents: parents, valid: true}
+}
+
+func (graph receivePackGraph) provesFastForward(oldOID, newOID string) bool {
+	return graph.valid && len(oldOID) == 40 && len(newOID) == 40 && commitGraphContains(graph.parents, newOID, oldOID)
 }
 
 func githubPushPackLimits(maxPackBytes int64) gitx.PackLimits {

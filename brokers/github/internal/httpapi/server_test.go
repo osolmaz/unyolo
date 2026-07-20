@@ -2574,7 +2574,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			ID:         "bob-push-advertise",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
-			Operations: []policy.Operation{policy.OperationGitPushAdvertise},
+			Operations: []policy.Operation{policy.OperationGitPushAdvertise, policy.OperationGitLFSWrite},
 			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
 		},
 		{

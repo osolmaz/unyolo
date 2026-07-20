@@ -16,21 +16,22 @@ func TestReceivePackProvesFastForwardFromUploadedPack(t *testing.T) {
 	first := commitClassificationFile(t, repo, "one")
 	second := commitClassificationFile(t, repo, "two")
 	pack := classificationPack(t, repo, second, first)
-	if !receivePackProvesFastForward(t.Context(), first, second, pack, int64(len(pack))) {
+	graph := inspectReceivePackGraph(t.Context(), pack, int64(len(pack)))
+	if !graph.provesFastForward(first, second) {
 		t.Fatal("uploaded commit graph did not prove a fast-forward")
 	}
 
 	runClassificationGit(t, repo, "checkout", "--detach", first)
 	divergent := commitClassificationFile(t, repo, "other")
 	forcePack := classificationPack(t, repo, divergent, second)
-	if receivePackProvesFastForward(t.Context(), second, divergent, forcePack, int64(len(forcePack))) {
+	if inspectReceivePackGraph(t.Context(), forcePack, int64(len(forcePack))).provesFastForward(second, divergent) {
 		t.Fatal("divergent uploaded commit graph was classified as a fast-forward")
 	}
 }
 
 func TestReceivePackFastForwardProofFailsClosed(t *testing.T) {
 	t.Parallel()
-	if receivePackProvesFastForward(context.Background(), strings.Repeat("a", 40), strings.Repeat("b", 40), []byte("not a pack"), 1024) {
+	if inspectReceivePackGraph(context.Background(), []byte("not a pack"), 1024).provesFastForward(strings.Repeat("a", 40), strings.Repeat("b", 40)) {
 		t.Fatal("malformed pack proved a fast-forward")
 	}
 }

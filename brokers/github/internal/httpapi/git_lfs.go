@@ -24,6 +24,7 @@ const (
 	githubLFSActionQuery = "brokerkit_lfs_action"
 	githubLFSActionTTL   = time.Hour
 	maxGitHubLFSBatch    = 1 << 20
+	maxGitHubLFSActions  = 4096
 )
 
 type githubLFSAction struct {
@@ -173,8 +174,22 @@ func (s *Server) validGitHubLFSActionURL(upstream *url.URL) bool {
 func (s *Server) storeGitHubLFSAction(id string, action githubLFSAction) {
 	s.lfsMu.Lock()
 	s.pruneGitHubLFSActions(time.Now().UTC())
+	if len(s.lfsActions) >= maxGitHubLFSActions {
+		s.evictOldestGitHubLFSAction()
+	}
 	s.lfsActions[id] = action
 	s.lfsMu.Unlock()
+}
+
+func (s *Server) evictOldestGitHubLFSAction() {
+	var oldestID string
+	var oldest time.Time
+	for id, action := range s.lfsActions {
+		if oldestID == "" || action.created.Before(oldest) {
+			oldestID, oldest = id, action.created
+		}
+	}
+	delete(s.lfsActions, oldestID)
 }
 
 func githubLFSLocalActionURL(request *http.Request, path, id string) string {
@@ -236,7 +251,7 @@ func (s *Server) proxyGitHubLFSAction(c echo.Context, action githubLFSAction) er
 func (s *Server) gitLFSDirect(c echo.Context) error {
 	operation := policy.OperationGitFetch
 	if c.Request().Method == http.MethodPost && !strings.HasSuffix(c.Request().URL.Path, "/locks/verify") {
-		operation = policy.OperationGitPushAdvertise
+		operation = policy.OperationGitLFSWrite
 	}
 	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), s.proxyGit)
 }

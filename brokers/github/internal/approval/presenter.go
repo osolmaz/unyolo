@@ -135,6 +135,7 @@ func risk(operation string) approvalview.Risk {
 	}
 	risks := map[string]approvalview.Risk{
 		"git.fetch":              approvalview.RiskLow,
+		"git.lfs.write":          approvalview.RiskHigh,
 		"git.push.advertise":     approvalview.RiskMedium,
 		"git.push.branch_create": approvalview.RiskHigh,
 		"git.push.fast_forward":  approvalview.RiskHigh,

@@ -837,7 +837,7 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 	if !errors.As(abuse, &abuseAPIError) || abuseAPIError.Code != "secondary_rate_limited" {
 		t.Fatalf("secondary rate limit = %v", abuse)
 	}
-	for _, operation := range []string{"git.fetch", "git.push.force", "git.ref.delete"} {
+	for _, operation := range []string{"git.fetch", "git.lfs.write", "git.push.force", "git.ref.delete"} {
 		if permissions, err := permissionsForOperation(operation); err != nil || len(permissions) == 0 {
 			t.Fatalf("permissions for %q = %v, %v", operation, permissions, err)
 		}

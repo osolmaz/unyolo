@@ -1,13 +1,18 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	gitx "github.com/osolmaz/brokerkit/git/protocol"
 	"github.com/osolmaz/brokerkit/git/server"
 )
 
@@ -56,6 +61,30 @@ func TestGitHubGitRoute(t *testing.T) {
 		if got := githubGitRoute(test.method, test.path); got != test.want {
 			t.Errorf("githubGitRoute(%q, %q) = %t, want %t", test.method, test.path, got, test.want)
 		}
+	}
+}
+
+func TestReceivePackAdvertisementRemovesThinPack(t *testing.T) {
+	t.Parallel()
+	advertisement, err := gitx.AppendPktLineString(nil, "# service=git-receive-pack\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	advertisement = gitx.AppendFlushPkt(advertisement)
+	advertisement, err = gitx.AppendPktLineString(advertisement, strings.Repeat("1", 40)+" refs/heads/main\x00report-status thin-pack ofs-delta\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	advertisement = gitx.AppendFlushPkt(advertisement)
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(advertisement)
+	})
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+	if bytes.Contains(response.Body.Bytes(), []byte("thin-pack")) || !bytes.Contains(response.Body.Bytes(), []byte("ofs-delta")) {
+		t.Fatalf("rewritten advertisement = %q", response.Body.Bytes())
 	}
 }
 
@@ -117,5 +146,23 @@ func TestGitHubLFSRejectsUnknownAndOversizedBatch(t *testing.T) {
 	oversized := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(strings.Repeat("x", maxGitHubLFSBatch+1)))
 	if oversized.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized status = %d", oversized.Code)
+	}
+}
+
+func TestGitHubLFSWritesUseDedicatedPolicyOperation(t *testing.T) {
+	t.Parallel()
+	if operation, ok := gitTransportOperation("upload"); !ok || operation != policy.OperationGitLFSWrite {
+		t.Fatalf("upload operation = %q, %t", operation, ok)
+	}
+	server := newTestServer(t)
+	created := time.Now().UTC()
+	for index := range maxGitHubLFSActions + 1 {
+		server.storeGitHubLFSAction(strconv.Itoa(index), githubLFSAction{created: created.Add(time.Duration(index) * time.Millisecond)})
+	}
+	if len(server.lfsActions) != maxGitHubLFSActions {
+		t.Fatalf("stored actions = %d, want %d", len(server.lfsActions), maxGitHubLFSActions)
+	}
+	if _, found := server.lfsActions["0"]; found {
+		t.Fatal("oldest LFS action was not evicted")
 	}
 }

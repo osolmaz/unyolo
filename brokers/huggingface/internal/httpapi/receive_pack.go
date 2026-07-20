@@ -326,6 +326,9 @@ func (s *Server) refusePolicyDeniedPush(ctx context.Context, classes []gitproxy.
 	if err != nil || len(failures) > 0 || len(requestable) == 0 {
 		return failures, err
 	}
+	if !s.hasApprovalChannel() {
+		return refFailuresForClasses(classes, "approval channel is not configured"), nil
+	}
 	grant, err := s.requestAndWaitForHFPush(ctx, classes, requestable, client, target, packSize, bodyDigest, pause)
 	if err != nil {
 		return hfPushApprovalError(classes, err)
@@ -447,7 +450,7 @@ func (s *Server) hfPushGrantInput(classes []gitproxy.ClassifiedCommand, items []
 	if err != nil {
 		return hfgrant.Input{}, err
 	}
-	requestID, err := s.hfPushTransactionRequestID(client, bodyDigest, receivePackRequestRuleIDs(items))
+	requestID, err := s.hfPushTransactionRequestID(client, target, bodyDigest, receivePackRequestRuleIDs(items))
 	if err != nil {
 		return hfgrant.Input{}, err
 	}
@@ -553,11 +556,12 @@ func highestRiskHFOperation(items []requestableHFPush) policy.Operation {
 	return selected
 }
 
-func (s *Server) hfPushTransactionRequestID(client, bodyDigest string, ruleIDs []string) (string, error) {
+func (s *Server) hfPushTransactionRequestID(client, target, bodyDigest string, ruleIDs []string) (string, error) {
 	encoded, err := json.Marshal(struct {
 		BodyDigest string   `json:"body_digest"`
 		RuleIDs    []string `json:"rule_ids"`
-	}{BodyDigest: bodyDigest, RuleIDs: ruleIDs})
+		Target     string   `json:"target"`
+	}{BodyDigest: bodyDigest, RuleIDs: ruleIDs, Target: target})
 	if err != nil {
 		return "", err
 	}

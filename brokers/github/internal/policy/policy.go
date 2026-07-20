@@ -34,6 +34,7 @@ type Operation string
 
 const (
 	OperationGitFetch             Operation = "git.fetch"
+	OperationGitLFSWrite          Operation = "git.lfs.write"
 	OperationGitPushAdvertise     Operation = "git.push.advertise"
 	OperationGitPushBranchCreate  Operation = "git.push.branch_create"
 	OperationGitPushFastForward   Operation = "git.push.fast_forward"

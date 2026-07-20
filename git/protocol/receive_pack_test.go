@@ -227,6 +227,23 @@ func TestPktLineEncodingHelpers(t *testing.T) {
 	}
 }
 
+func TestRemoveAdvertisementCapability(t *testing.T) {
+	advertisement := []byte(pkt("# service=git-receive-pack\n") + "0000" +
+		pkt(strings.Repeat("1", 40)+" refs/heads/main\x00report-status thin-pack ofs-delta agent=test\n") + "0000")
+	rewritten, err := RemoveAdvertisementCapability(advertisement, "thin-pack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(rewritten, []byte("thin-pack")) {
+		t.Fatalf("rewritten advertisement retained thin-pack: %q", rewritten)
+	}
+	for _, want := range []string{"report-status", "ofs-delta", "agent=test", "refs/heads/main"} {
+		if !bytes.Contains(rewritten, []byte(want)) {
+			t.Fatalf("rewritten advertisement omitted %q: %q", want, rewritten)
+		}
+	}
+}
+
 func FuzzScanner(f *testing.F) {
 	f.Add([]byte("0000"))
 	f.Add([]byte(pkt("payload") + "0000PACK"))

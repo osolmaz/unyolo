@@ -137,13 +137,14 @@ func (s *Server) prepareReceivePackTransaction(
 	}
 	attrs := receivePackTransactionAttrs(body, commands, authorized)
 	ruleIDs := receivePackRequestRuleIDs(items)
-	requestID, err := s.gitTransactionRequestID(items[0].Request.Client, attrs, ruleIDs)
+	target := policy.CoreTarget(items[0].Request.Target)
+	requestID, err := s.gitTransactionRequestID(items[0].Request.Client, target, attrs, ruleIDs)
 	if err != nil {
 		return grants.Request{}, policy.Decision{}, err
 	}
 	request := grants.Request{
 		Client: items[0].Request.Client, ClientRequestID: requestID,
-		Operation: string(highestRiskGitOperation(items)), Target: policy.CoreTarget(items[0].Request.Target), Attrs: attrs,
+		Operation: string(highestRiskGitOperation(items)), Target: target, Attrs: attrs,
 		Reason: "Git push transaction requires approval", Duration: duration, PendingTimeout: pendingTimeout,
 		MaxUses: usebudget.Limit(1), MaxUsesSpecified: true,
 	}
@@ -217,11 +218,12 @@ func highestRiskGitOperation(items []requestableReceivePackRequest) policy.Opera
 	return selected
 }
 
-func (s *Server) gitTransactionRequestID(client string, attrs map[string][]string, ruleIDs []string) (string, error) {
+func (s *Server) gitTransactionRequestID(client string, target corepolicy.Target, attrs map[string][]string, ruleIDs []string) (string, error) {
 	encoded, err := json.Marshal(struct {
-		Attrs map[string][]string `json:"attrs"`
-		Rules []string            `json:"rules"`
-	}{Attrs: attrs, Rules: ruleIDs})
+		Target corepolicy.Target   `json:"target"`
+		Attrs  map[string][]string `json:"attrs"`
+		Rules  []string            `json:"rules"`
+	}{Target: target, Attrs: attrs, Rules: ruleIDs})
 	if err != nil {
 		return "", err
 	}

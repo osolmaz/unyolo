@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 
 	gitpktline "github.com/go-git/go-git/v5/plumbing/format/pktline"
 )
@@ -77,4 +78,53 @@ func AppendPktLineString(dst []byte, payload string) ([]byte, error) {
 // AppendFlushPkt appends one flush packet.
 func AppendFlushPkt(dst []byte) []byte {
 	return append(dst, gitpktline.FlushPkt...)
+}
+
+// RemoveAdvertisementCapability removes one capability from the first
+// capability-bearing ref advertisement while preserving pkt-line framing.
+func RemoveAdvertisementCapability(data []byte, capability string) ([]byte, error) {
+	scanner := NewScanner(data)
+	result := make([]byte, 0, len(data))
+	rewritten := false
+	for {
+		payload, flush, err := scanner.Next()
+		if errors.Is(err, ErrDone) {
+			return result, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if flush {
+			result = AppendFlushPkt(result)
+			continue
+		}
+		if !rewritten {
+			payload, rewritten = removeCapability(payload, capability)
+		}
+		result, err = AppendPktLine(result, payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+func removeCapability(payload []byte, capability string) ([]byte, bool) {
+	separator := bytes.IndexByte(payload, 0)
+	if separator < 0 {
+		return payload, false
+	}
+	hasNewline := bytes.HasSuffix(payload, []byte("\n"))
+	fields := strings.Fields(string(payload[separator+1:]))
+	kept := fields[:0]
+	for _, field := range fields {
+		if field != capability && !strings.HasPrefix(field, capability+"=") {
+			kept = append(kept, field)
+		}
+	}
+	result := append([]byte(nil), payload[:separator+1]...)
+	result = append(result, strings.Join(kept, " ")...)
+	if hasNewline {
+		result = append(result, '\n')
+	}
+	return result, true
 }

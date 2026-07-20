@@ -590,7 +590,11 @@ func (s *Server) gitInfoRefs(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), s.proxyGit)
+	proxy := s.proxyGit
+	if c.QueryParam("service") == "git-receive-pack" {
+		proxy = s.proxyReceivePackAdvertisement
+	}
+	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), proxy)
 }
 
 func (s *Server) gitUploadPack(c echo.Context) error {
@@ -632,8 +636,9 @@ func (s *Server) readReceivePackBody(c echo.Context) ([]byte, receivePackRequest
 func (s *Server) authorizeReceivePackCommands(c echo.Context, body []byte, commands []receivePackCommand, pack []byte) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
 	authorized := make([]authorizedReceivePackRequest, 0, len(commands))
 	requestable := make([]requestableReceivePackRequest, 0, len(commands))
+	graph := inspectReceivePackGraph(c.Request().Context(), pack, s.maxReceivePackBytes)
 	for _, command := range commands {
-		operation, err := s.classifyReceivePackCommand(c, command, pack)
+		operation, err := s.classifyReceivePackCommand(command, graph)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -762,9 +767,10 @@ func gitTransportOperation(value string) (policy.Operation, bool) {
 	switch value {
 	case "git-upload-pack", "download":
 		return policy.OperationGitFetch, true
-	case "git-receive-pack", "upload":
-		// LFS uploads remain unreachable until receive-pack authorizes a ref update.
+	case "git-receive-pack":
 		return policy.OperationGitPushAdvertise, true
+	case "upload":
+		return policy.OperationGitLFSWrite, true
 	default:
 		return "", false
 	}
@@ -818,7 +824,7 @@ func (s *Server) proxyGit(c echo.Context) error {
 	})
 }
 
-func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackCommand, pack []byte) (policy.Operation, error) {
+func (s *Server) classifyReceivePackCommand(command receivePackCommand, graph receivePackGraph) (policy.Operation, error) {
 	switch {
 	case isZeroOID(command.NewOID):
 		return policy.OperationGitRefDelete, nil
@@ -828,7 +834,7 @@ func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackC
 		return "", echo.NewHTTPError(http.StatusForbidden, "unsupported git ref update")
 	case isZeroOID(command.OldOID):
 		return policy.OperationGitPushBranchCreate, nil
-	case receivePackProvesFastForward(c.Request().Context(), command.OldOID, command.NewOID, pack, s.maxReceivePackBytes):
+	case graph.provesFastForward(command.OldOID, command.NewOID):
 		return policy.OperationGitPushFastForward, nil
 	default:
 		return policy.OperationGitPushForce, nil
