@@ -23,6 +23,8 @@ type receivePackApproval struct {
 	GrantID string
 }
 
+var errGitApprovalChannelUnavailable = errors.New("approval channel is not configured")
+
 func (s *Server) authorizeGitMutation(c echo.Context, request policy.Request) (policy.Decision, *receivePackApproval, error) {
 	core := policy.AuthorizationRequest(
 		request.Client,
@@ -31,13 +33,23 @@ func (s *Server) authorizeGitMutation(c echo.Context, request policy.Request) (p
 		policy.CoreTarget(request.Target).Fields,
 		corepolicy.SingletonValues(request.Attrs),
 	)
-	result, err := s.authorization.Authorize(core, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
-		return s.prepareGitApprovalIntent(request, core, decision)
-	})
+	var result bkauthorization.Result
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		result, err = s.authorization.Authorize(core, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+			return s.prepareGitApprovalIntent(request, core, decision)
+		})
+		if !errors.Is(err, grants.ErrIdempotencyConflict) {
+			break
+		}
+	}
 	decision := s.policy.AuthorizationDecision(result.Decision)
 	if err != nil {
 		if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
 			return decision, nil, nil
+		}
+		if errors.Is(err, errGitApprovalChannelUnavailable) {
+			return decision, nil, echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
 		}
 		s.logger.Error("authorize Git push", "operation", request.Operation, "target", request.Target.Owner+"/"+request.Target.Name, "error", err)
 		s.audit(c, request, "error", "could not authorize git push", 0, decision.MatchedRuleIDs)
@@ -81,7 +93,7 @@ func (s *Server) prepareGitApprovalIntent(request policy.Request, authorization 
 
 func (s *Server) gitApprovalBounds(decision corepolicy.Decision) (*corepolicy.GrantPolicy, error) {
 	if s.notifier == nil && !s.operatorConfigured {
-		return nil, errors.New("approval channel is not configured")
+		return nil, errGitApprovalChannelUnavailable
 	}
 	if decision.GrantPolicy == nil || corepolicy.GrantMode(decision.GrantPolicy.Mode) != corepolicy.GrantModeWindow {
 		return nil, errors.New("Git push requires a window approval") //nolint:staticcheck // Git is a product name.

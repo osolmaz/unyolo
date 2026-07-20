@@ -18,6 +18,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
+	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
@@ -749,6 +752,64 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 	}
 	if len(notifier.messages) != 2 {
 		t.Fatalf("notifications = %d, want 2", len(notifier.messages))
+	}
+}
+
+func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls atomic.Int32
+	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		w.WriteHeader(http.StatusOK)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	ready := &sync.WaitGroup{}
+	ready.Add(2)
+	release := make(chan struct{})
+	var clockCalls atomic.Int64
+	planStore, err := ghplan.NewStoreWithClock(server.database, "development-token", func() time.Time {
+		call := clockCalls.Add(1)
+		ready.Done()
+		<-release
+		return time.Date(2026, 7, 20, 0, 0, 0, int(call), time.UTC)
+	})
+	if err != nil {
+		t.Fatalf("NewStoreWithClock() error = %v", err)
+	}
+	server.plans = planStore
+	body := receivePackCreate("refs/tags/v1.0.0")
+	responses := make(chan *httptest.ResponseRecorder, 2)
+	for range 2 {
+		go func() {
+			responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+		}()
+	}
+	ready.Wait()
+	close(release)
+	for range 2 {
+		response := <-responses
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "approve and retry") {
+			t.Errorf("status = %d, body = %q", response.Code, response.Body.String())
+		}
+	}
+	items, err := server.grants.ListForClient("bob")
+	if err != nil || len(items) != 1 || items[0].Status != grants.StatusPending {
+		t.Fatalf("pending grants = %+v, error = %v", items, err)
+	}
+	if len(notifier.messages) != 1 || upstreamCalls.Load() != 0 {
+		t.Fatalf("notifications = %d, upstream calls = %d, want 1/0", len(notifier.messages), upstreamCalls.Load())
+	}
+}
+
+func TestGitReceivePackReportsUnavailableApprovalChannel(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(http.ResponseWriter, *http.Request) {
+		t.Fatal("unapproved Git push reached upstream")
+	})
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), receivePackCreate("refs/tags/v1.0.0"))
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "approval channel is not configured") {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
 }
 
