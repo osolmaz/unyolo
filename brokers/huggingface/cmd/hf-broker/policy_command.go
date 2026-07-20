@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 
+	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
-	sharedpreset "github.com/osolmaz/brokerkit/policypreset"
 )
 
 const policyUsage = `usage:

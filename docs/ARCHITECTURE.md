@@ -31,31 +31,27 @@ provider-specific message wording, and execution.
 
 ## Package Boundaries
 
-Current package boundaries:
+BrokerKit groups shared packages by product domain:
 
 ```text
 brokerkit/
-├── auth/       # Broker-client authentication.
-├── policy/     # Generic rules, registries, decisions, grant overlays.
-├── grants/     # Durable short-lived grant records.
-├── audit/      # Secret-safe audit event helpers.
-├── httpx/      # Header filtering and body-limit helpers.
-├── agentclient/ # Authenticated Agent Operations and bounded transfer client.
-├── agentmcp/    # Provider-neutral MCP-to-Agent-Operations bridge.
-├── mcpserver/   # Strict bounded JSON-RPC/MCP stdio transport.
-├── operationruntime/ # Durable provider adapter registry and execution runtime.
-├── approvalview/   # Bounded channel-neutral operator presentation.
-├── approvalnotify/ # Semantic approval notification projection.
-├── notify/         # Typed notification lifecycle and channel adapters.
-├── store/      # Atomic local stores and locks.
-├── gitclient/  # Standard Git URL routing and credential-helper integration.
-├── gitserver/  # Git-only listener isolation and identity handshake.
-└── gitx/       # Generic Git smart-HTTP parsing helpers.
+|-- agent/         # Agent API, clients, runtime, MCP bridge, and wire adapters.
+|-- approval/      # Decision presentation and notification lifecycle.
+|-- authorization/ # Admission, policy, grants, decisions, and use budgets.
+|-- broker/        # Shared control-plane assembly and conformance.
+|-- credential/    # Provider credential contracts, storage, and lifecycle.
+|-- git/           # Git client, server boundary, and protocol mechanics.
+|-- mcp/           # Strict MCP transport and operation projection.
+|-- operation/     # Capabilities, plans, payloads, and execution runtime.
+|-- operator/      # Operator API, auth, clients, inbox, and wire adapters.
+|-- telemetry/     # Audit and operational metrics.
+|-- transport/     # Endpoint and HTTP transport profiles.
+`-- internal/      # Module-private host, config, storage, and tooling code.
 ```
 
-The implemented package names are the initial brokerkit API surface.
-
-The canonical ownership boundary is [OWNERSHIP.md](OWNERSHIP.md).
+The complete layout and package placement rules are in
+[DIRECTORY_STRUCTURE.md](DIRECTORY_STRUCTURE.md). The canonical ownership
+boundary is [OWNERSHIP.md](OWNERSHIP.md).
 
 ## What Belongs Here
 
@@ -102,8 +98,8 @@ brokerkit must not contain:
 Each broker must register its own vocabulary.
 
 MCP-enabled brokers also register provider-owned schemas, projections, and
-runtime adapters. `mcpserver` owns JSON-RPC mechanics, `agentmcp` owns durable
-operation submission and recovery, and `agentclient` owns authenticated wire
+runtime adapters. `mcp/server` owns JSON-RPC mechanics, `agent/mcp` owns durable
+operation submission and recovery, and `agent/client` owns authenticated wire
 transport. Authorization mode remains policy data; it never selects a
 provider-specific MCP dispatch path.
 

@@ -16,12 +16,12 @@ import (
 	"time"
 
 	"github.com/dlclark/regexp2"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/mcpoperation"
+	"github.com/osolmaz/brokerkit/mcp/operation"
+	"github.com/osolmaz/brokerkit/operation/capability"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 

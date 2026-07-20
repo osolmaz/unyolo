@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operationruntime"
+	"github.com/osolmaz/brokerkit/operation/runtime"
 )
 
 type Input struct {

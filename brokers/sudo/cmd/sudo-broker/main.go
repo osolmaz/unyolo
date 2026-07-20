@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/statecmd"
+	"github.com/osolmaz/brokerkit/internal/storage/command"
 )
 
 var version = "dev"

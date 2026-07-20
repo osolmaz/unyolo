@@ -1,7 +1,7 @@
 # Operational Observability
 
 Every broker owns an isolated Prometheus registry created by BrokerKit's
-`observability` package. Metrics are exposed at `GET /metrics` only on the
+`telemetry/metrics` package. Metrics are exposed at `GET /metrics` only on the
 configured operator listener and require the same operator bearer credential as
 Operator V1. The agent listener never serves metrics. A broker without an
 operator listener has no metrics HTTP surface.

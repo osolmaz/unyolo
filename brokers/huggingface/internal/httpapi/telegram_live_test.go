@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/grants"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
 func TestTelegramLiveSendApproval(t *testing.T) {

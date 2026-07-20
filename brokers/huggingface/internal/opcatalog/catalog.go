@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 const ExpectedCount = 258

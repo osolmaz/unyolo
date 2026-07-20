@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/mcpoperation"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/mcp/operation"
 )
 
 const agentClientTestSecret = "abcdefghijklmnopqrstuvwxyz123456"

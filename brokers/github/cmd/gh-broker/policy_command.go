@@ -8,10 +8,10 @@ import (
 	"io"
 	"os"
 
+	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
-	sharedpreset "github.com/osolmaz/brokerkit/policypreset"
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 )
 
 const policyUsage = `usage:

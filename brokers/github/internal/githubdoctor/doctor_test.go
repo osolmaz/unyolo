@@ -17,8 +17,8 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/credentialstore"
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	"github.com/osolmaz/brokerkit/credential/store"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {

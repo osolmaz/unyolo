@@ -8,11 +8,11 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
 )
 
 const defaultStateDir = "./state"

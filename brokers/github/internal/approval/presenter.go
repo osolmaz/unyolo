@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/approvalview"
+	"github.com/osolmaz/brokerkit/approval/view"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/policy"
 )
 
 // Presenter projects canonical GitHub grants into bounded display fields.

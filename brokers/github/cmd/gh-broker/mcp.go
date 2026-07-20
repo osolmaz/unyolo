@@ -9,17 +9,17 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agentclient"
-	"github.com/osolmaz/brokerkit/agentmcp"
+	"github.com/osolmaz/brokerkit/agent/client"
+	"github.com/osolmaz/brokerkit/agent/mcp"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/credential/store"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/mcpoperation"
-	"github.com/osolmaz/brokerkit/mcpserver"
-	"github.com/osolmaz/brokerkit/streamstore"
+	"github.com/osolmaz/brokerkit/mcp/operation"
+	"github.com/osolmaz/brokerkit/mcp/server"
 )
 
 type mcpOperationInput struct {

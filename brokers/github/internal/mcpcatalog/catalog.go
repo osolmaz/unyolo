@@ -13,7 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 type Exposure struct {

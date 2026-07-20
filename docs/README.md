@@ -6,6 +6,7 @@ component documentation.
 ## Start Here
 
 - [Architecture](ARCHITECTURE.md)
+- [Directory structure](DIRECTORY_STRUCTURE.md)
 - [Unified broker contract](UNIFIED_BROKER_CONTRACT.md)
 - [Ownership boundaries](OWNERSHIP.md)
 - [Security threat model](security/THREAT_MODEL.md)

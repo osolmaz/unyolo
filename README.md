@@ -80,6 +80,8 @@ The full boundary and fail-closed behavior are in
 install, setup, policy, grant, approval, audit, and doctor contract that all
 brokers follow is in
 [docs/UNIFIED_BROKER_CONTRACT.md](docs/UNIFIED_BROKER_CONTRACT.md).
+The canonical package layout and placement rules are in
+[docs/DIRECTORY_STRUCTURE.md](docs/DIRECTORY_STRUCTURE.md).
 
 ## Building from source
 

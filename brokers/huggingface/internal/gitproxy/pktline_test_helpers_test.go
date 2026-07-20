@@ -1,6 +1,6 @@
 package gitproxy
 
-import "github.com/osolmaz/brokerkit/gitx"
+import "github.com/osolmaz/brokerkit/git/protocol"
 
 func appendTestPkt(dst, payload []byte) []byte {
 	encoded, err := gitx.AppendPktLine(dst, payload)

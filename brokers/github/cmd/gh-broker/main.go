@@ -15,9 +15,9 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubsurface"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/endpoint"
-	"github.com/osolmaz/brokerkit/serverhttp"
-	"github.com/osolmaz/brokerkit/statecmd"
+	"github.com/osolmaz/brokerkit/internal/storage/command"
+	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/brokerkit/transport/http/server"
 )
 
 var version = "dev"

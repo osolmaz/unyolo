@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 )
 
 const setupUsage = `usage:

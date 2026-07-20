@@ -9,7 +9,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 type Client struct {

@@ -9,7 +9,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operationruntime"
+	"github.com/osolmaz/brokerkit/operation/runtime"
 )
 
 var IsPossiblePartial = operationruntime.IsPossiblePartial

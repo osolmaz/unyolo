@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	corepolicy "github.com/osolmaz/brokerkit/policy"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 )
 
 var errNoCompatibleTargets = errors.New("no compatible targets")

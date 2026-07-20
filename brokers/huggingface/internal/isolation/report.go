@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 // WriteText writes the human-readable report.

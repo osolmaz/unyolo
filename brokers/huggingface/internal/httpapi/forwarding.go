@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
-	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/transport/http"
 )
 
 func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {

@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/operatorclient"
+	"github.com/osolmaz/brokerkit/operator/client"
 )
 
 const maxConfigBytes = 64 * 1024

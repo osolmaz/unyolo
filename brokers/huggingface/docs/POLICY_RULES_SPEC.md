@@ -9,7 +9,7 @@ and generated temporary grants.
 `scope.json` contains one top-level `rules` field. Unknown fields and unsupported
 record shapes fail validation.
 
-The generic policy engine lives in `github.com/osolmaz/brokerkit/policy`.
+The generic policy engine lives in `github.com/osolmaz/brokerkit/authorization/policy`.
 hf-broker keeps only the Hugging Face-specific rules-file parser, operation
 registry, target definitions, attrs, request classification, and adapters into
 the shared engine. Generic grant lifecycle, approval workflow, Telegram

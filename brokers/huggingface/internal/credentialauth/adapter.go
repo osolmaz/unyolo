@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/providercredential"
+	"github.com/osolmaz/brokerkit/credential/provider"
 )
 
 // Adapter projects Hugging Face fine-grained tokens into BrokerKit's shared model.

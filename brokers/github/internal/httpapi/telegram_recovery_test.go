@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approvalnotify"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 )
 
 func TestTelegramCallbackRecoversAmbiguousNotification(t *testing.T) {

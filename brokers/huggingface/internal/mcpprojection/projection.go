@@ -4,7 +4,7 @@ package mcpprojection
 import (
 	"encoding/json"
 
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 var variableName = capability.MustProjection(capability.FieldProjection{Canonical: "/key", MCP: "/variable_name"})

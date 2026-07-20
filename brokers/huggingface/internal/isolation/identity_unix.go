@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func lookupUserIdentity(name string, pid int) (identity, error) {

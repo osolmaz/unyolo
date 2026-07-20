@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	sudoplan "github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operationruntime"
+	"github.com/osolmaz/brokerkit/operation/runtime"
 )
 
 func TestCommandAdapterResolveAndStoredPlanBinding(t *testing.T) {

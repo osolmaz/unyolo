@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {

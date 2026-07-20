@@ -18,10 +18,10 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/credentialstore"
-	"github.com/osolmaz/brokerkit/sealedstore"
-	"github.com/osolmaz/brokerkit/streamstore"
+	"github.com/osolmaz/brokerkit/credential/store"
+	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func TestGeneratedRegistryCoversAgentFacingOperations(t *testing.T) {

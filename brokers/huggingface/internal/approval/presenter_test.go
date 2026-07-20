@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/approvalview"
+	"github.com/osolmaz/brokerkit/approval/view"
+	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
+	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	bkgrants "github.com/osolmaz/brokerkit/grants"
-	bkpolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 func TestPresenterRendersSafeHFDetails(t *testing.T) {

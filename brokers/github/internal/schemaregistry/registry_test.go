@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func TestSchemasCoverCatalogAndAreClosed(t *testing.T) {

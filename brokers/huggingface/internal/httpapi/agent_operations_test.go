@@ -14,16 +14,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentconformance"
-	"github.com/osolmaz/brokerkit/agentv1"
-	bkapprovalnotify "github.com/osolmaz/brokerkit/approvalnotify"
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/agent/conformance"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	bkapprovalnotify "github.com/osolmaz/brokerkit/approval/notification"
+	bknotify "github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	bknotify "github.com/osolmaz/brokerkit/notify"
-	"github.com/osolmaz/brokerkit/operatorv1"
+	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 const (

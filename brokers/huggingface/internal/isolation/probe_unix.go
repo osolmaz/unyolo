@@ -6,7 +6,7 @@ import (
 	"context"
 	"strconv"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func runActiveProbe(ctx context.Context, agent identity, opts Options) (ProbeResult, bool, error) {

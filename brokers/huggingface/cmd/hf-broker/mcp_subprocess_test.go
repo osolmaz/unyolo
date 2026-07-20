@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
 )
 
 const mcpHelperEnvironment = "BROKERKIT_HF_MCP_HELPER"

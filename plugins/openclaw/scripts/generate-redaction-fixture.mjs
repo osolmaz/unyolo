@@ -73,7 +73,7 @@ const fixture = {
 };
 const output = `${JSON.stringify(fixture, null, 2)}\n`;
 const target = new URL(
-  "../../../capability/testdata/openclaw-redaction-v2026.7.1.json",
+  "../../../operation/capability/testdata/openclaw-redaction-v2026.7.1.json",
   import.meta.url,
 );
 

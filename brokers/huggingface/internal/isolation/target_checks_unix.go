@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func runActiveProbeChecks(ctx context.Context, report *Report, agent identity, opts Options) {

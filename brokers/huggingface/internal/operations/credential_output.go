@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/credential/store"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 

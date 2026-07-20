@@ -11,16 +11,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/audit"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/slicex"
-	"github.com/osolmaz/brokerkit/plandigest"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func (s *Server) handleReceivePack(w http.ResponseWriter, r *http.Request, client string, rt route, target string) {

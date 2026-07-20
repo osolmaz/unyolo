@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/internal/storage/sealed"
 )
 
 func (a *sandboxAdapter) executeSandboxCreate(ctx context.Context, target sandboxTarget, raw json.RawMessage, expected sandboxPreconditions) (Outcome, error) {

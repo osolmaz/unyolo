@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/tooling/release"
+	"github.com/osolmaz/brokerkit/internal/tooling/release"
 )
 
 func main() {

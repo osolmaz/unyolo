@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/operatorclient"
-	"github.com/osolmaz/brokerkit/operatorv1"
-	"github.com/osolmaz/brokerkit/service"
+	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/internal/host/service"
+	"github.com/osolmaz/brokerkit/operator/client"
+	"github.com/osolmaz/brokerkit/operator/v1"
 )
 
 func TestParseSetupOptionsCapturesConfiguredRoutes(t *testing.T) {

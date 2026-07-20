@@ -4,8 +4,8 @@ package sudopolicy
 import (
 	"sort"
 
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 const (

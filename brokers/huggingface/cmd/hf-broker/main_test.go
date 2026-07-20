@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/clienthttp"
+	"github.com/osolmaz/brokerkit/transport/http/client"
 )
 
 func TestRunFailsClosedWhenRequiredEnvMissing(t *testing.T) {

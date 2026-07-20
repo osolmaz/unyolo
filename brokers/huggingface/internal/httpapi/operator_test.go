@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
+	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/brokerkit/broker/conformance"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/conformance"
-	bkgrants "github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operatorclient"
-	"github.com/osolmaz/brokerkit/operatorv1"
-	bkpolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/operator/client"
+	"github.com/osolmaz/brokerkit/operator/v1"
 )
 
 func TestBrokerkitControlPlaneConformance(t *testing.T) {

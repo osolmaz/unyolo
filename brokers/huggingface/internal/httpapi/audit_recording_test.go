@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	bkpolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func TestOperationOutcomeAuditBindsPlanPolicyAndApproval(t *testing.T) {

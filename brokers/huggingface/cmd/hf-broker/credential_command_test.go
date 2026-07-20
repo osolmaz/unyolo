@@ -17,9 +17,9 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/credentiallifecycle"
-	"github.com/osolmaz/brokerkit/providercredential"
-	bkservice "github.com/osolmaz/brokerkit/service"
+	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/brokerkit/credential/provider"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
 )
 
 func TestCredentialInspectReadsTokenFromStdinWithoutLeakingIt(t *testing.T) {

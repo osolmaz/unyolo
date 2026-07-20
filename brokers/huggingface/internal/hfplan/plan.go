@@ -12,14 +12,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/plandigest"
-	"github.com/osolmaz/brokerkit/providercredential"
-	"github.com/osolmaz/brokerkit/state"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 const (

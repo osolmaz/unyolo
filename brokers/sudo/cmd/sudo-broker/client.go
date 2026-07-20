@@ -12,8 +12,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agentclient"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/client"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
 )
 

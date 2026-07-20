@@ -7,22 +7,22 @@ backend and presents the resulting safe records in its own UI.
 
 ## Packages
 
-- `grants` owns revisioned requests, bounded queries, decisions, lifecycle
-  events, retention, and durable cursors.
-- `approvalview` owns the provider-neutral bounded presentation model, risk
+- `authorization/grants` owns revisioned requests, bounded queries, decisions,
+  lifecycle events, retention, and durable cursors.
+- `approval/view` owns the provider-neutral bounded presentation model, risk
   vocabulary, warnings, validation, defensive copies, and safe fallback.
-- `operatorinbox` combines canonical grants with a broker-owned safe
+- `operator/inbox` combines canonical grants with a broker-owned safe
   presenter. Presenter failure returns a generic item instead of hiding the
   request.
-- `approvalnotify` projects the same validated presentation into a semantic
-  notification envelope without transport markup or decision-token
+- `approval/notification` projects the same validated presentation into a
+  semantic notification envelope without transport markup or decision-token
   persistence.
-- `operatorauth` authenticates dedicated operator credentials and rejects any
+- `operator/auth` authenticates dedicated operator credentials and rejects any
   credential reused by a broker client.
-- `operatorapi` exposes the protected JSON and SSE routes and requires an
+- `operator/api` exposes the protected JSON and SSE routes and requires an
   authorizer, broker name, and audit recorder at construction time.
-- `operatorclient` is the small Go client used by trusted host applications.
-- `operatorfake` runs the production handler and store behavior in consumer
+- `operator/client` is the small Go client used by trusted host applications.
+- `operator/fake` runs the production handler and store behavior in consumer
   tests.
 
 ## Broker Mount
@@ -94,7 +94,7 @@ The SSE route sends durable cursors as both `id` and the event object's
 cursor older than retained history returns `410 cursor_expired`; the consumer
 must refresh the list before reconnecting.
 
-Checked-in wire examples are under `operatorapi/testdata`.
+Checked-in wire examples are under `operator/api/testdata`.
 
 ## Trusted Host Integration
 
@@ -103,7 +103,7 @@ A trusted presentation host is not another grant authority:
 ```text
 browser session
     -> trusted web backend
-    -> operatorclient using a server-held operator credential
+    -> operator/client using a server-held operator credential
     -> broker operator API
     -> canonical Brokerkit grant store
 ```

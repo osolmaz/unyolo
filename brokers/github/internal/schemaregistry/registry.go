@@ -15,9 +15,9 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
-	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/internal/copyx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 type Operation struct {

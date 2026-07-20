@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 func IsOperation(value string) bool {

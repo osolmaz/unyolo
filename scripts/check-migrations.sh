@@ -2,7 +2,7 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-directory="$root/state/migrations"
+directory="$root/internal/storage/state/migrations"
 actual=$(mktemp)
 trap 'rm -f "$actual"' EXIT
 

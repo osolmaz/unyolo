@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/plandigest"
-	"github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 func TestCoordinatorAuthorizeOrRequest(t *testing.T) {

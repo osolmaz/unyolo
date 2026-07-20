@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/approvalview"
+	"github.com/osolmaz/brokerkit/approval/view"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
 )
 
 func TestPresenterUsesSafeCatalogFacts(t *testing.T) {

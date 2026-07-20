@@ -52,7 +52,7 @@ linters:
       - path: "^brokers/sudo/"
         linters:
           - cyclop
-      - path: "^conformance/"
+      - path: "^broker/conformance/"
         linters:
           - cyclop
 

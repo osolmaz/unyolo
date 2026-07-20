@@ -3,7 +3,7 @@
 /*.test
 /target/
 **/target/
-/policy/target/
+/tmp/
 node_modules/
 plugins/openclaw/dist/
 plugins/openclaw/test-results/

@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/brokerkit/transport/http"
 )
 
 const maxWebhookBodyBytes int64 = 1024 * 1024

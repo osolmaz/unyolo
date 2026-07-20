@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/sealedpayload"
-	"github.com/osolmaz/brokerkit/sealedstore"
-	"github.com/osolmaz/brokerkit/streamstore"
+	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
+	"github.com/osolmaz/brokerkit/operation/payload"
 )
 
 const operationTestSecret = "0123456789abcdef0123456789abcdef"

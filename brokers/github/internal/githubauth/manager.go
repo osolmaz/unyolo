@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/credentiallifecycle"
-	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/brokerkit/credential/store"
 )
 
 type Config struct {

@@ -3,7 +3,7 @@ package gitproxy
 import (
 	"context"
 
-	"github.com/osolmaz/brokerkit/gitx"
+	"github.com/osolmaz/brokerkit/git/protocol"
 )
 
 const (

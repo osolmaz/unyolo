@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentmcp"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/mcp"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/mcpoperation"
-	"github.com/osolmaz/brokerkit/mcpserver"
-	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/brokerkit/mcp/operation"
+	"github.com/osolmaz/brokerkit/mcp/server"
 )
 
 func mcpTestEnv(values map[string]string) func(string) string {
