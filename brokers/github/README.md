@@ -282,7 +282,9 @@ rules when operations need different attrs. Start from
 The default production-oriented workflow is:
 
 - allow fetch, repository listing, and content reads for scoped repositories
-- allow agents to push feature branches such as `refs/heads/agent-a/*`
+- allow agents to push namespaced feature branches such as
+  `refs/heads/agent-a/**`; Git ref attributes use recursive path globs, so
+  `**` includes nested branch names
 - allow agents to open pull requests into `refs/heads/main`
 - deny ref deletion and default-branch pushes unless a repository has an
   explicit allow rule
