@@ -249,11 +249,15 @@ func (s *Server) proxyGitHubLFSAction(c echo.Context, action githubLFSAction) er
 }
 
 func (s *Server) gitLFSDirect(c echo.Context) error {
-	operation := policy.OperationGitFetch
-	if c.Request().Method == http.MethodPost && !strings.HasSuffix(c.Request().URL.Path, "/locks/verify") {
-		operation = policy.OperationGitLFSWrite
-	}
+	operation := gitLFSDirectOperation(c.Request().Method, c.Request().URL.Path)
 	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), s.proxyGit)
+}
+
+func gitLFSDirectOperation(method, path string) policy.Operation {
+	if method == http.MethodPost && !strings.HasSuffix(path, "/locks/verify") {
+		return policy.OperationGitLFSWrite
+	}
+	return policy.OperationGitFetch
 }
 
 func (s *Server) newGitHubLFSRequest(c echo.Context, upstream *url.URL, headers http.Header) (*http.Request, error) {

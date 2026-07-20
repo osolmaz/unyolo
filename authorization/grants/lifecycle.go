@@ -293,19 +293,30 @@ func (s *Store) WaitForDecision(ctx context.Context, id string) (Grant, error) {
 		if grant.Status != StatusPending {
 			return grant, nil
 		}
-		page, err := s.WaitForEvents(ctx, cursor)
-		if errors.Is(err, ErrCursorExpired) {
-			continue
-		}
+		decided, err := s.waitForDecisionEvent(ctx, cursor, id)
 		if err != nil {
 			return Grant{}, err
 		}
-		for _, event := range page.Events {
-			if event.GrantID == id && event.Status != StatusPending {
-				return s.Get(id)
-			}
+		if decided {
+			return s.Get(id)
 		}
 	}
+}
+
+func (s *Store) waitForDecisionEvent(ctx context.Context, cursor, id string) (bool, error) {
+	page, err := s.WaitForEvents(ctx, cursor)
+	if errors.Is(err, ErrCursorExpired) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, event := range page.Events {
+		if event.GrantID == id && event.Status != StatusPending {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Store) latestGrantCursor(id string) (string, error) {

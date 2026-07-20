@@ -446,6 +446,13 @@ func TestWaitForDecisionHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestWaitForDecisionRejectsUnknownGrant(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	if _, err := store.WaitForDecision(t.Context(), "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("WaitForDecision() error = %v", err)
+	}
+}
+
 func TestDecisionLifecycleRecordContainsDurableAuditFields(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
 	result, _, err := store.Request(testOperatorRequest("durable-audit"))

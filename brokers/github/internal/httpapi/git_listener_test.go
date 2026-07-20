@@ -88,6 +88,28 @@ func TestReceivePackAdvertisementRemovesThinPack(t *testing.T) {
 	}
 }
 
+func TestReceivePackAdvertisementRejectsMalformedUpstream(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("bad"))
+	})
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestReceivePackAdvertisementPreservesUpstreamRefusal(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "denied", http.StatusForbidden)
+	})
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "denied") {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
+
 func TestGitHubLFSBatchKeepsSignedActionInsideBroker(t *testing.T) {
 	t.Parallel()
 	oid := strings.Repeat("a", 64)
@@ -164,5 +186,88 @@ func TestGitHubLFSWritesUseDedicatedPolicyOperation(t *testing.T) {
 	}
 	if _, found := server.lfsActions["0"]; found {
 		t.Fatal("oldest LFS action was not evicted")
+	}
+}
+
+func TestGitHubLFSDirectRoutesUseReadAndWritePolicy(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	for _, test := range []struct {
+		path string
+		want policy.Operation
+	}{
+		{path: "/dutifuldev/gh-broker.git/info/lfs/locks", want: policy.OperationGitLFSWrite},
+		{path: "/dutifuldev/gh-broker.git/info/lfs/locks/verify", want: policy.OperationGitFetch},
+	} {
+		response := doWithBody(t, server, http.MethodPost, test.path, bearerAuth(), []byte(`{}`))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, body = %q", test.path, response.Code, response.Body.String())
+		}
+		if got := gitLFSDirectOperation(http.MethodPost, test.path); got != test.want {
+			t.Fatalf("%s operation = %q, want %q", test.path, got, test.want)
+		}
+	}
+}
+
+func TestGitHubLFSResponseFailures(t *testing.T) {
+	t.Parallel()
+	for name, responseBody := range map[string]string{"malformed": "{", "oversized": strings.Repeat("x", maxGitHubLFSBatch+1)} {
+		t.Run(name, func(t *testing.T) {
+			server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(responseBody))
+			})
+			response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
+			if response.Code != http.StatusBadGateway {
+				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+			}
+		})
+	}
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "denied", http.StatusForbidden) })
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("upstream refusal status = %d", response.Code)
+	}
+	failing := newTestServer(t)
+	failing.githubGitClient = &http.Client{Transport: errorRoundTripper{}}
+	response = doWithBody(t, failing, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("transport failure status = %d", response.Code)
+	}
+}
+
+func TestDoGitHubLFSRequestFailsClosed(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	invalid := &http.Request{URL: &url.URL{Scheme: "ftp", Host: "example.test"}}
+	if _, err := server.doGitHubLFSRequest(invalid); err == nil {
+		t.Fatal("invalid LFS action URL was accepted")
+	}
+	redirecting := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "/elsewhere")
+		w.WriteHeader(http.StatusFound)
+	})
+	request, err := http.NewRequest(http.MethodGet, redirecting.githubGitBaseURL.JoinPath("redirect").String(), http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := redirecting.doGitHubLFSRequest(request); err == nil {
+		t.Fatal("GitHub LFS redirect was accepted")
+	}
+}
+
+func TestRewriteGitHubLFSObjectRejectsInvalidObjects(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	context := newGitContext(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", nil)
+	server.rewriteGitHubLFSObject(context, "bob", policy.OperationGitFetch, "invalid")
+	invalid := map[string]any{"oid": "bad", "size": json.Number("4"), "actions": map[string]any{"download": map[string]any{}}}
+	server.rewriteGitHubLFSObject(context, "bob", policy.OperationGitFetch, invalid)
+	if _, found := invalid["actions"]; found {
+		t.Fatal("invalid object retained actions")
+	}
+	valid := map[string]any{"oid": strings.Repeat("a", 64), "size": json.Number("4"), "actions": map[string]any{"bad": "invalid"}}
+	server.rewriteGitHubLFSObject(context, "bob", policy.OperationGitFetch, valid)
+	if len(valid["actions"].(map[string]any)) != 0 {
+		t.Fatalf("invalid action retained: %+v", valid)
 	}
 }

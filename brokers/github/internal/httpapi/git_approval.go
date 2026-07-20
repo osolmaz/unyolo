@@ -160,14 +160,17 @@ func receivePackApprovalBounds(items []requestableReceivePackRequest) (time.Dura
 		}
 		candidateDuration := time.Duration(bounds.DefaultMinutes) * time.Minute
 		candidatePending := time.Duration(bounds.RequestTTLMinutes) * time.Minute
-		if duration == 0 || candidateDuration < duration {
-			duration = candidateDuration
-		}
-		if pending == 0 || candidatePending < pending {
-			pending = candidatePending
-		}
+		duration = shorterNonZeroDuration(duration, candidateDuration)
+		pending = shorterNonZeroDuration(pending, candidatePending)
 	}
 	return duration, pending, nil
+}
+
+func shorterNonZeroDuration(current, candidate time.Duration) time.Duration {
+	if current == 0 || candidate < current {
+		return candidate
+	}
+	return current
 }
 
 func receivePackTransactionAttrs(body []byte, commands []receivePackCommand, authorized []authorizedReceivePackRequest) map[string][]string {
