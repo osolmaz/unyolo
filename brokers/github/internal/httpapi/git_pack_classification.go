@@ -17,16 +17,25 @@ const (
 type receivePackGraph struct {
 	parents map[string][]string
 	valid   bool
+	failure string
 }
 
-func inspectReceivePackGraph(ctx context.Context, pack []byte, maxPackBytes int64) receivePackGraph {
+func (s *Server) receivePackGraphForRepo(ctx context.Context, owner, repo string, pack []byte) receivePackGraph {
+	graph := inspectReceivePackGraph(ctx, pack, s.maxReceivePackBytes, s.githubPackBaseReader(owner, repo))
+	if graph.failure != "" {
+		s.logger.Warn("could not inspect Git push pack", "error", graph.failure)
+	}
+	return graph
+}
+
+func inspectReceivePackGraph(ctx context.Context, pack []byte, maxPackBytes int64, readBase gitx.PackBaseReader) receivePackGraph {
 	if len(pack) < 4 || !bytes.Equal(pack[:4], []byte("PACK")) {
 		return receivePackGraph{}
 	}
 	limits := githubPushPackLimits(maxPackBytes)
-	objects, err := gitx.ExtractCommitAndTagObjects(ctx, pack, limits, nil)
+	objects, err := gitx.ExtractCommitAndTagObjects(ctx, pack, limits, readBase)
 	if err != nil {
-		return receivePackGraph{}
+		return receivePackGraph{failure: err.Error()}
 	}
 	parents := make(map[string][]string, len(objects))
 	for _, object := range objects {

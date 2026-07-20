@@ -586,7 +586,7 @@ func health(c echo.Context) error {
 }
 
 func (s *Server) gitInfoRefs(c echo.Context) error {
-	operation, err := requireGitTransportOperation(c.QueryParam("service"), "unsupported git service")
+	operation, err := requireGitServiceOperation(c.QueryParam("service"))
 	if err != nil {
 		return err
 	}
@@ -636,7 +636,9 @@ func (s *Server) readReceivePackBody(c echo.Context) ([]byte, receivePackRequest
 func (s *Server) authorizeReceivePackCommands(c echo.Context, body []byte, commands []receivePackCommand, pack []byte) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
 	authorized := make([]authorizedReceivePackRequest, 0, len(commands))
 	requestable := make([]requestableReceivePackRequest, 0, len(commands))
-	graph := inspectReceivePackGraph(c.Request().Context(), pack, s.maxReceivePackBytes)
+	graph := s.receivePackGraphForRepo(
+		c.Request().Context(), c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git"), pack,
+	)
 	for _, command := range commands {
 		operation, err := s.classifyReceivePackCommand(command, graph)
 		if err != nil {
@@ -763,23 +765,21 @@ func (s *Server) repoRequest(c echo.Context, operation policy.Operation, attrs m
 	}
 }
 
-func gitTransportOperation(value string) (policy.Operation, bool) {
+func gitServiceOperation(value string) (policy.Operation, bool) {
 	switch value {
-	case "git-upload-pack", "download":
+	case "git-upload-pack":
 		return policy.OperationGitFetch, true
 	case "git-receive-pack":
 		return policy.OperationGitPushAdvertise, true
-	case "upload":
-		return policy.OperationGitLFSWrite, true
 	default:
 		return "", false
 	}
 }
 
-func requireGitTransportOperation(value, message string) (policy.Operation, error) {
-	operation, ok := gitTransportOperation(value)
+func requireGitServiceOperation(value string) (policy.Operation, error) {
+	operation, ok := gitServiceOperation(value)
 	if !ok {
-		return "", echo.NewHTTPError(http.StatusBadRequest, message)
+		return "", echo.NewHTTPError(http.StatusBadRequest, "unsupported git service")
 	}
 	return operation, nil
 }

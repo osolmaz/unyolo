@@ -54,7 +54,7 @@ func (s *Server) gitLFSBatch(c echo.Context) error {
 	if err := strictjson.Decode(body, &request, false); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid Git LFS batch request")
 	}
-	operation, err := requireGitTransportOperation(request.Operation, "unsupported Git LFS operation")
+	operation, err := requireGitLFSBatchOperation(request.Operation)
 	if err != nil {
 		return err
 	}
@@ -63,6 +63,17 @@ func (s *Server) gitLFSBatch(c echo.Context) error {
 	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), func(c echo.Context) error {
 		return s.proxyGitLFSBatch(c, operation)
 	})
+}
+
+func requireGitLFSBatchOperation(value string) (policy.Operation, error) {
+	switch value {
+	case "download":
+		return policy.OperationGitFetch, nil
+	case "upload":
+		return policy.OperationGitLFSWrite, nil
+	default:
+		return "", echo.NewHTTPError(http.StatusBadRequest, "unsupported Git LFS operation")
+	}
 }
 
 func (s *Server) proxyGitLFSBatch(c echo.Context, operation policy.Operation) error {

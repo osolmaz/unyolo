@@ -286,32 +286,45 @@ func (s *Store) WaitForDecision(ctx context.Context, id string) (Grant, error) {
 		return Grant{}, err
 	}
 	for {
-		if err := ctx.Err(); err != nil {
-			return Grant{}, err
-		}
-		grant, err := s.Get(id)
+		grant, pending, err := s.pendingGrant(ctx, id)
 		if err != nil {
 			return Grant{}, err
 		}
-		if grant.Status != StatusPending {
+		if !pending {
 			return grant, nil
 		}
-		page, err := s.WaitForEvents(ctx, cursor)
-		if errors.Is(err, ErrCursorExpired) {
-			cursor, err = s.latestGrantCursor(id)
-			if err != nil {
-				return Grant{}, err
-			}
-			continue
-		}
+		var decided bool
+		cursor, decided, err = s.waitForGrantDecisionEvent(ctx, id, cursor)
 		if err != nil {
 			return Grant{}, err
 		}
-		cursor = page.NextCursor
-		if decisionEventForGrant(page.Events, id) {
+		if decided {
 			return s.Get(id)
 		}
 	}
+}
+
+func (s *Store) pendingGrant(ctx context.Context, id string) (Grant, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Grant{}, false, err
+	}
+	grant, err := s.Get(id)
+	if err != nil {
+		return Grant{}, false, err
+	}
+	return grant, grant.Status == StatusPending, nil
+}
+
+func (s *Store) waitForGrantDecisionEvent(ctx context.Context, id, cursor string) (string, bool, error) {
+	page, err := s.WaitForEvents(ctx, cursor)
+	if errors.Is(err, ErrCursorExpired) {
+		cursor, err = s.latestGrantCursor(id)
+		return cursor, false, err
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return page.NextCursor, decisionEventForGrant(page.Events, id), nil
 }
 
 func decisionEventForGrant(events []Event, id string) bool {

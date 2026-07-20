@@ -196,8 +196,14 @@ func TestGitHubLFSRejectsUnknownAndOversizedBatch(t *testing.T) {
 
 func TestGitHubLFSWritesUseDedicatedPolicyOperation(t *testing.T) {
 	t.Parallel()
-	if operation, ok := gitTransportOperation("upload"); !ok || operation != policy.OperationGitLFSWrite {
-		t.Fatalf("upload operation = %q, %t", operation, ok)
+	if operation, err := requireGitLFSBatchOperation("upload"); err != nil || operation != policy.OperationGitLFSWrite {
+		t.Fatalf("upload operation = %q, %v", operation, err)
+	}
+	if _, err := requireGitLFSBatchOperation("git-receive-pack"); err == nil {
+		t.Fatal("Git service was accepted as an LFS operation")
+	}
+	if _, ok := gitServiceOperation("upload"); ok {
+		t.Fatal("LFS operation was accepted as a Git service")
 	}
 	server := newTestServer(t)
 	created := time.Now().UTC()

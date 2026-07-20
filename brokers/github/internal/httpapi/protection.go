@@ -64,11 +64,11 @@ func receivePackBranches(authorized []authorizedReceivePackRequest) map[string]b
 }
 
 func enforceBranchBackstop(c echo.Context, api *githubauth.API, owner, repo, branch, defaultBranch string) error {
-	protected, err := api.BranchProtected(c.Request().Context(), owner, repo, branch)
+	requiresPullRequest, err := api.BranchRequiresPullRequest(c.Request().Context(), owner, repo, branch)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "GitHub branch safety state is unavailable")
 	}
-	if !protected {
+	if !requiresPullRequest {
 		return nil
 	}
 	message := "protected branch writes must use a GitHub-native workflow"

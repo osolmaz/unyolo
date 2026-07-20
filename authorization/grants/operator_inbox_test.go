@@ -451,12 +451,18 @@ func TestWaitForDecisionAdvancesPastUnrelatedEvents(t *testing.T) {
 	target := requestTestGrant(t, store, "wait-target", 1)
 	_ = requestTestGrant(t, store, "wait-unrelated", 1)
 	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+	defer cancel()
 	done := make(chan error, 1)
 	go func() {
 		_, err := store.WaitForDecision(ctx, target.Grant.ID)
 		done <- err
 	}()
+	select {
+	case err := <-done:
+		t.Fatalf("WaitForDecision() stopped at unrelated event: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
