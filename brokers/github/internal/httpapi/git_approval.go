@@ -33,6 +33,15 @@ func (s *Server) authorizeGitMutation(c echo.Context, request policy.Request) (p
 		policy.CoreTarget(request.Target).Fields,
 		corepolicy.SingletonValues(request.Attrs),
 	)
+	result, err := s.authorizeGitMutationRequest(request, core)
+	decision := s.policy.AuthorizationDecision(result.Decision)
+	if err != nil {
+		return s.gitMutationAuthorizationFailure(c, request, decision, err)
+	}
+	return s.completeGitMutationAuthorization(c, request, decision, result)
+}
+
+func (s *Server) authorizeGitMutationRequest(request policy.Request, core corepolicy.Request) (bkauthorization.Result, error) {
 	var result bkauthorization.Result
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
@@ -43,18 +52,32 @@ func (s *Server) authorizeGitMutation(c echo.Context, request policy.Request) (p
 			break
 		}
 	}
-	decision := s.policy.AuthorizationDecision(result.Decision)
-	if err != nil {
-		if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
-			return decision, nil, nil
-		}
-		if errors.Is(err, errGitApprovalChannelUnavailable) {
-			return decision, nil, echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
-		}
-		s.logger.Error("authorize Git push", "operation", request.Operation, "target", request.Target.Owner+"/"+request.Target.Name, "error", err)
-		s.audit(c, request, "error", "could not authorize git push", 0, decision.MatchedRuleIDs)
-		return policy.Decision{}, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not authorize git push")
+	return result, err
+}
+
+func (s *Server) gitMutationAuthorizationFailure(
+	c echo.Context,
+	request policy.Request,
+	decision policy.Decision,
+	err error,
+) (policy.Decision, *receivePackApproval, error) {
+	if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
+		return decision, nil, nil
 	}
+	if errors.Is(err, errGitApprovalChannelUnavailable) {
+		return decision, nil, echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
+	}
+	s.logger.Error("authorize Git push", "operation", request.Operation, "target", request.Target.Owner+"/"+request.Target.Name, "error", err)
+	s.audit(c, request, "error", "could not authorize git push", 0, decision.MatchedRuleIDs)
+	return policy.Decision{}, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not authorize git push")
+}
+
+func (s *Server) completeGitMutationAuthorization(
+	c echo.Context,
+	request policy.Request,
+	decision policy.Decision,
+	result bkauthorization.Result,
+) (policy.Decision, *receivePackApproval, error) {
 	if result.Request.Grant.ID == "" {
 		return decision, nil, nil
 	}
@@ -131,17 +154,7 @@ func (s *Server) gitApprovalRequestID(client string, request corepolicy.Request,
 }
 
 func nextGitApprovalRequestID(base string, items []grants.Grant) string {
-	var latest grants.Grant
-	latestGeneration := 0
-	for _, grant := range items {
-		generation, ok := gitApprovalRequestGeneration(base, grant.ClientRequestID)
-		if !ok || generation < latestGeneration ||
-			(generation == latestGeneration && !grant.CreatedAt.After(latest.CreatedAt)) {
-			continue
-		}
-		latest = grant
-		latestGeneration = generation
-	}
+	latest, latestGeneration := latestGitApprovalGrant(base, items)
 	if latestGeneration == 0 {
 		return base
 	}
@@ -149,6 +162,26 @@ func nextGitApprovalRequestID(base string, items []grants.Grant) string {
 		return latest.ClientRequestID
 	}
 	return base + "-" + strconv.Itoa(latestGeneration+1)
+}
+
+func latestGitApprovalGrant(base string, items []grants.Grant) (grants.Grant, int) {
+	var latest grants.Grant
+	latestGeneration := 0
+	for _, grant := range items {
+		latest, latestGeneration = newerGitApprovalGrant(base, latest, latestGeneration, grant)
+	}
+	return latest, latestGeneration
+}
+
+func newerGitApprovalGrant(base string, current grants.Grant, currentGeneration int, candidate grants.Grant) (grants.Grant, int) {
+	generation, ok := gitApprovalRequestGeneration(base, candidate.ClientRequestID)
+	if !ok || generation < currentGeneration {
+		return current, currentGeneration
+	}
+	if generation == currentGeneration && !candidate.CreatedAt.After(current.CreatedAt) {
+		return current, currentGeneration
+	}
+	return candidate, generation
 }
 
 func gitApprovalRequestGeneration(base string, requestID string) (int, bool) {

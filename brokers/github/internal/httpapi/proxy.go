@@ -29,7 +29,7 @@ func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*h
 func (s *Server) doProxy(c echo.Context, request *http.Request) error {
 	// #nosec G704 -- upstream URLs are built from fixed GitHub base URLs and policy-gated route params.
 	markUpstreamDispatched(c)
-	response, err := s.githubClient.Do(request)
+	response, err := s.githubGitClient.Do(request)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
 	}

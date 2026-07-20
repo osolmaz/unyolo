@@ -36,7 +36,7 @@ func (s *Server) forwardGit(c echo.Context) (*http.Response, error) {
 	}
 	// #nosec G704 -- upstream URL is built from a fixed GitHub base URL and policy-gated route params.
 	markUpstreamDispatched(c)
-	response, err := s.githubClient.Do(request)
+	response, err := s.githubGitClient.Do(request)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
 	}

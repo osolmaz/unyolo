@@ -191,6 +191,36 @@ func TestProxyGitDirect(t *testing.T) {
 	}
 }
 
+func TestGitProxyUsesStreamTimeout(t *testing.T) {
+	t.Parallel()
+	upstream := httptest.NewServer(withDefaultGitHubSafetyState(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/dutifuldev/gh-broker.git/info/refs" {
+			t.Fatalf("upstream path = %q", request.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(50 * time.Millisecond)
+		_, _ = w.Write([]byte("stream-complete"))
+	}))
+	t.Cleanup(upstream.Close)
+	server, err := New(config.Config{
+		ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, GitHubTokenFile: "/protected/github-token",
+		GitHubAPIBaseURL: upstream.URL, GitHubWebBaseURL: upstream.URL, StateDir: t.TempDir(),
+		GitHubHTTPTimeout: 10 * time.Millisecond, GitHubStreamTimeout: time.Second,
+	}, testBrokerPolicy(t))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+
+	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	if response.Code != http.StatusOK || response.Body.String() != "stream-complete" {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
 func TestGitReceivePackDiscoveryUsesPushPolicy(t *testing.T) {
 	t.Parallel()
 	fetchOnlyPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
@@ -755,6 +785,53 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 	}
 }
 
+func TestNextGitApprovalRequestID(t *testing.T) {
+	t.Parallel()
+	base := "git-plan"
+	first := time.Date(2026, 7, 20, 1, 0, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+	items := []grants.Grant{
+		{ClientRequestID: "unrelated", Status: grants.StatusPending, CreatedAt: second},
+		{ClientRequestID: base + "-3", Status: grants.StatusDenied, CreatedAt: first},
+		{ClientRequestID: base + "-2", Status: grants.StatusPending, CreatedAt: second},
+		{ClientRequestID: base + "-3", Status: grants.StatusActive, CreatedAt: first},
+		{ClientRequestID: base + "-3", Status: grants.StatusActive, CreatedAt: second},
+	}
+	if got := nextGitApprovalRequestID(base, nil); got != base {
+		t.Fatalf("empty request ID = %q, want %q", got, base)
+	}
+	if got := nextGitApprovalRequestID(base, items); got != base+"-3" {
+		t.Fatalf("active request ID = %q, want %q", got, base+"-3")
+	}
+	items[len(items)-1].Status = grants.StatusDenied
+	if got := nextGitApprovalRequestID(base, items); got != base+"-4" {
+		t.Fatalf("renewed request ID = %q, want %q", got, base+"-4")
+	}
+}
+
+func TestGitApprovalRequestGeneration(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		requestID string
+		want      int
+		valid     bool
+	}{
+		{name: "base", requestID: "git-plan", want: 1, valid: true},
+		{name: "generated", requestID: "git-plan-2", want: 2, valid: true},
+		{name: "other base", requestID: "other-2"},
+		{name: "invalid suffix", requestID: "git-plan-nope"},
+		{name: "reserved generation", requestID: "git-plan-1", want: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, valid := gitApprovalRequestGeneration("git-plan", test.requestID)
+			if got != test.want || valid != test.valid {
+				t.Fatalf("generation = (%d, %t), want (%d, %t)", got, valid, test.want, test.valid)
+			}
+		})
+	}
+}
+
 func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 	t.Parallel()
 	var upstreamCalls atomic.Int32
@@ -818,7 +895,7 @@ func TestGrantBackedReceivePackRetainsGrantOnProxyError(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestMainPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	server.githubClient = &http.Client{Transport: errorRoundTripper{}}
+	server.githubGitClient = &http.Client{Transport: errorRoundTripper{}}
 	grantID := approveMainPushGrant(t, server)
 	response := doWithBody(
 		t,
@@ -1757,6 +1834,7 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 		TelegramBotToken:    "bot-token",
 		TelegramChatID:      123,
 		GitHubHTTPTimeout:   7 * time.Second,
+		GitHubStreamTimeout: 13 * time.Second,
 		MaxReceivePackBytes: 99,
 	}, testBrokerPolicy(t))
 	if err != nil {
@@ -1765,6 +1843,9 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	t.Cleanup(func() { _ = server.Close() })
 	if server.githubClient.Timeout != 7*time.Second {
 		t.Fatalf("github timeout = %s, want 7s", server.githubClient.Timeout)
+	}
+	if server.githubGitClient.Timeout != 13*time.Second {
+		t.Fatalf("github git timeout = %s, want 13s", server.githubGitClient.Timeout)
 	}
 	if server.maxReceivePackBytes != 99 {
 		t.Fatalf("max receive-pack bytes = %d, want 99", server.maxReceivePackBytes)
@@ -2093,6 +2174,7 @@ func newTestServerWithPolicyAndHandlerInStateDir(t *testing.T, brokerPolicy *pol
 	writeClient := *upstream.Client()
 	server.githubClient = &writeClient
 	server.githubClient.CheckRedirect = stopGitHubRedirect
+	server.githubGitClient = server.githubClient
 	server.githubGitBaseURL = upstreamURL
 	server.githubAPIBaseURL = upstreamURL
 	return server
