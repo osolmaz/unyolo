@@ -97,10 +97,23 @@ func Install(ctx context.Context, provider Provider, opts Options) (Status, erro
 	if err := validateReplacement(current, origin, opts); err != nil {
 		return Status{}, err
 	}
-	if err := rejectConflicts(ctx, provider, origin, opts.Mode, current, runner); err != nil {
+	if err := validateInstallState(ctx, provider, current, runner); err != nil {
+		return Status{}, err
+	}
+	if err := rejectConflicts(ctx, provider, origin, current, runner); err != nil {
 		return Status{}, err
 	}
 	return replaceInstallation(ctx, provider, current, origin, opts.Mode, runner)
+}
+
+func validateInstallState(ctx context.Context, provider Provider, current Status, runner Runner) error {
+	if !current.Installed {
+		return verifyCredentialHelper(ctx, provider, runner)
+	}
+	if err := verifyInstallation(ctx, provider, current, runner); err != nil {
+		return fmt.Errorf("verify existing BrokerKit Git installation: %w", err)
+	}
+	return nil
 }
 
 func validateReplacement(current Status, origin string, opts Options) error {
@@ -117,10 +130,33 @@ func replaceInstallation(ctx context.Context, provider Provider, current Status,
 		}
 	}
 	if err := writeConfig(ctx, provider, origin, mode, runner); err != nil {
-		_ = remove(ctx, provider, Status{Provider: provider.ID, Mode: mode, Origin: origin, Installed: true}, runner)
-		return Status{}, err
+		return Status{}, rollbackReplacement(ctx, provider, current, Status{
+			Provider: provider.ID, Mode: mode, Origin: origin, Installed: true,
+		}, runner, err)
 	}
 	return Status{Provider: provider.ID, Mode: mode, Origin: origin, Installed: true}, nil
+}
+
+func rollbackReplacement(
+	ctx context.Context,
+	provider Provider,
+	previous Status,
+	partial Status,
+	runner Runner,
+	installErr error,
+) error {
+	rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	errs := []error{installErr}
+	if err := remove(rollbackCtx, provider, partial, runner); err != nil {
+		errs = append(errs, fmt.Errorf("clean up partial BrokerKit Git installation: %w", err))
+	}
+	if previous.Installed && previous.Origin == partial.Origin {
+		if err := writeConfig(rollbackCtx, provider, previous.Origin, previous.Mode, runner); err != nil {
+			errs = append(errs, fmt.Errorf("restore previous BrokerKit Git installation: %w", err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Uninstall removes only configuration recorded as owned by BrokerKit.
@@ -174,7 +210,7 @@ func validateDoctorInstallation(ctx context.Context, provider Provider, status S
 	if !status.Installed || status.Origin != origin {
 		return errors.New("BrokerKit Git routing is not installed for the configured listener")
 	}
-	if err := rejectConflicts(ctx, provider, origin, status.Mode, status, runner); err != nil {
+	if err := rejectConflicts(ctx, provider, origin, status, runner); err != nil {
 		return err
 	}
 	return verifyInstallation(ctx, provider, status, runner)
@@ -362,23 +398,52 @@ func readStatus(ctx context.Context, provider Provider, runner Runner) (Status, 
 	return Status{Provider: provider.ID, Origin: origin, Mode: mode, Installed: true}, nil
 }
 
-func rejectConflicts(ctx context.Context, provider Provider, origin string, mode Mode, current Status, runner Runner) error {
-	expectedKeys := map[string]bool{strings.ToLower("url." + origin + "/.insteadOf"): true}
+func rejectConflicts(ctx context.Context, provider Provider, origin string, current Status, runner Runner) error {
+	expectedKeys := map[string]bool{}
 	if current.Installed {
 		expectedKeys[strings.ToLower("url."+current.Origin+"/.insteadOf")] = true
 	}
-	if err := rejectRewriteScope(ctx, runner, "--system", provider.CanonicalPrefixes, nil); err != nil {
-		return err
-	}
-	if err := rejectRewriteScope(ctx, runner, "--global", provider.CanonicalPrefixes, expectedKeys); err != nil {
-		return err
-	}
+	return runRepositoryChecks(
+		func() error { return rejectRewriteScope(ctx, runner, "--system", provider.CanonicalPrefixes, nil) },
+		func() error {
+			return rejectRewriteScope(ctx, runner, "--global", provider.CanonicalPrefixes, expectedKeys)
+		},
+		func() error { return rejectInheritedGitTransport(ctx, origin, runner) },
+		func() error { return rejectTargetCredentialConflict(ctx, origin, current, runner) },
+	)
+}
+
+func rejectInheritedGitTransport(ctx context.Context, origin string, runner Runner) error {
 	for _, scope := range []string{"--system", "--global"} {
 		if err := rejectInheritedTransportOverrides(ctx, runner, scope); err != nil {
 			return err
 		}
 		if err := rejectScopedProxyOverrides(ctx, runner, origin, scope, ""); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func rejectTargetCredentialConflict(ctx context.Context, origin string, current Status, runner Runner) error {
+	if current.Installed && current.Origin == origin {
+		return nil
+	}
+	return rejectUnownedCredentialScope(ctx, origin, runner)
+}
+
+func rejectUnownedCredentialScope(ctx context.Context, origin string, runner Runner) error {
+	key := "credential." + origin + ".helper"
+	for _, scope := range []string{"--system", "--global"} {
+		output, err := runner.Run(ctx, "config", scope, "--includes", "--get-all", key)
+		if err != nil {
+			if isMissingConfig(err) {
+				continue
+			}
+			return fmt.Errorf("inspect Git credential helper configuration: %w", err)
+		}
+		if len(output) > 0 {
+			return fmt.Errorf("git credential helper configuration %s already exists for the BrokerKit listener", key)
 		}
 	}
 	return nil
@@ -609,21 +674,52 @@ func overlapsCanonicalPrefix(value string, prefixes []string) bool {
 }
 
 func verifyInstallation(ctx context.Context, provider Provider, status Status, runner Runner) error {
+	return runRepositoryChecks(
+		func() error { return verifyURLRouting(ctx, provider, status, runner) },
+		func() error { return verifyCredentialConfiguration(ctx, provider, status, runner) },
+		func() error { return verifyCredentialPathIsolation(ctx, status, runner) },
+		func() error { return verifyConfiguredProxyIsolation(ctx, status, runner) },
+		func() error { return verifyCredentialHelper(ctx, provider, runner) },
+	)
+}
+
+func verifyURLRouting(ctx context.Context, provider Provider, status Status, runner Runner) error {
 	rewrites, err := configValues(ctx, runner, "url."+status.Origin+"/.insteadOf")
 	if err != nil || !slices.Equal(rewrites, provider.CanonicalPrefixes) {
 		return errors.New("BrokerKit Git URL routing is incomplete or modified")
 	}
+	return nil
+}
+
+func verifyCredentialConfiguration(ctx context.Context, provider Provider, status Status, runner Runner) error {
 	helpers, err := configValues(ctx, runner, "credential."+status.Origin+".helper")
 	wantHelpers := []string{"", "brokerkit --provider " + provider.ID}
 	if err != nil || !slices.Equal(helpers, wantHelpers) {
 		return errors.New("BrokerKit Git credential helper is incomplete or modified")
 	}
+	return nil
+}
+
+func verifyCredentialPathIsolation(ctx context.Context, status Status, runner Runner) error {
 	usePath, err := configValue(ctx, runner, "credential."+status.Origin+".useHttpPath")
 	if err != nil || usePath != "true" {
 		return errors.New("BrokerKit Git credential path isolation is incomplete or modified")
 	}
+	return nil
+}
+
+func verifyConfiguredProxyIsolation(ctx context.Context, status Status, runner Runner) error {
 	proxy, err := configValue(ctx, runner, "http."+status.Origin+".proxy")
 	return verifyProxyIsolation(proxy, err)
+}
+
+func verifyCredentialHelper(ctx context.Context, provider Provider, runner Runner) error {
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, err := runner.Run(checkCtx, "credential-brokerkit", "--provider", provider.ID, "capability"); err != nil {
+		return fmt.Errorf("BrokerKit Git credential helper is unavailable: %w", err)
+	}
+	return nil
 }
 
 func verifyProxyIsolation(value string, err error) error {
