@@ -277,6 +277,79 @@ func (s *Store) WaitForEvents(ctx context.Context, cursor string) (EventPage, er
 	}
 }
 
+// WaitForDecision blocks until a pending grant reaches a terminal decision or
+// ctx is canceled. The event cursor is captured before the status check so a
+// decision made between the check and the wait cannot be missed.
+func (s *Store) WaitForDecision(ctx context.Context, id string) (Grant, error) {
+	cursor, err := s.latestGrantCursor(id)
+	if err != nil {
+		return Grant{}, err
+	}
+	for {
+		grant, pending, err := s.pendingGrant(ctx, id)
+		if err != nil {
+			return Grant{}, err
+		}
+		if !pending {
+			return grant, nil
+		}
+		var decided bool
+		cursor, decided, err = s.waitForGrantDecisionEvent(ctx, id, cursor)
+		if err != nil {
+			return Grant{}, err
+		}
+		if decided {
+			return s.Get(id)
+		}
+	}
+}
+
+func (s *Store) pendingGrant(ctx context.Context, id string) (Grant, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Grant{}, false, err
+	}
+	grant, err := s.Get(id)
+	if err != nil {
+		return Grant{}, false, err
+	}
+	return grant, grant.Status == StatusPending, nil
+}
+
+func (s *Store) waitForGrantDecisionEvent(ctx context.Context, id, cursor string) (string, bool, error) {
+	page, err := s.WaitForEvents(ctx, cursor)
+	if errors.Is(err, ErrCursorExpired) {
+		cursor, err = s.latestGrantCursor(id)
+		return cursor, false, err
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return page.NextCursor, decisionEventForGrant(page.Events, id), nil
+}
+
+func decisionEventForGrant(events []Event, id string) bool {
+	for _, event := range events {
+		if event.GrantID == id && event.Status != StatusPending {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) latestGrantCursor(id string) (string, error) {
+	event, err := s.LatestEvent(id)
+	if errors.Is(err, ErrNotFound) {
+		if _, getErr := s.Get(id); getErr != nil {
+			return "", getErr
+		}
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return event.Cursor, nil
+}
+
 func (s *Store) reconcileLifecycleDeadline(deadline bool) error {
 	if !deadline {
 		return nil

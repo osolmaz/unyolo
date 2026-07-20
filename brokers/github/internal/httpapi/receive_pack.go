@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"io"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/git/protocol"
@@ -16,9 +17,15 @@ type receivePackCommand struct {
 type receivePackRequest struct {
 	Commands []receivePackCommand
 	Protocol gitx.ReceivePackRequest
+	Pack     []byte
 }
 
 type authorizedReceivePackRequest struct {
+	Request  policy.Request
+	Decision policy.Decision
+}
+
+type requestableReceivePackRequest struct {
 	Request  policy.Request
 	Decision policy.Decision
 }
@@ -29,7 +36,12 @@ func receivePackCommandsFromBody(body []byte) ([]receivePackCommand, error) {
 }
 
 func receivePackRequestFromBody(body []byte) (receivePackRequest, error) {
-	parsed, err := gitx.ParseReceivePackRequest(bytes.NewReader(body))
+	reader := bytes.NewReader(body)
+	parsed, err := gitx.ParseReceivePackRequest(reader)
+	if err != nil {
+		return receivePackRequest{}, err
+	}
+	pack, err := io.ReadAll(reader)
 	if err != nil {
 		return receivePackRequest{}, err
 	}
@@ -37,5 +49,5 @@ func receivePackRequestFromBody(body []byte) (receivePackRequest, error) {
 	for _, command := range parsed.Commands {
 		commands = append(commands, receivePackCommand{OldOID: command.Old, NewOID: command.New, Ref: command.Ref})
 	}
-	return receivePackRequest{Commands: commands, Protocol: parsed}, nil
+	return receivePackRequest{Commands: commands, Protocol: parsed, Pack: pack}, nil
 }

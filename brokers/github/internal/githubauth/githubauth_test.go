@@ -315,6 +315,8 @@ func TestTypedDoctorAPIAndDevelopmentCredential(t *testing.T) {
 			_, _ = io.WriteString(w, `{}`)
 		case "/repos/acme/repo/rules/branches/main":
 			_, _ = io.WriteString(w, `[{"type":"deletion"}]`)
+		case "/repos/acme/review/rules/branches/main":
+			_, _ = io.WriteString(w, `[{"type":"pull_request","parameters":{"required_approving_review_count":1}}]`)
 		case "/repos/acme/open/rules/branches/main", "/repos/acme/open/branches/main/protection":
 			http.NotFound(w, r)
 		case "/repos/acme/denied/rules/branches/main":
@@ -347,15 +349,19 @@ func TestTypedDoctorAPIAndDevelopmentCredential(t *testing.T) {
 	if _, err := api.DefaultBranch(t.Context(), "acme", "empty"); err == nil {
 		t.Fatal("empty default branch response accepted")
 	}
-	protected, err := api.BranchProtected(t.Context(), "acme", "repo", "main")
-	if err != nil || !protected {
-		t.Fatalf("protected = %t, %v", protected, err)
+	requiresReview, err := api.BranchRequiresPullRequest(t.Context(), "acme", "repo", "main")
+	if err != nil || requiresReview {
+		t.Fatalf("deletion-only branch requires review = %t, %v", requiresReview, err)
 	}
-	protected, err = api.BranchProtected(t.Context(), "acme", "open", "main")
-	if err != nil || protected {
-		t.Fatalf("open branch protected = %t, %v", protected, err)
+	requiresReview, err = api.BranchRequiresPullRequest(t.Context(), "acme", "review", "main")
+	if err != nil || !requiresReview {
+		t.Fatalf("pull-request branch requires review = %t, %v", requiresReview, err)
 	}
-	if _, err := api.BranchProtected(t.Context(), "acme", "denied", "main"); err == nil || strings.Contains(err.Error(), "canary") {
+	requiresReview, err = api.BranchRequiresPullRequest(t.Context(), "acme", "open", "main")
+	if err != nil || requiresReview {
+		t.Fatalf("open branch requires review = %t, %v", requiresReview, err)
+	}
+	if _, err := api.BranchRequiresPullRequest(t.Context(), "acme", "denied", "main"); err == nil || strings.Contains(err.Error(), "canary") {
 		t.Fatalf("branch error was not redacted: %v", err)
 	}
 	request := httptest.NewRequest(http.MethodGet, server.URL, http.NoBody)
@@ -837,7 +843,7 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 	if !errors.As(abuse, &abuseAPIError) || abuseAPIError.Code != "secondary_rate_limited" {
 		t.Fatalf("secondary rate limit = %v", abuse)
 	}
-	for _, operation := range []string{"git.fetch", "git.push.force", "git.ref.delete"} {
+	for _, operation := range []string{"git.fetch", "git.lfs.write", "git.push.force", "git.ref.delete"} {
 		if permissions, err := permissionsForOperation(operation); err != nil || len(permissions) == 0 {
 			t.Fatalf("permissions for %q = %v, %v", operation, permissions, err)
 		}
@@ -863,7 +869,7 @@ func TestCredentialBoundaryHelpersFailClosed(t *testing.T) {
 	if _, err := api.DefaultBranch(t.Context(), "owner", "repo"); err == nil {
 		t.Fatal("nil API returned a default branch")
 	}
-	if _, err := api.BranchProtected(t.Context(), "owner", "repo", "main"); err == nil {
+	if _, err := api.BranchRequiresPullRequest(t.Context(), "owner", "repo", "main"); err == nil {
 		t.Fatal("nil API returned branch protection")
 	}
 	for _, cfg := range []Config{

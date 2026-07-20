@@ -32,6 +32,13 @@
       "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
     },
     {
+      "id": "agent-a-write-lfs",
+      "effect": "allow",
+      "clients": ["agent-a"],
+      "operations": ["git.lfs.write"],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+    },
+    {
       "id": "agent-a-push-feature-branches",
       "effect": "allow",
       "clients": ["agent-a"],

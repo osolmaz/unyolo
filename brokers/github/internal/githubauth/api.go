@@ -24,6 +24,21 @@ func (a *API) DefaultBranch(ctx context.Context, owner, repo string) (string, er
 	return repository.GetDefaultBranch(), nil
 }
 
+func (a *API) BranchRequiresPullRequest(ctx context.Context, owner, repo, branch string) (bool, error) {
+	if a == nil || a.client == nil {
+		return false, errors.New("GitHub API client is unavailable")
+	}
+	rules, _, rulesErr := a.client.Repositories.ListRulesForBranch(ctx, owner, repo, branch, &github.ListOptions{PerPage: 100})
+	if rulesErr == nil {
+		return rules != nil && len(rules.PullRequest) > 0, nil
+	}
+	protection, _, protectionErr := a.client.Repositories.GetBranchProtection(ctx, owner, repo, branch)
+	if protectionErr == nil && protection != nil && protection.RequiredPullRequestReviews != nil {
+		return true, nil
+	}
+	return classifyBranchProtectionErrors(rulesErr, protectionErr)
+}
+
 func (a *API) BranchProtected(ctx context.Context, owner, repo, branch string) (bool, error) {
 	if a == nil || a.client == nil {
 		return false, errors.New("GitHub API client is unavailable")

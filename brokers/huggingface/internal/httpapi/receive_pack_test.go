@@ -13,12 +13,14 @@ import (
 	"testing"
 	"time"
 
+	approvalnotify "github.com/osolmaz/brokerkit/approval/notification"
 	"github.com/osolmaz/brokerkit/approval/notifier"
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	rootpolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
@@ -175,50 +177,42 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 
 	runClientGit(t, clone, "reset", "--hard", initial)
 	beforeGrant := upstream.receivePackHits()
-	output, err := runClientGitErr(clone, "push", "--force", "origin", "main")
-	if err == nil || !strings.Contains(output, "hf-broker") {
-		t.Fatalf("force push without grant err=%v output:\n%s", err, output)
+	type pushResult struct {
+		output string
+		err    error
 	}
-	if got := upstream.receivePackHits(); got != beforeGrant {
-		t.Fatalf("force push without grant reached upstream: hits=%d want %d", got, beforeGrant)
-	}
-	automatic, err := handler.grants.ListForClient("agent")
-	if err != nil || len(automatic) != 1 || automatic[0].Status != grants.StatusPending || !strings.Contains(output, automatic[0].ID) {
-		t.Fatalf("automatic approval = %+v, err=%v, output=%q", automatic, err, output)
-	}
-	output, err = runClientGitErr(clone, "push", "--force", "origin", "main")
-	if err == nil || !strings.Contains(output, automatic[0].ID) {
-		t.Fatalf("automatic approval retry err=%v output=%q", err, output)
-	}
-	replayed, err := handler.grants.ListForClient("agent")
-	if err != nil || len(replayed) != 1 || replayed[0].ID != automatic[0].ID {
-		t.Fatalf("automatic approval replay = %+v, err=%v", replayed, err)
-	}
-	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
-		t.Fatal(err)
-	}
-
-	resp, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover main", "recover-main", 5, 0)))
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("grant request = %d %q, want 202", resp.StatusCode, body)
-	}
-	if len(notifier.messages) != 1 {
-		t.Fatalf("notifier messages = %+v, want one", notifier.messages)
-	}
-	msg := notifier.messages[0]
-	if strings.Contains(body, msg.DecisionToken) {
-		t.Fatalf("grant response leaked decision token: %s", body)
-	}
-	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover main", "recover-main", 5, 0)))
-	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("idempotent grant status=%d messages=%d, want 202 and one message", resp.StatusCode, len(notifier.messages))
+	result := make(chan pushResult, 1)
+	go func() {
+		output, pushErr := runClientGitErr(clone, "push", "--force", "origin", "main")
+		result <- pushResult{output: output, err: pushErr}
+	}()
+	msg := waitForHFPushApproval(t, handler, notifier)
+	lockAvailable := make(chan error, 1)
+	go func() {
+		lockAvailable <- handler.mirrors.WithLock(mirror.Repo{Kind: string(policy.TypeDataset), Owner: "acme", Name: "repo"}, func(*mirror.Repository) error { return nil })
+	}()
+	select {
+	case lockErr := <-lockAvailable:
+		if lockErr != nil {
+			t.Fatal(lockErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("repository lock remained held while approval was pending")
 	}
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
 	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram answer = %+v", answer)
 	}
+	approved := <-result
+	if approved.err != nil {
+		t.Fatalf("approved push failed: %v", approved.err)
+	}
+	if got := upstream.receivePackHits(); got != beforeGrant+1 {
+		t.Fatalf("approved push hits=%d want=%d", got, beforeGrant+1)
+	}
+	beforeGrant++
 
-	output, err = runClientGitErrAs(testOtherSecret, clone, "push", "--force", "origin", "main")
+	output, err := runClientGitErrAs(testOtherSecret, clone, "push", "--force", "origin", "main")
 	if err == nil || !strings.Contains(output, "hf-broker") {
 		t.Fatalf("cross-client force push used grant err=%v output:\n%s", err, output)
 	}
@@ -232,8 +226,9 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 	if upstreamRef := strings.TrimSpace(runGit(t, upstreamRepo, "rev-parse", "refs/heads/main")); upstreamRef != initial {
 		t.Fatalf("upstream main after grant = %s, want %s", upstreamRef, initial)
 	}
-	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusConsumed {
-		t.Fatalf("grant use notification updates = %+v", notifier.updates)
+	_, updates := notifier.snapshot()
+	if len(updates) != 1 || updates[0].Kind != notify.StatusConsumed {
+		t.Fatalf("grant use notification updates = %+v", updates)
 	}
 	output, err = runClientGitErr(clone, "push", "origin", ":main")
 	if err == nil {
@@ -261,6 +256,24 @@ func assertHistoryRewriteGrantDoesNotAllowDeletion(t *testing.T, clone string, u
 	if got := upstream.receivePackHits(); got != wantHits {
 		t.Fatalf("branch deletion with history-rewrite grant reached upstream: hits=%d want %d", got, wantHits)
 	}
+}
+
+func waitForHFPushApproval(t *testing.T, handler *Server, notifier *captureGrantNotifier) approvalnotify.Approval {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		messages, _ := notifier.snapshot()
+		clientGrants, err := handler.grants.ListForClient("agent")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(messages) == 1 && len(clientGrants) == 1 && clientGrants[0].Status == grants.StatusPending {
+			return messages[0]
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for HF Git push approval")
+	return approvalnotify.Approval{}
 }
 
 func TestDenyRuleOverridesActiveGrant(t *testing.T) {
@@ -1136,5 +1149,52 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 	}
 	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusRetained {
 		t.Fatalf("grant client-write updates = %+v, want ambiguous update", notifier.updates)
+	}
+}
+
+func TestHFTransactionGeneration(t *testing.T) {
+	tests := []struct {
+		name      string
+		requestID string
+		want      int
+		valid     bool
+	}{
+		{name: "base", requestID: "transaction", want: 1, valid: true},
+		{name: "next generation", requestID: "transaction-2", want: 2, valid: true},
+		{name: "later generation", requestID: "transaction-12", want: 12, valid: true},
+		{name: "different base", requestID: "other-2"},
+		{name: "missing generation", requestID: "transaction-"},
+		{name: "first generation suffix", requestID: "transaction-1", want: 1},
+		{name: "non numeric", requestID: "transaction-next"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, valid := hfTransactionGeneration("transaction", tt.requestID)
+			if got != tt.want || valid != tt.valid {
+				t.Fatalf("hfTransactionGeneration() = (%d, %v), want (%d, %v)", got, valid, tt.want, tt.valid)
+			}
+		})
+	}
+}
+
+func TestLatestHFTransactionGrant(t *testing.T) {
+	base := "transaction"
+	now := time.Now().UTC()
+	items := []grants.Grant{
+		{ID: "unrelated", ClientRequestID: "other-9", CreatedAt: now.Add(time.Hour)},
+		{ID: "base", ClientRequestID: base, CreatedAt: now},
+		{ID: "older-two", ClientRequestID: base + "-2", CreatedAt: now.Add(time.Minute)},
+		{ID: "newer-two", ClientRequestID: base + "-2", CreatedAt: now.Add(2 * time.Minute)},
+		{ID: "three", ClientRequestID: base + "-3", CreatedAt: now.Add(-time.Hour)},
+	}
+
+	latest, generation := latestHFTransactionGrant(base, items)
+	if latest.ID != "three" || generation != 3 {
+		t.Fatalf("latestHFTransactionGrant() = (%q, %d), want (%q, 3)", latest.ID, generation, "three")
+	}
+
+	latest, generation = latestHFTransactionGrant(base, items[:4])
+	if latest.ID != "newer-two" || generation != 2 {
+		t.Fatalf("latestHFTransactionGrant() same generation = (%q, %d), want (%q, 2)", latest.ID, generation, "newer-two")
 	}
 }

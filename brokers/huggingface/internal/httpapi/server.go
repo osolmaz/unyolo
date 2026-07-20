@@ -62,6 +62,7 @@ const maxReceivePackReportBytes = 4 << 20
 
 var (
 	errInvalidLFSAction             = errors.New("LFS action is no longer valid")
+	errUnsupportedXet               = errors.New("Xet transfer is not supported by the BrokerKit Git listener") //nolint:staticcheck // Xet is a proper name.
 	errGrantStoreUnavailable        = errors.New("grant store unavailable")
 	errGrantNotificationStillQueued = errors.New("grant notification is still being created")
 	errGrantNotificationCanceled    = errors.New("grant notification was canceled")

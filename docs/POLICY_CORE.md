@@ -301,3 +301,13 @@ The policy core does not:
 - project provider-specific approval semantics for the shared presentation model
 
 Those responsibilities stay with the broker using brokerkit.
+
+## Native Git Transactions
+
+A receive-pack request is one authorization transaction. Provider adapters
+classify every ref before any bytes are sent upstream. A deny rejects the
+whole batch; requestable refs produce one approval bound to the exact body
+digest and ordered command set. The original Git request waits for the durable
+decision, reacquires any provider lock, revalidates policy and repository
+state, reserves one use, and only then forwards the unchanged body. Atomic and
+multi-ref pushes are never split into separately authorized updates.

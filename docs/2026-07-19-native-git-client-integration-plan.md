@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 
-Status: planned
+Status: implemented; release and live acceptance pending
 
 ## Objective
 
@@ -459,9 +459,9 @@ The HF adapter must preserve its existing secure action rewriting:
 Set `lfs.transfer.enablehrefrewrite` only if conformance tests prove it is
 required and scoped correctly. Do not write repository-local `.lfsconfig`.
 
-Add corresponding GitHub LFS routes before claiming complete GitHub LFS
-support. If the configured GitHub credential type cannot perform an LFS action,
-return a precise capability error rather than bypassing the broker.
+GitHub LFS batch, object, verification, and locking routes use the same Git
+listener. Signed object URLs and action headers are retained inside the broker
+and replaced with client- and repository-bound BrokerKit action URLs.
 
 ### Xet
 
@@ -476,9 +476,11 @@ enabling HF native Git installation by default:
 - classify upload and mutation separately from reads; and
 - pass a real model or dataset clone and push corpus using the official client.
 
-If the official Xet client cannot be routed without provider credential
-exposure, fail closed and document that exact unsupported path. Do not silently
-export the HF token as an interim solution.
+The current implementation fails closed when Hugging Face negotiates the Xet
+custom transfer. It returns a precise unsupported-transfer response before any
+signed action or provider credential is exposed. Basic Git LFS remains
+supported. Xet may be enabled only after the official client passes the full
+route, credential, retry, integrity, and live conformance corpus above.
 
 ## Security Requirements
 

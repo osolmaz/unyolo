@@ -259,6 +259,12 @@ credentials.
 The client can source this protected file directly; both values must be
 exported to broker client processes.
 
+Requestable native Git pushes remain attached to the original HTTP request.
+One durable approval covers the complete ordered receive-pack transaction;
+approval resumes that same `git push`, while denial, expiry, cancellation, or
+changed upstream state returns a normal Git failure without forwarding a
+partial update.
+
 ## Policy
 
 brokerkit owns the policy schema and decision engine. Brokers register their

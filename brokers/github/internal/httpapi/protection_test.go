@@ -17,9 +17,9 @@ func TestProtectedDefaultBranchWriteFailsBeforeGitDispatch(t *testing.T) {
 		case "/repos/dutifuldev/gh-broker":
 			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
 		case "/repos/dutifuldev/gh-broker/rules/branches/main":
-			_, _ = w.Write([]byte(`[]`))
+			http.NotFound(w, r)
 		case "/repos/dutifuldev/gh-broker/branches/main/protection":
-			_, _ = w.Write([]byte(`{"required_status_checks":null}`))
+			_, _ = w.Write([]byte(`{"required_pull_request_reviews":{}}`))
 		default:
 			http.NotFound(w, r)
 		}

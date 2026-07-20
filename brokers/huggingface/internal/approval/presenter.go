@@ -2,11 +2,13 @@ package approval
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/osolmaz/brokerkit/approval/view"
 	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 )
@@ -39,6 +41,7 @@ func (Presenter) Present(_ context.Context, grant bkgrants.Grant) (approvalview.
 	if digest := grant.Metadata[hfplan.MetadataDigest]; digest != "" {
 		facts = append(facts, approvalview.Fact{Label: "Plan digest", Value: digest})
 	}
+	facts = append(facts, transactionFacts(grant)...)
 	if grant.ReservationRetained {
 		facts = append(facts, approvalview.Fact{Label: "Needs attention", Value: "Execution result is ambiguous; authority is closed"})
 	}
@@ -55,6 +58,38 @@ func (Presenter) Present(_ context.Context, grant bkgrants.Grant) (approvalview.
 		Summary: summary,
 		Target:  target, Facts: facts, Warnings: warnings(grant.Operation), PlanHash: grant.Metadata[hfplan.MetadataDigest],
 	}, nil
+}
+
+func transactionFacts(grant bkgrants.Grant) []approvalview.Fact {
+	attrs, err := hfgrant.Attrs(grant)
+	if err != nil {
+		return nil
+	}
+	var facts []approvalview.Fact
+	if digest := transactionDigest(attrs); digest != "" {
+		facts = append(facts, approvalview.Fact{Label: "Push body digest", Value: digest})
+	}
+	if commands := transactionCommands(attrs); commands != "" {
+		facts = append(facts, approvalview.Fact{Label: "Push commands", Value: commands})
+	}
+	return facts
+}
+
+func transactionDigest(attrs map[string]any) string {
+	digest, _ := attrs["plan_digest"].(string)
+	return digest
+}
+
+func transactionCommands(attrs map[string]any) string {
+	commands, ok := attrs["commands"]
+	if !ok {
+		return ""
+	}
+	encoded, err := json.Marshal(commands)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func displayTarget(grant bkgrants.Grant) string {

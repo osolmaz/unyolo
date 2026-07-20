@@ -466,7 +466,7 @@ func permissionsForOperation(operation string) (map[string]string, error) {
 	switch {
 	case operation == "git.fetch", operation == "git.push.advertise":
 		return map[string]string{"contents": "read"}, nil
-	case strings.HasPrefix(operation, "git.push."), operation == "git.ref.delete", operation == "git.tag.update":
+	case strings.HasPrefix(operation, "git.push."), operation == "git.lfs.write", operation == "git.ref.delete", operation == "git.tag.update":
 		return map[string]string{"contents": "write"}, nil
 	default:
 		return nil, fmt.Errorf("GitHub operation %q has no credential binding", operation)

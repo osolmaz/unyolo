@@ -88,6 +88,7 @@ func (w *writeErrorResponseWriter) Write([]byte) (int, error) {
 }
 
 type captureGrantNotifier struct {
+	mu       sync.Mutex
 	messages []approvalnotify.Approval
 	updates  []notify.Status
 }
@@ -144,13 +145,23 @@ func (n *callbackDuringSendNotifier) snapshot() (notify.DecisionResult, []notify
 }
 
 func (n *captureGrantNotifier) SendApproval(_ context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.messages = append(n.messages, msg)
 	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: len(n.messages), Text: "grant text"}, nil
 }
 
 func (n *captureGrantNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.updates = append(n.updates, status)
 	return nil
+}
+
+func (n *captureGrantNotifier) snapshot() ([]approvalnotify.Approval, []notify.Status) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([]approvalnotify.Approval(nil), n.messages...), append([]notify.Status(nil), n.updates...)
 }
 
 type blockingGrantNotifier struct {

@@ -90,6 +90,7 @@ func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
 func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 	return map[Operation]corepolicy.OperationSpec{
 		OperationGitFetch:             {TargetKinds: []string{"repo"}},
+		OperationGitLFSWrite:          {TargetKinds: []string{"repo"}},
 		OperationGitPushAdvertise:     {TargetKinds: []string{"repo"}},
 		OperationGitPushBranchCreate:  {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
 		OperationGitPushFastForward:   {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
