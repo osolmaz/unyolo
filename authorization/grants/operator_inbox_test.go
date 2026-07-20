@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -387,6 +388,61 @@ func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {
 	grant, err := store.Get(result.Grant.ID)
 	if err != nil || grant.Status != StatusExpired {
 		t.Fatalf("expired grant = %+v, %v", grant, err)
+	}
+}
+
+func TestWaitForDecisionReturnsApprovedGrant(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	requested := requestTestGrant(t, store, "wait-approved", 1)
+
+	done := make(chan Grant, 1)
+	errs := make(chan error, 1)
+	go func() {
+		grant, err := store.WaitForDecision(t.Context(), requested.Grant.ID)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- grant
+	}()
+
+	if _, err := store.Approve(requested.Grant.ID, requested.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-errs:
+		t.Fatalf("WaitForDecision() error = %v", err)
+	case grant := <-done:
+		if grant.Status != StatusActive {
+			t.Fatalf("WaitForDecision() status = %q", grant.Status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("WaitForDecision() did not observe approval")
+	}
+}
+
+func TestWaitForDecisionReturnsImmediateTerminalGrant(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	requested := requestTestGrant(t, store, "wait-denied", 1)
+	if _, err := store.Deny(requested.Grant.ID, requested.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	grant, err := store.WaitForDecision(t.Context(), requested.Grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grant.Status != StatusDenied {
+		t.Fatalf("WaitForDecision() status = %q", grant.Status)
+	}
+}
+
+func TestWaitForDecisionHonorsCancellation(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	requested := requestTestGrant(t, store, "wait-canceled", 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := store.WaitForDecision(ctx, requested.Grant.ID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WaitForDecision() error = %v", err)
 	}
 }
 
