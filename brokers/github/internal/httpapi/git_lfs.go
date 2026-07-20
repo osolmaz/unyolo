@@ -345,8 +345,8 @@ func githubLFSSize(value any) (string, bool) {
 	default:
 		return "", false
 	}
-	parsed, err := strconv.ParseUint(text, 10, 63)
-	return text, err == nil && parsed <= uint64(^uint64(0)>>1)
+	_, err := strconv.ParseUint(text, 10, 63)
+	return text, err == nil
 }
 
 func validGitHubLFSOID(value string) bool {

@@ -528,7 +528,7 @@ func hfPushApprovalBounds(items []requestableHFPush) (time.Duration, time.Durati
 func hfPushItemBounds(item requestableHFPush) (time.Duration, time.Duration, error) {
 	bounds := item.Decision.GrantPolicy
 	if bounds == nil || bounds.Mode != policy.GrantModeWindow || bounds.MaxUses < 1 {
-		return 0, 0, errors.New("Git push approval policy is incompatible with one-use transactions")
+		return 0, 0, errors.New("git push approval policy is incompatible with one-use transactions")
 	}
 	return time.Duration(bounds.DefaultMinutes) * time.Minute, time.Duration(bounds.RequestTTLMinutes) * time.Minute, nil
 }

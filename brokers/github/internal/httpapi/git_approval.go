@@ -54,18 +54,12 @@ func (s *Server) authorizeReceivePackTransaction(
 		return nil, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not create Git push approval")
 	}
 	plan := grantCreatePlan{request: requestable[0].Request, decision: decision}
-	if _, _, err := s.notifyPendingGrant(c, plan, result.Grant.ID); err != nil {
+	if err := s.notifyReceivePackApproval(c, plan, result.Grant.ID, requestable); err != nil {
 		return nil, nil, err
 	}
-	for _, item := range requestable {
-		s.audit(c, item.Request, "requires_grant", "operator approval requested", 0, item.Decision.MatchedRuleIDs)
-	}
-	approved, err := s.grants.WaitForDecision(c.Request().Context(), result.Grant.ID)
+	approved, err := s.waitForReceivePackApproval(c.Request().Context(), result.Grant.ID)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, nil, err
-		}
-		return nil, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not wait for Git push approval")
+		return nil, nil, err
 	}
 	if approved.Status != grants.StatusActive {
 		return nil, &receivePackApproval{GrantID: approved.ID, Status: approved.Status}, nil
@@ -73,16 +67,38 @@ func (s *Server) authorizeReceivePackTransaction(
 	if err := s.revalidateReceivePackPolicy(requestable); err != nil {
 		return nil, nil, err
 	}
+	applyReceivePackGrant(authorized, approved.ID)
+	return authorized, nil, nil
+}
+
+func (s *Server) notifyReceivePackApproval(c echo.Context, plan grantCreatePlan, grantID string, items []requestableReceivePackRequest) error {
+	if _, _, err := s.notifyPendingGrant(c, plan, grantID); err != nil {
+		return err
+	}
+	for _, item := range items {
+		s.audit(c, item.Request, "requires_grant", "operator approval requested", 0, item.Decision.MatchedRuleIDs)
+	}
+	return nil
+}
+
+func (s *Server) waitForReceivePackApproval(ctx context.Context, grantID string) (grants.Grant, error) {
+	approved, err := s.grants.WaitForDecision(ctx, grantID)
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return approved, err
+	}
+	return grants.Grant{}, echo.NewHTTPError(http.StatusInternalServerError, "could not wait for Git push approval")
+}
+
+func applyReceivePackGrant(authorized []authorizedReceivePackRequest, grantID string) {
 	for index := range authorized {
 		if authorized[index].Decision.Allowed {
 			continue
 		}
 		authorized[index].Decision = policy.Decision{
 			Effect: policy.EffectAllow, Allowed: true, Reason: "grant_allowed",
-			GrantID: approved.ID, MatchedRuleIDs: []string{approved.ID},
+			GrantID: grantID, MatchedRuleIDs: []string{grantID},
 		}
 	}
-	return authorized, nil, nil
 }
 
 func (s *Server) requestReceivePackGrant(request grants.Request) (grants.RequestResult, error) {
@@ -139,7 +155,7 @@ func receivePackApprovalBounds(items []requestableReceivePackRequest) (time.Dura
 	for _, item := range items {
 		bounds := item.Decision.GrantPolicy
 		if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow || bounds.MaxUses < 1 {
-			return 0, 0, errors.New("Git push approval policy is incompatible with one-use transactions")
+			return 0, 0, errors.New("git push approval policy is incompatible with one-use transactions")
 		}
 		candidateDuration := time.Duration(bounds.DefaultMinutes) * time.Minute
 		candidatePending := time.Duration(bounds.RequestTTLMinutes) * time.Minute
