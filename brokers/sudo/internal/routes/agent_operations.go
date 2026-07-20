@@ -7,17 +7,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentapi"
-	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/agent/api"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/approval/notification"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/presenter"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operationruntime"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/brokerkit/operation/runtime"
 )
 
 func (s *Server) newOperationRuntime() (*operations.Runtime, error) {

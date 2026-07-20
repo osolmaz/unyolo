@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentclient"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/client"
+	"github.com/osolmaz/brokerkit/agent/v1"
 )
 
 const defaultClientWait = 15 * time.Minute

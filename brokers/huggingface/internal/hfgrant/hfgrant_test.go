@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
 )
 
 func TestCanonicalRequestRoundTrip(t *testing.T) {

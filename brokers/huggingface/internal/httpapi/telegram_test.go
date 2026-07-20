@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approvalnotify"
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/brokerkit/broker/controlplane"
 	hfapproval "github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/controlplane"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {

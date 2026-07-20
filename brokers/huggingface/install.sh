@@ -79,7 +79,7 @@ esac
   echo "$BROKER install: installer revision must be an exact 40-character commit SHA" >&2
   exit 1
 }
-BROKERKIT_INSTALLER_URL="${BROKERKIT_INSTALLER_URL:-${BROKERKIT_RAW_URL_BASE:-https://raw.githubusercontent.com/${REPO}}/${BROKERKIT_INSTALLER_REV}/installer/install.sh}"
+BROKERKIT_INSTALLER_URL="${BROKERKIT_INSTALLER_URL:-${BROKERKIT_RAW_URL_BASE:-https://raw.githubusercontent.com/${REPO}}/${BROKERKIT_INSTALLER_REV}/install/install.sh}"
 
 installer_file="$(mktemp)"
 trap 'rm -f "$installer_file"' 0

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/transport/http"
 )
 
 const upstreamDispatchedContextKey = "gh_broker_upstream_dispatched"

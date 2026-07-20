@@ -14,11 +14,11 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
 	"github.com/osolmaz/brokerkit/internal/validatex"
-	"github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/operatorclient"
-	bkservice "github.com/osolmaz/brokerkit/service"
+	"github.com/osolmaz/brokerkit/operator/client"
+	"github.com/osolmaz/brokerkit/transport/endpoint"
 )
 
 const (

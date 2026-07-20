@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentapi"
-	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/agent/api"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
@@ -20,11 +21,10 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operationruntime"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/providercredential"
-	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/brokerkit/operation/runtime"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 const operationAuthorizationGrace = 30 * time.Second

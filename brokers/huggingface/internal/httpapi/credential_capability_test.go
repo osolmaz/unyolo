@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentapi"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/api"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/providercredential"
+	"github.com/osolmaz/brokerkit/credential/provider"
 )
 
 func TestCredentialCeilingRejectsBeforeOperationSubmission(t *testing.T) {

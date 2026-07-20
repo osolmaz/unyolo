@@ -13,7 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/upstream"
-	"github.com/osolmaz/brokerkit/schemautil"
+	"github.com/osolmaz/brokerkit/internal/schemautil"
 )
 
 type surfaceArtifacts struct {

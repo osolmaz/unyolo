@@ -9,7 +9,7 @@ import (
 	"unicode"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func generateGraphQL(state *generatedState, response graphqlResponse, fingerprint string) error {

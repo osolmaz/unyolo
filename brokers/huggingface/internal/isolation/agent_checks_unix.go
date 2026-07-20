@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func validateOptions(opts Options) error {

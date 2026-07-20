@@ -8,20 +8,20 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentapi"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/api"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/operationruntime"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/providercredential"
-	"github.com/osolmaz/brokerkit/state"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/brokerkit/operation/runtime"
 )
 
 const operationAuthorizationGrace = 30 * time.Second

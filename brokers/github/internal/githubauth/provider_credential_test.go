@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/providercredential"
+	"github.com/osolmaz/brokerkit/credential/provider"
 )
 
 func TestProviderRequirementsCoverCatalogWithoutDevelopmentTokens(t *testing.T) {

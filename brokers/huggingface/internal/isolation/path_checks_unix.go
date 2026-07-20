@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func runParentWriteChecks(report *Report, agent identity, dir, name string) {

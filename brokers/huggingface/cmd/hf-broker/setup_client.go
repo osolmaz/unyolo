@@ -3,7 +3,7 @@ package main
 import (
 	"io"
 
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 )
 
 type setupClientOptions = bksetup.ClientOptions

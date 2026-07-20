@@ -9,16 +9,16 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	ghapproval "github.com/osolmaz/brokerkit/brokers/github/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/httpx"
-	"github.com/osolmaz/brokerkit/notify"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/transport/http"
 )
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024

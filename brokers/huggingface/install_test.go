@@ -65,7 +65,7 @@ func TestInstallWrapperResolvesReleaseToImmutableCommit(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"tag_name":"hf-broker/v1.2.3"}]`))
 		case "/refs/hf-broker/v1.2.3":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + revision + `","type":"commit"}}`))
-		case "/raw/" + revision + "/installer/install.sh":
+		case "/raw/" + revision + "/install/install.sh":
 			requested <- r.URL.Path
 			_, _ = w.Write([]byte("#!/bin/sh\nprintf '%s' \"$VERSION\"\n"))
 		default:
@@ -95,7 +95,7 @@ func TestInstallWrapperPeelsAnnotatedTagToImmutableCommit(t *testing.T) {
 			_, _ = w.Write([]byte("{\n  \"object\": {\n    \"sha\": \"" + tagRevision + "\",\n    \"type\": \"tag\"\n  }\n}"))
 		case "/tags/" + tagRevision:
 			_, _ = w.Write([]byte("{\n  \"sha\": \"" + tagRevision + "\",\n  \"object\": {\n    \"sha\": \"" + commitRevision + "\",\n    \"type\": \"commit\"\n  }\n}"))
-		case "/raw/" + commitRevision + "/installer/install.sh":
+		case "/raw/" + commitRevision + "/install/install.sh":
 			requested <- r.URL.Path
 			_, _ = w.Write([]byte("#!/bin/sh\nprintf '%s' \"$VERSION\"\n"))
 		default:

@@ -4,11 +4,11 @@ package httpapi
 import (
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func targetName(rt route) string {

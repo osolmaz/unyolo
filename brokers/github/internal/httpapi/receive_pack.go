@@ -4,7 +4,7 @@ import (
 	"bytes"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/gitx"
+	"github.com/osolmaz/brokerkit/git/protocol"
 )
 
 type receivePackCommand struct {

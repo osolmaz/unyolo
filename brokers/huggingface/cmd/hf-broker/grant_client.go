@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/client"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grantclient"
-	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 type hfClientGrant struct {

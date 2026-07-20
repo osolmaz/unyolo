@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/audit"
-	"github.com/osolmaz/brokerkit/credentiallifecycle"
-	bkservice "github.com/osolmaz/brokerkit/service"
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 const (

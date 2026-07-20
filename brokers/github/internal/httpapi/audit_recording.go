@@ -3,10 +3,10 @@ package httpapi
 import (
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agentv1"
-	bkaudit "github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	bkaudit "github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func operationPolicyTarget(auth operations.Authorization) string {

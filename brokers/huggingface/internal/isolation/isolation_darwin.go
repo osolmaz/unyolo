@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 type aclPathKind int

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/osolmaz/brokerkit/mcpserver"
+	"github.com/osolmaz/brokerkit/mcp/server"
 )
 
 type mcpToolCall = mcpserver.ToolCall

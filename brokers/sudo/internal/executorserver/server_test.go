@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 func TestServerExecutesAndReplaysExactlyOnce(t *testing.T) {

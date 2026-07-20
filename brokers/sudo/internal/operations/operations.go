@@ -10,17 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	sudoplan "github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/grants"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operationruntime"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/brokerkit/operation/runtime"
 )
 
 const maxInputBytes = 32 * 1024

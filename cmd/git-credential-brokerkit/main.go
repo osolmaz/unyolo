@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/osolmaz/brokerkit/gitclient"
+	"github.com/osolmaz/brokerkit/git/client"
 )
 
 var providers = map[string]gitclient.Provider{

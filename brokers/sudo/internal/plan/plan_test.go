@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/state"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
 )
 
 func TestPlanBindsGrantAndValidatesActivationAndExecution(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/tooling/coverage"
+	"github.com/osolmaz/brokerkit/internal/tooling/coverage"
 )
 
 func main() {

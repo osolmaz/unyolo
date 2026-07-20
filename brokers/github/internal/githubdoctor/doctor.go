@@ -13,7 +13,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 var lookupIdentity = bkdoctor.LookupIdentity

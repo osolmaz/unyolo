@@ -11,7 +11,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/doctor"
+	"github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 type doctorOptions struct {

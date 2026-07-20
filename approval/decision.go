@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 )
 
 // Decider applies one approval-channel decision through a broker's canonical lifecycle.

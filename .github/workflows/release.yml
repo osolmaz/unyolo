@@ -146,4 +146,4 @@ jobs:
           COMPANION_BINARIES: ${{ needs.prepare.outputs.companions }}
           PATH_COMPANION_BINARIES: ${{ needs.prepare.outputs.path_companions }}
           GH_TOKEN: ${{ github.token }}
-        run: sh installer/install.sh
+        run: sh install/install.sh

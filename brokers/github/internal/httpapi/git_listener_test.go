@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/gitserver"
+	"github.com/osolmaz/brokerkit/git/server"
 )
 
 func TestGitHandlerHidesAgentAndWebhookRoutes(t *testing.T) {

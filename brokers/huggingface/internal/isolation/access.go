@@ -2,7 +2,7 @@
 
 package isolation
 
-import bkdoctor "github.com/osolmaz/brokerkit/doctor"
+import bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 
 func canRead(agent identity, stat fileStat) bool {
 	return bkdoctor.CanGainRead(doctorIdentity(agent), doctorFile(stat))

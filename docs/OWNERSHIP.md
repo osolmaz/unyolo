@@ -75,8 +75,8 @@ The registry mechanism is shared. The registered vocabulary is broker-local.
 
 Providers register operation names and own target and argument validation,
 approval presentation, immutable plans, credentials, execution, and safe result
-formatting. Shared `agentops`, `agentapi`, `agentclient`, and
-`agentconformance` code must not import a provider.
+formatting. Shared `agent/runtime`, `agent/api`, `agent/client`, and
+`agent/conformance` code must not import a provider.
 
 Each broker stores grants, immutable plans, and Agent operations in its own
 shared SQLite `state.db`; provider packages must not restore JSON lifecycle
@@ -212,17 +212,17 @@ messages; they never run competing `getUpdates` loops.
 
 ### Control-Plane Assembly
 
-The `controlplane` package assembles the canonical grant store, named client
-authentication, separately named operator authentication, operator inbox,
-audit exporter, and approval-channel decider. Brokers provide their platform
-presenter and optionally a stricter decider. HTTP framework middleware and
-listener ownership remain broker-local.
+The `broker/controlplane` package assembles the canonical grant store, named
+client authentication, separately named operator authentication, operator
+inbox, audit exporter, and approval-channel decider. Brokers provide their
+platform presenter and optionally a stricter decider. HTTP framework middleware
+and listener ownership remain broker-local.
 
-The `secretfile` package is the sole parser and renderer for named client and
-operator credential files. Raw single-secret operator files are not part of
-the broker-family contract.
+The `internal/config/secretfile` package is the sole parser and renderer for
+named client and operator credential files. Raw single-secret operator files
+are not part of the broker-family contract.
 
-The `conformance` package runs the shared contract against real HTTP handlers.
+The `broker/conformance` package runs the shared contract against real HTTP handlers.
 Every broker invokes it in its own tests. `brokerkit-coverage` and
 `brokerkit-release` provide common quality and release behavior. Mutation
 targets remain broker-local and checked in, but are disabled and non-blocking

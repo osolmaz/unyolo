@@ -17,8 +17,8 @@ import (
 	"strings"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
-	bkservice "github.com/osolmaz/brokerkit/service"
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 )
 
 const (

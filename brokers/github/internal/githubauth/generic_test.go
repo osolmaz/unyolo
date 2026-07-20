@@ -15,7 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/graphqlmanifest"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func TestExecuteRESTBindsPathQueryBodyAndHeaders(t *testing.T) {

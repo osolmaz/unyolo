@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
 )
 
 func TestLoadIngressConfigStrictly(t *testing.T) {

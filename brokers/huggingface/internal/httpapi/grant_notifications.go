@@ -8,11 +8,11 @@ import (
 	"time"
 
 	bkapproval "github.com/osolmaz/brokerkit/approval"
-	bkapprovalnotify "github.com/osolmaz/brokerkit/approvalnotify"
+	bkapprovalnotify "github.com/osolmaz/brokerkit/approval/notification"
+	bknotify "github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	hfapproval "github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	bknotify "github.com/osolmaz/brokerkit/notify"
 )
 
 func grantNeedsNotification(grant grants.Grant) bool {

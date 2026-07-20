@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 )
 
 type coreView uint8

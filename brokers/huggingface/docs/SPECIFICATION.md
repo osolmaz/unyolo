@@ -449,16 +449,15 @@ root BrokerKit module and toolchain `go1.26.5`. One binary
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
 internal/config/                 HF env loading and validation
 internal/isolation/              local runtime isolation checks
-internal/policy/                 HF parser, registry, and classifiers over brokerkit/policy
+internal/policy/                 HF classifiers over brokerkit/authorization/policy
 internal/gitproxy/               HF enforcement and upstream forwarding
-internal/gitproxy/pktline/       provider adapter over Git pkt-line helpers
+internal/gitproxy/               provider adapter over brokerkit/git/protocol
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
-internal/hfgrant/                HF target, attr, and mode mapping to brokerkit/grants
+internal/hfgrant/                HF target and attr mapping to brokerkit/authorization/grants
 internal/hfplan/                 immutable grant-plan storage and validation
 internal/approval/               HF-specific operator approval wording
 internal/jsend/                  JSON API response envelopes
 internal/httpapi/                Echo router, handlers, refusal responses, audit
-internal/audit/                  HF audit extensions
 ```
 
 Boundaries (enforced by Slophammer `dependency_boundaries`): `httpapi`

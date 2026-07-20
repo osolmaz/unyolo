@@ -9,7 +9,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func TestEveryGeneratedGitHubSchemaIsTranscriptSafe(t *testing.T) {

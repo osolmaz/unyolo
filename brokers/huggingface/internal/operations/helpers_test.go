@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/sealedstore"
+	"github.com/osolmaz/brokerkit/internal/storage/sealed"
 )
 
 func TestOperationLifecycleHelpers(t *testing.T) {

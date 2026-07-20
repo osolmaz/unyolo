@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/audit"
 	bkauthorization "github.com/osolmaz/brokerkit/authorization"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/doctor"
+	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func readProcStatus(pid int) (bkdoctor.ProcessStatus, error) {

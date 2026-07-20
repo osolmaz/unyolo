@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/osolmaz/brokerkit/approvalview"
+	"github.com/osolmaz/brokerkit/approval/view"
+	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	bkgrants "github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/policy"
 )
 
 const (

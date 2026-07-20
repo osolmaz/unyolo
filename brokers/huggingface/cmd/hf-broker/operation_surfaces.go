@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/credential/store"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 const maxOperationInputBytes = 1 << 20

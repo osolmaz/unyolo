@@ -19,12 +19,12 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/credentiallifecycle"
-	"github.com/osolmaz/brokerkit/providercredential"
-	bkservice "github.com/osolmaz/brokerkit/service"
+	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/brokerkit/credential/provider"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/doctor"
+	"github.com/osolmaz/brokerkit/internal/host/doctor"
 )
 
 func TestParseDoctorOptions(t *testing.T) {

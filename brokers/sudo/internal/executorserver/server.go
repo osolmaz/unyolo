@@ -12,7 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
 	"github.com/osolmaz/brokerkit/internal/clockx"
-	"github.com/osolmaz/brokerkit/plandigest"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 const defaultMaxConnections = 32

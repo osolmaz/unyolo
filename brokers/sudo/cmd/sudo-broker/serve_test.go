@@ -15,7 +15,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
-	"github.com/osolmaz/brokerkit/serverhttp"
+	"github.com/osolmaz/brokerkit/transport/http/server"
 )
 
 func TestParseServeOptionsAndHTTPServerHardening(t *testing.T) {

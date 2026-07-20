@@ -20,14 +20,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approvalnotify"
-	"github.com/osolmaz/brokerkit/approvalview"
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/approval/view"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/notify"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func testAuditRecorder() audit.Recorder { return audit.New(io.Discard) }

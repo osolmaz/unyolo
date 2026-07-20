@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"

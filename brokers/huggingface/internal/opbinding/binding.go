@@ -14,8 +14,8 @@ import (
 	"github.com/dlclark/regexp2"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/osolmaz/brokerkit/internal/schemautil"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/schemautil"
 )
 
 //go:embed hf-openapi-2026-07-13.json

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/credentialstore"
+	"github.com/osolmaz/brokerkit/credential/store"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 

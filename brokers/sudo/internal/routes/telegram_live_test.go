@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approvalnotify"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/presenter"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify/telegram"
-	"github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/usebudget"
 )
 
 func TestTelegramLiveSendApproval(t *testing.T) {

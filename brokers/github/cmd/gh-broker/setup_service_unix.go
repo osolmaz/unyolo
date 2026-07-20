@@ -14,11 +14,11 @@ import (
 	"strconv"
 	"strings"
 
+	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
 	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
-	sharedpreset "github.com/osolmaz/brokerkit/policypreset"
-	bkservice "github.com/osolmaz/brokerkit/service"
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 )
 
 const (

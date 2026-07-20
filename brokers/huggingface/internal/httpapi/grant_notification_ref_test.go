@@ -3,7 +3,7 @@ package httpapi
 import (
 	"testing"
 
-	"github.com/osolmaz/brokerkit/notify"
+	"github.com/osolmaz/brokerkit/approval/notifier"
 )
 
 func TestShouldSupersedeNotifier(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"sync"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
-	"github.com/osolmaz/brokerkit/capability"
 	"github.com/osolmaz/brokerkit/internal/sortedlookup"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 const ExpectedCount = 1436

@@ -36,11 +36,11 @@ execution, or user-facing approval text.
 
 ## Operator Inbox
 
-Every broker exposes the shared `operatorapi` contract on a protected operator
+Every broker exposes the shared `operator/api` contract on a protected operator
 listener or Unix socket. The agent listener remains client-scoped and cannot
 make operator decisions or read cross-client history.
 
-Each broker provides only its `operatorinbox.Presenter`, operator transport,
+Each broker provides only its `operator/inbox.Presenter`, operator transport,
 credential loading, and broker name. Brokerkit owns bounded queries, safe
 records, revision-checked decisions, durable events/SSE, operator auth
 primitives, audit fields, the Go client, and conformance fixtures. Telegram is

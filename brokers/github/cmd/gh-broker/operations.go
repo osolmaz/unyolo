@@ -14,18 +14,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentclient"
-	"github.com/osolmaz/brokerkit/agentv1"
+	"github.com/osolmaz/brokerkit/agent/client"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/capability"
-	"github.com/osolmaz/brokerkit/credentialstore"
-	"github.com/osolmaz/brokerkit/httpx"
+	"github.com/osolmaz/brokerkit/credential/store"
+	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/sealedpayload"
-	"github.com/osolmaz/brokerkit/sealedstore"
-	"github.com/osolmaz/brokerkit/streamstore"
+	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/brokerkit/operation/payload"
+	"github.com/osolmaz/brokerkit/transport/http"
 )
 
 const operationWaitDefault = 15 * time.Minute

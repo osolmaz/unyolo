@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/capability"
+	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
 func TestRequiredHFProjections(t *testing.T) {

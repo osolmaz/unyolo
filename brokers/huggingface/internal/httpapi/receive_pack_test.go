@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	rootpolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
-	rootpolicy "github.com/osolmaz/brokerkit/policy"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 func TestGitProxyEndToEndAppendOnly(t *testing.T) {

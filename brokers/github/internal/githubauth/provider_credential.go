@@ -16,7 +16,7 @@ import (
 
 	"github.com/google/go-github/v88/github"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/providercredential"
+	"github.com/osolmaz/brokerkit/credential/provider"
 )
 
 const appEnrollmentURL = "https://github.com/settings/apps/new"

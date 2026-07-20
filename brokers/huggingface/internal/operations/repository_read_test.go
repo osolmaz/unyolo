@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
 )
 
 type repositoryReadFake struct{}

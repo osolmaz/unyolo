@@ -14,9 +14,9 @@ import (
 	"unicode"
 
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/brokerkit/internal/storage/files"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/plandigest"
-	"github.com/osolmaz/brokerkit/store"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 const (

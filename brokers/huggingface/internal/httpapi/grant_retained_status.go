@@ -1,6 +1,6 @@
 package httpapi
 
-import "github.com/osolmaz/brokerkit/grants"
+import "github.com/osolmaz/brokerkit/authorization/grants"
 
 const retainedGrantStatus = "retained"
 

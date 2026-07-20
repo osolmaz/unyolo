@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agentclient"
-	"github.com/osolmaz/brokerkit/agentmcp"
+	"github.com/osolmaz/brokerkit/agent/client"
+	"github.com/osolmaz/brokerkit/agent/mcp"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/mcpoperation"
-	"github.com/osolmaz/brokerkit/mcpserver"
+	"github.com/osolmaz/brokerkit/mcp/operation"
+	"github.com/osolmaz/brokerkit/mcp/server"
 )
 
 func runMCP(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout, _ io.Writer, args []string) error {

@@ -6,7 +6,7 @@ adapters and provider-specific service inputs.
 
 ## Installer
 
-`installer/install.sh` is the canonical POSIX installer. A broker wrapper sets:
+`install/install.sh` is the canonical POSIX installer. A broker wrapper sets:
 
 ```text
 BROKER=hf-broker
@@ -42,10 +42,10 @@ need them.
 
 ## Setup
 
-Package `setup` owns:
+Package `internal/host/setup` owns:
 
 - the common `setup client` flags and validation;
-- client config writing through `clientconfig`;
+- client config writing through `internal/config/client`;
 - file, stdin, or generated 256-bit secret inputs;
 - the common `setup systemd` paths, account names, bind address, port,
   dry-run, no-start, and non-root test flag;
@@ -56,12 +56,12 @@ GitHub App key, scope file, sudo policy, or command catalog.
 
 No setup result or diagnostic output includes a secret value.
 
-Package `envfile` reads the literal `KEY=VALUE` files generated for systemd
-services. It bounds input to 1 MiB, rejects duplicate or malformed assignments,
-does not interpret shell syntax, and provides an overlay lookup where explicit
-process environment values take precedence. Broker doctor commands use this
-shared parser to inspect installed service configuration without inheriting the
-systemd process environment.
+Package `internal/config/envfile` reads the literal `KEY=VALUE` files generated
+for systemd services. It bounds input to 1 MiB, rejects duplicate or malformed
+assignments, does not interpret shell syntax, and provides an overlay lookup
+where explicit process environment values take precedence. Broker doctor
+commands use this shared parser to inspect installed service configuration
+without inheriting the systemd process environment.
 
 ## Agent MCP Operations
 
@@ -77,11 +77,11 @@ loss or process restart. Wait defaults to 25 seconds, never exceeds 25 seconds,
 and returns the latest known state on timeout. List defaults to 20, is capped at
 50, uses validated opaque cursors, and supports exact request-ID recovery.
 
-`mcpserver` owns bounded JSON-RPC and MCP stdio mechanics. `agentmcp` owns the
+`mcp/server` owns bounded JSON-RPC and MCP stdio mechanics. `agent/mcp` owns the
 closed operation envelope, submission, and lifecycle utility dispatch.
-`agentclient` owns authenticated Agent V1, sealed-payload, and stream
-transport. `capability` owns host compatibility classification and
-bidirectional JSON Pointer projection mechanics. `mcpoperation` owns
+`agent/client` owns authenticated Agent V1, sealed-payload, and stream
+transport. `operation/capability` owns host compatibility classification and
+bidirectional JSON Pointer projection mechanics. `mcp/operation` owns
 request-ID generation, operation/page projections, bounded recovery, and
 structured conflicts. Providers own semantic field aliases, schemas,
 runtime adapters, result projection, and canonical provider validation.
@@ -101,7 +101,7 @@ tools.
 
 ## Service
 
-Package `service` renders the common hardened systemd baseline:
+Package `internal/host/service` renders the common hardened systemd baseline:
 
 ```text
 network-online ordering

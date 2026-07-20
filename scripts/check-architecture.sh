@@ -4,6 +4,21 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
+allowed_go_roots='^(agent|approval|auth|authorization|broker|brokers|cmd|credential|git|install|internal|mcp|operation|operator|protocol|telemetry|transport)$'
+unexpected_go_roots=$(
+	go list -f '{{.Dir}}' ./... |
+		while IFS= read -r package_dir; do
+			relative=${package_dir#"$root"/}
+			printf '%s\n' "${relative%%/*}"
+		done |
+		sort -u |
+		grep -Ev "$allowed_go_roots" || true
+)
+if [ -n "$unexpected_go_roots" ]; then
+	printf 'Go packages must live under canonical domain roots:\n%s\n' "$unexpected_go_roots" >&2
+	exit 1
+fi
+
 if grep -R -n -E 'uses:[[:space:]]+[^[:space:]]+@[^0-9a-f]|uses:[[:space:]]+[^[:space:]]+@[0-9a-f]{1,39}([^0-9a-f]|$)' .github/workflows 2>/dev/null; then
 	echo 'GitHub Actions must be pinned to full commit SHAs' >&2
 	exit 1
@@ -14,7 +29,7 @@ if grep -R -n -E 'npm@latest|node-version:[[:space:]]+"?[0-9]+"?[[:space:]]*$' .
 	exit 1
 fi
 
-if grep -R -n -E '(^|[[:space:]])sudo([[:space:]]|$)' installer/*.sh 2>/dev/null; then
+if grep -R -n -E '(^|[[:space:]])sudo([[:space:]]|$)' install/*.sh 2>/dev/null; then
 	echo 'convenience installers must never invoke sudo' >&2
 	exit 1
 fi
@@ -26,6 +41,7 @@ fi
 
 maintained_examples='README.md
 docs/ARCHITECTURE.md
+docs/DIRECTORY_STRUCTURE.md
 docs/OPERATOR_INBOX.md
 docs/OPERATIONS_RUNTIME.md
 docs/OWNERSHIP.md
@@ -76,8 +92,8 @@ fi
 
 if ! grep -q 'BROKERKIT_VERIFY_ONLY: "true"' .github/workflows/release.yml ||
   ! grep -q 'BROKERKIT_VERIFY_RELEASE_SET: "true"' .github/workflows/release.yml ||
-  ! grep -q -- '--signer-workflow "$REPO/.github/workflows/release.yml"' installer/install.sh ||
-  ! grep -q -- '--deny-self-hosted-runners' installer/install.sh
+  ! grep -q -- '--signer-workflow "$REPO/.github/workflows/release.yml"' install/install.sh ||
+  ! grep -q -- '--deny-self-hosted-runners' install/install.sh
 then
   echo 'release publication and installation must verify pinned artifact provenance' >&2
   exit 1
@@ -94,15 +110,15 @@ do
   fi
 done
 
-if ! grep -q 'router.GET("/metrics"' operatorapi/api.go ||
+if ! grep -q 'router.GET("/metrics"' operator/api/api.go ||
   grep -R -n --include='*.go' --exclude='*_test.go' '"/metrics"' brokers 2>/dev/null
 then
   echo 'metrics must exist only on the shared authenticated operator surface' >&2
   exit 1
 fi
 
-if ! grep -q 'captureSystemdInstall' service/install_linux.go ||
-  ! grep -q 'captureLaunchdInstall' service/install_darwin.go
+if ! grep -q 'captureSystemdInstall' internal/host/service/install_linux.go ||
+  ! grep -q 'captureLaunchdInstall' internal/host/service/install_darwin.go
 then
   echo 'native service installers must preserve transactional credential rollback' >&2
   exit 1
@@ -134,14 +150,14 @@ fi
 if [ -d brokers/huggingface/internal/hfoperation ] ||
   grep -R -n --include='*.go' 'brokers/huggingface/internal/hfoperation' . 2>/dev/null
 then
-  echo 'HF-local operation lifecycle survived the agentops cutover' >&2
+  echo 'HF-local operation lifecycle survived extraction to agent/runtime' >&2
 	exit 1
 fi
 
 if [ -d brokers/huggingface/internal/gitproxy/pktline ] ||
   grep -R -n --include='*.go' 'brokers/huggingface/internal/gitproxy/pktline' . 2>/dev/null
 then
-  echo 'HF-local pkt-line implementation survived the gitx cutover' >&2
+  echo 'HF-local pkt-line implementation survived extraction to git/protocol' >&2
 	exit 1
 fi
 
@@ -153,17 +169,17 @@ then
 fi
 
 if grep -R -n --include='*.go' 'github.com/go-git/' brokers 2>/dev/null; then
-  echo 'providers must use go-git only through the shared gitx boundary' >&2
+  echo 'providers must use go-git only through the shared git/protocol boundary' >&2
   exit 1
 fi
 
 if grep -R -n --include='*.go' 'compress/zlib' brokers/huggingface/internal/gitproxy 2>/dev/null; then
-  echo 'HF-local packfile inflation survived the gitx cutover' >&2
+  echo 'HF-local packfile inflation survived extraction to git/protocol' >&2
   exit 1
 fi
 
-if grep -R -n --include='*.go' -E 'operations\.json|store\.WriteJSONAtomic' agentops 2>/dev/null; then
-  echo 'agentops must persist only through the shared SQLite state layer' >&2
+if grep -R -n --include='*.go' -E 'operations\.json|store\.WriteJSONAtomic' agent/runtime 2>/dev/null; then
+  echo 'agent/runtime must persist only through the shared SQLite state layer' >&2
   exit 1
 fi
 
@@ -210,7 +226,7 @@ then
   exit 1
 fi
 
-if ! grep -q 'github.com/osolmaz/brokerkit/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
+if ! grep -q 'github.com/osolmaz/brokerkit/operation/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
   ! grep -A4 'type Descriptor struct' brokers/github/internal/opcatalog/catalog.go | grep -q 'capability.Descriptor'
 then
   echo 'provider operation catalogs must use the shared capability descriptor' >&2
@@ -261,11 +277,11 @@ then
   exit 1
 fi
 
-if ! grep -q 'github.com/osolmaz/brokerkit/operationruntime' brokers/huggingface/internal/operations/operations.go ||
+if ! grep -q 'github.com/osolmaz/brokerkit/operation/runtime' brokers/huggingface/internal/operations/operations.go ||
   grep -R -n --include='*.go' -E 'type Adapter interface|byName map\[string\].*Adapter|type PossiblePartialError struct' \
     brokers/huggingface --exclude='*_test.go' 2>/dev/null
 then
-  echo 'HF operation adapters and registry must use the shared operationruntime contract' >&2
+  echo 'HF operation adapters and registry must use the shared operation/runtime contract' >&2
   exit 1
 fi
 
@@ -301,14 +317,14 @@ if [ -e plugins/openclaw/scripts/generate-operator-v1.mjs ]; then
   exit 1
 fi
 
-if ! grep -q 'operatorwire.RegisterHandlers' operatorapi/api.go ||
-  grep -R -n --include='*.go' -E 'serveAuthorized|requestPath\(' operatorapi 2>/dev/null
+if ! grep -q 'operatorwire.RegisterHandlers' operator/api/api.go ||
+  grep -R -n --include='*.go' -E 'serveAuthorized|requestPath\(' operator/api 2>/dev/null
 then
   echo 'Operator V1 must use only generated Echo route registration' >&2
   exit 1
 fi
 
-if ! grep -q 'agentwire.RegisterHandlers' agentapi/api.go ||
+if ! grep -q 'agentwire.RegisterHandlers' agent/api/api.go ||
 	grep -R -n --include='*.go' 'agentwire.RegisterHandlers' brokers 2>/dev/null ||
 	grep -R -n --include='*.go' 'serveAgentAPI' brokers 2>/dev/null
 then
@@ -323,8 +339,8 @@ then
 	exit 1
 fi
 
-if ! grep -q 'operatorwire.NewClient' operatorclient/client.go ||
-	! grep -q 'agentwire.NewClient' agentclient/client.go ||
+if ! grep -q 'operatorwire.NewClient' operator/client/client.go ||
+	! grep -q 'agentwire.NewClient' agent/client/client.go ||
 	grep -R -n --include='*.go' 'agentwire.NewClient' brokers 2>/dev/null
 then
   echo 'Operator and Agent clients must use generated request builders' >&2
@@ -354,7 +370,7 @@ then
   exit 1
 fi
 
-if ! grep -q 'NewDiagnostics' controlplane/runtime.go ||
+if ! grep -q 'NewDiagnostics' broker/controlplane/runtime.go ||
   ! grep -q 'Diagnostics:.*s.control.Diagnostics' brokers/huggingface/internal/httpapi/agent_operations.go ||
   ! grep -q 'Diagnostics:.*s.control.Diagnostics' brokers/github/internal/httpapi/agent_operations.go ||
   ! grep -q 'Diagnostics:.*s.control.Diagnostics' brokers/sudo/internal/routes/agent_operations.go

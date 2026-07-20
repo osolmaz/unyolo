@@ -16,14 +16,14 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/internal/storage/state"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/plandigest"
-	corepolicy "github.com/osolmaz/brokerkit/policy"
-	"github.com/osolmaz/brokerkit/state"
-	"github.com/osolmaz/brokerkit/usebudget"
+	"github.com/osolmaz/brokerkit/operation/digest"
 )
 
 const (

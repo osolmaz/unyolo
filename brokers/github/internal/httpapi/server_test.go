@@ -23,15 +23,15 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/approvalnotify"
-	bkaudit "github.com/osolmaz/brokerkit/audit"
+	"github.com/osolmaz/brokerkit/approval/notification"
+	"github.com/osolmaz/brokerkit/approval/notifier"
+	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/grants"
-	"github.com/osolmaz/brokerkit/notify"
-	bktelegram "github.com/osolmaz/brokerkit/notify/telegram"
+	bkaudit "github.com/osolmaz/brokerkit/telemetry/audit"
 )
 
 const testSharedSecret = "0123456789abcdef0123456789abcdef"

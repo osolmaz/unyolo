@@ -15,16 +15,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/osolmaz/brokerkit/audit"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/endpoint"
+	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/brokerkit/internal/storage/command"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/providercredential"
-	"github.com/osolmaz/brokerkit/serverhttp"
-	"github.com/osolmaz/brokerkit/statecmd"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/brokerkit/transport/http/server"
 )
 
 var version = "dev"

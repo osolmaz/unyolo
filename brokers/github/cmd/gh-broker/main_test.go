@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/endpoint"
-	"github.com/osolmaz/brokerkit/serverhttp"
+	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/brokerkit/transport/http/server"
 )
 
 func TestRunWithArgsVersion(t *testing.T) {

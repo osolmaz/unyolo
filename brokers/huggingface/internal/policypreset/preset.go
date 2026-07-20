@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	shared "github.com/osolmaz/brokerkit/authorization/preset"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	shared "github.com/osolmaz/brokerkit/policypreset"
 )
 
 const RequestAllAgentOperations = "request-all-agent-operations"

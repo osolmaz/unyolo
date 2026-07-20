@@ -13,16 +13,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/audit"
+	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/clientconfig"
-	"github.com/osolmaz/brokerkit/credentiallifecycle"
-	"github.com/osolmaz/brokerkit/endpoint"
-	bkpolicy "github.com/osolmaz/brokerkit/policy"
-	bkservice "github.com/osolmaz/brokerkit/service"
-	bksetup "github.com/osolmaz/brokerkit/setup"
+	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/brokerkit/internal/config/client"
+	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/brokerkit/transport/endpoint"
 )
 
 const maxSetupFileBytes = 16 << 20

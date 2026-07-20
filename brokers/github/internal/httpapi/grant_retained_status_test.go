@@ -3,7 +3,7 @@ package httpapi
 import (
 	"testing"
 
-	"github.com/osolmaz/brokerkit/grants"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 )
 
 func TestGrantAPIStatusAndRemainingUses(t *testing.T) {

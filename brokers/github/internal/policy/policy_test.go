@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	corepolicy "github.com/osolmaz/brokerkit/policy"
+	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 )
 
 func TestPolicyAllowsPRWorkflowButNotDefaultBranchPush(t *testing.T) {
