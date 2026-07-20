@@ -903,14 +903,18 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	var successful, conflicted int
+	var successful, refused int
 	for range 2 {
 		response := <-responses
 		switch response.Code {
 		case http.StatusOK:
-			successful++
+			if strings.Contains(response.Body.String(), "approval consumed") {
+				refused++
+			} else {
+				successful++
+			}
 		case http.StatusConflict:
-			conflicted++
+			refused++
 		default:
 			t.Errorf("status = %d, body = %q", response.Code, response.Body.String())
 		}
@@ -919,8 +923,8 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Status != grants.StatusConsumed {
 		t.Fatalf("transaction grants = %+v, error = %v", items, err)
 	}
-	if len(notifier.messages) != 1 || upstreamCalls.Load() != 1 || successful != 1 || conflicted != 1 {
-		t.Fatalf("notifications=%d upstream=%d success=%d conflict=%d", len(notifier.messages), upstreamCalls.Load(), successful, conflicted)
+	if len(notifier.messages) != 1 || upstreamCalls.Load() != 1 || successful != 1 || refused != 1 {
+		t.Fatalf("notifications=%d upstream=%d success=%d refused=%d", len(notifier.messages), upstreamCalls.Load(), successful, refused)
 	}
 }
 
