@@ -281,9 +281,12 @@ func (s *Store) WaitForEvents(ctx context.Context, cursor string) (EventPage, er
 // ctx is canceled. The event cursor is captured before the status check so a
 // decision made between the check and the wait cannot be missed.
 func (s *Store) WaitForDecision(ctx context.Context, id string) (Grant, error) {
+	cursor, err := s.latestGrantCursor(id)
+	if err != nil {
+		return Grant{}, err
+	}
 	for {
-		cursor, err := s.latestGrantCursor(id)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			return Grant{}, err
 		}
 		grant, err := s.Get(id)
@@ -293,30 +296,31 @@ func (s *Store) WaitForDecision(ctx context.Context, id string) (Grant, error) {
 		if grant.Status != StatusPending {
 			return grant, nil
 		}
-		decided, err := s.waitForDecisionEvent(ctx, cursor, id)
+		page, err := s.WaitForEvents(ctx, cursor)
+		if errors.Is(err, ErrCursorExpired) {
+			cursor, err = s.latestGrantCursor(id)
+			if err != nil {
+				return Grant{}, err
+			}
+			continue
+		}
 		if err != nil {
 			return Grant{}, err
 		}
-		if decided {
+		cursor = page.NextCursor
+		if decisionEventForGrant(page.Events, id) {
 			return s.Get(id)
 		}
 	}
 }
 
-func (s *Store) waitForDecisionEvent(ctx context.Context, cursor, id string) (bool, error) {
-	page, err := s.WaitForEvents(ctx, cursor)
-	if errors.Is(err, ErrCursorExpired) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, event := range page.Events {
+func decisionEventForGrant(events []Event, id string) bool {
+	for _, event := range events {
 		if event.GrantID == id && event.Status != StatusPending {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 func (s *Store) latestGrantCursor(id string) (string, error) {

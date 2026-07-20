@@ -70,6 +70,7 @@ func (s *Server) proxyGitLFSBatch(c echo.Context, operation policy.Operation) er
 	if err != nil {
 		return err
 	}
+	request.Header.Del("Accept-Encoding")
 	response, err := s.doGitHubLFSRequest(request)
 	if err != nil {
 		return err

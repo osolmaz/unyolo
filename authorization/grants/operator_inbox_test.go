@@ -446,6 +446,27 @@ func TestWaitForDecisionHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestWaitForDecisionAdvancesPastUnrelatedEvents(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	target := requestTestGrant(t, store, "wait-target", 1)
+	_ = requestTestGrant(t, store, "wait-unrelated", 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.WaitForDecision(ctx, target.Grant.ID)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("WaitForDecision() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("WaitForDecision() did not stop after an unrelated event")
+	}
+}
+
 func TestWaitForDecisionRejectsUnknownGrant(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	if _, err := store.WaitForDecision(t.Context(), "missing"); !errors.Is(err, ErrNotFound) {

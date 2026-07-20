@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -155,6 +156,28 @@ func TestGitHubLFSBatchKeepsSignedActionInsideBroker(t *testing.T) {
 	}
 	if actionAuthorization != "storage-secret" {
 		t.Fatalf("signed action authorization = %q", actionAuthorization)
+	}
+}
+
+func TestGitHubLFSBatchDecompressesUpstreamResponse(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			t.Fatal("transport did not negotiate gzip")
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		writer := gzip.NewWriter(w)
+		_, _ = writer.Write([]byte(`{"objects":[]}`))
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	response := doWithHeaders(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", map[string]string{
+		"Authorization":   bearerAuth(),
+		"Accept-Encoding": "gzip",
+	}, []byte(`{"operation":"download"}`))
+	if response.Code != http.StatusOK || response.Body.String() != `{"objects":[]}` {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 }
 
