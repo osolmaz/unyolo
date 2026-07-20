@@ -9,84 +9,18 @@ import (
 
 const defaultCascadeReason = "push refused by hf-broker because another ref failed"
 
-const maxSideBandDataPayload = gitx.MaxPktLinePayload - 1
-
 // BuildRefusalReport returns a git-receive-pack result that stock git
 // prints as a remote rejection instead of a generic HTTP error.
 func BuildRefusalReport(req ReceivePackRequest, failures []RefFailure) ([]byte, error) {
-	reasons := map[string]string{}
-	firstReason := "push refused"
-	for i, failure := range failures {
-		reason := cleanReason(failure.Reason)
-		if i == 0 {
-			firstReason = reason
-		}
-		reasons[failure.Ref] = reason
+	request := gitx.ReceivePackRequest{Capabilities: req.Capabilities}
+	for _, command := range req.Commands {
+		request.Commands = append(request.Commands, gitx.ReceivePackCommand{Old: command.Old, New: command.New, Ref: command.Ref})
 	}
-	sideBand := req.Capabilities["side-band-64k"] || req.Capabilities["side-band"]
-	status, err := appendRefusalStatus(nil, req.Commands, reasons)
-	if err != nil {
-		return nil, err
+	sharedFailures := make([]gitx.ReceivePackFailure, 0, len(failures))
+	for _, failure := range failures {
+		sharedFailures = append(sharedFailures, gitx.ReceivePackFailure{Ref: failure.Ref, Reason: failure.Reason})
 	}
-	status = gitx.AppendFlushPkt(status)
-	var out []byte
-	if sideBand {
-		out, err = appendBandString(out, 2, "hf-broker: "+firstReason+"\n")
-		if err != nil {
-			return nil, err
-		}
-		out, err = appendBandBytes(out, 1, status)
-		return gitx.AppendFlushPkt(out), err
-	}
-	return status, nil
-}
-
-func appendRefusalStatus(dst []byte, commands []Command, reasons map[string]string) ([]byte, error) {
-	dst, err := gitx.AppendPktLineString(dst, "unpack ok\n")
-	if err != nil {
-		return nil, err
-	}
-	return appendPlainFailures(dst, commands, reasons)
-}
-
-func appendPlainFailures(dst []byte, commands []Command, reasons map[string]string) ([]byte, error) {
-	for _, command := range commands {
-		var err error
-		dst, err = gitx.AppendPktLineString(dst, "ng "+command.Ref+" hf-broker: "+reasonForRef(command.Ref, reasons)+"\n")
-		if err != nil {
-			return nil, err
-		}
-	}
-	return dst, nil
-}
-
-func reasonForRef(ref string, reasons map[string]string) string {
-	reason := reasons[ref]
-	if reason == "" {
-		return defaultCascadeReason
-	}
-	return reason
-}
-
-func appendBandString(dst []byte, band byte, payload string) ([]byte, error) {
-	return appendBandBytes(dst, band, []byte(payload))
-}
-
-func appendBandBytes(dst []byte, band byte, payload []byte) ([]byte, error) {
-	for len(payload) > 0 {
-		n := len(payload)
-		if n > maxSideBandDataPayload {
-			n = maxSideBandDataPayload
-		}
-		data := append([]byte{band}, payload[:n]...)
-		var err error
-		dst, err = gitx.AppendPktLine(dst, data)
-		if err != nil {
-			return nil, err
-		}
-		payload = payload[n:]
-	}
-	return dst, nil
+	return gitx.BuildReceivePackRefusal("hf-broker", request, sharedFailures)
 }
 
 func cleanReason(reason string) string {

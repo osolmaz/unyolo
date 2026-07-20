@@ -29,6 +29,32 @@ func TestGeneratedPolicyRegistryCoversCatalog(t *testing.T) {
 			t.Fatalf("unsafe policy attr %q", forbidden)
 		}
 	}
+	for _, name := range []string{"ref", "base_ref", "head_ref"} {
+		if registry.Attrs[name].Match != corepolicy.MatchRecursivePathGlob {
+			t.Fatalf("attribute %q does not support nested Git refs", name)
+		}
+	}
+}
+
+func TestPolicyMatchesNestedGitBranches(t *testing.T) {
+	t.Parallel()
+	policy, err := New(Scope{Rules: []Rule{{
+		ID: "bob-branches", Effect: EffectAllow, Clients: []string{"bob"},
+		Operations: []Operation{OperationGitPushBranchCreate},
+		Targets:    []Target{{Kind: "repo", Owner: "openclaw", Name: "openclaw"}},
+		Attrs:      map[string][]string{"refs": {"refs/heads/bob/**"}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := repoRequest(OperationGitPushBranchCreate, "openclaw", "openclaw", map[string]string{"ref": "refs/heads/bob/fix/widget"})
+	if decision := policy.Evaluate(allowed); !decision.Allowed {
+		t.Fatalf("nested branch decision = %+v, want allowed", decision)
+	}
+	outside := repoRequest(OperationGitPushBranchCreate, "openclaw", "openclaw", map[string]string{"ref": "refs/heads/other/fix"})
+	if decision := policy.Evaluate(outside); decision.Allowed {
+		t.Fatalf("outside branch decision = %+v, want denied", decision)
+	}
 }
 
 func TestGeneratedPolicyRegistryAcceptsCreatedResourceIdentity(t *testing.T) {

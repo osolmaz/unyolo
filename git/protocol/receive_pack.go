@@ -33,31 +33,52 @@ type ReceivePackCommand struct {
 	Kind RefUpdateKind
 }
 
+// ReceivePackRequest is the parsed command prelude of one receive-pack request.
+// The reader remains positioned at the trailing pack stream.
+type ReceivePackRequest struct {
+	Commands     []ReceivePackCommand
+	Capabilities map[string]bool
+}
+
 // ParseReceivePackCommands parses pkt-line receive-pack commands.
 func ParseReceivePackCommands(r io.Reader) ([]ReceivePackCommand, error) {
-	commands := make([]ReceivePackCommand, 0)
+	request, err := ParseReceivePackRequest(r)
+	return request.Commands, err
+}
+
+// ParseReceivePackRequest parses pkt-line receive-pack commands and the
+// capabilities attached to the first command.
+func ParseReceivePackRequest(r io.Reader) (ReceivePackRequest, error) {
+	request := ReceivePackRequest{Capabilities: map[string]bool{}}
+	firstCommand := true
 	for {
 		payload, err := ReadPktLine(r)
 		if errors.Is(err, ErrFlush) || errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return ReceivePackRequest{}, err
 		}
-		command, ok, err := parseCommandPayload(payload)
+		command, ok, err := parseCommandPayloadWithCapabilities(payload, firstCommand, request.Capabilities)
 		if err != nil {
-			return nil, err
+			return ReceivePackRequest{}, err
 		}
 		if ok {
-			commands = append(commands, command)
+			request.Commands = append(request.Commands, command)
+			firstCommand = false
 		}
 	}
-	return commands, nil
+	return request, nil
 }
 
-func parseCommandPayload(payload []byte) (ReceivePackCommand, bool, error) {
+func parseCommandPayloadWithCapabilities(payload []byte, first bool, capabilities map[string]bool) (ReceivePackCommand, bool, error) {
 	payload = bytes.TrimSuffix(payload, []byte{'\n'})
 	if index := bytes.IndexByte(payload, 0); index >= 0 {
+		if first {
+			for _, capability := range strings.Fields(string(payload[index+1:])) {
+				capabilities[capability] = true
+			}
+		}
 		payload = payload[:index]
 	}
 	line := string(payload)

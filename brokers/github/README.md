@@ -282,7 +282,9 @@ rules when operations need different attrs. Start from
 The default production-oriented workflow is:
 
 - allow fetch, repository listing, and content reads for scoped repositories
-- allow agents to push feature branches such as `refs/heads/agent-a/*`
+- allow agents to push namespaced feature branches such as
+  `refs/heads/agent-a/**`; Git ref attributes use recursive path globs, so
+  `**` includes nested branch names
 - allow agents to open pull requests into `refs/heads/main`
 - deny ref deletion and default-branch pushes unless a repository has an
   explicit allow rule
@@ -306,10 +308,14 @@ Example direct-main exception:
 
 Rules with `"effect": "request"` do not execute directly. Agent V1
 submissions create a durable approval request as part of the operation, and
-Git smart-HTTP pushes create a pending grant through `POST /api/grants` (each
-request must carry a unique `client_request_id`, reused on retry). Approval
-creates a short-lived grant evaluated by the same policy path; deny rules
-still win over approved grants.
+Git smart-HTTP pushes automatically create one bounded, idempotent approval
+request. Git prints the approval ID and asks the caller to approve and retry;
+repeating the same push while it is pending reuses the same request. Approval
+creates a short-lived grant evaluated by the same policy path, and the next
+identical push consumes it. Deny rules still win over approved grants.
+
+`POST /api/grants` remains the explicit protocol endpoint for clients that
+need to request a Git grant before attempting a push.
 
 ## Broker routes
 

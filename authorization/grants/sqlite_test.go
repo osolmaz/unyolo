@@ -85,6 +85,25 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	}
 }
 
+func TestSQLiteDecisionRoundTripPreservesImmutableJSON(t *testing.T) {
+	record := state.GrantDecisionRecord{
+		Scope: "grant-1\x00approve\x00key-1", RequestID: "grant-1", Action: "approve", IdempotencyKey: "key-1",
+		CommandHash: strings.Repeat("a", 43), ResultJSON: []byte(`{"id":"grant-1"}`), PreviousJSON: []byte(`{}`),
+		CommittedAt: time.Date(2026, 7, 20, 4, 0, 0, 0, time.UTC),
+	}
+	decoded, err := decisionFromSQLite(record)
+	if err != nil {
+		t.Fatalf("decisionFromSQLite() error = %v", err)
+	}
+	roundTrip, err := decisionToSQLite(decoded)
+	if err != nil {
+		t.Fatalf("decisionToSQLite() error = %v", err)
+	}
+	if string(roundTrip.ResultJSON) != string(record.ResultJSON) || string(roundTrip.PreviousJSON) != string(record.PreviousJSON) {
+		t.Fatalf("decision JSON changed: result %q, previous %q", roundTrip.ResultJSON, roundTrip.PreviousJSON)
+	}
+}
+
 func TestSQLiteStorePersistsUnlimitedUseBudget(t *testing.T) {
 	t.Parallel()
 	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})

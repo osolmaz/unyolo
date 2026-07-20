@@ -71,6 +71,7 @@ type Server struct {
 	githubCredentials   *githubauth.Manager
 	githubWebhookSecret string
 	githubClient        *http.Client
+	githubGitClient     *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
 	auditWriter         *bkaudit.Writer
@@ -101,25 +102,17 @@ func New(cfg config.Config, brokerPolicy *policy.Policy) (*Server, error) {
 }
 
 func newServerWithCore(cfg config.Config, brokerPolicy *policy.Policy, core coreDependencies) (*Server, error) {
-	gitBaseURL, apiBaseURL, githubClient, appSource, credentialSlots, err := newGitHubDependencies(cfg, core.audit)
+	github, err := newGitHubDependencies(cfg, core.audit)
 	if err != nil {
 		return nil, err
 	}
-	core.credentialResolver.manager = appSource
+	core.credentialResolver.manager = github.appSource
 	operationStore, admissionController, err := newAdmissionDependencies(cfg, core)
 	if err != nil {
 		return nil, err
 	}
-	server := newServerSkeleton(cfg, brokerPolicy, core, operationStore, admissionController, githubDependencies{
-		gitBaseURL:       gitBaseURL,
-		apiBaseURL:       apiBaseURL,
-		client:           githubClient,
-		appSource:        appSource,
-		credentialStore:  credentialSlots,
-		webhookSecret:    cfg.GitHubWebhookSecret,
-		receivePackLimit: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
-	})
-	if err := server.configureServerFeatures(cfg, brokerPolicy, core, appSource); err != nil {
+	server := newServerSkeleton(cfg, brokerPolicy, core, operationStore, admissionController, github)
+	if err := server.configureServerFeatures(cfg, brokerPolicy, core, github.appSource); err != nil {
 		return nil, err
 	}
 	server.registerRoutes(core.auth)
@@ -130,6 +123,7 @@ type githubDependencies struct {
 	gitBaseURL       *url.URL
 	apiBaseURL       *url.URL
 	client           *http.Client
+	gitClient        *http.Client
 	appSource        *githubauth.Manager
 	credentialStore  *credentialstore.Store
 	webhookSecret    string
@@ -159,7 +153,8 @@ func newServerSkeleton(
 		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,
 		githubCredentials: github.appSource, githubWebhookSecret: github.webhookSecret,
 		credentialStore: github.credentialStore,
-		githubClient:    github.client, githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
+		githubClient:    github.client, githubGitClient: github.gitClient,
+		githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: github.receivePackLimit,
 		operatorConfigured: cfg.OperatorSecret != "",
 	}
@@ -359,31 +354,40 @@ func (r *currentGitHubCredentialResolver) currentManager() (*githubauth.Manager,
 	return r.manager, nil
 }
 
-func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (*url.URL, *url.URL, *http.Client, *githubauth.Manager, *credentialstore.Store, error) {
+func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (githubDependencies, error) {
 	gitBaseURL, apiBaseURL, err := githubBaseURLs(cfg)
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return githubDependencies{}, err
 	}
 	client := newGitHubClient(defaultDuration(cfg.GitHubHTTPTimeout, 30*time.Second))
+	streamTimeout := defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute)
+	gitClient := cloneGitHubClient(client, streamTimeout)
 	userStore, err := githubauth.OpenUserCredentialStore(stateDir(cfg.StateDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return githubDependencies{}, err
 	}
 	lifecycle, err := credentiallifecycle.New(auditWriter, "gh-broker", "broker")
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return githubDependencies{}, err
 	}
 	manager, err := githubauth.New(githubauth.Config{
 		AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey, AppClientID: cfg.GitHubAppClientID,
 		AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: apiBaseURL, WebBaseURL: gitBaseURL,
-		HTTPClient: client, StreamTimeout: defaultDuration(cfg.GitHubStreamTimeout, 10*time.Minute), Store: userStore, Lifecycle: lifecycle,
+		HTTPClient: client, StreamTimeout: streamTimeout, Store: userStore, Lifecycle: lifecycle,
 	})
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return githubDependencies{}, err
 	}
 	outputStore, err := credentialstore.OpenNamespace(stateDir(cfg.StateDir), "github-operation-outputs")
-	return gitBaseURL, apiBaseURL, client, manager, outputStore, err
+	if err != nil {
+		return githubDependencies{}, err
+	}
+	return githubDependencies{
+		gitBaseURL: gitBaseURL, apiBaseURL: apiBaseURL, client: client, gitClient: gitClient,
+		appSource: manager, credentialStore: outputStore, webhookSecret: cfg.GitHubWebhookSecret,
+		receivePackLimit: defaultInt64(cfg.MaxReceivePackBytes, 25*1024*1024),
+	}, nil
 }
 
 func githubCredentialMode(cfg config.Config) string {
@@ -501,6 +505,12 @@ func newGitHubClient(timeout time.Duration) *http.Client {
 	}
 }
 
+func cloneGitHubClient(client *http.Client, timeout time.Duration) *http.Client {
+	clone := *client
+	clone.Timeout = timeout
+	return &clone
+}
+
 func stopGitHubRedirect(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
@@ -566,53 +576,59 @@ func (s *Server) gitUploadPack(c echo.Context) error {
 }
 
 func (s *Server) gitReceivePack(c echo.Context) error {
-	body, commands, err := s.readReceivePackBody(c)
+	body, request, err := s.readReceivePackBody(c)
 	if err != nil {
 		return err
 	}
-	if len(commands) == 0 {
+	if len(request.Commands) == 0 {
 		c.Request().Body = io.NopCloser(bytes.NewReader(body))
 		c.Request().ContentLength = int64(len(body))
 		return s.authorizeBrokerRequest(c, s.repoRequest(c, policy.OperationGitPushAdvertise, nil), s.proxyGit)
 	}
-	authorized, err := s.authorizeReceivePackCommands(c, commands)
+	authorized, approval, err := s.authorizeReceivePackCommands(c, request.Commands)
 	if err != nil {
 		return err
+	}
+	if approval != nil {
+		return writeReceivePackApprovalRequired(c, request.Protocol, *approval)
 	}
 	return s.proxyAuthorizedReceivePack(c, body, authorized)
 }
 
-func (s *Server) readReceivePackBody(c echo.Context) ([]byte, []receivePackCommand, error) {
+func (s *Server) readReceivePackBody(c echo.Context) ([]byte, receivePackRequest, error) {
 	body, err := httpx.ReadLimited(c.Request().Body, s.maxReceivePackBytes)
 	if err != nil {
-		return nil, nil, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "git receive-pack request is too large")
+		return nil, receivePackRequest{}, echo.NewHTTPError(http.StatusRequestEntityTooLarge, "git receive-pack request is too large")
 	}
-	commands, err := receivePackCommandsFromBody(body)
+	request, err := receivePackRequestFromBody(body)
 	if err != nil {
-		return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "parse git receive-pack request")
+		return nil, receivePackRequest{}, echo.NewHTTPError(http.StatusBadRequest, "parse git receive-pack request")
 	}
-	return body, commands, nil
+	return body, request, nil
 }
 
-func (s *Server) authorizeReceivePackCommands(c echo.Context, commands []receivePackCommand) ([]authorizedReceivePackRequest, error) {
+func (s *Server) authorizeReceivePackCommands(c echo.Context, commands []receivePackCommand) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
 	authorized := make([]authorizedReceivePackRequest, 0, len(commands))
 	for _, command := range commands {
 		operation, err := s.classifyReceivePackCommand(c, command)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		request := s.repoRequest(c, operation, map[string]string{"ref": command.Ref})
-		decision, err := s.evaluateBrokerRequest(request)
+		decision, approval, err := s.authorizeGitMutation(c, request)
 		if err != nil {
-			return nil, echo.NewHTTPError(http.StatusInternalServerError, "could not inspect grants")
+			return nil, nil, err
+		}
+		if approval != nil {
+			return nil, approval, nil
 		}
 		if !decision.Allowed {
 			s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
-			return nil, echo.NewHTTPError(statusForDecision(decision), decision.Reason)
+			return nil, nil, echo.NewHTTPError(statusForDecision(decision), decision.Reason)
 		}
 		authorized = append(authorized, authorizedReceivePackRequest{Request: request, Decision: decision})
 	}
-	return authorized, nil
+	return authorized, nil, nil
 }
 
 func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authorized []authorizedReceivePackRequest) error {

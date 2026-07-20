@@ -60,12 +60,14 @@ type OperatorDecisionResult struct {
 }
 
 type decisionRecord struct {
-	Scope       string    `json:"scope"`
-	CommandHash string    `json:"command_hash"`
-	Result      Grant     `json:"result"`
-	Previous    Grant     `json:"previous"`
-	EventCursor string    `json:"event_cursor"`
-	CommittedAt time.Time `json:"committed_at"`
+	Scope        string    `json:"scope"`
+	CommandHash  string    `json:"command_hash"`
+	Result       Grant     `json:"result"`
+	Previous     Grant     `json:"previous"`
+	EventCursor  string    `json:"event_cursor"`
+	CommittedAt  time.Time `json:"committed_at"`
+	resultJSON   []byte
+	previousJSON []byte
 }
 
 // ApplyOperatorDecision atomically validates and commits one revision-bound decision.

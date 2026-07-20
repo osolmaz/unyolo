@@ -78,7 +78,11 @@ func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
 	names := CatalogAttributeNames()
 	attrs := make(map[string]corepolicy.AttrSpec, len(names))
 	for _, name := range names {
-		attrs[name] = corepolicy.AttrSpec{}
+		spec := corepolicy.AttrSpec{}
+		if name == "ref" || name == "base_ref" || name == "head_ref" {
+			spec.Match = corepolicy.MatchRecursivePathGlob
+		}
+		attrs[name] = spec
 	}
 	return attrs
 }

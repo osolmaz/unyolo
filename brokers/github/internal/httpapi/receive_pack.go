@@ -13,19 +13,29 @@ type receivePackCommand struct {
 	Ref    string
 }
 
+type receivePackRequest struct {
+	Commands []receivePackCommand
+	Protocol gitx.ReceivePackRequest
+}
+
 type authorizedReceivePackRequest struct {
 	Request  policy.Request
 	Decision policy.Decision
 }
 
 func receivePackCommandsFromBody(body []byte) ([]receivePackCommand, error) {
-	parsed, err := gitx.ParseReceivePackCommands(bytes.NewReader(body))
+	request, err := receivePackRequestFromBody(body)
+	return request.Commands, err
+}
+
+func receivePackRequestFromBody(body []byte) (receivePackRequest, error) {
+	parsed, err := gitx.ParseReceivePackRequest(bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return receivePackRequest{}, err
 	}
-	commands := make([]receivePackCommand, 0, len(parsed))
-	for _, command := range parsed {
+	commands := make([]receivePackCommand, 0, len(parsed.Commands))
+	for _, command := range parsed.Commands {
 		commands = append(commands, receivePackCommand{OldOID: command.Old, NewOID: command.New, Ref: command.Ref})
 	}
-	return commands, nil
+	return receivePackRequest{Commands: commands, Protocol: parsed}, nil
 }
