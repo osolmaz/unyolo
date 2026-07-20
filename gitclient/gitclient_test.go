@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +19,7 @@ import (
 )
 
 func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
+	installTestCredentialHelper(t)
 	secret := strings.Repeat("s", 32)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		_, password, ok := request.BasicAuth()
@@ -293,6 +297,56 @@ func TestInstallRejectsHigherPriorityRewrite(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsUnownedTargetRewrite(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	runner := commandRunner{home: home}
+	key := "url." + server.URL + "/.insteadOf"
+	if _, err := runner.Run(t.Context(), "config", "--global", "--add", key, "https://github.com/"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Install accepted an unowned rewrite for the target listener")
+	}
+	values, err := configValues(t.Context(), runner, key)
+	if err != nil || !slices.Equal(values, []string{"https://github.com/"}) {
+		t.Fatalf("unowned rewrite changed: %q, %v", values, err)
+	}
+}
+
+func TestInstallPreservesUnownedTargetCredentialHelper(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	runner := commandRunner{home: home}
+	key := "credential." + server.URL + ".helper"
+	if _, err := runner.Run(t.Context(), "config", "--global", "--add", key, "user-owned-helper"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil {
+		t.Fatal("Install accepted an unowned credential helper for the target listener")
+	}
+	values, err := configValues(t.Context(), runner, key)
+	if err != nil || !slices.Equal(values, []string{"user-owned-helper"}) {
+		t.Fatalf("unowned credential helper changed: %q, %v", values, err)
+	}
+}
+
+func TestInstallRejectsUnavailableCredentialHelperWithoutMutation(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	removeTestCredentialHelper(t)
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err == nil || !strings.Contains(err.Error(), "credential helper is unavailable") {
+		t.Fatalf("Install error = %v", err)
+	}
+	status, err := Inspect(t.Context(), provider, Options{HomeDir: home})
+	if err != nil || status.Installed {
+		t.Fatalf("status after rejected install = %+v, %v", status, err)
+	}
+}
+
 func TestInstallAndDoctorRejectSystemRewrite(t *testing.T) {
 	provider := testProvider()
 	systemConfig := filepath.Join(t.TempDir(), "system.gitconfig")
@@ -391,6 +445,59 @@ func TestDoctorRejectsModifiedEffectiveConfiguration(t *testing.T) {
 	}
 	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil {
 		t.Fatal("Doctor accepted modified credential isolation")
+	}
+}
+
+func TestDoctorRejectsUnavailableCredentialHelper(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home}); err != nil {
+		t.Fatal(err)
+	}
+	removeTestCredentialHelper(t)
+	if _, err := Doctor(t.Context(), provider, Options{HomeDir: home}); err == nil || !strings.Contains(err.Error(), "credential helper is unavailable") {
+		t.Fatalf("Doctor error = %v", err)
+	}
+}
+
+func TestInstallRestoresPreviousConfigurationAfterWriteFailure(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	previous, err := Install(t.Context(), provider, Options{HomeDir: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]string{"provider": "github"})
+	}))
+	defer replacement.Close()
+	parsed, err := url.Parse(replacement.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clientconfig.Write(clientconfig.Config{
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		GitEndpoint: "tcp://" + parsed.Host, Secret: strings.Repeat("s", 32), HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &failOnceRunner{
+		Runner: commandRunner{home: home},
+		match: func(args []string) bool {
+			return slices.Contains(args, statusKey(provider, "origin")) && slices.Contains(args, replacement.URL)
+		},
+	}
+	if _, err := Install(t.Context(), provider, Options{HomeDir: home, Replace: true, Runner: runner}); err == nil || !strings.Contains(err.Error(), "injected write failure") {
+		t.Fatalf("Install error = %v", err)
+	}
+	status, err := Inspect(t.Context(), provider, Options{HomeDir: home})
+	if err != nil || status != previous {
+		t.Fatalf("restored status = %+v, %v; want %+v", status, err, previous)
+	}
+	if err := verifyInstallation(t.Context(), provider, previous, commandRunner{home: home}); err != nil {
+		t.Fatalf("restored installation is invalid: %v", err)
 	}
 }
 
@@ -555,6 +662,7 @@ func testProvider() Provider {
 
 func writeGitClientFixture(t *testing.T, provider Provider, identity string) (string, *httptest.Server) {
 	t.Helper()
+	installTestCredentialHelper(t)
 	secret := strings.Repeat("s", 32)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(response).Encode(map[string]string{"provider": identity})
@@ -571,4 +679,41 @@ func writeGitClientFixture(t *testing.T, provider Provider, identity string) (st
 		t.Fatal(err)
 	}
 	return home, server
+}
+
+type failOnceRunner struct {
+	Runner
+	match  func([]string) bool
+	failed bool
+}
+
+func (r *failOnceRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+	if !r.failed && r.match(args) {
+		r.failed = true
+		return nil, errors.New("injected write failure")
+	}
+	return r.Runner.Run(ctx, args...)
+}
+
+func installTestCredentialHelper(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	helper := filepath.Join(bin, "git-credential-brokerkit")
+	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func removeTestCredentialHelper(t *testing.T) {
+	t.Helper()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(git, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
 }
