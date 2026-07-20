@@ -151,11 +151,16 @@ classifiers, credentials, execution, and wording remain in their broker.
 Git-speaking brokers use three distinct listeners: Agent V1, Operator V1, and
 Git data plane. The Git listener is an explicit deployment-selected TCP
 endpoint. BrokerKit defines no default port. Its shared route gate exposes only
-an authenticated identity handshake and provider-approved smart-HTTP, LFS, or
-Xet routes; agent operations, grants, webhooks, browser sessions, and operator
+an authenticated identity handshake and provider-approved smart-HTTP and LFS
+routes; agent operations, grants, webhooks, browser sessions, and operator
 routes are unreachable on that listener.
 
 `<broker> git install` writes exact user-level `url.*.insteadOf` mappings and a
 credential helper scoped to that listener. Remotes keep their normal provider
 URLs, provider credentials remain server-side, and an unavailable broker fails
 closed instead of falling back to the provider.
+
+GitHub and Hugging Face LFS action URLs are rewritten to bounded broker-local
+capabilities, so upstream signed URLs and headers never cross the trust
+boundary. Hugging Face Xet negotiation is explicitly refused until its custom
+transfer can satisfy the same confinement and conformance requirements.

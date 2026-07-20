@@ -55,8 +55,12 @@ classifying, validating, and executing its own operations.
   credential, proxy, header, or executable plan.
 - Scope native Git credentials to the exact loopback listener origin. The Git
   listener exposes only authenticated identity, smart-HTTP, and provider-owned
-  LFS/Xet routes; agent, operator, webhook, browser, and credential lifecycle
+  LFS routes; agent, operator, webhook, browser, and credential lifecycle
   routes return not found.
+- Keep upstream LFS action URLs and headers inside the broker. Broker-local
+  action capabilities are random, expiring, and bound to client, repository,
+  path, method, and policy. Refuse unsupported Xet negotiation before returning
+  any signed action.
 - Treat user Git configuration as untrusted input. Installation rejects
   conflicting URL rewrites, owns exact values, never stores an upstream
   credential, and fails closed when the broker listener or helper is missing.
@@ -80,6 +84,8 @@ classifying, validating, and executing its own operations.
 | Provider error contains sensitive data | The public API maps it to a closed error code; detail remains only in provider-owned secret-safe audit data. |
 | Git config routes around the broker | Install and doctor detect conflicting provider rewrites; broker-only mode never falls back to the provider. |
 | Git listener is used as a broad agent API | The independent route gate rejects every non-Git path before provider routing. |
+| Approval wait blocks all pushes to a repository | Release the provider lock during the wait, then reacquire and reclassify the exact transaction before forwarding. |
+| LFS or Xet response exposes a signed provider action | Rewrite supported LFS actions to broker-local capabilities and fail unsupported transfers closed. |
 
 ## Explicit Non-Protections
 

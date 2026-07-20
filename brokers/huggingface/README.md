@@ -149,6 +149,10 @@ the broker for clone, fetch, pull, push, and supported Git LFS routes. Remotes
 contain no broker or provider credential. The listener port belongs to the
 deployment; BrokerKit defines no fixed Git port.
 
+Basic Git LFS is supported. Xet custom-transfer negotiation currently fails
+closed before signed actions are returned; BrokerKit never exports the Hugging
+Face token to enable Xet.
+
 Clones, pulls, fast-forward pushes, new branches, and new tags work as
 normal. A history rewrite is refused with a message at the terminal:
 

@@ -110,7 +110,9 @@ gh-broker git doctor
 ```
 
 Normal `https://github.com/OWNER/REPO.git` and GitHub SSH-form remotes now use
-the broker for clone, fetch, pull, and push. `gh-broker git status --json`
+the broker for clone, fetch, pull, push, and Git LFS. LFS signed URLs and
+headers stay in the broker and are replaced by bounded broker-local actions.
+`gh-broker git status --json`
 reports the owned configuration, and `gh-broker git uninstall` removes only
 that exact provider installation. The listener port is selected and persisted
 by the deployment; BrokerKit has no fixed Git port.
@@ -340,6 +342,9 @@ GET  /api/agent/v1/streams/{id}
 GET  /{owner}/{repo}.git/info/refs
 POST /{owner}/{repo}.git/git-upload-pack
 POST /{owner}/{repo}.git/git-receive-pack
+POST /{owner}/{repo}.git/info/lfs/objects/batch
+*    /{owner}/{repo}.git/info/lfs/objects/*
+*    /{owner}/{repo}.git/info/lfs/locks/*
 
 POST /webhooks/github                    GitHub App webhooks
 ```
