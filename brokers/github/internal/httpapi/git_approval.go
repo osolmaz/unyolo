@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -57,7 +59,7 @@ func (s *Server) prepareGitApprovalIntent(request policy.Request, authorization 
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
-	id, err := gitApprovalRequestID(authorization, decision.MatchedRequestRuleIDs)
+	id, err := s.gitApprovalRequestID(request.Client, authorization, decision.MatchedRequestRuleIDs)
 	if err != nil {
 		return bkauthorization.GrantIntent{}, err
 	}
@@ -98,7 +100,7 @@ func (s *Server) prepareGitGrantPlan(request *grants.Request) (grants.ImmutableP
 	return s.plans.PrepareBind(request)
 }
 
-func gitApprovalRequestID(request corepolicy.Request, ruleIDs []string) (string, error) {
+func (s *Server) gitApprovalRequestID(client string, request corepolicy.Request, ruleIDs []string) (string, error) {
 	rules := slices.Clone(ruleIDs)
 	slices.Sort(rules)
 	encoded, err := json.Marshal(struct {
@@ -108,7 +110,44 @@ func gitApprovalRequestID(request corepolicy.Request, ruleIDs []string) (string,
 	if err != nil {
 		return "", err
 	}
-	return "git-" + plandigest.Digest(encoded)[:48], nil
+	base := "git-" + plandigest.Digest(encoded)[:48]
+	items, err := s.grants.ListForClient(client)
+	if err != nil {
+		return "", err
+	}
+	return nextGitApprovalRequestID(base, items), nil
+}
+
+func nextGitApprovalRequestID(base string, items []grants.Grant) string {
+	var latest grants.Grant
+	latestGeneration := 0
+	for _, grant := range items {
+		generation, ok := gitApprovalRequestGeneration(base, grant.ClientRequestID)
+		if !ok || generation < latestGeneration ||
+			(generation == latestGeneration && !grant.CreatedAt.After(latest.CreatedAt)) {
+			continue
+		}
+		latest = grant
+		latestGeneration = generation
+	}
+	if latestGeneration == 0 {
+		return base
+	}
+	if latest.Status == grants.StatusPending || latest.Status == grants.StatusActive {
+		return latest.ClientRequestID
+	}
+	return base + "-" + strconv.Itoa(latestGeneration+1)
+}
+
+func gitApprovalRequestGeneration(base string, requestID string) (int, bool) {
+	if requestID == base {
+		return 1, true
+	}
+	if !strings.HasPrefix(requestID, base+"-") {
+		return 0, false
+	}
+	generation, err := strconv.Atoi(strings.TrimPrefix(requestID, base+"-"))
+	return generation, err == nil && generation >= 2
 }
 
 func writeReceivePackApprovalRequired(c echo.Context, request gitx.ReceivePackRequest, approval receivePackApproval) error {

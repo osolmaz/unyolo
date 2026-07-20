@@ -715,6 +715,43 @@ func TestGitReceivePackRequestsApprovalAndReusesPendingGrant(t *testing.T) {
 	assertGrantUseState(t, server, items[0].ID, grants.StatusConsumed, 1, 0)
 }
 
+func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("denied Git push reached upstream")
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	body := receivePackCreate("refs/tags/v1.0.0")
+
+	first := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	if first.Code != http.StatusOK || len(notifier.messages) != 1 {
+		t.Fatalf("first request: status = %d, body = %q, notifications = %d", first.Code, first.Body.String(), len(notifier.messages))
+	}
+	items, err := server.grants.ListForClient("bob")
+	if err != nil || len(items) != 1 {
+		t.Fatalf("first grants = %+v, error = %v", items, err)
+	}
+	if _, err := server.grants.Deny(items[0].ID, notifier.token, "operator"); err != nil {
+		t.Fatalf("Deny() error = %v", err)
+	}
+
+	second := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "approve and retry") {
+		t.Fatalf("second request: status = %d, body = %q", second.Code, second.Body.String())
+	}
+	items, err = server.grants.ListForClient("bob")
+	if err != nil || len(items) != 2 || items[1].Status != grants.StatusPending {
+		t.Fatalf("renewed grants = %+v, error = %v", items, err)
+	}
+	if items[1].ClientRequestID != items[0].ClientRequestID+"-2" || items[1].ID == items[0].ID {
+		t.Fatalf("renewed grant = %+v, previous = %+v", items[1], items[0])
+	}
+	if len(notifier.messages) != 2 {
+		t.Fatalf("notifications = %d, want 2", len(notifier.messages))
+	}
+}
+
 func TestGrantBackedReceivePackRetainsGrantOnProxyError(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestMainPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
