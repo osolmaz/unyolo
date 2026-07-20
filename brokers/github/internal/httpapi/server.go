@@ -78,6 +78,8 @@ type Server struct {
 	logger              *slog.Logger
 	maxReceivePackBytes int64
 	operatorConfigured  bool
+	lfsMu               sync.Mutex
+	lfsActions          map[string]githubLFSAction
 	closeOnce           sync.Once
 	closeErr            error
 	lifecycleContext    context.Context
@@ -157,6 +159,7 @@ func newServerSkeleton(
 		githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: github.receivePackLimit,
 		operatorConfigured: cfg.OperatorSecret != "",
+		lfsActions:         map[string]githubLFSAction{},
 	}
 }
 
@@ -431,6 +434,16 @@ func (s *Server) registerRoutes(auth security.TokenAuth) {
 	protected.GET("/:owner/:repoGit/info/refs", s.gitInfoRefs)
 	protected.POST("/:owner/:repoGit/git-upload-pack", s.gitUploadPack)
 	protected.POST("/:owner/:repoGit/git-receive-pack", s.gitReceivePack)
+	protected.POST("/:owner/:repoGit/info/lfs/objects/batch", s.gitLFSBatch)
+	protected.GET("/:owner/:repoGit/info/lfs/objects/:oid", s.gitLFSAction)
+	protected.HEAD("/:owner/:repoGit/info/lfs/objects/:oid", s.gitLFSAction)
+	protected.PUT("/:owner/:repoGit/info/lfs/objects/:oid/:size", s.gitLFSAction)
+	protected.PATCH("/:owner/:repoGit/info/lfs/objects/:oid/:size", s.gitLFSAction)
+	protected.POST("/:owner/:repoGit/info/lfs/objects/:oid/verify", s.gitLFSAction)
+	protected.GET("/:owner/:repoGit/info/lfs/locks", s.gitLFSDirect)
+	protected.POST("/:owner/:repoGit/info/lfs/locks", s.gitLFSDirect)
+	protected.POST("/:owner/:repoGit/info/lfs/locks/verify", s.gitLFSDirect)
+	protected.POST("/:owner/:repoGit/info/lfs/locks/:lockID/unlock", s.gitLFSDirect)
 	s.echo.POST("/webhooks/github", s.githubWebhook)
 }
 
@@ -529,13 +542,22 @@ func githubGitRoute(method, requestPath string) bool {
 	if len(parts) < 3 || parts[0] == "" || parts[1] == "" {
 		return false
 	}
-	routes := map[string]string{
-		"info/refs":        http.MethodGet,
-		"git-upload-pack":  http.MethodPost,
-		"git-receive-pack": http.MethodPost,
+	tail := strings.Join(parts[2:], "/")
+	switch tail {
+	case "info/refs":
+		return method == http.MethodGet
+	case "git-upload-pack", "git-receive-pack":
+		return method == http.MethodPost
 	}
-	wantMethod, found := routes[strings.Join(parts[2:], "/")]
-	return found && method == wantMethod
+	if !strings.HasPrefix(tail, "info/lfs/") {
+		return false
+	}
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch:
+		return true
+	default:
+		return false
+	}
 }
 
 // Close releases the broker's durable state lease and database handles.
@@ -585,7 +607,7 @@ func (s *Server) gitReceivePack(c echo.Context) error {
 		c.Request().ContentLength = int64(len(body))
 		return s.authorizeBrokerRequest(c, s.repoRequest(c, policy.OperationGitPushAdvertise, nil), s.proxyGit)
 	}
-	authorized, approval, err := s.authorizeReceivePackCommands(c, body, request.Commands)
+	authorized, approval, err := s.authorizeReceivePackCommands(c, body, request.Commands, request.Pack)
 	if err != nil {
 		return err
 	}
@@ -607,11 +629,11 @@ func (s *Server) readReceivePackBody(c echo.Context) ([]byte, receivePackRequest
 	return body, request, nil
 }
 
-func (s *Server) authorizeReceivePackCommands(c echo.Context, body []byte, commands []receivePackCommand) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
+func (s *Server) authorizeReceivePackCommands(c echo.Context, body []byte, commands []receivePackCommand, pack []byte) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
 	authorized := make([]authorizedReceivePackRequest, 0, len(commands))
 	requestable := make([]requestableReceivePackRequest, 0, len(commands))
 	for _, command := range commands {
-		operation, err := s.classifyReceivePackCommand(c, command)
+		operation, err := s.classifyReceivePackCommand(c, command, pack)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -756,7 +778,7 @@ func noStore(next echo.HandlerFunc) echo.HandlerFunc {
 
 func validateRouteParams(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		for _, key := range []string{"owner", "repo", "repoGit"} {
+		for _, key := range []string{"owner", "repo", "repoGit", "oid", "size", "lockID"} {
 			if value := c.Param(key); value != "" {
 				if err := validateRouteSegment(value); err != nil {
 					return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -787,7 +809,7 @@ func (s *Server) proxyGit(c echo.Context) error {
 	})
 }
 
-func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackCommand) (policy.Operation, error) {
+func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackCommand, pack []byte) (policy.Operation, error) {
 	switch {
 	case isZeroOID(command.NewOID):
 		return policy.OperationGitRefDelete, nil
@@ -797,6 +819,8 @@ func (s *Server) classifyReceivePackCommand(c echo.Context, command receivePackC
 		return "", echo.NewHTTPError(http.StatusForbidden, "unsupported git ref update")
 	case isZeroOID(command.OldOID):
 		return policy.OperationGitPushBranchCreate, nil
+	case receivePackProvesFastForward(c.Request().Context(), command.OldOID, command.NewOID, pack, s.maxReceivePackBytes):
+		return policy.OperationGitPushFastForward, nil
 	default:
 		return policy.OperationGitPushForce, nil
 	}

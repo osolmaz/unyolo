@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -43,6 +45,9 @@ func TestGitHubGitRoute(t *testing.T) {
 		{http.MethodPost, "/owner/repo.git/git-upload-pack", true},
 		{http.MethodPost, "/owner/repo/git-upload-pack", true},
 		{http.MethodPost, "/owner/repo.git/git-receive-pack", true},
+		{http.MethodPost, "/owner/repo.git/info/lfs/objects/batch", true},
+		{http.MethodGet, "/owner/repo.git/info/lfs/objects/" + strings.Repeat("a", 64), true},
+		{http.MethodDelete, "/owner/repo.git/info/lfs/objects/" + strings.Repeat("a", 64), false},
 		{http.MethodGet, "/owner/repo.git/git-receive-pack", false},
 		{http.MethodPost, "/owner/repo/info/refs", false},
 		{http.MethodPost, "/owner/repo.git/git-receive-pack/extra", false},
@@ -51,5 +56,66 @@ func TestGitHubGitRoute(t *testing.T) {
 		if got := githubGitRoute(test.method, test.path); got != test.want {
 			t.Errorf("githubGitRoute(%q, %q) = %t, want %t", test.method, test.path, got, test.want)
 		}
+	}
+}
+
+func TestGitHubLFSBatchKeepsSignedActionInsideBroker(t *testing.T) {
+	t.Parallel()
+	oid := strings.Repeat("a", 64)
+	var actionAuthorization string
+	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dutifuldev/gh-broker.git/info/lfs/objects/batch":
+			w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
+			_, _ = w.Write([]byte(`{"objects":[{"oid":"` + oid + `","size":4,"actions":{"download":{"href":"http://` + r.Host + `/signed/download","header":{"Authorization":"storage-secret"}}}}]}`))
+		case "/signed/download":
+			actionAuthorization = r.Header.Get("Authorization")
+			_, _ = w.Write([]byte("data"))
+		default:
+			t.Fatalf("unexpected upstream path %s", r.URL.Path)
+		}
+	})
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download","objects":[{"oid":"`+oid+`","size":4}]}`))
+	if response.Code != http.StatusOK {
+		t.Fatalf("batch status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Objects []struct {
+			Actions map[string]struct {
+				Href   string            `json:"href"`
+				Header map[string]string `json:"header"`
+			} `json:"actions"`
+		} `json:"objects"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	action := payload.Objects[0].Actions["download"]
+	if action.Header != nil || strings.Contains(action.Href, "storage-secret") || !strings.Contains(action.Href, githubLFSActionQuery+"=") {
+		t.Fatalf("rewritten action = %+v", action)
+	}
+	parsed, err := url.Parse(action.Href)
+	if err != nil {
+		t.Fatal(err)
+	}
+	download := do(t, server, http.MethodGet, parsed.RequestURI(), bearerAuth())
+	if download.Code != http.StatusOK || download.Body.String() != "data" {
+		t.Fatalf("download = %d %q", download.Code, download.Body.String())
+	}
+	if actionAuthorization != "storage-secret" {
+		t.Fatalf("signed action authorization = %q", actionAuthorization)
+	}
+}
+
+func TestGitHubLFSRejectsUnknownAndOversizedBatch(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	unknown := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"remove"}`))
+	if unknown.Code != http.StatusBadRequest {
+		t.Fatalf("unknown operation status = %d", unknown.Code)
+	}
+	oversized := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(strings.Repeat("x", maxGitHubLFSBatch+1)))
+	if oversized.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized status = %d", oversized.Code)
 	}
 }

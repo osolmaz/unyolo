@@ -154,6 +154,10 @@ func (s *Server) writeForwardResponse(w http.ResponseWriter, r *http.Request, cl
 	if shouldRewriteLFSBatchResponse(r, rt, resp.StatusCode) {
 		body, err := s.rewriteLFSBatchResponse(r, client, rt, resp.Body)
 		if err != nil {
+			w.Header().Del("Content-Encoding")
+			w.Header().Del("Content-Length")
+			w.Header().Del("ETag")
+			w.Header().Del("Link")
 			return resp.StatusCode, err
 		}
 		w.Header().Del("Content-Length")
@@ -174,6 +178,9 @@ func (s *Server) rewriteLFSBatchResponse(r *http.Request, client string, rt rout
 	var payload map[string]any
 	if err := httpx.DecodeJSON(body, maxLFSBatchBytes, &payload, false); err != nil {
 		return nil, fmt.Errorf("could not sanitize LFS batch response: %w", err)
+	}
+	if transfer, _ := payload["transfer"].(string); strings.EqualFold(transfer, "xet") {
+		return nil, errUnsupportedXet
 	}
 	s.rewriteLFSBatchActions(r, client, rt, payload)
 	return json.Marshal(payload)

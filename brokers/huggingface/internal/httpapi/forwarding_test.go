@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -115,6 +116,20 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 		`"grant_id":"`+msg.GrantID+`"`,
 		`"matched_grant_rule_ids":["`+msg.GrantID+`"]`,
 	)
+}
+
+func TestRewriteLFSBatchResponseRefusesXetWithoutLeakingActions(t *testing.T) {
+	t.Parallel()
+	server := &Server{lfsActions: map[string]lfsAction{}}
+	request := httptest.NewRequest(http.MethodPost, "http://broker/datasets/acme/repo.git/info/lfs/objects/batch", nil)
+	body := `{"transfer":"xet","objects":[{"oid":"` + strings.Repeat("a", 64) + `","size":1,"actions":{"download":{"href":"https://cas.example/signed?secret=value","header":{"Authorization":"secret"}}}}]}`
+	result, err := server.rewriteLFSBatchResponse(request, "agent", route{repoType: policy.TypeDataset, owner: "acme", name: "repo"}, strings.NewReader(body))
+	if !errors.Is(err, errUnsupportedXet) || result != nil {
+		t.Fatalf("rewrite = %s, %v", result, err)
+	}
+	if len(server.lfsActions) != 0 {
+		t.Fatal("unsupported Xet response registered an action")
+	}
 }
 
 func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {

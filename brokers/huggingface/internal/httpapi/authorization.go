@@ -458,6 +458,11 @@ func (s *Server) recordForwardError(w http.ResponseWriter, client string, classi
 		s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, errInvalidLFSAction.Error(), statusCode, decision)
 		return true
 	}
+	if errors.Is(err, errUnsupportedXet) {
+		writePlain(w, http.StatusNotImplemented, "hf-broker: Xet transfer is not supported; use basic Git LFS through BrokerKit\n")
+		s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, errUnsupportedXet.Error(), statusCode, decision)
+		return true
+	}
 	if err != nil {
 		writePlain(w, http.StatusBadGateway, "hf-broker: upstream request failed\n")
 		s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, "upstream request failed", statusCode, decision)
@@ -475,5 +480,5 @@ func (s *Server) closeForwardGrantReservation(reserved grants.Grant, err error) 
 }
 
 func forwardErrorBeforeUpstream(err error) bool {
-	return errors.Is(err, errInvalidLFSAction)
+	return errors.Is(err, errInvalidLFSAction) || errors.Is(err, errUnsupportedXet)
 }
