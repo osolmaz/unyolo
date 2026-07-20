@@ -142,12 +142,14 @@ func rollbackReplacement(
 	runner Runner,
 	installErr error,
 ) error {
+	rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	errs := []error{installErr}
-	if err := remove(ctx, provider, partial, runner); err != nil {
+	if err := remove(rollbackCtx, provider, partial, runner); err != nil {
 		errs = append(errs, fmt.Errorf("clean up partial BrokerKit Git installation: %w", err))
 	}
 	if previous.Installed {
-		if err := writeConfig(ctx, provider, previous.Origin, previous.Mode, runner); err != nil {
+		if err := writeConfig(rollbackCtx, provider, previous.Origin, previous.Mode, runner); err != nil {
 			errs = append(errs, fmt.Errorf("restore previous BrokerKit Git installation: %w", err))
 		}
 	}

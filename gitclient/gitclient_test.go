@@ -123,6 +123,7 @@ func TestCommandRunnerUsesConfiguredHomeAsWorkingDirectory(t *testing.T) {
 }
 
 func TestRunCommandLifecycle(t *testing.T) {
+	installTestCredentialHelper(t)
 	secret := strings.Repeat("s", 32)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		_, password, ok := request.BasicAuth()
@@ -501,6 +502,51 @@ func TestInstallRestoresPreviousConfigurationAfterWriteFailure(t *testing.T) {
 	}
 }
 
+func TestInstallRestoresPreviousConfigurationAfterCancellation(t *testing.T) {
+	provider := testProvider()
+	home, server := writeGitClientFixture(t, provider, "github")
+	defer server.Close()
+	previous, err := Install(t.Context(), provider, Options{HomeDir: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(response).Encode(map[string]string{"provider": "github"})
+	}))
+	defer replacement.Close()
+	parsed, err := url.Parse(replacement.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clientconfig.Write(clientconfig.Config{
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		GitEndpoint: "tcp://" + parsed.Host, Secret: strings.Repeat("s", 32), HomeDir: home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	runner := &failOnceRunner{
+		Runner: commandRunner{home: home},
+		match: func(args []string) bool {
+			return slices.Contains(args, statusKey(provider, "origin")) && slices.Contains(args, replacement.URL)
+		},
+		failure: func() error {
+			cancel()
+			return context.Canceled
+		},
+	}
+	if _, err := Install(ctx, provider, Options{HomeDir: home, Replace: true, Runner: runner}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Install error = %v", err)
+	}
+	status, err := Inspect(t.Context(), provider, Options{HomeDir: home})
+	if err != nil || status != previous {
+		t.Fatalf("restored status = %+v, %v; want %+v", status, err, previous)
+	}
+	if err := verifyInstallation(t.Context(), provider, previous, commandRunner{home: home}); err != nil {
+		t.Fatalf("restored installation is invalid: %v", err)
+	}
+}
+
 func TestDoctorRejectsRepositoryTransportOverrides(t *testing.T) {
 	provider := testProvider()
 	home, server := writeGitClientFixture(t, provider, "github")
@@ -683,13 +729,17 @@ func writeGitClientFixture(t *testing.T, provider Provider, identity string) (st
 
 type failOnceRunner struct {
 	Runner
-	match  func([]string) bool
-	failed bool
+	match   func([]string) bool
+	failure func() error
+	failed  bool
 }
 
 func (r *failOnceRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
 	if !r.failed && r.match(args) {
 		r.failed = true
+		if r.failure != nil {
+			return nil, r.failure()
+		}
 		return nil, errors.New("injected write failure")
 	}
 	return r.Runner.Run(ctx, args...)
