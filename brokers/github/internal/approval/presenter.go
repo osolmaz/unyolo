@@ -107,6 +107,7 @@ func DisplayFacts(grant grants.Grant) []approvalview.Fact {
 		"merge_method": "Merge method", "path": "Path", "permission": "Permission", "ref": "Ref", "release_state": "Release state",
 		"resource_id": "Resource ID", "resource_name": "Resource name", "resource_owner": "Resource owner", "role": "Role",
 		"visibility": "Visibility", "workflow": "Workflow", "workflow_ref": "Workflow ref",
+		"operation": "Push operations", "command": "Ordered push commands", "old_oid": "Previous object IDs", "new_oid": "New object IDs", "plan_digest": "Push plan digest",
 	}
 	keys := make([]string, 0, len(grant.Attrs))
 	for key := range grant.Attrs {

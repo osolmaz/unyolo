@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,7 +31,6 @@ import (
 	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
@@ -713,7 +713,7 @@ func TestGrantBackedReceivePackConsumesGrant(t *testing.T) {
 	assertGrantUseState(t, server, grantID, grants.StatusConsumed, 1, 0)
 }
 
-func TestGitReceivePackRequestsApprovalAndReusesPendingGrant(t *testing.T) {
+func TestGitReceivePackWaitsForApprovalAndContinues(t *testing.T) {
 	t.Parallel()
 	var upstreamCalls int
 	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
@@ -724,57 +724,108 @@ func TestGitReceivePackRequestsApprovalAndReusesPendingGrant(t *testing.T) {
 	server.notifier = notifier
 	body := receivePackCreate("refs/tags/v1.0.0")
 
-	for attempt := 0; attempt < 2; attempt++ {
-		response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "approve and retry") {
-			t.Fatalf("attempt %d: status = %d, body = %q", attempt+1, response.Code, response.Body.String())
-		}
-	}
-	items, err := server.grants.ListForClient("bob")
-	if err != nil || len(items) != 1 || items[0].Status != grants.StatusPending {
-		t.Fatalf("pending grants = %+v, error = %v", items, err)
-	}
+	responses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	}()
+	grant, token := waitForGitApproval(t, server, notifier, 1)
 	if len(notifier.messages) != 1 || upstreamCalls != 0 {
 		t.Fatalf("notifications = %d, upstream calls = %d, want 1/0", len(notifier.messages), upstreamCalls)
 	}
-	if _, err := server.grants.Approve(items[0].ID, notifier.token, "operator"); err != nil {
+	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-
-	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	response := <-responses
 	if response.Code != http.StatusOK || upstreamCalls != 1 {
-		t.Fatalf("approved retry: status = %d, body = %q, upstream calls = %d", response.Code, response.Body.String(), upstreamCalls)
+		t.Fatalf("approved push: status = %d, body = %q, upstream calls = %d", response.Code, response.Body.String(), upstreamCalls)
 	}
-	assertGrantUseState(t, server, items[0].ID, grants.StatusConsumed, 1, 0)
+	assertGrantUseState(t, server, grant.ID, grants.StatusConsumed, 1, 0)
+}
+
+func TestGitReceivePackGroupsAtomicMultiRefApproval(t *testing.T) {
+	t.Parallel()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
+		{ID: "request-force", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGitPushForce}, Targets: []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}, Attrs: map[string][]string{"refs": {"refs/heads/bob/**"}}},
+		{ID: "request-delete", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGitRefDelete}, Targets: []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}, Attrs: map[string][]string{"refs": {"refs/heads/bob/**"}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var forwarded []byte
+	server := newTestServerWithPolicyAndHandler(t, brokerPolicy, func(w http.ResponseWriter, r *http.Request) {
+		forwarded, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	body := pktLine(oid("1") + " " + oid("2") + " refs/heads/bob/update\x00report-status atomic\n")
+	body = append(body, pktLine(oid("3")+" "+zeroOID()+" refs/heads/bob/delete\n")...)
+	body = append(body, []byte("0000")...)
+
+	responses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	}()
+	grant, token := waitForGitApproval(t, server, notifier, 1)
+	if got := grant.Attrs["ref"]; !reflect.DeepEqual(got, []string{"refs/heads/bob/delete", "refs/heads/bob/update"}) {
+		t.Fatalf("grouped refs = %v", got)
+	}
+	if got := grant.Attrs["operation"]; !reflect.DeepEqual(got, []string{"git.push.force", "git.ref.delete"}) {
+		t.Fatalf("grouped operations = %v", got)
+	}
+	commands := grant.Attrs["command"]
+	if len(commands) != 2 || !strings.HasPrefix(commands[0], "000000 git.push.force ") || !strings.HasPrefix(commands[1], "000001 git.ref.delete ") {
+		t.Fatalf("ordered commands = %v", commands)
+	}
+	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	response := <-responses
+	if response.Code != http.StatusOK || !bytes.Equal(forwarded, body) {
+		t.Fatalf("status=%d forwarded exact body=%t", response.Code, bytes.Equal(forwarded, body))
+	}
+	if len(notifier.messages) != 1 {
+		t.Fatalf("notifications = %d", len(notifier.messages))
+	}
 }
 
 func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 	t.Parallel()
+	var upstreamCalls int
 	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("denied Git push reached upstream")
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
 	})
 	notifier := &captureNotifier{}
 	server.notifier = notifier
 	body := receivePackCreate("refs/tags/v1.0.0")
 
-	first := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
-	if first.Code != http.StatusOK || len(notifier.messages) != 1 {
-		t.Fatalf("first request: status = %d, body = %q, notifications = %d", first.Code, first.Body.String(), len(notifier.messages))
-	}
-	items, err := server.grants.ListForClient("bob")
-	if err != nil || len(items) != 1 {
-		t.Fatalf("first grants = %+v, error = %v", items, err)
-	}
-	if _, err := server.grants.Deny(items[0].ID, notifier.token, "operator"); err != nil {
+	firstResponses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		firstResponses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	}()
+	firstGrant, firstToken := waitForGitApproval(t, server, notifier, 1)
+	if _, err := server.grants.Deny(firstGrant.ID, firstToken, "operator"); err != nil {
 		t.Fatalf("Deny() error = %v", err)
 	}
-
-	second := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
-	if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), "approve and retry") {
+	first := <-firstResponses
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), "approval denied") {
+		t.Fatalf("first request: status = %d, body = %q", first.Code, first.Body.String())
+	}
+	secondResponses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		secondResponses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	}()
+	secondGrant, secondToken := waitForGitApproval(t, server, notifier, 2)
+	if _, err := server.grants.Approve(secondGrant.ID, secondToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	second := <-secondResponses
+	if second.Code != http.StatusOK || upstreamCalls != 1 {
 		t.Fatalf("second request: status = %d, body = %q", second.Code, second.Body.String())
 	}
-	items, err = server.grants.ListForClient("bob")
-	if err != nil || len(items) != 2 || items[1].Status != grants.StatusPending {
+	items, err := server.grants.ListForClient("bob")
+	if err != nil || len(items) != 2 || items[1].Status != grants.StatusConsumed {
 		t.Fatalf("renewed grants = %+v, error = %v", items, err)
 	}
 	if items[1].ClientRequestID != items[0].ClientRequestID+"-2" || items[1].ID == items[0].ID {
@@ -841,20 +892,6 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 	})
 	notifier := &captureNotifier{}
 	server.notifier = notifier
-	ready := &sync.WaitGroup{}
-	ready.Add(2)
-	release := make(chan struct{})
-	var clockCalls atomic.Int64
-	planStore, err := ghplan.NewStoreWithClock(server.database, "development-token", func() time.Time {
-		call := clockCalls.Add(1)
-		ready.Done()
-		<-release
-		return time.Date(2026, 7, 20, 0, 0, 0, int(call), time.UTC)
-	})
-	if err != nil {
-		t.Fatalf("NewStoreWithClock() error = %v", err)
-	}
-	server.plans = planStore
 	body := receivePackCreate("refs/tags/v1.0.0")
 	responses := make(chan *httptest.ResponseRecorder, 2)
 	for range 2 {
@@ -862,20 +899,28 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 			responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
 		}()
 	}
-	ready.Wait()
-	close(release)
+	grant, token := waitForGitApproval(t, server, notifier, 1)
+	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	var successful, conflicted int
 	for range 2 {
 		response := <-responses
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "approve and retry") {
+		switch response.Code {
+		case http.StatusOK:
+			successful++
+		case http.StatusConflict:
+			conflicted++
+		default:
 			t.Errorf("status = %d, body = %q", response.Code, response.Body.String())
 		}
 	}
 	items, err := server.grants.ListForClient("bob")
-	if err != nil || len(items) != 1 || items[0].Status != grants.StatusPending {
-		t.Fatalf("pending grants = %+v, error = %v", items, err)
+	if err != nil || len(items) != 1 || items[0].Status != grants.StatusConsumed {
+		t.Fatalf("transaction grants = %+v, error = %v", items, err)
 	}
-	if len(notifier.messages) != 1 || upstreamCalls.Load() != 0 {
-		t.Fatalf("notifications = %d, upstream calls = %d, want 1/0", len(notifier.messages), upstreamCalls.Load())
+	if len(notifier.messages) != 1 || upstreamCalls.Load() != 1 || successful != 1 || conflicted != 1 {
+		t.Fatalf("notifications=%d upstream=%d success=%d conflict=%d", len(notifier.messages), upstreamCalls.Load(), successful, conflicted)
 	}
 }
 
@@ -2333,6 +2378,7 @@ func assertNoActiveGrants(t *testing.T, server *Server) {
 }
 
 type captureNotifier struct {
+	mu         sync.Mutex
 	messages   []approvalnotify.Approval
 	statuses   []notify.Status
 	token      string
@@ -2342,6 +2388,8 @@ type captureNotifier struct {
 }
 
 func (n *captureNotifier) SendApproval(_ context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if n.sendErr != nil {
 		return notify.MessageRef{}, n.sendErr
 	}
@@ -2356,11 +2404,33 @@ func (n *captureNotifier) SendApproval(_ context.Context, msg approvalnotify.App
 }
 
 func (n *captureNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if n.updateErr != nil {
 		return n.updateErr
 	}
 	n.statuses = append(n.statuses, status)
 	return nil
+}
+
+func waitForGitApproval(t *testing.T, server *Server, notifier *captureNotifier, count int) (grants.Grant, string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		items, err := server.grants.ListForClient("bob")
+		if err != nil {
+			t.Fatal(err)
+		}
+		notifier.mu.Lock()
+		messageCount, token := len(notifier.messages), notifier.token
+		notifier.mu.Unlock()
+		if len(items) >= count && messageCount >= count && items[count-1].Status == grants.StatusPending && token != "" {
+			return items[count-1], token
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for Git approval %d", count)
+	return grants.Grant{}, ""
 }
 
 type fakeTelegramState struct {

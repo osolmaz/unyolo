@@ -23,6 +23,11 @@ type authorizedReceivePackRequest struct {
 	Decision policy.Decision
 }
 
+type requestableReceivePackRequest struct {
+	Request  policy.Request
+	Decision policy.Decision
+}
+
 func receivePackCommandsFromBody(body []byte) ([]receivePackCommand, error) {
 	request, err := receivePackRequestFromBody(body)
 	return request.Commands, err

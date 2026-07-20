@@ -585,7 +585,7 @@ func (s *Server) gitReceivePack(c echo.Context) error {
 		c.Request().ContentLength = int64(len(body))
 		return s.authorizeBrokerRequest(c, s.repoRequest(c, policy.OperationGitPushAdvertise, nil), s.proxyGit)
 	}
-	authorized, approval, err := s.authorizeReceivePackCommands(c, request.Commands)
+	authorized, approval, err := s.authorizeReceivePackCommands(c, body, request.Commands)
 	if err != nil {
 		return err
 	}
@@ -607,26 +607,32 @@ func (s *Server) readReceivePackBody(c echo.Context) ([]byte, receivePackRequest
 	return body, request, nil
 }
 
-func (s *Server) authorizeReceivePackCommands(c echo.Context, commands []receivePackCommand) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
+func (s *Server) authorizeReceivePackCommands(c echo.Context, body []byte, commands []receivePackCommand) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
 	authorized := make([]authorizedReceivePackRequest, 0, len(commands))
+	requestable := make([]requestableReceivePackRequest, 0, len(commands))
 	for _, command := range commands {
 		operation, err := s.classifyReceivePackCommand(c, command)
 		if err != nil {
 			return nil, nil, err
 		}
 		request := s.repoRequest(c, operation, map[string]string{"ref": command.Ref})
-		decision, approval, err := s.authorizeGitMutation(c, request)
+		decision, approvalDecision, err := s.evaluateGitMutation(request)
 		if err != nil {
 			return nil, nil, err
 		}
-		if approval != nil {
-			return nil, approval, nil
-		}
 		if !decision.Allowed {
+			if approvalDecision.Effect == policy.EffectRequest && approvalDecision.GrantPolicy != nil {
+				requestable = append(requestable, requestableReceivePackRequest{Request: request, Decision: approvalDecision})
+				authorized = append(authorized, authorizedReceivePackRequest{Request: request})
+				continue
+			}
 			s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
 			return nil, nil, echo.NewHTTPError(statusForDecision(decision), decision.Reason)
 		}
 		authorized = append(authorized, authorizedReceivePackRequest{Request: request, Decision: decision})
+	}
+	if len(requestable) > 0 {
+		return s.authorizeReceivePackTransaction(c, body, commands, authorized, requestable)
 	}
 	return authorized, nil, nil
 }
