@@ -25,7 +25,7 @@ const (
 	leaseFile    = "state.lock"
 	// CurrentSchemaVersion is the only state format accepted by maintenance
 	// operations in this pre-release cutover.
-	CurrentSchemaVersion int64 = 1
+	CurrentSchemaVersion int64 = 2
 )
 
 //go:embed migrations/*.sql
