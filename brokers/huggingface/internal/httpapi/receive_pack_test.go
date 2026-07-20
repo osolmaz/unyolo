@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/telemetry/audit"
 )
@@ -186,6 +187,18 @@ func TestTelegramGrantAllowsForcePush(t *testing.T) {
 		result <- pushResult{output: output, err: pushErr}
 	}()
 	msg := waitForHFPushApproval(t, handler, notifier)
+	lockAvailable := make(chan error, 1)
+	go func() {
+		lockAvailable <- handler.mirrors.WithLock(mirror.Repo{Kind: string(policy.TypeDataset), Owner: "acme", Name: "repo"}, func(*mirror.Repository) error { return nil })
+	}()
+	select {
+	case lockErr := <-lockAvailable:
+		if lockErr != nil {
+			t.Fatal(lockErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("repository lock remained held while approval was pending")
+	}
 	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
 	if answer.Answer != notify.AnswerApproved {
 		t.Fatalf("telegram answer = %+v", answer)

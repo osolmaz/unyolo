@@ -41,6 +41,9 @@ type Repository struct {
 	path    string
 }
 
+// PauseLock runs work without the repository lock and reacquires it before returning.
+type PauseLock func(work func() error) error
+
 // New returns a mirror manager rooted under stateDir.
 func New(stateDir, hfToken string, timeout time.Duration) *Manager {
 	return &Manager{
@@ -57,6 +60,21 @@ func (m *Manager) WithLock(repo Repo, fn func(*Repository) error) error {
 	lock.Lock()
 	defer lock.Unlock()
 	return fn(&Repository{manager: m, repo: repo, path: m.pathFor(repo)})
+}
+
+// WithPausableLock serializes repository work while permitting long external
+// waits to release the lock. Callers must revalidate mirror-derived state after
+// every pause.
+func (m *Manager) WithPausableLock(repo Repo, fn func(*Repository, PauseLock) error) error {
+	lock := m.lockFor(repo)
+	lock.Lock()
+	defer lock.Unlock()
+	pause := func(work func() error) error {
+		lock.Unlock()
+		defer lock.Lock()
+		return work()
+	}
+	return fn(&Repository{manager: m, repo: repo, path: m.pathFor(repo)}, pause)
 }
 
 func (m *Manager) lockFor(repo Repo) *sync.Mutex {

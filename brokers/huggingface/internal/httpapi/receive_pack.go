@@ -206,9 +206,9 @@ func (s *Server) readReceivePack(w http.ResponseWriter, r *http.Request, client,
 
 func (s *Server) withLockedPush(w http.ResponseWriter, r *http.Request, rt route, repo mirror.Repo, req gitproxy.ReceivePackRequest, body []byte, client, target string) (int, error) {
 	var result lockedPushResult
-	lockErr := s.mirrors.WithLock(repo, func(mir *mirror.Repository) error {
+	lockErr := s.mirrors.WithPausableLock(repo, func(mir *mirror.Repository, pause mirror.PauseLock) error {
 		var err error
-		result, err = s.processLockedPush(w, r, rt, req, body, mir, client, target)
+		result, err = s.processLockedPush(w, r, rt, req, body, mir, pause, client, target)
 		return err
 	})
 	s.updateGrantMessages(result.retainedGrantsToNotify, s.updateRetainedGrantReservationMessage)
@@ -216,8 +216,8 @@ func (s *Server) withLockedPush(w http.ResponseWriter, r *http.Request, rt route
 	return result.upstreamStatus, lockErr
 }
 
-func (s *Server) processLockedPush(w http.ResponseWriter, r *http.Request, rt route, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, client, target string) (lockedPushResult, error) {
-	refused, usedGrants, classes, err := s.refuseInvalidPush(w, r, req, body, mir, client, target)
+func (s *Server) processLockedPush(w http.ResponseWriter, r *http.Request, rt route, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, pause mirror.PauseLock, client, target string) (lockedPushResult, error) {
+	refused, usedGrants, classes, err := s.refuseInvalidPush(w, r, req, body, mir, pause, client, target)
 	if err != nil || refused {
 		return lockedPushResult{}, err
 	}
@@ -271,11 +271,24 @@ func (s *Server) acceptReservedPush(req gitproxy.ReceivePackRequest, mir *mirror
 	s.record(client, operation, target, audit.DecisionAllowed, "", statusCode)
 }
 
-func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, client, target string) (bool, []grantUse, []gitproxy.ClassifiedCommand, error) {
+func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, pause mirror.PauseLock, client, target string) (bool, []grantUse, []gitproxy.ClassifiedCommand, error) {
 	used := map[string]grantUse{}
 	classes, failures, err := gitproxy.ClassifyPush(r.Context(), req, mir)
+	released := false
+	pauseForApproval := func(work func() error) error {
+		released = true
+		return pause(work)
+	}
 	if err == nil && len(failures) == 0 {
-		failures, err = s.refusePolicyDeniedPush(r.Context(), classes, client, target, int64(len(req.Pack)), plandigest.Digest(body), used)
+		failures, err = s.refusePolicyDeniedPush(r.Context(), classes, client, target, int64(len(req.Pack)), plandigest.Digest(body), used, pauseForApproval)
+	}
+	if err == nil && len(failures) == 0 && released {
+		current, currentFailures, currentErr := gitproxy.ClassifyPush(r.Context(), req, mir)
+		if currentErr != nil {
+			err = currentErr
+		} else if len(currentFailures) > 0 || !slices.Equal(classes, current) {
+			failures = refFailuresForClasses(classes, "repository changed while approval was pending")
+		}
 	}
 	if len(failures) > 0 {
 		report, reportErr := gitproxy.BuildRefusalReport(req, failures)
@@ -294,7 +307,7 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 	return false, slicex.Values(used), classes, nil
 }
 
-func (s *Server) refusePolicyDeniedPush(ctx context.Context, classes []gitproxy.ClassifiedCommand, client, target string, packSize int64, bodyDigest string, used map[string]grantUse) ([]gitproxy.RefFailure, error) {
+func (s *Server) refusePolicyDeniedPush(ctx context.Context, classes []gitproxy.ClassifiedCommand, client, target string, packSize int64, bodyDigest string, used map[string]grantUse, pause mirror.PauseLock) ([]gitproxy.RefFailure, error) {
 	rt, ok := parseGrantTarget(target)
 	if !ok {
 		return refFailuresForClasses(classes, "invalid target"), nil
@@ -315,7 +328,7 @@ func (s *Server) refusePolicyDeniedPush(ctx context.Context, classes []gitproxy.
 	if len(requestable) == 0 {
 		return nil, nil
 	}
-	grant, err := s.requestAndWaitForHFPush(ctx, classes, requestable, client, target, packSize, bodyDigest)
+	grant, err := s.requestAndWaitForHFPush(ctx, classes, requestable, client, target, packSize, bodyDigest, pause)
 	if err != nil {
 		if errors.Is(err, errAmbiguousHFPush) {
 			return refFailuresForClasses(classes, err.Error()), nil
@@ -369,7 +382,7 @@ func (s *Server) evaluateClassifiedPush(class gitproxy.ClassifiedCommand, client
 	return requestableHFPush{Class: class, Operation: operation, Attrs: attrs, Decision: requestDecision}, gitproxy.RefFailure{}, false, nil
 }
 
-func (s *Server) requestAndWaitForHFPush(ctx context.Context, classes []gitproxy.ClassifiedCommand, items []requestableHFPush, client, target string, packSize int64, bodyDigest string) (grants.Grant, error) {
+func (s *Server) requestAndWaitForHFPush(ctx context.Context, classes []gitproxy.ClassifiedCommand, items []requestableHFPush, client, target string, packSize int64, bodyDigest string, pause mirror.PauseLock) (grants.Grant, error) {
 	if blocked, err := s.retainedGrantBlocksHFPush(client, target, classes); err != nil {
 		return grants.Grant{}, err
 	} else if blocked {
@@ -400,7 +413,13 @@ func (s *Server) requestAndWaitForHFPush(ctx context.Context, classes []gitproxy
 	if s.notifier != nil {
 		s.sweepPendingGrantApproval(ctx, result.Grant)
 	}
-	return s.grants.WaitForDecision(ctx, result.Grant.ID)
+	var decided grants.Grant
+	err = pause(func() error {
+		var waitErr error
+		decided, waitErr = s.grants.WaitForDecision(ctx, result.Grant.ID)
+		return waitErr
+	})
+	return decided, err
 }
 
 func (s *Server) requestHFTransactionGrant(input hfgrant.Input) (grants.RequestResult, error) {
