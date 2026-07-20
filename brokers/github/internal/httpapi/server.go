@@ -586,7 +586,7 @@ func health(c echo.Context) error {
 }
 
 func (s *Server) gitInfoRefs(c echo.Context) error {
-	operation, err := operationFromGitService(c.QueryParam("service"))
+	operation, err := requireGitTransportOperation(c.QueryParam("service"), "unsupported git service")
 	if err != nil {
 		return err
 	}
@@ -758,15 +758,24 @@ func (s *Server) repoRequest(c echo.Context, operation policy.Operation, attrs m
 	}
 }
 
-func operationFromGitService(service string) (policy.Operation, error) {
-	switch service {
-	case "git-upload-pack":
-		return policy.OperationGitFetch, nil
-	case "git-receive-pack":
-		return policy.OperationGitPushAdvertise, nil
+func gitTransportOperation(value string) (policy.Operation, bool) {
+	switch value {
+	case "git-upload-pack", "download":
+		return policy.OperationGitFetch, true
+	case "git-receive-pack", "upload":
+		// LFS uploads remain unreachable until receive-pack authorizes a ref update.
+		return policy.OperationGitPushAdvertise, true
 	default:
-		return "", echo.NewHTTPError(http.StatusBadRequest, "unsupported git service")
+		return "", false
 	}
+}
+
+func requireGitTransportOperation(value, message string) (policy.Operation, error) {
+	operation, ok := gitTransportOperation(value)
+	if !ok {
+		return "", echo.NewHTTPError(http.StatusBadRequest, message)
+	}
+	return operation, nil
 }
 
 func noStore(next echo.HandlerFunc) echo.HandlerFunc {

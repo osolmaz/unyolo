@@ -283,23 +283,10 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 		failures, err = s.refusePolicyDeniedPush(r.Context(), classes, client, target, int64(len(req.Pack)), plandigest.Digest(body), used, pauseForApproval)
 	}
 	if err == nil && len(failures) == 0 && released {
-		current, currentFailures, currentErr := gitproxy.ClassifyPush(r.Context(), req, mir)
-		if currentErr != nil {
-			err = currentErr
-		} else if len(currentFailures) > 0 || !slices.Equal(classes, current) {
-			failures = refFailuresForClasses(classes, "repository changed while approval was pending")
-		}
+		failures, err = revalidateClassifiedHFPush(r.Context(), req, mir, classes)
 	}
 	if len(failures) > 0 {
-		report, reportErr := gitproxy.BuildRefusalReport(req, failures)
-		if reportErr != nil {
-			return false, nil, nil, reportErr
-		}
-		w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(report)
-		s.record(client, pushAuditOperation(classes), target, audit.DecisionRefused, failures[0].Reason, 0)
-		return true, nil, nil, nil
+		return s.writeHFPushRefusal(w, req, classes, failures, client, target)
 	}
 	if err != nil {
 		return false, nil, nil, err
@@ -307,38 +294,74 @@ func (s *Server) refuseInvalidPush(w http.ResponseWriter, r *http.Request, req g
 	return false, slicex.Values(used), classes, nil
 }
 
+func revalidateClassifiedHFPush(ctx context.Context, req gitproxy.ReceivePackRequest, mir *mirror.Repository, expected []gitproxy.ClassifiedCommand) ([]gitproxy.RefFailure, error) {
+	current, failures, err := gitproxy.ClassifyPush(ctx, req, mir)
+	if err != nil {
+		return nil, err
+	}
+	if len(failures) > 0 || !slices.Equal(expected, current) {
+		return refFailuresForClasses(expected, "repository changed while approval was pending"), nil
+	}
+	return nil, nil
+}
+
+func (s *Server) writeHFPushRefusal(w http.ResponseWriter, req gitproxy.ReceivePackRequest, classes []gitproxy.ClassifiedCommand, failures []gitproxy.RefFailure, client, target string) (bool, []grantUse, []gitproxy.ClassifiedCommand, error) {
+	report, err := gitproxy.BuildRefusalReport(req, failures)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	w.Header().Set("Content-Type", "application/x-git-receive-pack-result")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(report)
+	s.record(client, pushAuditOperation(classes), target, audit.DecisionRefused, failures[0].Reason, 0)
+	return true, nil, nil, nil
+}
+
 func (s *Server) refusePolicyDeniedPush(ctx context.Context, classes []gitproxy.ClassifiedCommand, client, target string, packSize int64, bodyDigest string, used map[string]grantUse, pause mirror.PauseLock) ([]gitproxy.RefFailure, error) {
 	rt, ok := parseGrantTarget(target)
 	if !ok {
 		return refFailuresForClasses(classes, "invalid target"), nil
 	}
+	requestable, failures, err := s.evaluateHFPushClasses(classes, client, rt, target, packSize, used)
+	if err != nil || len(failures) > 0 || len(requestable) == 0 {
+		return failures, err
+	}
+	grant, err := s.requestAndWaitForHFPush(ctx, classes, requestable, client, target, packSize, bodyDigest, pause)
+	if err != nil {
+		return hfPushApprovalError(classes, err)
+	}
+	return s.completeHFPushApproval(classes, requestable, client, rt, grant, used)
+}
+
+func (s *Server) evaluateHFPushClasses(classes []gitproxy.ClassifiedCommand, client string, rt route, target string, packSize int64, used map[string]grantUse) ([]requestableHFPush, []gitproxy.RefFailure, error) {
 	requestable := make([]requestableHFPush, 0, len(classes))
 	for _, class := range classes {
 		item, failure, refused, err := s.evaluateClassifiedPush(class, client, rt, target, packSize, used)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if refused {
-			return refFailuresForClasses(classes, failure.Reason), nil
+			return nil, refFailuresForClasses(classes, failure.Reason), nil
 		}
 		if item.Decision.Effect == policy.EffectRequest {
 			requestable = append(requestable, item)
 		}
 	}
-	if len(requestable) == 0 {
-		return nil, nil
+	return requestable, nil, nil
+}
+
+func hfPushApprovalError(classes []gitproxy.ClassifiedCommand, err error) ([]gitproxy.RefFailure, error) {
+	if errors.Is(err, errAmbiguousHFPush) {
+		return refFailuresForClasses(classes, err.Error()), nil
 	}
-	grant, err := s.requestAndWaitForHFPush(ctx, classes, requestable, client, target, packSize, bodyDigest, pause)
-	if err != nil {
-		if errors.Is(err, errAmbiguousHFPush) {
-			return refFailuresForClasses(classes, err.Error()), nil
-		}
-		return nil, err
-	}
+	return nil, err
+}
+
+func (s *Server) completeHFPushApproval(classes []gitproxy.ClassifiedCommand, items []requestableHFPush, client string, rt route, grant grants.Grant, used map[string]grantUse) ([]gitproxy.RefFailure, error) {
 	if grant.Status != grants.StatusActive {
 		return refFailuresForClasses(classes, "approval "+string(grant.Status)+" ("+grant.ID+")"), nil
 	}
-	if err := s.revalidateHFPushRequests(requestable, client, rt); err != nil {
+	if err := s.revalidateHFPushRequests(items, client, rt); err != nil {
 		return refFailuresForClasses(classes, err.Error()), nil
 	}
 	used[grant.ID] = grantUse{grant: grant}
@@ -363,15 +386,23 @@ func (s *Server) evaluateClassifiedPush(class gitproxy.ClassifiedCommand, client
 		return requestableHFPush{}, gitproxy.RefFailure{}, false, nil
 	}
 	if decision.Reason == "grant_allowed" {
-		matched, matchErr := s.useGrantAllowedDecision(decision, client, operation, target, class.Command.Ref, attrs, used)
-		if matchErr != nil {
-			return requestableHFPush{}, gitproxy.RefFailure{}, false, matchErr
-		}
-		if !matched {
-			return requestableHFPush{}, gitproxy.RefFailure{}, false, errors.New("authorized grant is unavailable")
-		}
-		return requestableHFPush{}, gitproxy.RefFailure{}, false, nil
+		return s.evaluateGrantAllowedHFPush(decision, class, client, operation, target, attrs, used)
 	}
+	return s.evaluateRequestableHFPush(decision, class, client, rt, operation, attrs)
+}
+
+func (s *Server) evaluateGrantAllowedHFPush(decision policy.Decision, class gitproxy.ClassifiedCommand, client string, operation policy.Operation, target string, attrs map[string]any, used map[string]grantUse) (requestableHFPush, gitproxy.RefFailure, bool, error) {
+	matched, err := s.useGrantAllowedDecision(decision, client, operation, target, class.Command.Ref, attrs, used)
+	if err != nil {
+		return requestableHFPush{}, gitproxy.RefFailure{}, false, err
+	}
+	if !matched {
+		return requestableHFPush{}, gitproxy.RefFailure{}, false, errors.New("authorized grant is unavailable")
+	}
+	return requestableHFPush{}, gitproxy.RefFailure{}, false, nil
+}
+
+func (s *Server) evaluateRequestableHFPush(decision policy.Decision, class gitproxy.ClassifiedCommand, client string, rt route, operation policy.Operation, attrs map[string]any) (requestableHFPush, gitproxy.RefFailure, bool, error) {
 	requestDecision, err := s.decideRepo(client, operation, rt, []string{class.Command.Ref}, attrs, true)
 	if err != nil {
 		return requestableHFPush{}, gitproxy.RefFailure{}, false, err
@@ -383,28 +414,12 @@ func (s *Server) evaluateClassifiedPush(class gitproxy.ClassifiedCommand, client
 }
 
 func (s *Server) requestAndWaitForHFPush(ctx context.Context, classes []gitproxy.ClassifiedCommand, items []requestableHFPush, client, target string, packSize int64, bodyDigest string, pause mirror.PauseLock) (grants.Grant, error) {
-	if blocked, err := s.retainedGrantBlocksHFPush(client, target, classes); err != nil {
+	if err := s.ensureNoRetainedHFPush(client, target, classes); err != nil {
 		return grants.Grant{}, err
-	} else if blocked {
-		return grants.Grant{}, errAmbiguousHFPush
 	}
-	duration, pending, err := hfPushApprovalBounds(items)
+	input, err := s.hfPushGrantInput(classes, items, client, target, packSize, bodyDigest)
 	if err != nil {
 		return grants.Grant{}, err
-	}
-	requestID, err := s.hfPushTransactionRequestID(client, bodyDigest, receivePackRequestRuleIDs(items))
-	if err != nil {
-		return grants.Grant{}, err
-	}
-	commands := make([]map[string]string, 0, len(classes))
-	for _, class := range classes {
-		commands = append(commands, map[string]string{"operation": string(operationForRefUpdate(class.Kind)), "old": class.Command.Old, "new": class.Command.New, "ref": class.Command.Ref})
-	}
-	input := hfgrant.Input{
-		Client: client, ClientRequestID: requestID, Operation: string(highestRiskHFOperation(items)), Mode: hfgrant.ModeWindow,
-		Target: target, Attrs: map[string]any{"plan_digest": bodyDigest, "commands": commands, "max_bytes": packSize},
-		Reason: "Git push transaction requires approval", RequestedDuration: duration, PendingTimeout: pending,
-		MaxUses: 1, MaxUsesSpecified: true,
 	}
 	result, err := s.requestHFTransactionGrant(input)
 	if err != nil {
@@ -413,10 +428,46 @@ func (s *Server) requestAndWaitForHFPush(ctx context.Context, classes []gitproxy
 	if s.notifier != nil {
 		s.sweepPendingGrantApproval(ctx, result.Grant)
 	}
+	return s.waitForHFPushDecision(ctx, result.Grant.ID, pause)
+}
+
+func (s *Server) ensureNoRetainedHFPush(client, target string, classes []gitproxy.ClassifiedCommand) error {
+	blocked, err := s.retainedGrantBlocksHFPush(client, target, classes)
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return errAmbiguousHFPush
+	}
+	return nil
+}
+
+func (s *Server) hfPushGrantInput(classes []gitproxy.ClassifiedCommand, items []requestableHFPush, client, target string, packSize int64, bodyDigest string) (hfgrant.Input, error) {
+	duration, pending, err := hfPushApprovalBounds(items)
+	if err != nil {
+		return hfgrant.Input{}, err
+	}
+	requestID, err := s.hfPushTransactionRequestID(client, bodyDigest, receivePackRequestRuleIDs(items))
+	if err != nil {
+		return hfgrant.Input{}, err
+	}
+	commands := make([]map[string]string, 0, len(classes))
+	for _, class := range classes {
+		commands = append(commands, map[string]string{"operation": string(operationForRefUpdate(class.Kind)), "old": class.Command.Old, "new": class.Command.New, "ref": class.Command.Ref})
+	}
+	return hfgrant.Input{
+		Client: client, ClientRequestID: requestID, Operation: string(highestRiskHFOperation(items)), Mode: hfgrant.ModeWindow,
+		Target: target, Attrs: map[string]any{"plan_digest": bodyDigest, "commands": commands, "max_bytes": packSize},
+		Reason: "Git push transaction requires approval", RequestedDuration: duration, PendingTimeout: pending,
+		MaxUses: 1, MaxUsesSpecified: true,
+	}, nil
+}
+
+func (s *Server) waitForHFPushDecision(ctx context.Context, grantID string, pause mirror.PauseLock) (grants.Grant, error) {
 	var decided grants.Grant
-	err = pause(func() error {
+	err := pause(func() error {
 		var waitErr error
-		decided, waitErr = s.grants.WaitForDecision(ctx, result.Grant.ID)
+		decided, waitErr = s.grants.WaitForDecision(ctx, grantID)
 		return waitErr
 	})
 	return decided, err
@@ -442,26 +493,28 @@ func (s *Server) retainedGrantBlocksHFPush(client, target string, classes []gitp
 		refs[class.Command.Ref] = true
 	}
 	for _, grant := range items {
-		if !grant.ReservationRetained || hfgrant.Target(grant) != target {
-			continue
-		}
-		ref := hfgrant.Ref(grant)
-		if ref == "" || refs[ref] {
+		if retainedHFPushMatches(grant, target, refs) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
+func retainedHFPushMatches(grant grants.Grant, target string, refs map[string]bool) bool {
+	if !grant.ReservationRetained || hfgrant.Target(grant) != target {
+		return false
+	}
+	ref := hfgrant.Ref(grant)
+	return ref == "" || refs[ref]
+}
+
 func hfPushApprovalBounds(items []requestableHFPush) (time.Duration, time.Duration, error) {
 	var duration, pending time.Duration
 	for _, item := range items {
-		bounds := item.Decision.GrantPolicy
-		if bounds == nil || bounds.Mode != policy.GrantModeWindow || bounds.MaxUses < 1 {
-			return 0, 0, errors.New("Git push approval policy is incompatible with one-use transactions")
+		candidateDuration, candidatePending, err := hfPushItemBounds(item)
+		if err != nil {
+			return 0, 0, err
 		}
-		candidateDuration := time.Duration(bounds.DefaultMinutes) * time.Minute
-		candidatePending := time.Duration(bounds.RequestTTLMinutes) * time.Minute
 		if duration == 0 || candidateDuration < duration {
 			duration = candidateDuration
 		}
@@ -470,6 +523,14 @@ func hfPushApprovalBounds(items []requestableHFPush) (time.Duration, time.Durati
 		}
 	}
 	return duration, pending, nil
+}
+
+func hfPushItemBounds(item requestableHFPush) (time.Duration, time.Duration, error) {
+	bounds := item.Decision.GrantPolicy
+	if bounds == nil || bounds.Mode != policy.GrantModeWindow || bounds.MaxUses < 1 {
+		return 0, 0, errors.New("Git push approval policy is incompatible with one-use transactions")
+	}
+	return time.Duration(bounds.DefaultMinutes) * time.Minute, time.Duration(bounds.RequestTTLMinutes) * time.Minute, nil
 }
 
 func receivePackRequestRuleIDs(items []requestableHFPush) []string {
@@ -520,12 +581,18 @@ func latestHFTransactionGrant(base string, items []grants.Grant) (grants.Grant, 
 	var generation int
 	for _, item := range items {
 		candidate, ok := hfTransactionGeneration(base, item.ClientRequestID)
-		if !ok || candidate < generation || (candidate == generation && !item.CreatedAt.After(latest.CreatedAt)) {
-			continue
+		if newerHFTransactionGrant(item, candidate, ok, latest, generation) {
+			latest, generation = item, candidate
 		}
-		latest, generation = item, candidate
 	}
 	return latest, generation
+}
+
+func newerHFTransactionGrant(candidate grants.Grant, candidateGeneration int, valid bool, latest grants.Grant, latestGeneration int) bool {
+	if !valid || candidateGeneration < latestGeneration {
+		return false
+	}
+	return candidateGeneration > latestGeneration || candidate.CreatedAt.After(latest.CreatedAt)
 }
 
 func hfTransactionGeneration(base, requestID string) (int, bool) {

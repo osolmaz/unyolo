@@ -53,7 +53,7 @@ func (s *Server) gitLFSBatch(c echo.Context) error {
 	if err := strictjson.Decode(body, &request, false); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid Git LFS batch request")
 	}
-	operation, err := githubLFSOperation(request.Operation)
+	operation, err := requireGitTransportOperation(request.Operation, "unsupported Git LFS operation")
 	if err != nil {
 		return err
 	}
@@ -62,18 +62,6 @@ func (s *Server) gitLFSBatch(c echo.Context) error {
 	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), func(c echo.Context) error {
 		return s.proxyGitLFSBatch(c, operation)
 	})
-}
-
-func githubLFSOperation(operation string) (policy.Operation, error) {
-	switch operation {
-	case "download":
-		return policy.OperationGitFetch, nil
-	case "upload":
-		// LFS objects are unreachable until receive-pack separately authorizes a ref update.
-		return policy.OperationGitPushAdvertise, nil
-	default:
-		return "", echo.NewHTTPError(http.StatusBadRequest, "unsupported Git LFS operation")
-	}
 }
 
 func (s *Server) proxyGitLFSBatch(c echo.Context, operation policy.Operation) error {
@@ -115,39 +103,35 @@ func (s *Server) rewriteGitHubLFSActions(c echo.Context, client string, operatio
 		return
 	}
 	for _, raw := range objects {
-		object, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		oid, _ := object["oid"].(string)
-		size, ok := githubLFSSize(object["size"])
-		if !validGitHubLFSOID(oid) || !ok {
-			delete(object, "actions")
-			continue
-		}
-		actions, ok := object["actions"].(map[string]any)
-		if !ok {
-			continue
-		}
-		for name, rawAction := range actions {
-			action, ok := rawAction.(map[string]any)
-			if !ok || !s.rewriteGitHubLFSAction(c, client, operation, oid, size, name, action) {
-				delete(actions, name)
-			}
+		s.rewriteGitHubLFSObject(c, client, operation, raw)
+	}
+}
+
+func (s *Server) rewriteGitHubLFSObject(c echo.Context, client string, operation policy.Operation, raw any) {
+	object, ok := raw.(map[string]any)
+	if !ok {
+		return
+	}
+	oid, _ := object["oid"].(string)
+	size, sizeOK := githubLFSSize(object["size"])
+	if !validGitHubLFSOID(oid) || !sizeOK {
+		delete(object, "actions")
+		return
+	}
+	actions, ok := object["actions"].(map[string]any)
+	if !ok {
+		return
+	}
+	for name, rawAction := range actions {
+		action, valid := rawAction.(map[string]any)
+		if !valid || !s.rewriteGitHubLFSAction(c, client, operation, oid, size, name, action) {
+			delete(actions, name)
 		}
 	}
 }
 
 func (s *Server) rewriteGitHubLFSAction(c echo.Context, client string, operation policy.Operation, oid, size, name string, payload map[string]any) bool {
-	href, ok := payload["href"].(string)
-	if !ok {
-		return false
-	}
-	upstream, err := url.Parse(href)
-	if err != nil || (upstream.Scheme != "https" && !sameOrigin(upstream, s.githubGitBaseURL)) || upstream.Host == "" || upstream.User != nil || upstream.Fragment != "" {
-		return false
-	}
-	method, localPath, ok := githubLFSActionRoute(c, oid, size, name)
+	action, ok := s.parseGitHubLFSAction(c, client, operation, oid, size, name, payload)
 	if !ok {
 		return false
 	}
@@ -155,21 +139,50 @@ func (s *Server) rewriteGitHubLFSAction(c echo.Context, client string, operation
 	if err != nil {
 		return false
 	}
+	s.storeGitHubLFSAction(id, action)
+	payload["href"] = githubLFSLocalActionURL(c.Request(), action.path, id)
+	delete(payload, "header")
+	return true
+}
+
+func (s *Server) parseGitHubLFSAction(c echo.Context, client string, operation policy.Operation, oid, size, name string, payload map[string]any) (githubLFSAction, bool) {
+	href, ok := payload["href"].(string)
+	if !ok {
+		return githubLFSAction{}, false
+	}
+	upstream, err := url.Parse(href)
+	if err != nil || !s.validGitHubLFSActionURL(upstream) {
+		return githubLFSAction{}, false
+	}
+	method, localPath, ok := githubLFSActionRoute(c, oid, size, name)
+	if !ok {
+		return githubLFSAction{}, false
+	}
 	action := githubLFSAction{
 		client: client, owner: c.Param("owner"), repo: strings.TrimSuffix(c.Param("repoGit"), ".git"), operation: operation,
 		method: method, path: localPath, upstream: upstream, headers: githubLFSHeaders(payload["header"]), created: time.Now().UTC(),
 	}
+	return action, true
+}
+
+func (s *Server) validGitHubLFSActionURL(upstream *url.URL) bool {
+	return upstream != nil && (upstream.Scheme == "https" || sameOrigin(upstream, s.githubGitBaseURL)) &&
+		upstream.Host != "" && upstream.User == nil && upstream.Fragment == ""
+}
+
+func (s *Server) storeGitHubLFSAction(id string, action githubLFSAction) {
 	s.lfsMu.Lock()
 	s.pruneGitHubLFSActions(time.Now().UTC())
 	s.lfsActions[id] = action
 	s.lfsMu.Unlock()
-	local := url.URL{Scheme: requestScheme(c.Request()), Host: c.Request().Host, Path: localPath}
+}
+
+func githubLFSLocalActionURL(request *http.Request, path, id string) string {
+	local := url.URL{Scheme: requestScheme(request), Host: request.Host, Path: path}
 	query := local.Query()
 	query.Set(githubLFSActionQuery, id)
 	local.RawQuery = query.Encode()
-	payload["href"] = local.String()
-	delete(payload, "header")
-	return true
+	return local.String()
 }
 
 func githubLFSActionRoute(c echo.Context, oid, size, name string) (string, string, bool) {
@@ -187,25 +200,37 @@ func githubLFSActionRoute(c echo.Context, oid, size, name string) (string, strin
 }
 
 func (s *Server) gitLFSAction(c echo.Context) error {
-	id := c.QueryParam(githubLFSActionQuery)
-	action, ok := s.lookupGitHubLFSAction(id)
-	client := security.ClientFromContext(c)
-	repo := strings.TrimSuffix(c.Param("repoGit"), ".git")
-	if !ok || action.client != client || action.owner != c.Param("owner") || action.repo != repo || action.path != c.Request().URL.Path || !githubLFSMethodMatches(action.method, c.Request().Method) {
+	action, ok := s.authorizedGitHubLFSAction(c)
+	if !ok {
 		return echo.NewHTTPError(http.StatusForbidden, "Git LFS action is invalid or expired")
 	}
 	return s.authorizeBrokerRequest(c, s.repoRequest(c, action.operation, nil), func(c echo.Context) error {
-		request, err := s.newGitHubLFSRequest(c, action.upstream, action.headers)
-		if err != nil {
-			return err
-		}
-		response, err := s.doGitHubLFSRequest(request)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = response.Body.Close() }()
-		return s.copyGitHubLFSResponse(c, response, false)
+		return s.proxyGitHubLFSAction(c, action)
 	})
+}
+
+func (s *Server) authorizedGitHubLFSAction(c echo.Context) (githubLFSAction, bool) {
+	action, ok := s.lookupGitHubLFSAction(c.QueryParam(githubLFSActionQuery))
+	if !ok {
+		return githubLFSAction{}, false
+	}
+	repo := strings.TrimSuffix(c.Param("repoGit"), ".git")
+	valid := action.client == security.ClientFromContext(c) && action.owner == c.Param("owner") && action.repo == repo &&
+		action.path == c.Request().URL.Path && githubLFSMethodMatches(action.method, c.Request().Method)
+	return action, valid
+}
+
+func (s *Server) proxyGitHubLFSAction(c echo.Context, action githubLFSAction) error {
+	request, err := s.newGitHubLFSRequest(c, action.upstream, action.headers)
+	if err != nil {
+		return err
+	}
+	response, err := s.doGitHubLFSRequest(request)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = response.Body.Close() }()
+	return s.copyGitHubLFSResponse(c, response, false)
 }
 
 func (s *Server) gitLFSDirect(c echo.Context) error {
@@ -222,22 +247,31 @@ func (s *Server) newGitHubLFSRequest(c echo.Context, upstream *url.URL, headers 
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream Git LFS request")
 	}
 	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
+	applyGitHubLFSHeaders(request.Header, headers)
+	request.ContentLength = c.Request().ContentLength
+	if err := s.authorizeSameOriginGitHubLFS(c, request, upstream); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func applyGitHubLFSHeaders(target, headers http.Header) {
 	for key, values := range headers {
 		if strings.EqualFold(key, "Host") || strings.EqualFold(key, "Content-Length") {
 			continue
 		}
-		request.Header.Del(key)
+		target.Del(key)
 		for _, value := range values {
-			request.Header.Add(key, value)
+			target.Add(key, value)
 		}
 	}
-	request.ContentLength = c.Request().ContentLength
+}
+
+func (s *Server) authorizeSameOriginGitHubLFS(c echo.Context, request *http.Request, upstream *url.URL) error {
 	if request.Header.Get("Authorization") == "" && sameOrigin(upstream, s.githubGitBaseURL) {
-		if err := s.configureGitHubGitRequest(c, request, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git")); err != nil {
-			return nil, err
-		}
+		return s.configureGitHubGitRequest(c, request, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git"))
 	}
-	return request, nil
+	return nil
 }
 
 func (s *Server) doGitHubLFSRequest(request *http.Request) (*http.Response, error) {

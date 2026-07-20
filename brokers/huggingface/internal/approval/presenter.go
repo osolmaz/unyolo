@@ -66,16 +66,30 @@ func transactionFacts(grant bkgrants.Grant) []approvalview.Fact {
 		return nil
 	}
 	var facts []approvalview.Fact
-	if digest, ok := attrs["plan_digest"].(string); ok && digest != "" {
+	if digest := transactionDigest(attrs); digest != "" {
 		facts = append(facts, approvalview.Fact{Label: "Push body digest", Value: digest})
 	}
-	if commands, ok := attrs["commands"]; ok {
-		encoded, err := json.Marshal(commands)
-		if err == nil {
-			facts = append(facts, approvalview.Fact{Label: "Push commands", Value: string(encoded)})
-		}
+	if commands := transactionCommands(attrs); commands != "" {
+		facts = append(facts, approvalview.Fact{Label: "Push commands", Value: commands})
 	}
 	return facts
+}
+
+func transactionDigest(attrs map[string]any) string {
+	digest, _ := attrs["plan_digest"].(string)
+	return digest
+}
+
+func transactionCommands(attrs map[string]any) string {
+	commands, ok := attrs["commands"]
+	if !ok {
+		return ""
+	}
+	encoded, err := json.Marshal(commands)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func displayTarget(grant bkgrants.Grant) string {

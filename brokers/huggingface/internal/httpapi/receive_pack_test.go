@@ -1151,3 +1151,50 @@ func TestForwardGrantClientWriteErrorRetainsReservation(t *testing.T) {
 		t.Fatalf("grant client-write updates = %+v, want ambiguous update", notifier.updates)
 	}
 }
+
+func TestHFTransactionGeneration(t *testing.T) {
+	tests := []struct {
+		name      string
+		requestID string
+		want      int
+		valid     bool
+	}{
+		{name: "base", requestID: "transaction", want: 1, valid: true},
+		{name: "next generation", requestID: "transaction-2", want: 2, valid: true},
+		{name: "later generation", requestID: "transaction-12", want: 12, valid: true},
+		{name: "different base", requestID: "other-2"},
+		{name: "missing generation", requestID: "transaction-"},
+		{name: "first generation suffix", requestID: "transaction-1", want: 1},
+		{name: "non numeric", requestID: "transaction-next"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, valid := hfTransactionGeneration("transaction", tt.requestID)
+			if got != tt.want || valid != tt.valid {
+				t.Fatalf("hfTransactionGeneration() = (%d, %v), want (%d, %v)", got, valid, tt.want, tt.valid)
+			}
+		})
+	}
+}
+
+func TestLatestHFTransactionGrant(t *testing.T) {
+	base := "transaction"
+	now := time.Now().UTC()
+	items := []grants.Grant{
+		{ID: "unrelated", ClientRequestID: "other-9", CreatedAt: now.Add(time.Hour)},
+		{ID: "base", ClientRequestID: base, CreatedAt: now},
+		{ID: "older-two", ClientRequestID: base + "-2", CreatedAt: now.Add(time.Minute)},
+		{ID: "newer-two", ClientRequestID: base + "-2", CreatedAt: now.Add(2 * time.Minute)},
+		{ID: "three", ClientRequestID: base + "-3", CreatedAt: now.Add(-time.Hour)},
+	}
+
+	latest, generation := latestHFTransactionGrant(base, items)
+	if latest.ID != "three" || generation != 3 {
+		t.Fatalf("latestHFTransactionGrant() = (%q, %d), want (%q, 3)", latest.ID, generation, "three")
+	}
+
+	latest, generation = latestHFTransactionGrant(base, items[:4])
+	if latest.ID != "newer-two" || generation != 2 {
+		t.Fatalf("latestHFTransactionGrant() same generation = (%q, %d), want (%q, 2)", latest.ID, generation, "newer-two")
+	}
+}
