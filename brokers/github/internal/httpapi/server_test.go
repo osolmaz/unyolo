@@ -680,6 +680,41 @@ func TestGrantBackedReceivePackConsumesGrant(t *testing.T) {
 	assertGrantUseState(t, server, grantID, grants.StatusConsumed, 1, 0)
 }
 
+func TestGitReceivePackRequestsApprovalAndReusesPendingGrant(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusOK)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	body := receivePackCreate("refs/tags/v1.0.0")
+
+	for attempt := 0; attempt < 2; attempt++ {
+		response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "approve and retry") {
+			t.Fatalf("attempt %d: status = %d, body = %q", attempt+1, response.Code, response.Body.String())
+		}
+	}
+	items, err := server.grants.ListForClient("bob")
+	if err != nil || len(items) != 1 || items[0].Status != grants.StatusPending {
+		t.Fatalf("pending grants = %+v, error = %v", items, err)
+	}
+	if len(notifier.messages) != 1 || upstreamCalls != 0 {
+		t.Fatalf("notifications = %d, upstream calls = %d, want 1/0", len(notifier.messages), upstreamCalls)
+	}
+	if _, err := server.grants.Approve(items[0].ID, notifier.token, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+
+	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+	if response.Code != http.StatusOK || upstreamCalls != 1 {
+		t.Fatalf("approved retry: status = %d, body = %q, upstream calls = %d", response.Code, response.Body.String(), upstreamCalls)
+	}
+	assertGrantUseState(t, server, items[0].ID, grants.StatusConsumed, 1, 0)
+}
+
 func TestGrantBackedReceivePackRetainsGrantOnProxyError(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestMainPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
@@ -2065,6 +2100,20 @@ func requestMainPushPolicy(t *testing.T) *policy.Policy {
 	}})
 	if err != nil {
 		t.Fatalf("policy.New(requestMainPushPolicy) error = %v", err)
+	}
+	return brokerPolicy
+}
+
+func requestTagPushPolicy(t *testing.T) *policy.Policy {
+	t.Helper()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{{
+		ID: "request-tag", Effect: policy.EffectRequest, Clients: []string{"bob"},
+		Operations: []policy.Operation{policy.OperationGitTagUpdate},
+		Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		Attrs:      map[string][]string{"refs": {"refs/tags/*"}},
+	}}})
+	if err != nil {
+		t.Fatalf("policy.New(requestTagPushPolicy) error = %v", err)
 	}
 	return brokerPolicy
 }

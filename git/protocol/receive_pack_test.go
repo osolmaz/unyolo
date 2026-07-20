@@ -24,6 +24,27 @@ func TestParseReceivePackCommands(t *testing.T) {
 	}
 }
 
+func TestParseReceivePackRequestCapturesCapabilities(t *testing.T) {
+	body := pkt("shallow 1111111111111111111111111111111111111111\n") +
+		pkt("0000000000000000000000000000000000000000 2222222222222222222222222222222222222222 refs/tags/v1\x00 report-status side-band-64k\n") +
+		"0000PACKDATA"
+	stream := bytes.NewBufferString(body)
+	request, err := ParseReceivePackRequest(stream)
+	if err != nil {
+		t.Fatalf("ParseReceivePackRequest() error = %v", err)
+	}
+	if len(request.Commands) != 1 || request.Commands[0].Kind != RefUpdateTagCreate {
+		t.Fatalf("commands = %+v, want one tag create", request.Commands)
+	}
+	if !request.Capabilities["report-status"] || !request.Capabilities["side-band-64k"] {
+		t.Fatalf("capabilities = %+v", request.Capabilities)
+	}
+	remaining, err := io.ReadAll(stream)
+	if err != nil || string(remaining) != "PACKDATA" {
+		t.Fatalf("remaining = %q, error = %v", remaining, err)
+	}
+}
+
 func TestClassifyTagsAndOtherRefs(t *testing.T) {
 	cases := []struct {
 		name string
