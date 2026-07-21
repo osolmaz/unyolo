@@ -2,7 +2,7 @@
 
 Date: 2026-07-21
 
-Status: planned
+Status: implemented; release qualification pending
 
 ## Objective
 
