@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 const testCredential = "agent-credential-with-enough-entropy"
@@ -54,7 +55,8 @@ func TestClientDiscoversCredentialCeiling(t *testing.T) {
 			http.NotFound(writer, request)
 			return
 		}
-		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.read"},
+		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
+			ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.read"},
 			Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "test", CredentialKind: "app", Generation: 2, VerificationState: "valid"}})
 	}))
 	defer server.Close()

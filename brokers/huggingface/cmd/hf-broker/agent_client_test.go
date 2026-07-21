@@ -15,6 +15,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/mcp/operation"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 const agentClientTestSecret = "abcdefghijklmnopqrstuvwxyz123456"
@@ -190,7 +191,8 @@ func TestGrantRequestOptionValidation(t *testing.T) {
 func TestRunMCPListsAndCallsTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/brokerkit-agent" {
-			_ = json.NewEncoder(w).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.create"},
+			_ = json.NewEncoder(w).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
+				ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.create"},
 				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "fine_grained_user_token", Generation: 1, VerificationState: "valid"}})
 			return
 		}
@@ -366,6 +368,12 @@ func TestCatalogOperationOptionsAndTerminalOutput(t *testing.T) {
 
 func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/brokerkit-agent" {
+			_ = json.NewEncoder(w).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
+				ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.create"},
+				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "token", Generation: 1, VerificationState: "valid"}})
+			return
+		}
 		operation := testAgentOperation(agentv1.StateSucceeded)
 		_ = json.NewEncoder(w).Encode(operation)
 	}))

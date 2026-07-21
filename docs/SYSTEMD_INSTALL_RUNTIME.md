@@ -7,6 +7,14 @@ a broker as a Linux systemd service. Consumers provide provider-specific file
 contents and the already typed `SystemdUnit`; they do not create accounts,
 resolve numeric ids, write or chown files, or invoke `systemctl` themselves.
 
+Single-service setup remains the configuration and account bootstrap boundary.
+Production binary upgrades use the host bundle transaction described in
+`OPERATIONS_RUNTIME.md`; independently replacing a running executable is not a
+service upgrade. Bundle activation stops `brokerkit-telegram.service` first,
+then provider services, switches the immutable release pointer, reloads
+systemd, starts and verifies providers, and starts Telegram last. A candidate
+failure restores the previous complete service set.
+
 ## Boundary
 
 Brokerkit owns:
@@ -164,6 +172,11 @@ An install plan is rejected when:
   executable;
 - Linux race tests, coverage, vet, lint, Slophammer, review, and consumer tests
   all pass.
+- old-ingress/new-broker contract drift is rejected before Telegram consumes
+  an update;
+- complete bundle activation and injected readiness failure restore the exact
+  prior release and provider-before-consumer ordering;
+- a deleted or outside-release process fails host doctor.
 
 Mutation tooling remains checked in but is disabled and non-blocking. It must
 not run in the default required workflow unless a later explicit decision

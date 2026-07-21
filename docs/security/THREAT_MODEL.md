@@ -15,7 +15,8 @@ classifying, validating, and executing its own operations.
 - The broker process owns policy, grants, immutable provider plans, activation
   validation, provider credentials, and audit export.
 - Notification channels carry one-time decision tokens. They are transports,
-  not authority stores.
+  not long-term authority stores. The Telegram ingress may retain encrypted
+  callback authority only until terminal delivery or expiry.
 - The OpenClaw plugin is a trusted operator client. Its browser and outbound
   messages receive only the safe Operator V1 projection.
 - Provider executors, especially the sudo helper, are separate processes and
@@ -45,6 +46,17 @@ classifying, validating, and executing its own operations.
   unsupported state shapes.
 - Persist transitions, events, idempotency records, reservations, and
   notification claims atomically before acknowledging success.
+- Persist a Telegram callback and its next update offset in one transaction
+  before answering Telegram. Encrypt decision authority at rest and erase it
+  after terminal reconciliation or expiry.
+- Require exact generated Agent and Operator contract digests. A version label
+  alone is not compatibility evidence.
+- Execute persistent services only from a verified immutable host bundle.
+  Stop callback consumers before switching releases and start them only after
+  provider readiness succeeds.
+- Keep Operator credentials outside signed runtime manifests. A manifest may
+  contain only the absolute token-file path needed for authenticated local
+  readiness.
 - Keep execution reservations private. Public resources and events never
   expose decision-token verifiers, raw plans, credentials, provider bodies,
   command output, or reservation internals.
@@ -86,6 +98,10 @@ classifying, validating, and executing its own operations.
 | Git listener is used as a broad agent API | The independent route gate rejects every non-Git path before provider routing. |
 | Approval wait blocks all pushes to a repository | Release the provider lock during the wait, then reacquire and reclassify the exact transaction before forwarding. |
 | LFS or Xet response exposes a signed provider action | Rewrite supported LFS actions to broker-local capabilities and fail unsupported transfers closed. |
+| Old ingress calls a newer broker schema | Exact contract discovery fails before another Telegram update is consumed. |
+| Binary is replaced while its old process keeps running | Host doctor detects the deleted or outside-release executable and fails readiness. |
+| Host upgrade fails after stopping services | Restore the previous release, native services, and replaced state before restarting Telegram. |
+| Telegram callback arrives while a broker is unavailable | Commit encrypted authority and offset, retry that route idempotently, and continue healthy routes. |
 
 ## Explicit Non-Protections
 

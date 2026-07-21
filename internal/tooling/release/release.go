@@ -225,7 +225,9 @@ func build(ctx context.Context, options Options, goos, goarch string) (string, e
 
 func buildExecutable(ctx context.Context, options Options, command string, binary string, goos string, goarch string) error {
 	// #nosec G204 -- the executable and flags are fixed; values come from the release operator.
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version="+options.Version, "-o", binary, command)
+	linkerFlags := "-s -w -X main.version=" + options.Version +
+		" -X github.com/osolmaz/brokerkit/internal/buildinfo.Version=" + options.Version
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", binary, command)
 	cmd.Dir = options.Directory
 	cgo := "0"
 	if goos == "darwin" {

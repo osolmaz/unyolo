@@ -15,12 +15,18 @@ import (
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/operator/client"
 	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 // OperatorSource is the trusted Operator V1 surface needed by Telegram ingress.
 type OperatorSource interface {
 	Get(context.Context, string) (operatorv1.Request, error)
 	Decide(context.Context, string, operatorv1.Action, operatorv1.Decision) (operatorv1.Request, error)
+}
+
+type readyOperatorSource interface {
+	Discover(context.Context) (operatorv1.Descriptor, error)
+	Health(context.Context) error
 }
 
 // Dispatcher sends callbacks from one Telegram poller to broker Operator V1 sources.
@@ -58,6 +64,44 @@ func NewDispatcher(routes map[string]OperatorSource) (*Dispatcher, error) {
 		cloned[route] = source
 	}
 	return &Dispatcher{routes: cloned}, nil
+}
+
+// Ready verifies exact authenticated discovery and health for every route.
+func (d *Dispatcher) Ready(ctx context.Context) error {
+	for route, source := range d.routes {
+		ready, ok := source.(readyOperatorSource)
+		if !ok {
+			return fmt.Errorf("telegram dispatcher route %q has no readiness contract", route)
+		}
+		descriptor, err := ready.Discover(ctx)
+		if err != nil || !compatibleDescriptor(descriptor) {
+			return fmt.Errorf("telegram dispatcher route %q contract is unavailable", route)
+		}
+		if err := ready.Health(ctx); err != nil {
+			return fmt.Errorf("telegram dispatcher route %q is unhealthy", route)
+		}
+	}
+	return nil
+}
+
+// Compatible rejects exact contract drift while allowing temporary route
+// outages to enter the durable per-route retry path.
+func (d *Dispatcher) Compatible(ctx context.Context) error {
+	for route, source := range d.routes {
+		ready, ok := source.(readyOperatorSource)
+		if !ok {
+			return fmt.Errorf("telegram dispatcher route %q has no readiness contract", route)
+		}
+		descriptor, err := ready.Discover(ctx)
+		if errors.Is(err, operatorclient.ErrContractMismatch) || (err == nil && !compatibleDescriptor(descriptor)) {
+			return fmt.Errorf("telegram dispatcher route %q has an incompatible contract", route)
+		}
+	}
+	return nil
+}
+
+func compatibleDescriptor(descriptor operatorv1.Descriptor) bool {
+	return descriptor.APIVersion == operatorv1.APIVersion && descriptor.ContractDigest == contract.OperatorV1Digest && descriptor.BuildID != ""
 }
 
 // Handle applies one routed callback through the owning broker's Operator V1 API.

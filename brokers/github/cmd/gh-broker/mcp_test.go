@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
 	"github.com/osolmaz/brokerkit/mcp/operation"
 	"github.com/osolmaz/brokerkit/mcp/server"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 func mcpTestEnv(values map[string]string) func(string) string {
@@ -129,7 +130,8 @@ func TestMCPToolsRequireAndIntersectAgentDiscovery(t *testing.T) {
 			http.NotFound(writer, request)
 			return
 		}
-		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.metadata.read"},
+		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
+			ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.metadata.read"},
 			Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: "github_app", Generation: 1, VerificationState: "valid"}})
 	}))
 	defer server.Close()
@@ -153,7 +155,8 @@ func TestRunMCPAndJSONRPCDispatch(t *testing.T) {
 			http.NotFound(writer, request)
 			return
 		}
-		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{},
+		_ = json.NewEncoder(writer).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
+			ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{},
 			Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: "github_app", Generation: 1, VerificationState: "valid"}})
 	}))
 	defer server.Close()

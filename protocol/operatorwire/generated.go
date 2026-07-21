@@ -366,7 +366,9 @@ type Decision struct {
 
 // Descriptor defines model for Descriptor.
 type Descriptor struct {
-	ApiVersion DescriptorApiVersion `json:"api_version"`
+	ApiVersion     DescriptorApiVersion `json:"api_version"`
+	BuildId        string               `json:"build_id"`
+	ContractDigest string               `json:"contract_digest"`
 }
 
 // DescriptorApiVersion defines model for Descriptor.ApiVersion.
@@ -396,7 +398,9 @@ type Fact struct {
 
 // Health defines model for Health.
 type Health struct {
-	Status string `json:"status"`
+	BuildId        string `json:"build_id"`
+	ContractDigest string `json:"contract_digest"`
+	Status         string `json:"status"`
 }
 
 // NotificationDecision defines model for NotificationDecision.

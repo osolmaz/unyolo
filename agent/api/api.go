@@ -15,7 +15,9 @@ import (
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/agent/wire"
 	bkauth "github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/brokerkit/internal/buildinfo"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 	"github.com/osolmaz/brokerkit/transport/http"
 )
 
@@ -111,11 +113,14 @@ func generatedBindingErrors(next echo.HandlerFunc) echo.HandlerFunc {
 
 func (h *Handler) DiscoverAgent(c echo.Context) error {
 	return h.withAuthenticated(c, func(client string) error {
-		descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{}, Credential: agentv1.CredentialDescriptor{}}
+		descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, ContractDigest: contract.AgentV1Digest,
+			BuildID: buildinfo.ID(), Operations: []string{}, Credential: agentv1.CredentialDescriptor{}}
 		if h.discover != nil {
 			descriptor = h.discover(client)
 			descriptor.APIVersion = agentv1.APIVersion
 		}
+		descriptor.ContractDigest = contract.AgentV1Digest
+		descriptor.BuildID = buildinfo.ID()
 		return c.JSON(http.StatusOK, agentv1wire.DescriptorToWire(descriptor))
 	})
 }

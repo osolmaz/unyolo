@@ -43,8 +43,16 @@ export function parseDescriptor(value: unknown): Discovery {
   return validated(validateDescriptor, value) as Discovery;
 }
 
-export function parseHealth(value: unknown): { status: string } {
-  return validated(validateHealth, value) as { status: string };
+export function parseHealth(value: unknown): {
+  status: string;
+  contract_digest: string;
+  build_id: string;
+} {
+  return validated(validateHealth, value) as {
+    status: string;
+    contract_digest: string;
+    build_id: string;
+  };
 }
 
 export function parseRequest(value: unknown): BrokerRequest {

@@ -43,6 +43,8 @@ The managed configuration has this shape:
 {
   "telegram_bot_token_file": "/etc/brokerkit-telegram/telegram-bot-token",
   "telegram_chat_id": 123456789,
+  "inbox_path": "/var/lib/brokerkit-telegram/callbacks.db",
+  "inbox_key_file": "/etc/brokerkit-telegram/inbox-key",
   "routes": {
     "h": {
       "operator_endpoint": "unix:///run/brokerkit/huggingface/operator/broker.sock",
@@ -56,11 +58,19 @@ The route keys are `h` for Hugging Face, `g` for GitHub, and `s` for sudo.
 Configuration rejects duplicate or unknown fields, unsupported routes, relative
 secret paths, and malformed endpoints.
 
+Setup creates the inbox encryption key once and preserves it on every rerun.
+The key is readable only by the ingress service. Losing or rotating it while
+callbacks are pending makes those callbacks unreadable rather than falling
+back to plaintext authority.
+
 ## Decision behavior
 
-An accepted button tap is committed through the owning broker's Operator V1
-API. The ingress immediately answers the callback, renders the typed terminal
-state, and removes both buttons in the same edit where possible. The broker's
+An accepted button tap is first committed to the ingress SQLite inbox together
+with the next Telegram update offset. The decision token is encrypted with
+AES-GCM before it reaches storage. Only then does the ingress answer Telegram
+with neutral receipt text and dispatch through the owning broker's Operator V1
+API. It renders the typed terminal state and removes both buttons in the same
+edit where possible. The broker's
 durable notification outbox then reconciles the authoritative terminal render
 from the exact stored pending message. Repeated or concurrent taps return the
 current terminal state and cannot create a second decision.
@@ -72,9 +82,18 @@ semantic snapshot. Dynamic provider values are HTML-escaped, bounded without
 splitting UTF-8, and cannot supply markup, button labels, callback answers, or
 status prose.
 
-Transient broker or socket failures leave that message's buttons available and
-ask the operator to try again. The update is acknowledged so an unavailable
-broker cannot block callbacks for healthy brokers sharing the bot. A durable
-decision followed by a Telegram edit failure remains committed and converges
-through the status outbox. A wrong chat cannot decide a grant. Provider
-credentials and agent credentials are never available to the ingress.
+Transient broker or socket failures leave the callback pending in the inbox
+with bounded exponential retry. Entries are dispatched separately, so one
+unavailable route does not block healthy routes. Restart resumes pending
+callbacks from SQLite before fetching more updates. A durable decision followed
+by a Telegram edit failure retries idempotently until the terminal render and
+button removal converge. Terminal and expired records erase their nonce,
+ciphertext, and decision token while retaining redacted lifecycle evidence.
+
+Every route exposes its exact generated Operator V1 contract digest and build
+identity. The ingress compares that digest before each poll batch. A missing or
+different digest exits without consuming another Telegram update, allowing the
+service manager or bundle rollback to repair the host. Temporary route outages
+still enter the durable per-route retry path. A wrong chat cannot decide a
+grant. Provider credentials and agent credentials are never available to the
+ingress.

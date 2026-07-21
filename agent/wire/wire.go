@@ -13,8 +13,10 @@ import (
 
 func DescriptorToWire(input agentv1.Descriptor) agentwire.Descriptor {
 	return agentwire.Descriptor{
-		ApiVersion: agentwire.DescriptorApiVersionBrokerkitIoagentv1,
-		Operations: cloneStrings(input.Operations),
+		ApiVersion:     agentwire.DescriptorApiVersionBrokerkitIoagentv1,
+		ContractDigest: input.ContractDigest,
+		BuildId:        input.BuildID,
+		Operations:     cloneStrings(input.Operations),
 		Credential: agentwire.CredentialDescriptor{
 			Ready: input.Credential.Ready, Provider: input.Credential.Provider,
 			CredentialKind: input.Credential.CredentialKind, Generation: generationToWire(input.Credential.Generation),
@@ -25,7 +27,8 @@ func DescriptorToWire(input agentv1.Descriptor) agentwire.Descriptor {
 
 func DescriptorFromWire(input agentwire.Descriptor) agentv1.Descriptor {
 	return agentv1.Descriptor{
-		APIVersion: string(input.ApiVersion), Operations: cloneStrings(input.Operations),
+		APIVersion: string(input.ApiVersion), ContractDigest: input.ContractDigest, BuildID: input.BuildId,
+		Operations: cloneStrings(input.Operations),
 		Credential: agentv1.CredentialDescriptor{
 			Ready: input.Credential.Ready, Provider: input.Credential.Provider,
 			CredentialKind: input.Credential.CredentialKind, Generation: generationFromWire(input.Credential.Generation),

@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/operator/client"
 	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 type dispatcherSource struct {
@@ -20,7 +21,17 @@ type dispatcherSource struct {
 	decision   operatorv1.Decision
 	action     operatorv1.Action
 	decideCall int
+	descriptor *operatorv1.Descriptor
 }
+
+func (s *dispatcherSource) Discover(context.Context) (operatorv1.Descriptor, error) {
+	if s.descriptor != nil {
+		return *s.descriptor, nil
+	}
+	return operatorv1.Descriptor{APIVersion: operatorv1.APIVersion, ContractDigest: contract.OperatorV1Digest, BuildID: "test"}, nil
+}
+
+func (s *dispatcherSource) Health(context.Context) error { return nil }
 
 func (s *dispatcherSource) Get(context.Context, string) (operatorv1.Request, error) {
 	return s.request, s.getErr
@@ -111,4 +122,31 @@ func TestNewDispatcherRejectsInvalidRoutes(t *testing.T) {
 	if _, err := NewDispatcher(map[string]OperatorSource{"github": &dispatcherSource{}}); err == nil {
 		t.Fatal("invalid dispatcher route accepted")
 	}
+}
+
+func TestDispatcherReadinessRequiresExactOperatorSource(t *testing.T) {
+	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: &dispatcherSource{}})
+	if err != nil || dispatcher.Ready(t.Context()) != nil {
+		t.Fatalf("Ready() = %v, constructor = %v", dispatcher.Ready(t.Context()), err)
+	}
+	withoutReadiness, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: struct{ OperatorSource }{&minimalSource{}}})
+	if err != nil || withoutReadiness.Ready(t.Context()) == nil {
+		t.Fatal("Ready() accepted a source without discovery and health")
+	}
+	wrong := &dispatcherSource{descriptor: &operatorv1.Descriptor{APIVersion: operatorv1.APIVersion,
+		ContractDigest: "sha256:" + strings.Repeat("f", 64), BuildID: "test"}}
+	incompatible, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: wrong})
+	if err != nil || incompatible.Ready(t.Context()) == nil || incompatible.Compatible(t.Context()) == nil {
+		t.Fatal("dispatcher accepted a different Operator contract")
+	}
+}
+
+type minimalSource struct{}
+
+func (*minimalSource) Get(context.Context, string) (operatorv1.Request, error) {
+	return operatorv1.Request{}, nil
+}
+
+func (*minimalSource) Decide(context.Context, string, operatorv1.Action, operatorv1.Decision) (operatorv1.Request, error) {
+	return operatorv1.Request{}, nil
 }

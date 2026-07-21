@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/runtime-bundle/v1/manifest.schema.json",
+  "title": "BrokerKit runtime bundle manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "bundle_id",
+    "source_commit",
+    "operating_system",
+    "architecture",
+    "operator_contract_digest",
+    "agent_contract_digest",
+    "components"
+  ],
+  "properties": {
+    "api_version": { "const": "brokerkit.io/runtime-bundle/v1" },
+    "bundle_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" },
+    "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "operating_system": { "enum": ["linux", "darwin"] },
+    "architecture": { "enum": ["amd64", "arm64"] },
+    "operator_contract_digest": { "$ref": "#/$defs/digest" },
+    "agent_contract_digest": { "$ref": "#/$defs/digest" },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/component" }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source",
+        "destination",
+        "sha256",
+        "build_id",
+        "role",
+        "services",
+        "state_format_digest",
+        "required"
+      ],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" },
+        "source": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "destination": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "build_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "enum": ["provider", "consumer", "companion"] },
+        "services": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" }
+        },
+        "operator_endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "operator_token_file": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "operator_contract_digest": { "$ref": "#/$defs/digest" },
+        "agent_contract_digest": { "$ref": "#/$defs/digest" },
+        "state_format_digest": { "$ref": "#/$defs/digest" },
+        "state_dir": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "replace_state": { "type": "boolean" },
+        "required": { "type": "boolean" }
+      }
+    }
+  }
+}

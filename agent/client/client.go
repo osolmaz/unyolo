@@ -12,6 +12,7 @@ import (
 	"github.com/osolmaz/brokerkit/agent/wire"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/protocol/agentwire"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 	"github.com/osolmaz/brokerkit/transport/http"
 	"github.com/osolmaz/brokerkit/transport/http/client"
 )
@@ -52,7 +53,7 @@ func (c *Client) Discover(ctx context.Context) (agentv1.Descriptor, error) {
 		return agentv1.Descriptor{}, errors.New("agent source returned invalid discovery metadata")
 	}
 	descriptor := agentv1wire.DescriptorFromWire(wire)
-	if descriptor.APIVersion != agentv1.APIVersion {
+	if descriptor.APIVersion != agentv1.APIVersion || descriptor.ContractDigest != contract.AgentV1Digest {
 		return agentv1.Descriptor{}, errors.New("agent source returned unsupported discovery metadata")
 	}
 	return descriptor, nil

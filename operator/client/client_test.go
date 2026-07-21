@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/operator/v1"
 	"github.com/osolmaz/brokerkit/operator/wire"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 	"github.com/osolmaz/brokerkit/protocol/operatorwire"
 )
 
@@ -32,9 +33,10 @@ func TestClientImplementsOperatorV1Source(t *testing.T) {
 		}
 		switch request.URL.Path {
 		case "/healthz":
-			_, _ = writer.Write([]byte(`{"status":"ok"}`))
+			_ = json.NewEncoder(writer).Encode(operatorwire.Health{Status: "ok", ContractDigest: contract.OperatorV1Digest, BuildId: "test"})
 		case "/.well-known/brokerkit-operator":
-			_ = json.NewEncoder(writer).Encode(operatorv1.Descriptor{APIVersion: operatorv1.APIVersion})
+			_ = json.NewEncoder(writer).Encode(operatorv1.Descriptor{APIVersion: operatorv1.APIVersion,
+				ContractDigest: contract.OperatorV1Digest, BuildID: "test"})
 		case "/api/operator/v1/requests":
 			_ = json.NewEncoder(writer).Encode(operatorv1.Page{Requests: []operatorv1.Request{{ID: "request-1", Revision: 1}}})
 		case "/api/operator/v1/requests/missing":
@@ -149,7 +151,8 @@ func TestClientDropsUnknownResponseFieldsAndRejectsTrailingData(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(writer, `{"api_version":%q,"unknown":{"unsafe":"dropped"}}`, operatorv1.APIVersion)
+		_, _ = fmt.Fprintf(writer, `{"api_version":%q,"contract_digest":%q,"build_id":"test","unknown":{"unsafe":"dropped"}}`,
+			operatorv1.APIVersion, contract.OperatorV1Digest)
 	}))
 	defer server.Close()
 	if descriptor, err := newTestOperatorClient(t, server.URL, "", server.Client()).Discover(t.Context()); err != nil || descriptor.APIVersion != operatorv1.APIVersion {
@@ -157,7 +160,8 @@ func TestClientDropsUnknownResponseFieldsAndRejectsTrailingData(t *testing.T) {
 	}
 	trailing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(writer, `{"api_version":%q}{}`, operatorv1.APIVersion)
+		_, _ = fmt.Fprintf(writer, `{"api_version":%q,"contract_digest":%q,"build_id":"test"}{}`,
+			operatorv1.APIVersion, contract.OperatorV1Digest)
 	}))
 	defer trailing.Close()
 	if _, err := newTestOperatorClient(t, trailing.URL, "", trailing.Client()).Discover(t.Context()); err == nil {

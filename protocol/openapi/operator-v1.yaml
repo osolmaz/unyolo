@@ -62,8 +62,8 @@
     "parameters": {"RequestID": {"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}},
     "responses": {"ErrorResponse": {"description": "Stable error envelope", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}}},
     "schemas": {
-      "Descriptor": {"type": "object", "additionalProperties": false, "required": ["api_version"], "properties": {"api_version": {"type": "string", "const": "brokerkit.io/operator/v1"}}},
-      "Health": {"type": "object", "additionalProperties": false, "required": ["status"], "properties": {"status": {"type": "string", "minLength": 1, "maxLength": 128}}},
+      "Descriptor": {"type": "object", "additionalProperties": false, "required": ["api_version", "contract_digest", "build_id"], "properties": {"api_version": {"type": "string", "const": "brokerkit.io/operator/v1"}, "contract_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "build_id": {"type": "string", "minLength": 1, "maxLength": 128}}},
+      "Health": {"type": "object", "additionalProperties": false, "required": ["status", "contract_digest", "build_id"], "properties": {"status": {"type": "string", "minLength": 1, "maxLength": 128}, "contract_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "build_id": {"type": "string", "minLength": 1, "maxLength": 128}}},
       "Action": {"type": "string", "enum": ["approve", "deny", "revoke"]},
       "Status": {"type": "string", "enum": ["pending", "active", "denied", "canceled", "expired", "consumed", "revoked"]},
       "StatusGroup": {"type": "string", "enum": ["pending", "active", "history", "all"]},

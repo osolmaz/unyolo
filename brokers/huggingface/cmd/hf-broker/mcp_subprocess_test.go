@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 const mcpHelperEnvironment = "BROKERKIT_HF_MCP_HELPER"
@@ -47,7 +48,8 @@ func TestMCPSubprocessRecoversLostSubmissionAcrossRestarts(t *testing.T) {
 		}
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/.well-known/brokerkit-agent":
-			writeAgentJSON(writer, agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{"repo.create"},
+			writeAgentJSON(writer, agentv1.Descriptor{APIVersion: agentv1.APIVersion,
+				ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.create"},
 				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "fine_grained_user_token", Generation: 1, VerificationState: "valid"}})
 		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/operations":
 			state.submissions++

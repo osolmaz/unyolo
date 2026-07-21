@@ -12,6 +12,7 @@ import {
   parseHealth,
   parseRequest,
   parseRequestPage,
+  OPERATOR_V1_SCHEMA_SHA256,
 } from "./operator-v1.js";
 
 const MAX_JSON_BYTES = 2_000_000;
@@ -39,9 +40,13 @@ export class BrokerClient {
     );
     if (value.api_version !== "brokerkit.io/operator/v1")
       throw new Error(`unsupported BrokerKit API ${value.api_version}`);
+    if (value.contract_digest !== OPERATOR_V1_SCHEMA_SHA256)
+      throw new Error("unsupported BrokerKit operator contract");
   }
   async health(): Promise<void> {
-    parseHealth(await this.json("/healthz", {}, false));
+    const health = parseHealth(await this.json("/healthz", {}, false));
+    if (health.contract_digest !== OPERATOR_V1_SCHEMA_SHA256)
+      throw new Error("unsupported BrokerKit operator contract");
   }
   async list(
     status: "pending" | "active" = "pending",

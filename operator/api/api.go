@@ -22,10 +22,12 @@ import (
 	"github.com/osolmaz/brokerkit/authorization/decision"
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/brokerkit/internal/buildinfo"
 	"github.com/osolmaz/brokerkit/internal/optional"
 	"github.com/osolmaz/brokerkit/operator/inbox"
 	"github.com/osolmaz/brokerkit/operator/v1"
 	"github.com/osolmaz/brokerkit/operator/wire"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 	"github.com/osolmaz/brokerkit/protocol/operatorwire"
 	"github.com/osolmaz/brokerkit/telemetry/audit"
 	"github.com/osolmaz/brokerkit/transport/http"
@@ -147,7 +149,8 @@ func (h *handler) DiscoverOperator(c echo.Context) error {
 	if _, ok := h.actor(c); !ok {
 		return nil
 	}
-	return c.JSON(http.StatusOK, operatorwire.Descriptor{ApiVersion: operatorwire.BrokerkitIooperatorv1})
+	return c.JSON(http.StatusOK, operatorwire.Descriptor{ApiVersion: operatorwire.BrokerkitIooperatorv1,
+		ContractDigest: contract.OperatorV1Digest, BuildId: buildinfo.ID()})
 }
 
 func (h *handler) StreamOperatorEvents(c echo.Context, _ operatorwire.StreamOperatorEventsParams) error {
@@ -212,7 +215,7 @@ func (h *handler) status(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 	}
-	h.writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	h.writeJSON(writer, http.StatusOK, operatorwire.Health{Status: "ok", ContractDigest: contract.OperatorV1Digest, BuildId: buildinfo.ID()})
 }
 
 func (h *handler) list(writer http.ResponseWriter, request *http.Request) {

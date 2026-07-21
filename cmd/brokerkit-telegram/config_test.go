@@ -16,6 +16,8 @@ func TestLoadIngressConfigStrictly(t *testing.T) {
 	writeTestFile(t, path, `{
   "telegram_bot_token_file": "/etc/brokerkit-telegram/telegram-bot-token",
   "telegram_chat_id": 42,
+  "inbox_path": "/var/lib/brokerkit-telegram/callbacks.db",
+  "inbox_key_file": "/etc/brokerkit-telegram/inbox-key",
   "routes": {"h": {"operator_endpoint": "unix:///run/hf/operator.sock", "operator_token_file": "/etc/brokerkit-telegram/operator-token-h"}}
 }`)
 	cfg, err := loadIngressConfig(path)
@@ -33,7 +35,7 @@ func TestLoadIngressConfigStrictly(t *testing.T) {
 }
 
 func TestValidateIngressConfigRejectsIncompleteAndUnknownRoutes(t *testing.T) {
-	valid := ingressConfig{TelegramBotTokenFile: "/t", TelegramChatID: 1,
+	valid := ingressConfig{TelegramBotTokenFile: "/t", TelegramChatID: 1, InboxPath: "/state.db", InboxKeyFile: "/key",
 		Routes: map[string]routeConfig{"h": {OperatorEndpoint: "unix:///s", OperatorTokenFile: "/o"}}}
 	tests := []func(*ingressConfig){
 		func(cfg *ingressConfig) { cfg.TelegramBotTokenFile = "relative" },
@@ -61,24 +63,30 @@ func TestBuildIngressReadsManagedSecrets(t *testing.T) {
 	dir := t.TempDir()
 	bot := filepath.Join(dir, "bot")
 	operator := filepath.Join(dir, "operator")
+	key := filepath.Join(dir, "key")
 	writeTestFile(t, bot, "telegram-token\n")
 	writeTestFile(t, operator, strings.Repeat("o", 32)+"\n")
-	cfg := ingressConfig{TelegramBotTokenFile: bot, TelegramChatID: 1,
+	writeTestFile(t, key, strings.Repeat("0", 64)+"\n")
+	cfg := ingressConfig{TelegramBotTokenFile: bot, TelegramChatID: 1, InboxPath: filepath.Join(dir, "callbacks.db"), InboxKeyFile: key,
 		Routes: map[string]routeConfig{"h": {OperatorEndpoint: "unix:///tmp/operator.sock", OperatorTokenFile: operator}}}
-	client, dispatcher, err := buildIngress(cfg)
-	if err != nil || client == nil || dispatcher == nil {
+	client, dispatcher, inbox, err := buildIngress(t.Context(), cfg)
+	if err != nil || client == nil || dispatcher == nil || inbox == nil {
 		t.Fatalf("buildIngress() client=%v dispatcher=%v error=%v", client, dispatcher, err)
 	}
+	_ = inbox.Close()
 }
 
 func TestRunServeStopsWithCanceledContext(t *testing.T) {
 	dir := t.TempDir()
 	bot := filepath.Join(dir, "bot")
 	operator := filepath.Join(dir, "operator")
+	key := filepath.Join(dir, "key")
+	inbox := filepath.Join(dir, "callbacks.db")
 	config := filepath.Join(dir, "config.json")
 	writeTestFile(t, bot, "telegram-token\n")
 	writeTestFile(t, operator, strings.Repeat("o", 32)+"\n")
-	writeTestFile(t, config, `{"telegram_bot_token_file":"`+bot+`","telegram_chat_id":1,"routes":{"h":{"operator_endpoint":"unix:///tmp/operator.sock","operator_token_file":"`+operator+`"}}}`)
+	writeTestFile(t, key, strings.Repeat("0", 64)+"\n")
+	writeTestFile(t, config, `{"telegram_bot_token_file":"`+bot+`","telegram_chat_id":1,"inbox_path":"`+inbox+`","inbox_key_file":"`+key+`","routes":{"h":{"operator_endpoint":"unix:///tmp/operator.sock","operator_token_file":"`+operator+`"}}}`)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := runServe(ctx, []string{"--config", config}, &strings.Builder{}); err != nil {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
 	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 	"github.com/osolmaz/brokerkit/operator/client"
 	"github.com/osolmaz/brokerkit/transport/endpoint"
@@ -239,10 +240,17 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 	managedConfig := ingressConfig{
 		TelegramBotTokenFile: filepath.Join(opts.ConfigDir, "telegram-bot-token"),
 		TelegramChatID:       opts.TelegramChatID,
+		InboxPath:            filepath.Join(opts.StateDir, "callbacks.db"),
+		InboxKeyFile:         filepath.Join(opts.ConfigDir, "inbox-key"),
 		Routes:               map[string]routeConfig{},
+	}
+	inboxKey, err := existingOrGeneratedInboxKey(filepath.Join(opts.ConfigDir, "inbox-key"), opts.DryRun || opts.AllowNonRoot)
+	if err != nil {
+		return bkservice.SystemdInstallPlan{}, err
 	}
 	files := []bkservice.ManagedFile{
 		{Area: bkservice.ManagedFileConfig, Name: "telegram-bot-token", Data: []byte(botToken + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"},
+		{Area: bkservice.ManagedFileConfig, Name: "inbox-key", Data: []byte(inboxKey + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-inbox"},
 		{Area: bkservice.ManagedFileConfig, Name: "env", Data: []byte("# managed by brokerkit-telegram\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	}
 	groups := make([]string, 0, len(opts.Routes))
@@ -288,6 +296,17 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 		ReadyCheck:   ingressReadyCheck(readyClients),
 		AllowNonRoot: opts.AllowNonRoot, Runner: opts.Runner,
 	}, nil
+}
+
+func existingOrGeneratedInboxKey(path string, preview bool) (string, error) {
+	value, err := readSecretFile(path)
+	if err == nil {
+		return value, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) && !preview {
+		return "", fmt.Errorf("read existing Telegram inbox key: %w", err)
+	}
+	return bksetup.GenerateSecret()
 }
 
 func ingressReadyCheck(clients []*operatorclient.Client) bkservice.ReadinessCheck {
