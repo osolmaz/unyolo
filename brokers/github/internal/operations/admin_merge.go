@@ -80,6 +80,7 @@ func (a adminMergeAdapter) Resolve(ctx context.Context, input Input) (Plan, erro
 	if credential.UserID > 0 && credential.UserID != identity.ID {
 		return Plan{}, errors.New("GitHub admin merge user credential does not match its configured identity")
 	}
+	credential.UserID = identity.ID
 	snapshot, err := a.pullRequest(ctx, credential, target)
 	if err != nil {
 		return Plan{}, err

@@ -65,8 +65,10 @@ func TestAdminMergeBindsExactRevisionAndUsesPersistedGraphQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan.ExecutionID = "operation-1"
-	if plan.Credential.Kind != githubauth.KindDevelopmentToken || !strings.Contains(plan.Presentation.Summary, "may bypass") ||
-		adapter.Authorize(plan).Operation != adminMergeOperation {
+	authorization := adapter.Authorize(plan)
+	if plan.Credential.Kind != githubauth.KindDevelopmentToken || plan.Credential.UserID != 2453968 ||
+		!strings.Contains(plan.Presentation.Summary, "may bypass") || authorization.Operation != adminMergeOperation ||
+		len(authorization.Attrs["actor_id"]) != 1 || authorization.Attrs["actor_id"][0] != "2453968" {
 		t.Fatalf("plan = %+v", plan)
 	}
 	if strings.Contains(string(plan.Preconditions), "dev-canary") {
