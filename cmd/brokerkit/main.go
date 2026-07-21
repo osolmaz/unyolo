@@ -70,6 +70,7 @@ func (values hostFlags) installer(development bool) bundle.Installer {
 	return bundle.Installer{Paths: bundle.Paths{Root: values.root, StateDir: values.state}, Manager: manager, Development: development}
 }
 
+//nolint:cyclop // Activation is a fail-closed command transaction whose ordering is easier to audit inline.
 func runActivation(ctx context.Context, action string, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("brokerkit system "+action, flag.ContinueOnError)
 	flags.SetOutput(stderr)

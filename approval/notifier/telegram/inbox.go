@@ -42,6 +42,8 @@ type queuedDecision struct {
 }
 
 // OpenInbox opens the mandatory durable callback inbox.
+//
+//nolint:cyclop // Initialization deliberately validates each cryptographic and durable-storage boundary in order.
 func OpenInbox(ctx context.Context, path string, key []byte) (*Inbox, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return nil, errors.New("telegram inbox path must be absolute and normalized")

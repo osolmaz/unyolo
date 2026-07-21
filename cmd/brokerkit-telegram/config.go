@@ -84,6 +84,7 @@ func supportedRoute(route string) bool {
 	}
 }
 
+//nolint:cyclop // Construction keeps every secret and route dependency failure attributable to its source.
 func buildIngress(ctx context.Context, cfg ingressConfig) (*telegram.Client, *telegram.Dispatcher, *telegram.Inbox, error) {
 	botToken, err := readSecretFile(cfg.TelegramBotTokenFile)
 	if err != nil {
@@ -115,7 +116,7 @@ func buildIngress(ctx context.Context, cfg ingressConfig) (*telegram.Client, *te
 	}
 	key, err := hex.DecodeString(keyText)
 	if err != nil || len(key) != 32 {
-		return nil, nil, nil, errors.New("Telegram inbox key is invalid")
+		return nil, nil, nil, errors.New("telegram inbox key is invalid")
 	}
 	inbox, err := telegram.OpenInbox(ctx, cfg.InboxPath, key)
 	clearSecret(key)

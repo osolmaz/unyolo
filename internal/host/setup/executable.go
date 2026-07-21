@@ -37,6 +37,7 @@ func ResolveServiceExecutable(path, destination string, allowNonRoot bool) (stri
 	return resolveServiceExecutable(path, ManagedRoot(), destination, os.Geteuid() == 0 && !allowNonRoot)
 }
 
+//nolint:cyclop // Resolution keeps managed, immutable-release, and standalone trust cases visibly separate.
 func resolveServiceExecutable(path, root, destination string, trusted bool) (string, bool, error) {
 	if !safeManagedDestination(destination) {
 		return "", false, errors.New("managed executable destination is invalid")

@@ -113,6 +113,7 @@ func writeIngressDryRun(opts setupOptions, plan bkservice.SystemdInstallPlan, st
 	return err
 }
 
+//nolint:cyclop // Setup parsing centralizes dependent flag defaults and production-path validation.
 func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	opts := defaultSetupOptions()
 	flags := flag.NewFlagSet("brokerkit-telegram setup systemd", flag.ContinueOnError)

@@ -227,7 +227,7 @@ func buildExecutable(ctx context.Context, options Options, command string, binar
 	// #nosec G204 -- the executable and flags are fixed; values come from the release operator.
 	linkerFlags := "-s -w -X main.version=" + options.Version +
 		" -X github.com/osolmaz/brokerkit/internal/buildinfo.Version=" + options.Version
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", binary, command)
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", binary, command) // #nosec G204 -- release operator inputs are validated before this fixed Go invocation.
 	cmd.Dir = options.Directory
 	cgo := "0"
 	if goos == "darwin" {

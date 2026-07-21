@@ -40,6 +40,8 @@ func (m *systemdManager) Reload(ctx context.Context) error {
 
 func (m *systemdManager) Status(ctx context.Context, service string) (ServiceStatus, error) {
 	if _, err := m.runner.Run(ctx, "systemctl", "is-active", "--quiet", service); err != nil {
+		// A nonzero is-active status means inactive; command failures are surfaced by the subsequent readiness timeout.
+		//nolint:nilerr
 		return ServiceStatus{}, nil
 	}
 	output, err := m.runner.Run(ctx, "systemctl", "show", "--property=MainPID", "--value", service)

@@ -89,6 +89,8 @@ func Load(path, signaturePath, publicKeyPath string, development bool) (Manifest
 }
 
 // Validate checks the closed manifest's platform, protocol, and path invariants.
+//
+//nolint:cyclop // Manifest validation keeps the closed top-level trust contract explicit.
 func (m Manifest) Validate(development bool) error {
 	if m.APIVersion != APIVersion {
 		return fmt.Errorf("unsupported runtime bundle API %q", m.APIVersion)
@@ -114,6 +116,7 @@ func (m Manifest) Validate(development bool) error {
 	return nil
 }
 
+//nolint:cyclop // Component validation is a closed security checklist with cross-field uniqueness invariants.
 func (c Component) validate(development bool, manifest Manifest, names, destinations, services map[string]bool) error {
 	if !identifierPattern.MatchString(c.Name) || names[c.Name] {
 		return errors.New("name is invalid or duplicated")

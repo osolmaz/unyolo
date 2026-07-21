@@ -18,6 +18,8 @@ func (c *Client) PollDurable(ctx context.Context, inbox *Inbox, handler func(con
 }
 
 // PollDurableReady verifies all broker routes before consuming each update batch.
+//
+//nolint:cyclop // The loop keeps readiness, durable persistence, and Telegram acknowledgement ordering explicit.
 func (c *Client) PollDurableReady(ctx context.Context, inbox *Inbox,
 	handler func(context.Context, notify.Decision) notify.DecisionResult, ready func(context.Context) error) error {
 	if inbox == nil || handler == nil {
