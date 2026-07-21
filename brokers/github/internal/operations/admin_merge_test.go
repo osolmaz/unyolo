@@ -84,6 +84,24 @@ func TestAdminMergeBindsExactRevisionAndUsesPersistedGraphQL(t *testing.T) {
 	}
 }
 
+func TestAdminMergeRequiresNonNullGraphQLPayload(t *testing.T) {
+	for name, test := range map[string]struct {
+		body json.RawMessage
+		want bool
+	}{
+		"payload": {body: json.RawMessage(`{"mergePullRequest":{"__typename":"MergePullRequestPayload"}}`), want: true},
+		"null":    {body: json.RawMessage(`{"mergePullRequest":null}`)},
+		"missing": {body: json.RawMessage(`{}`)},
+		"invalid": {body: json.RawMessage(`{`)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := adminMergeResponseProven(test.body); got != test.want {
+				t.Fatalf("adminMergeResponseProven() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestAdminMergeRejectsStaleApprovalBeforeMutation(t *testing.T) {
 	requests, pullRequestRequests := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

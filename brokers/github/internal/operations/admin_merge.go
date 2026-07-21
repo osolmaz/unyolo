@@ -139,6 +139,9 @@ func (a adminMergeAdapter) Execute(ctx context.Context, plan Plan) (Outcome, err
 	if err != nil {
 		return Outcome{}, classifyExecutionError(http.MethodPost, err)
 	}
+	if !adminMergeResponseProven(execution.Body) {
+		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
+	}
 	return a.successOutcome(execution.StatusCode, preconditions, arguments)
 }
 
@@ -228,6 +231,15 @@ func decodeAdminMergePlan(plan Plan) (adminMergePreconditions, adminMergeArgumen
 
 func validAdminMergePreconditions(value adminMergePreconditions) bool {
 	return value.UserID > 0 && value.UserLogin != "" && value.PullRequestNodeID != "" && value.HeadSHA != ""
+}
+
+func adminMergeResponseProven(raw json.RawMessage) bool {
+	var payload struct {
+		MergePullRequest *struct {
+			Type string `json:"__typename"`
+		} `json:"mergePullRequest"`
+	}
+	return json.Unmarshal(raw, &payload) == nil && payload.MergePullRequest != nil && payload.MergePullRequest.Type != ""
 }
 
 func adminMergeVariables(executionID string, preconditions adminMergePreconditions, arguments adminMergeArguments) map[string]any {
