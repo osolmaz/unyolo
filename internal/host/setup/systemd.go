@@ -93,20 +93,56 @@ func FinalizeSystemd(opts SystemdOptions) (SystemdOptions, error) {
 	if err != nil {
 		return SystemdOptions{}, err
 	}
-	if requiresManagedExecutable(opts) && !managed {
-		return SystemdOptions{}, errors.New("production services must use the BrokerKit managed current release path")
-	}
-	if managed && !opts.NoStart {
-		if _, err := filepath.EvalSymlinks(resolved); err != nil {
-			return SystemdOptions{}, errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
-		}
+	if err := validateFinalizedExecutable(opts, resolved, managed); err != nil {
+		return SystemdOptions{}, err
 	}
 	opts.BinaryPath = resolved
 	return opts, opts.Validate()
 }
 
+func validateFinalizedExecutable(opts SystemdOptions, resolved string, managed bool) error {
+	if err := validateManagedSelection(opts, managed); err != nil {
+		return err
+	}
+	return validateManagedTarget(opts, resolved, managed)
+}
+
+func validateManagedSelection(opts SystemdOptions, managed bool) error {
+	if requiresManagedExecutable(opts) && !managed {
+		return errors.New("production services must use the BrokerKit managed current release path")
+	}
+	return nil
+}
+
+func validateManagedTarget(opts SystemdOptions, resolved string, managed bool) error {
+	if !managed || opts.NoStart {
+		return nil
+	}
+	if _, err := filepath.EvalSymlinks(resolved); err != nil {
+		return errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
+	}
+	return nil
+}
+
 // Validate validates shared Linux service setup fields.
 func (opts SystemdOptions) Validate() error {
+	checks := []func() error{
+		opts.validateIdentity,
+		func() error {
+			return validatex.AbsolutePaths(map[string]string{"config-dir": opts.ConfigDir, "state-dir": opts.StateDir, "systemd-dir": opts.SystemdDir, "binary": opts.BinaryPath}, true)
+		},
+		opts.validateDestination,
+		opts.validateEndpoint,
+	}
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (opts SystemdOptions) validateIdentity() error {
 	if strings.TrimSpace(opts.BrokerName) == "" {
 		return errors.New("broker name is required")
 	}
@@ -116,15 +152,17 @@ func (opts SystemdOptions) Validate() error {
 	if opts.AgentAccessGroup == opts.OperatorAccessGroup {
 		return errors.New("agent and operator access groups must differ")
 	}
-	if err := clientconfig.ValidateClientName(opts.ClientName); err != nil {
-		return err
-	}
-	if err := validatex.AbsolutePaths(map[string]string{"config-dir": opts.ConfigDir, "state-dir": opts.StateDir, "systemd-dir": opts.SystemdDir, "binary": opts.BinaryPath}, true); err != nil {
-		return err
-	}
+	return clientconfig.ValidateClientName(opts.ClientName)
+}
+
+func (opts SystemdOptions) validateDestination() error {
 	if !safeManagedDestination(opts.ManagedDestination) {
 		return errors.New("managed executable destination is invalid")
 	}
+	return nil
+}
+
+func (opts SystemdOptions) validateEndpoint() error {
 	parsed, err := endpoint.Parse(opts.Endpoint, endpoint.ParseOptions{})
 	if err != nil {
 		return fmt.Errorf("--endpoint: %w", err)

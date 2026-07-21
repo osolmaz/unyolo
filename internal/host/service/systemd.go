@@ -317,31 +317,23 @@ func (unit SystemdUnit) validate() error {
 		"state directory":  unit.StateDir,
 		"config directory": unit.ConfigDir,
 	}
-	if err := validateRequiredLines(values); err != nil {
-		return err
+	checks := []func() error{
+		func() error { return validateRequiredLines(values) },
+		func() error { return validateDescription(unit.Description) },
+		func() error { return validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}) },
+		func() error { return validateSupplementaryGroups(unit.SupplementaryGroups) },
+		func() error { return validateSystemdPolicies(unit) },
+		func() error { return validateSystemdUnitPaths(unit) },
+		func() error { return validateManagedExecutableReference(unit) },
+		func() error { return validateUnitDependencies(unit) },
+		func() error { return validateExtraDirectives(unit.ExtraDirectives) },
 	}
-	if err := validateDescription(unit.Description); err != nil {
-		return err
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return err
+		}
 	}
-	if err := validatex.AccountNames(map[string]string{"user": unit.User, "group": unit.Group}); err != nil {
-		return err
-	}
-	if err := validateSupplementaryGroups(unit.SupplementaryGroups); err != nil {
-		return err
-	}
-	if err := validateSystemdPolicies(unit); err != nil {
-		return err
-	}
-	if err := validateSystemdUnitPaths(unit); err != nil {
-		return err
-	}
-	if err := validateManagedExecutableReference(unit); err != nil {
-		return err
-	}
-	if err := validateUnitDependencies(unit); err != nil {
-		return err
-	}
-	return validateExtraDirectives(unit.ExtraDirectives)
+	return nil
 }
 
 func validateSupplementaryGroups(groups []string) error {

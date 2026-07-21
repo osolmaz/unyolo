@@ -262,8 +262,7 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 	if plan.Unit.User != plan.User || plan.Unit.Group != plan.Group {
 		return errors.New("systemd unit identity must match install plan")
 	}
-	if filepath.Clean(plan.Unit.ConfigDir) != filepath.Clean(plan.ConfigDir) ||
-		filepath.Clean(plan.Unit.StateDir) != filepath.Clean(plan.StateDir) {
+	if !installUnitDirectoriesMatch(plan) {
 		return errors.New("systemd unit directories must match install plan")
 	}
 	preview := plan.Unit
@@ -271,13 +270,30 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 	if _, err := RenderSystemd(preview); err != nil {
 		return err
 	}
-	if plan.Unit.ManagedExecutableDestination != "" && !plan.NoStart {
-		executable := strings.SplitN(plan.Unit.ExecStart, " ", 2)[0]
-		if _, err := filepath.EvalSymlinks(executable); err != nil {
-			return errors.New("managed executable must exist before service activation")
-		}
+	if err := validateManagedInstallExecutable(plan); err != nil {
+		return err
 	}
 	return validateSocketInstallUnits(plan)
+}
+
+func installUnitDirectoriesMatch(plan SystemdInstallPlan) bool {
+	return filepath.Clean(plan.Unit.ConfigDir) == filepath.Clean(plan.ConfigDir) &&
+		filepath.Clean(plan.Unit.StateDir) == filepath.Clean(plan.StateDir)
+}
+
+func validateManagedInstallExecutable(plan SystemdInstallPlan) error {
+	if !requiresExistingManagedExecutable(plan) {
+		return nil
+	}
+	executable := strings.SplitN(plan.Unit.ExecStart, " ", 2)[0]
+	if _, err := filepath.EvalSymlinks(executable); err != nil {
+		return errors.New("managed executable must exist before service activation")
+	}
+	return nil
+}
+
+func requiresExistingManagedExecutable(plan SystemdInstallPlan) bool {
+	return plan.Unit.ManagedExecutableDestination != "" && !plan.NoStart
 }
 
 func validateSocketInstallUnits(plan SystemdInstallPlan) error {

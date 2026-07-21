@@ -80,15 +80,6 @@ type Activation struct {
 	RecoveryRequired bool      `json:"recovery_required"`
 }
 
-type activationTransaction struct {
-	APIVersion         string      `json:"api_version"`
-	CandidateBundleID  string      `json:"candidate_bundle_id"`
-	PreviousBundleID   string      `json:"previous_bundle_id,omitempty"`
-	PreviousActivation *Activation `json:"previous_activation,omitempty"`
-	FinalActivation    Activation  `json:"final_activation"`
-	StartedAt          time.Time   `json:"started_at"`
-}
-
 // Report is the secret-safe host status projection.
 type Report struct {
 	Healthy    bool              `json:"healthy"`
@@ -115,24 +106,33 @@ type ServiceReport struct {
 }
 
 // Activate stages and commits a complete release or restores the previous one.
-//
-//nolint:cyclop // The activation transaction keeps every fail-closed transition and rollback edge explicit.
 func (i Installer) Activate(ctx context.Context, manifest Manifest, manifestData []byte, artifacts string) error {
 	if err := i.normalize(); err != nil {
 		return err
 	}
-	if err := manifest.Validate(i.Development); err != nil {
+	if err := validateActivationInput(manifest, manifestData, i.Development); err != nil {
 		return err
-	}
-	var storedManifest Manifest
-	if err := strictjson.Decode(manifestData, &storedManifest, true); err != nil || !reflect.DeepEqual(storedManifest, manifest) {
-		return errors.New("runtime bundle manifest bytes do not match the validated manifest")
 	}
 	lock, err := acquireLock(i.Paths.StateDir)
 	if err != nil {
 		return err
 	}
 	defer lock.close()
+	return i.activateLocked(ctx, manifest, manifestData, artifacts)
+}
+
+func validateActivationInput(manifest Manifest, manifestData []byte, development bool) error {
+	if err := manifest.Validate(development); err != nil {
+		return err
+	}
+	var storedManifest Manifest
+	if err := strictjson.Decode(manifestData, &storedManifest, true); err != nil || !reflect.DeepEqual(storedManifest, manifest) {
+		return errors.New("runtime bundle manifest bytes do not match the validated manifest")
+	}
+	return nil
+}
+
+func (i Installer) activateLocked(ctx context.Context, manifest Manifest, manifestData []byte, artifacts string) error {
 	if err := i.recoverInterruptedActivation(); err != nil {
 		return err
 	}
@@ -140,34 +140,52 @@ func (i Installer) Activate(ctx context.Context, manifest Manifest, manifestData
 	if err != nil {
 		return err
 	}
-	previous, previousManifest, err := i.currentManifest()
+	baseline, err := i.activationBaseline()
 	if err != nil {
 		return err
 	}
-	previousActivation, err := i.activationSnapshot()
-	if err != nil {
-		return err
-	}
-	if (previous == "") != (previousActivation == nil) ||
-		(previousActivation != nil && (previousActivation.ActiveBundleID != previous || previousActivation.RecoveryRequired)) {
-		return errors.New("host activation record and current release are inconsistent; run doctor")
-	}
-	if previous == manifest.BundleID {
+	if baseline.bundleID == manifest.BundleID {
 		return errors.Join(i.verifyRelease(manifest, release), i.verifyRuntime(ctx, manifest))
 	}
+	return i.commitActivation(ctx, manifest, baseline.bundleID, baseline.manifest, baseline.activation)
+}
+
+type activationBaselineState struct {
+	bundleID   string
+	manifest   Manifest
+	activation *Activation
+}
+
+func (i Installer) activationBaseline() (activationBaselineState, error) {
+	bundleID, manifest, err := i.currentManifest()
+	if err != nil {
+		return activationBaselineState{}, err
+	}
+	activation, err := i.activationSnapshot()
+	if err != nil {
+		return activationBaselineState{}, err
+	}
+	if !activationSnapshotMatches(bundleID, activation) {
+		return activationBaselineState{}, errors.New("host activation record and current release are inconsistent; run doctor")
+	}
+	return activationBaselineState{bundleID: bundleID, manifest: manifest, activation: activation}, nil
+}
+
+func activationSnapshotMatches(previous string, snapshot *Activation) bool {
+	if (previous == "") != (snapshot == nil) {
+		return false
+	}
+	return snapshot == nil || (snapshot.ActiveBundleID == previous && !snapshot.RecoveryRequired)
+}
+
+func (i Installer) commitActivation(ctx context.Context, manifest Manifest, previous string, previousManifest Manifest, previousActivation *Activation) error {
 	record := Activation{APIVersion: APIVersion, ActiveBundleID: manifest.BundleID, PreviousBundleID: previous, ActivatedAt: i.Now().UTC()}
 	transaction := activationTransaction{APIVersion: APIVersion, CandidateBundleID: manifest.BundleID,
 		PreviousBundleID: previous, PreviousActivation: previousActivation, FinalActivation: record, StartedAt: i.Now().UTC()}
 	if err := writeJSONAtomic(filepath.Join(i.Paths.StateDir, transactionFilename), transaction, 0o600); err != nil {
 		return err
 	}
-	if err := i.stop(ctx, previousManifest); err != nil {
-		return i.failActivation(err, transaction, previousManifest, manifest)
-	}
-	if err := i.prepareState(previousManifest, manifest); err != nil {
-		return i.failActivation(err, transaction, previousManifest, manifest)
-	}
-	if err := i.switchCurrent(manifest.BundleID); err != nil {
+	if err := i.prepareCandidate(ctx, previousManifest, manifest); err != nil {
 		return i.failActivation(err, transaction, previousManifest, manifest)
 	}
 	activationErr := errors.Join(i.Manager.Reload(ctx), i.start(ctx, manifest))
@@ -183,6 +201,16 @@ func (i Installer) Activate(ctx context.Context, manifest Manifest, manifestData
 	return i.clearTransaction()
 }
 
+func (i Installer) prepareCandidate(ctx context.Context, previous, candidate Manifest) error {
+	if err := i.stop(ctx, previous); err != nil {
+		return err
+	}
+	if err := i.prepareState(previous, candidate); err != nil {
+		return err
+	}
+	return i.switchCurrent(candidate.BundleID)
+}
+
 func (i Installer) failActivation(cause error, transaction activationTransaction, oldManifest, candidate Manifest) error {
 	rollbackErr := i.restore(transaction.PreviousBundleID, oldManifest, candidate)
 	if rollbackErr == nil {
@@ -195,8 +223,6 @@ func (i Installer) failActivation(cause error, transaction activationTransaction
 }
 
 // Rollback restores the previous complete bundle recorded by Activate.
-//
-//nolint:cyclop // Rollback mirrors the durable activation transaction and its guarded failure paths.
 func (i Installer) Rollback(ctx context.Context) error {
 	if err := i.normalize(); err != nil {
 		return err
@@ -206,6 +232,10 @@ func (i Installer) Rollback(ctx context.Context) error {
 		return err
 	}
 	defer lock.close()
+	return i.rollbackLocked(ctx)
+}
+
+func (i Installer) rollbackLocked(ctx context.Context) error {
 	if err := i.recoverInterruptedActivation(); err != nil {
 		return err
 	}
@@ -224,6 +254,10 @@ func (i Installer) Rollback(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return i.commitRollback(ctx, record, activeManifest, previousManifest)
+}
+
+func (i Installer) commitRollback(ctx context.Context, record Activation, activeManifest, previousManifest Manifest) error {
 	next := Activation{APIVersion: APIVersion, ActiveBundleID: record.PreviousBundleID,
 		PreviousBundleID: record.ActiveBundleID, ActivatedAt: i.Now().UTC()}
 	transaction := activationTransaction{APIVersion: APIVersion, CandidateBundleID: record.PreviousBundleID,
@@ -241,8 +275,6 @@ func (i Installer) Rollback(ctx context.Context) error {
 }
 
 // Status verifies the active immutable release and every managed service.
-//
-//nolint:cyclop // Status reports each independently actionable integrity and process-identity problem.
 func (i Installer) Status(ctx context.Context) (Report, error) {
 	if err := i.normalize(); err != nil {
 		return Report{}, err
@@ -256,43 +288,70 @@ func (i Installer) Status(ctx context.Context) (Report, error) {
 		return Report{}, err
 	}
 	report := Report{Healthy: !record.RecoveryRequired, Activation: record}
+	if err := i.inspectActivationState(&report, record); err != nil {
+		return Report{}, err
+	}
+	release := filepath.Join(i.Paths.Root, "releases", manifest.BundleID)
+	for _, component := range manifest.Components {
+		report.addComponent(i.inspectComponent(ctx, release, component))
+	}
+	return report, nil
+}
+
+func (i Installer) inspectActivationState(report *Report, record Activation) error {
 	if _, err := os.Stat(filepath.Join(i.Paths.StateDir, transactionFilename)); err == nil {
 		report.Healthy = false
 		report.Problems = append(report.Problems, "an interrupted activation requires recovery")
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return Report{}, err
+		return err
 	}
 	current, _, currentErr := i.currentManifest()
 	if currentErr != nil || current != record.ActiveBundleID {
 		report.Healthy = false
 		report.Problems = append(report.Problems, "active release pointer does not match activation record")
 	}
-	release := filepath.Join(i.Paths.Root, "releases", manifest.BundleID)
-	for _, component := range manifest.Components {
-		actual, digestErr := digestFile(filepath.Join(release, component.Destination))
-		item := ComponentReport{Name: component.Name, BuildID: component.BuildID, DigestOK: digestErr == nil && actual == component.SHA256}
-		if !item.DigestOK {
-			report.Healthy = false
-			report.Problems = append(report.Problems, component.Name+": artifact digest mismatch")
-		}
-		for _, service := range component.Services {
-			status, statusErr := i.Manager.Status(ctx, service)
-			expected := filepath.Join(release, component.Destination)
-			matches := statusErr == nil && status.Active && processPathMatches(status.Executable, expected)
-			item.Services = append(item.Services, ServiceReport{Name: service, Active: status.Active, PID: status.PID,
-				Executable: status.Executable, Expected: expected, Matches: matches})
-			if !matches {
-				report.Healthy = false
-				report.Problems = append(report.Problems, service+": running executable does not match active bundle")
-			}
-		}
-		if probeErr := i.Probe(ctx, component); probeErr != nil {
-			report.Healthy = false
-			report.Problems = append(report.Problems, component.Name+": readiness check failed")
-		}
-		report.Components = append(report.Components, item)
+	return nil
+}
+
+type inspectedComponent struct {
+	report   ComponentReport
+	problems []string
+}
+
+func (i Installer) inspectComponent(ctx context.Context, release string, component Component) inspectedComponent {
+	actual, digestErr := digestFile(filepath.Join(release, component.Destination))
+	result := inspectedComponent{report: ComponentReport{Name: component.Name, BuildID: component.BuildID,
+		DigestOK: digestErr == nil && actual == component.SHA256}}
+	if !result.report.DigestOK {
+		result.problems = append(result.problems, component.Name+": artifact digest mismatch")
 	}
-	return report, nil
+	for _, service := range component.Services {
+		serviceReport := i.inspectService(ctx, release, component, service)
+		result.report.Services = append(result.report.Services, serviceReport)
+		if !serviceReport.Matches {
+			result.problems = append(result.problems, service+": running executable does not match active bundle")
+		}
+	}
+	if i.Probe(ctx, component) != nil {
+		result.problems = append(result.problems, component.Name+": readiness check failed")
+	}
+	return result
+}
+
+func (i Installer) inspectService(ctx context.Context, release string, component Component, service string) ServiceReport {
+	status, err := i.Manager.Status(ctx, service)
+	expected := filepath.Join(release, component.Destination)
+	matches := err == nil && status.Active && processPathMatches(status.Executable, expected)
+	return ServiceReport{Name: service, Active: status.Active, PID: status.PID,
+		Executable: status.Executable, Expected: expected, Matches: matches}
+}
+
+func (r *Report) addComponent(component inspectedComponent) {
+	r.Components = append(r.Components, component.report)
+	if len(component.problems) > 0 {
+		r.Healthy = false
+		r.Problems = append(r.Problems, component.problems...)
+	}
 }
 
 func (i *Installer) normalize() error {
@@ -345,7 +404,6 @@ func readOperatorToken(path string) (string, error) {
 	return token, nil
 }
 
-//nolint:cyclop // Staging validates and seals each artifact boundary before publishing the immutable directory.
 func (i Installer) stage(manifest Manifest, data []byte, artifacts string) (string, error) {
 	if !filepath.IsAbs(artifacts) {
 		return "", errors.New("artifact directory must be absolute")
@@ -355,52 +413,70 @@ func (i Installer) stage(manifest Manifest, data []byte, artifacts string) (stri
 		return "", err
 	}
 	release := filepath.Join(releases, manifest.BundleID)
-	if _, err := os.Stat(release); err == nil {
-		stored, readErr := os.ReadFile(filepath.Join(release, manifestFilename)) // #nosec G304 -- immutable release path.
-		if readErr != nil || !bytes.Equal(stored, data) {
-			return "", errors.New("bundle identity already exists with different manifest content")
-		}
-		return release, i.verifyRelease(manifest, release)
-	} else if !errors.Is(err, os.ErrNotExist) {
+	exists, err := i.validateExistingRelease(manifest, data, release)
+	if err != nil {
 		return "", err
 	}
+	if exists {
+		return release, nil
+	}
+	return i.stageNewRelease(manifest, data, artifacts, releases, release)
+}
+
+func (i Installer) validateExistingRelease(manifest Manifest, data []byte, release string) (bool, error) {
+	if _, err := os.Stat(release); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	stored, err := os.ReadFile(filepath.Join(release, manifestFilename)) // #nosec G304 -- immutable release path.
+	if err != nil || !bytes.Equal(stored, data) {
+		return false, errors.New("bundle identity already exists with different manifest content")
+	}
+	return true, i.verifyRelease(manifest, release)
+}
+
+func (i Installer) stageNewRelease(manifest Manifest, data []byte, artifacts, releases, release string) (string, error) {
 	temporary, err := os.MkdirTemp(releases, ".stage-")
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = os.RemoveAll(temporary) }()
-	if err := os.Chmod(temporary, 0o755); err != nil { // #nosec G302 -- service users must traverse and execute the staged release.
+	if err := prepareStagedRelease(temporary, artifacts, data, manifest); err != nil {
 		return "", err
 	}
-	for _, component := range manifest.Components {
-		if err := copyArtifact(artifacts, temporary, component); err != nil {
-			return "", err
-		}
-	}
-	if err := os.WriteFile(filepath.Join(temporary, manifestFilename), data, 0o444); err != nil { // #nosec G306 -- the signed manifest is intentionally immutable and public to service users.
-		return "", err
-	}
-	if err := syncTree(temporary); err != nil {
-		return "", err
-	}
-	if err := os.Rename(temporary, release); err != nil {
-		return "", err
-	}
-	if err := syncDirectory(releases); err != nil {
+	if err := publishStagedRelease(temporary, release, releases); err != nil {
 		return "", err
 	}
 	return release, nil
 }
 
+func prepareStagedRelease(temporary, artifacts string, data []byte, manifest Manifest) error {
+	if err := os.Chmod(temporary, 0o755); err != nil { // #nosec G302 -- service users must traverse and execute the staged release.
+		return err
+	}
+	for _, component := range manifest.Components {
+		if err := copyArtifact(artifacts, temporary, component); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(temporary, manifestFilename), data, 0o444); err != nil { // #nosec G306 -- the signed manifest is intentionally immutable and public to service users.
+		return err
+	}
+	return syncTree(temporary)
+}
+
+func publishStagedRelease(temporary, release, releases string) error {
+	if err := os.Rename(temporary, release); err != nil {
+		return err
+	}
+	return syncDirectory(releases)
+}
+
 func copyArtifact(artifacts, release string, component Component) error {
 	source := filepath.Join(artifacts, component.Source)
-	info, err := os.Lstat(source)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maximumArtifact {
-		return fmt.Errorf("component %s source is not a bounded regular file", component.Name)
-	}
-	actual, err := digestFile(source)
-	if err != nil || actual != component.SHA256 {
-		return fmt.Errorf("component %s artifact digest mismatch", component.Name)
+	if err := validateArtifactSource(source, component); err != nil {
+		return err
 	}
 	destination := filepath.Join(release, component.Destination)
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil { // #nosec G301 -- service users must traverse the root-owned immutable release tree.
@@ -411,6 +487,22 @@ func copyArtifact(artifacts, release string, component Component) error {
 		return err
 	}
 	defer func() { _ = in.Close() }()
+	return copyArtifactFile(in, destination)
+}
+
+func validateArtifactSource(source string, component Component) error {
+	info, err := os.Lstat(source)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maximumArtifact {
+		return fmt.Errorf("component %s source is not a bounded regular file", component.Name)
+	}
+	actual, err := digestFile(source)
+	if err != nil || actual != component.SHA256 {
+		return fmt.Errorf("component %s artifact digest mismatch", component.Name)
+	}
+	return nil
+}
+
+func copyArtifactFile(in *os.File, destination string) error {
 	out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o555) // #nosec G304,G302 -- validated immutable executable destination.
 	if err != nil {
 		return err
@@ -531,6 +623,10 @@ func replaceStateDirectory(stateDir, backup string) error {
 	if err != nil || !info.IsDir() {
 		return errors.New("state replacement source is not a directory")
 	}
+	return archiveStateDirectory(stateDir, backup, info)
+}
+
+func archiveStateDirectory(stateDir, backup string, info os.FileInfo) error {
 	if err := os.Rename(stateDir, backup); err != nil {
 		return fmt.Errorf("archive previous state: %w", err)
 	}
@@ -538,14 +634,23 @@ func replaceStateDirectory(stateDir, backup string) error {
 		_ = os.Rename(backup, stateDir)
 		return err
 	}
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-		if err := os.Chown(stateDir, int(stat.Uid), int(stat.Gid)); err != nil {
-			_ = os.Remove(stateDir)
-			_ = os.Rename(backup, stateDir)
-			return err
-		}
+	if err := preserveStateOwnership(stateDir, backup, info); err != nil {
+		return err
 	}
 	return syncDirectory(filepath.Dir(stateDir))
+}
+
+func preserveStateOwnership(stateDir, backup string, info os.FileInfo) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil
+	}
+	if err := os.Chown(stateDir, int(stat.Uid), int(stat.Gid)); err != nil {
+		_ = os.Remove(stateDir)
+		_ = os.Rename(backup, stateDir)
+		return err
+	}
+	return nil
 }
 
 func restoreStateDirectory(stateDir, backup string) error {
@@ -656,125 +761,6 @@ func (i Installer) manifest(bundleID string) (Manifest, error) {
 	return manifest, nil
 }
 
-func (i Installer) readActivation() (Activation, error) {
-	data, err := os.ReadFile(filepath.Join(i.Paths.StateDir, activationFilename)) // #nosec G304 -- fixed host state path.
-	if err != nil {
-		return Activation{}, err
-	}
-	var record Activation
-	if err := strictjson.Decode(data, &record, true); err != nil || record.APIVersion != APIVersion {
-		return Activation{}, errors.New("host activation record is invalid")
-	}
-	return record, nil
-}
-
-func (i Installer) activationSnapshot() (*Activation, error) {
-	record, err := i.readActivation()
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &record, nil
-}
-
-//nolint:cyclop // Recovery validates the journal and distinguishes committed from interrupted transactions.
-func (i Installer) recoverInterruptedActivation() error {
-	data, err := os.ReadFile(filepath.Join(i.Paths.StateDir, transactionFilename)) // #nosec G304 -- fixed private host state path.
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var transaction activationTransaction
-	if err := strictjson.Decode(data, &transaction, true); err != nil || !validActivationTransaction(transaction) {
-		return errors.New("host activation transaction is invalid")
-	}
-	if current, err := i.activationSnapshot(); err != nil {
-		return err
-	} else if current != nil && reflect.DeepEqual(*current, transaction.FinalActivation) {
-		active, manifest, currentErr := i.currentManifest()
-		if currentErr == nil && active == current.ActiveBundleID &&
-			i.verifyRelease(manifest, filepath.Join(i.Paths.Root, "releases", active)) == nil {
-			return i.clearTransaction()
-		}
-	}
-	candidate, err := i.manifest(transaction.CandidateBundleID)
-	if err != nil {
-		return err
-	}
-	var previous Manifest
-	if transaction.PreviousBundleID != "" {
-		previous, err = i.manifest(transaction.PreviousBundleID)
-		if err != nil {
-			return err
-		}
-	}
-	if err := i.restore(transaction.PreviousBundleID, previous, candidate); err != nil {
-		return errors.Join(err, i.writeRecoveryRecord(transaction.PreviousBundleID, transaction.CandidateBundleID))
-	}
-	if err := i.restoreActivationRecord(transaction.PreviousActivation); err != nil {
-		return errors.Join(err, i.writeRecoveryRecord(transaction.PreviousBundleID, transaction.CandidateBundleID))
-	}
-	return i.clearTransaction()
-}
-
-//nolint:cyclop // This closed validator intentionally spells out every cross-field transaction invariant.
-func validActivationTransaction(transaction activationTransaction) bool {
-	if transaction.APIVersion != APIVersion || transaction.StartedAt.IsZero() ||
-		!identifierPattern.MatchString(transaction.CandidateBundleID) ||
-		(transaction.PreviousBundleID != "" && !identifierPattern.MatchString(transaction.PreviousBundleID)) ||
-		transaction.CandidateBundleID == transaction.PreviousBundleID ||
-		(transaction.PreviousBundleID == "") != (transaction.PreviousActivation == nil) {
-		return false
-	}
-	if transaction.FinalActivation.APIVersion != APIVersion || transaction.FinalActivation.RecoveryRequired ||
-		transaction.FinalActivation.ActivatedAt.IsZero() || !identifierPattern.MatchString(transaction.FinalActivation.ActiveBundleID) {
-		return false
-	}
-	if transaction.PreviousActivation == nil {
-		return transaction.FinalActivation.ActiveBundleID == transaction.CandidateBundleID &&
-			transaction.FinalActivation.PreviousBundleID == ""
-	}
-	previous := transaction.PreviousActivation
-	if previous.APIVersion != APIVersion || previous.RecoveryRequired || previous.ActivatedAt.IsZero() ||
-		previous.ActiveBundleID != transaction.PreviousBundleID {
-		return false
-	}
-	return transaction.FinalActivation.ActiveBundleID == transaction.CandidateBundleID &&
-		transaction.FinalActivation.PreviousBundleID == previous.ActiveBundleID
-}
-
-func (i Installer) restoreActivationRecord(previous *Activation) error {
-	path := filepath.Join(i.Paths.StateDir, activationFilename)
-	if previous != nil {
-		return writeJSONAtomic(path, *previous, 0o600)
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return syncDirectory(i.Paths.StateDir)
-}
-
-func (i Installer) writeRecoveryRecord(previous, candidate string) error {
-	active, _, currentErr := i.currentManifest()
-	if active == "" {
-		active = candidate
-	}
-	record := Activation{APIVersion: APIVersion, ActiveBundleID: active,
-		PreviousBundleID: previous, ActivatedAt: i.Now().UTC(), RecoveryRequired: true}
-	return errors.Join(currentErr, writeJSONAtomic(filepath.Join(i.Paths.StateDir, activationFilename), record, 0o600))
-}
-
-func (i Installer) clearTransaction() error {
-	if err := os.Remove(filepath.Join(i.Paths.StateDir, transactionFilename)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return syncDirectory(i.Paths.StateDir)
-}
-
 func writeJSONAtomic(path string, value any, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -790,6 +776,16 @@ func writeJSONAtomic(path string, value any, mode os.FileMode) error {
 	}
 	name := temporary.Name()
 	defer func() { _ = os.Remove(name) }()
+	if err := writeTemporaryJSON(temporary, data, mode); err != nil {
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(path))
+}
+
+func writeTemporaryJSON(temporary *os.File, data []byte, mode os.FileMode) error {
 	if err := temporary.Chmod(mode); err != nil {
 		_ = temporary.Close()
 		return err
@@ -800,10 +796,7 @@ func writeJSONAtomic(path string, value any, mode os.FileMode) error {
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(name, path); err != nil {
-		return err
-	}
-	return syncDirectory(filepath.Dir(path))
+	return nil
 }
 
 func syncTree(root string) error {
