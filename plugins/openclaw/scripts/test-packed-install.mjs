@@ -11,6 +11,8 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { pluginSkills } from "./skill-layout.mjs";
+
 const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -95,6 +97,25 @@ const installedRoot = path.join(
   "node_modules",
   "openclaw-brokerkit",
 );
+const pluginManifest = JSON.parse(
+  readFileSync(path.join(installedRoot, "openclaw.plugin.json"), "utf8"),
+);
+if (JSON.stringify(pluginManifest.skills) !== '["./dist/skills"]')
+  throw new Error("packed plugin skill directory is not declared");
+for (const skill of pluginSkills) {
+  const source = readFileSync(
+    path.resolve(packageDir, skill.source, "SKILL.md"),
+    "utf8",
+  );
+  const packed = readFileSync(
+    path.join(installedRoot, "dist", "skills", skill.name, "SKILL.md"),
+    "utf8",
+  );
+  if (packed !== source)
+    throw new Error(
+      `packed plugin skill ${skill.name} differs from its source`,
+    );
+}
 const uiIndex = readFileSync(
   path.join(installedRoot, "dist", "ui", "index.html"),
   "utf8",

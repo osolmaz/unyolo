@@ -24,6 +24,13 @@ pnpm --filter openclaw-brokerkit build
 openclaw plugins install --link ./plugins/openclaw
 ```
 
+The enabled plugin automatically provides `gh-broker`, `hf-broker`, and
+`sudo-broker` skills. They teach agents to use the installed broker clients
+instead of looking for upstream provider credentials or unrestricted privilege
+escalation. OpenClaw loads them from the plugin package; it does not copy them
+into the agent workspace. A skill becomes eligible only when its matching
+broker executable is available, and the skill itself grants no access.
+
 ## Operator V1 consumers
 
 Trusted hosts can consume the same generated Operator V1 types and runtime
