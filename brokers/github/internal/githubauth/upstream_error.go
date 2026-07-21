@@ -59,7 +59,7 @@ func validGitHubRequestID(value string) bool {
 }
 
 func githubRequestIDCharacter(char rune) bool {
-	return char <= unicode.MaxASCII && (unicode.IsLetter(char) || unicode.IsDigit(char) || strings.ContainsRune(":-_", char))
+	return char <= unicode.MaxASCII && (unicode.IsUpper(char) || unicode.IsDigit(char) || strings.ContainsRune(":-", char))
 }
 
 var publicGitHubMessages = map[string]string{
