@@ -263,8 +263,8 @@ privileges may bypass review, update, or merge-queue requirements, but do not
 bypass merge conflicts. A changed pull request must be submitted and approved
 again.
 
-GitHub rejection messages and request IDs are retained only after bounded
-secret-safe validation. The durable operation therefore reports actionable
+Reviewed GitHub rejection messages and request IDs are retained only after
+strict allowlist validation. The durable operation therefore reports actionable
 failures such as a stale approved revision or GitHub's merge rejection instead
 of reducing every response to a generic upstream error.
 

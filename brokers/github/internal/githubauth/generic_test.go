@@ -416,7 +416,7 @@ func TestGitHubErrorsPreserveOnlyBoundedSafeDiagnostics(t *testing.T) {
 		t.Fatalf("REST error = %+v, %v", restError, err)
 	}
 
-	for _, unsafe := range []string{"Authorization: Bearer credential", "access_token=credential", strings.Repeat("x", 351)} {
+	for _, unsafe := range []string{"Authorization: Bearer credential", "access_token=credential", "ghp_abcdefghijklmnopqrstuvwxyz123456", "api_key=credential", "unreviewed provider detail", strings.Repeat("x", 351)} {
 		if safeGitHubMessage(unsafe) != "" {
 			t.Fatalf("unsafe GitHub message was retained: %q", unsafe)
 		}

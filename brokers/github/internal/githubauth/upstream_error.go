@@ -62,31 +62,19 @@ func githubRequestIDCharacter(char rune) bool {
 		char >= 'a' && char <= 'z' || char >= '0' && char <= '9'
 }
 
+var publicGitHubMessages = map[string]string{
+	"pull request is not mergeable":             "Pull Request is not mergeable",
+	"validation failed":                         "Validation Failed",
+	"resource not accessible by integration":    "Resource not accessible by integration",
+	"repository access blocked":                 "Repository access blocked",
+	"bad credentials":                           "Bad credentials",
+	"not found":                                 "Not Found",
+	"required status checks have not succeeded": "Required status checks have not succeeded",
+}
+
 func safeGitHubMessage(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 240 || containsSensitiveMarker(value) || containsControlCharacter(value) {
-		return ""
-	}
-	return value
-}
-
-func containsSensitiveMarker(value string) bool {
-	lower := strings.ToLower(value)
-	for _, marker := range []string{"authorization:", "bearer ", "access_token", "refresh_token", "client_secret", "private_key", "password="} {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	return false
-}
-
-func containsControlCharacter(value string) bool {
-	for _, char := range value {
-		if char < ' ' {
-			return true
-		}
-	}
-	return false
+	value = strings.ToLower(strings.TrimSpace(value))
+	return publicGitHubMessages[value]
 }
 
 func safeGitHubCode(value, fallback string) string {
