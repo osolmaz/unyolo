@@ -282,7 +282,7 @@ func installUnitDirectoriesMatch(plan SystemdInstallPlan) bool {
 }
 
 func validateManagedInstallExecutable(plan SystemdInstallPlan) error {
-	if plan.Unit.ManagedExecutableDestination == "" || plan.NoStart {
+	if !requiresExistingManagedExecutable(plan) {
 		return nil
 	}
 	executable := strings.SplitN(plan.Unit.ExecStart, " ", 2)[0]
@@ -290,6 +290,10 @@ func validateManagedInstallExecutable(plan SystemdInstallPlan) error {
 		return errors.New("managed executable must exist before service activation")
 	}
 	return nil
+}
+
+func requiresExistingManagedExecutable(plan SystemdInstallPlan) bool {
+	return plan.Unit.ManagedExecutableDestination != "" && !plan.NoStart
 }
 
 func validateSocketInstallUnits(plan SystemdInstallPlan) error {

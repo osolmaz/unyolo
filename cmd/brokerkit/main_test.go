@@ -43,6 +43,23 @@ func TestRunVersionUsageAndPlan(t *testing.T) {
 	}
 }
 
+func TestRunDevelopmentInstall(t *testing.T) {
+	original := newNativeManager
+	newNativeManager = func() bundle.ServiceManager { return testManager{} }
+	t.Cleanup(func() { newNativeManager = original })
+	manifestPath, artifacts, _, _ := testBundle(t, "bundle-install", "install")
+	root, state := t.TempDir(), t.TempDir()
+	args := []string{"system", "install", "--development", "--manifest", manifestPath,
+		"--artifacts", artifacts, "--root", root, "--state-dir", state}
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), args, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "Activated BrokerKit bundle bundle-install") {
+		t.Fatalf("install output=%q", stdout.String())
+	}
+}
+
 func TestRunStatusDoctorAndRollback(t *testing.T) {
 	original := newNativeManager
 	newNativeManager = func() bundle.ServiceManager { return testManager{} }

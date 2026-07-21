@@ -24,14 +24,26 @@ func TrustedPublicKey(stateDir, proposedPath string) (path string, needsPin bool
 	pinned := filepath.Join(stateDir, trustedKeyFilename)
 	pinnedKey, pinnedErr := readPublicKey(pinned)
 	if pinnedErr == nil {
-		if proposedPath != "" {
-			proposed, proposedErr := readPublicKey(proposedPath)
-			if proposedErr != nil || !bytes.Equal(pinnedKey, proposed) {
-				return "", false, errors.New("proposed release key does not match the host trust root")
-			}
+		if err := matchProposedKey(pinnedKey, proposedPath); err != nil {
+			return "", false, err
 		}
 		return pinned, false, nil
 	}
+	return selectFirstTrustKey(pinnedErr, proposedPath)
+}
+
+func matchProposedKey(pinnedKey []byte, proposedPath string) error {
+	if proposedPath == "" {
+		return nil
+	}
+	proposed, err := readPublicKey(proposedPath)
+	if err != nil || !bytes.Equal(pinnedKey, proposed) {
+		return errors.New("proposed release key does not match the host trust root")
+	}
+	return nil
+}
+
+func selectFirstTrustKey(pinnedErr error, proposedPath string) (string, bool, error) {
 	if !errors.Is(pinnedErr, os.ErrNotExist) {
 		return "", false, fmt.Errorf("read host release key: %w", pinnedErr)
 	}
@@ -57,6 +69,10 @@ func PinTrustedPublicKey(stateDir, proposedPath string) (string, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return "", err
 	}
+	return writePinnedKey(stateDir, proposedPath, key)
+}
+
+func writePinnedKey(stateDir, proposedPath string, key ed25519.PublicKey) (string, error) {
 	pinned := filepath.Join(stateDir, trustedKeyFilename)
 	encoded := []byte(base64.StdEncoding.EncodeToString(key) + "\n")
 	file, err := os.OpenFile(pinned, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- fixed private host state path.
@@ -67,10 +83,7 @@ func PinTrustedPublicKey(stateDir, proposedPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, writeErr := file.Write(encoded)
-	syncErr := file.Sync()
-	closeErr := file.Close()
-	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
+	if err := writeAndSyncKey(file, encoded); err != nil {
 		_ = os.Remove(pinned)
 		return "", err
 	}
@@ -78,6 +91,13 @@ func PinTrustedPublicKey(stateDir, proposedPath string) (string, error) {
 		return "", err
 	}
 	return pinned, nil
+}
+
+func writeAndSyncKey(file *os.File, encoded []byte) error {
+	_, writeErr := file.Write(encoded)
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	return errors.Join(writeErr, syncErr, closeErr)
 }
 
 func readPublicKey(path string) (ed25519.PublicKey, error) {

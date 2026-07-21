@@ -38,15 +38,19 @@ func validateCurrentReleasePointer(root string) error {
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
 		return errors.New("managed current release pointer is invalid")
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != 0 {
-		return errors.New("managed current release pointer must be root-owned")
-	}
 	target, err := os.Readlink(current)
 	if err != nil || !layout.ValidCurrentTarget(target) {
 		return errors.New("managed current release pointer is outside the immutable release root")
 	}
+	if !rootOwned(info) {
+		return errors.New("managed current release pointer must be root-owned")
+	}
 	return nil
+}
+
+func rootOwned(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == 0
 }
 
 func validateResolvedManagedExecutable(unit SystemdUnit, root string) error {

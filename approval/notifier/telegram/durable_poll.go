@@ -18,51 +18,70 @@ func (c *Client) PollDurable(ctx context.Context, inbox *Inbox, handler func(con
 }
 
 // PollDurableReady verifies all broker routes before consuming each update batch.
-//
-//nolint:cyclop // The loop keeps readiness, durable persistence, and Telegram acknowledgement ordering explicit.
 func (c *Client) PollDurableReady(ctx context.Context, inbox *Inbox,
 	handler func(context.Context, notify.Decision) notify.DecisionResult, ready func(context.Context) error) error {
 	if inbox == nil || handler == nil {
 		return errors.New("telegram durable poll requires an inbox and handler")
 	}
 	for ctx.Err() == nil {
-		if ready != nil {
-			readyCtx, cancel := context.WithTimeout(ctx, operatorDecisionTimeout)
-			err := ready(readyCtx)
-			cancel()
-			if err != nil {
-				return err
-			}
+		if err := verifyDurableRoutes(ctx, ready); err != nil {
+			return err
 		}
-		if err := c.dispatchPending(ctx, inbox, handler); err != nil {
-			wait(ctx, durablePollDelay)
-			continue
-		}
-		offset, err := inbox.nextOffset(ctx)
+		retry, err := c.pollDurableOnce(ctx, inbox, handler)
 		if err != nil {
-			wait(ctx, durablePollDelay)
-			continue
+			return err
 		}
-		updates, err := c.getUpdates(ctx, offset)
-		if err != nil {
+		if retry {
 			wait(ctx, durablePollDelay)
-			continue
-		}
-		for _, update := range updates {
-			decision, ok := parseDecision(update)
-			var stored *notify.Decision
-			if ok && decision.ChatID == c.chatID {
-				stored = &decision
-			}
-			if err := inbox.persistUpdate(ctx, update.UpdateID, stored); err != nil {
-				return err
-			}
-			if stored != nil {
-				_ = c.answerCallback(ctx, stored.CallbackID, "Request received")
-			}
 		}
 	}
 	return ctx.Err()
+}
+
+func verifyDurableRoutes(ctx context.Context, ready func(context.Context) error) error {
+	if ready == nil {
+		return nil
+	}
+	readyCtx, cancel := context.WithTimeout(ctx, operatorDecisionTimeout)
+	defer cancel()
+	return ready(readyCtx)
+}
+
+func (c *Client) pollDurableOnce(ctx context.Context, inbox *Inbox,
+	handler func(context.Context, notify.Decision) notify.DecisionResult) (bool, error) {
+	if err := c.dispatchPending(ctx, inbox, handler); err != nil {
+		return true, nil
+	}
+	offset, err := inbox.nextOffset(ctx)
+	if err != nil {
+		return true, nil
+	}
+	updates, err := c.getUpdates(ctx, offset)
+	if err != nil {
+		return true, nil
+	}
+	return false, c.persistUpdates(ctx, inbox, updates)
+}
+
+func (c *Client) persistUpdates(ctx context.Context, inbox *Inbox, updates []telegramUpdate) error {
+	for _, update := range updates {
+		decision := c.acceptedDecision(update)
+		if err := inbox.persistUpdate(ctx, update.UpdateID, decision); err != nil {
+			return err
+		}
+		if decision != nil {
+			_ = c.answerCallback(ctx, decision.CallbackID, "Request received")
+		}
+	}
+	return nil
+}
+
+func (c *Client) acceptedDecision(update telegramUpdate) *notify.Decision {
+	decision, ok := parseDecision(update)
+	if !ok || decision.ChatID != c.chatID {
+		return nil
+	}
+	return &decision
 }
 
 func (c *Client) dispatchPending(ctx context.Context, inbox *Inbox,

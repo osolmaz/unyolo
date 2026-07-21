@@ -101,13 +101,25 @@ func FinalizeSystemd(opts SystemdOptions) (SystemdOptions, error) {
 }
 
 func validateFinalizedExecutable(opts SystemdOptions, resolved string, managed bool) error {
+	if err := validateManagedSelection(opts, managed); err != nil {
+		return err
+	}
+	return validateManagedTarget(opts, resolved, managed)
+}
+
+func validateManagedSelection(opts SystemdOptions, managed bool) error {
 	if requiresManagedExecutable(opts) && !managed {
 		return errors.New("production services must use the BrokerKit managed current release path")
 	}
-	if managed && !opts.NoStart {
-		if _, err := filepath.EvalSymlinks(resolved); err != nil {
-			return errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
-		}
+	return nil
+}
+
+func validateManagedTarget(opts SystemdOptions, resolved string, managed bool) error {
+	if !managed || opts.NoStart {
+		return nil
+	}
+	if _, err := filepath.EvalSymlinks(resolved); err != nil {
+		return errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
 	}
 	return nil
 }

@@ -244,23 +244,30 @@ func verifySignature(data []byte, signaturePath, publicKeyPath string) error {
 	if signaturePath == "" || publicKeyPath == "" {
 		return errors.New("runtime bundle signature and public key are required")
 	}
-	signatureText, err := readBounded(signaturePath, 1024)
+	signature, err := readEncodedValue(signaturePath, ed25519.SignatureSize, "signature")
 	if err != nil {
-		return fmt.Errorf("read runtime bundle signature: %w", err)
+		return err
 	}
-	publicText, err := readBounded(publicKeyPath, 1024)
+	publicKey, err := readEncodedValue(publicKeyPath, ed25519.PublicKeySize, "public key")
 	if err != nil {
-		return fmt.Errorf("read runtime bundle public key: %w", err)
+		return err
 	}
-	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(signatureText)))
-	if err != nil || len(signature) != ed25519.SignatureSize {
-		return errors.New("runtime bundle signature is invalid")
-	}
-	publicKey, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(publicText)))
-	if err != nil || len(publicKey) != ed25519.PublicKeySize || !ed25519.Verify(publicKey, data, signature) {
+	if !ed25519.Verify(publicKey, data, signature) {
 		return errors.New("runtime bundle signature verification failed")
 	}
 	return nil
+}
+
+func readEncodedValue(path string, size int, label string) ([]byte, error) {
+	text, err := readBounded(path, 1024)
+	if err != nil {
+		return nil, fmt.Errorf("read runtime bundle %s: %w", label, err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(text)))
+	if err != nil || len(decoded) != size {
+		return nil, fmt.Errorf("runtime bundle %s is invalid", label)
+	}
+	return decoded, nil
 }
 
 func readBounded(path string, maximum int64) ([]byte, error) {
