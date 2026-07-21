@@ -149,8 +149,16 @@ func TestInstallerNormalizeRequiresHostDependencies(t *testing.T) {
 		t.Fatal("installer without a service manager was accepted")
 	}
 	installer.Manager = &fakeManager{}
-	if err := installer.normalize(); err != nil || installer.Now == nil || installer.Probe == nil {
-		t.Fatalf("normalize() error = %v, dependencies assigned = %t", err, installer.Now != nil && installer.Probe != nil)
+	if err := installer.normalize(); err != nil || installer.Now == nil || installer.Probe == nil || installer.ReadyTimeout <= 0 || installer.ReadyInterval <= 0 {
+		t.Fatalf("normalize() error = %v, dependencies assigned = %t", err,
+			installer.Now != nil && installer.Probe != nil && installer.ReadyTimeout > 0 && installer.ReadyInterval > 0)
+	}
+	marker := errors.New("custom probe")
+	custom := Installer{Paths: paths, Manager: &fakeManager{}, Now: func() time.Time { return time.Unix(1, 0) },
+		Probe: func(context.Context, Component) error { return marker }, ReadyTimeout: time.Second, ReadyInterval: time.Millisecond}
+	if err := custom.normalize(); err != nil || custom.Now() != time.Unix(1, 0) || !errors.Is(custom.Probe(t.Context(), Component{}), marker) ||
+		custom.ReadyTimeout != time.Second || custom.ReadyInterval != time.Millisecond {
+		t.Fatalf("normalize replaced custom dependencies: %+v, %v", custom, err)
 	}
 }
 
@@ -188,6 +196,18 @@ func TestManifestValidationFailsClosed(t *testing.T) {
 				t.Fatal("invalid manifest was accepted")
 			}
 		})
+	}
+}
+
+func TestManifestAllowsRequiredInternalProviderWithoutOperatorSurface(t *testing.T) {
+	manifest := testManifest(t, "bundle-one", "one")
+	manifest.Components = append(manifest.Components, Component{
+		Name: "sudo-broker-exec", Source: "sudo-broker-exec", Destination: "libexec/sudo-broker-exec",
+		SHA256: "sha256:" + strings.Repeat("3", 64), BuildID: "one", Role: RoleProvider,
+		Services: []string{"sudo-broker-exec.service"}, StateFormatDigest: "sha256:" + strings.Repeat("4", 64), Required: true,
+	})
+	if err := manifest.Validate(false); err != nil {
+		t.Fatalf("internal provider validation failed: %v", err)
 	}
 }
 
@@ -283,6 +303,7 @@ func TestActivateOrdersServicesAndRollsBackCompleteRelease(t *testing.T) {
 	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
 	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
 	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Nanosecond, ReadyInterval: time.Nanosecond,
 		Probe: func(_ context.Context, component Component) error {
 			if component.BuildID == "two" && component.Role == RoleConsumer {
 				return errors.New("injected readiness failure")
@@ -314,6 +335,33 @@ func TestActivateOrdersServicesAndRollsBackCompleteRelease(t *testing.T) {
 	report, err := installer.Status(t.Context())
 	if err != nil || !report.Healthy || report.Activation.ActiveBundleID != "bundle-one" {
 		t.Fatalf("Status() = %+v, %v", report, err)
+	}
+}
+
+func TestActivateWaitsForProvidersBeforeStartingConsumers(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	providerAttempts := 0
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Second, ReadyInterval: time.Millisecond,
+		Probe: func(_ context.Context, component Component) error {
+			if component.Role == RoleProvider {
+				providerAttempts++
+				if providerAttempts < 3 {
+					return errors.New("provider is still starting")
+				}
+			}
+			if component.Role == RoleConsumer && providerAttempts < 3 {
+				return errors.New("consumer started before provider readiness")
+			}
+			return nil
+		}}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if providerAttempts < 3 || strings.Join(manager.actions, ",") != "reload,start:gh.service,start:telegram.service" {
+		t.Fatalf("provider attempts = %d, actions = %v", providerAttempts, manager.actions)
 	}
 }
 
@@ -356,7 +404,8 @@ func TestStatusReportsAuthenticatedReadinessFailure(t *testing.T) {
 func TestActivateRollsBackWhenServiceKeepsRunningPreviousExecutable(t *testing.T) {
 	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
 	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
-	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Nanosecond, ReadyInterval: time.Nanosecond, Probe: func(context.Context, Component) error { return nil }}
 	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
 	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
 		t.Fatal(err)
@@ -373,6 +422,7 @@ func TestActivateRecordsRecoveryRequiredWhenRollbackFails(t *testing.T) {
 	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
 	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
 	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Nanosecond, ReadyInterval: time.Nanosecond,
 		Probe: func(_ context.Context, component Component) error {
 			if component.BuildID == "two" && component.Role == RoleConsumer {
 				return errors.New("injected readiness failure")
@@ -417,6 +467,7 @@ func TestFailedFirstActivationRestoresUninstalledState(t *testing.T) {
 	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
 	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
 	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Nanosecond, ReadyInterval: time.Nanosecond,
 		Probe: func(context.Context, Component) error { return errors.New("injected first-install readiness failure") }}
 	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
 	if err := installer.Activate(t.Context(), manifest, data, artifacts); err == nil {
@@ -570,7 +621,7 @@ func TestInterruptedActivationKeepsCommittedCandidate(t *testing.T) {
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := installer.start(t.Context(), two); err != nil {
+	if err := installer.startAndVerify(t.Context(), two); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeJSONAtomic(filepath.Join(state, activationFilename), final, 0o600); err != nil {

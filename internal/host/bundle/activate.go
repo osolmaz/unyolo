@@ -18,7 +18,6 @@ import (
 
 	"github.com/osolmaz/brokerkit/internal/fsx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operator/client"
 	"golang.org/x/sys/unix"
 )
 
@@ -64,11 +63,13 @@ type ServiceStatus struct {
 
 // Installer atomically activates complete host bundles.
 type Installer struct {
-	Paths       Paths
-	Manager     ServiceManager
-	Now         func() time.Time
-	Probe       func(context.Context, Component) error
-	Development bool
+	Paths         Paths
+	Manager       ServiceManager
+	Now           func() time.Time
+	Probe         func(context.Context, Component) error
+	ReadyTimeout  time.Duration
+	ReadyInterval time.Duration
+	Development   bool
 }
 
 // Activation records the current and rollback releases.
@@ -188,9 +189,9 @@ func (i Installer) commitActivation(ctx context.Context, manifest Manifest, prev
 	if err := i.prepareCandidate(ctx, previousManifest, manifest); err != nil {
 		return i.failActivation(err, transaction, previousManifest, manifest)
 	}
-	activationErr := errors.Join(i.Manager.Reload(ctx), i.start(ctx, manifest))
+	activationErr := i.Manager.Reload(ctx)
 	if activationErr == nil {
-		activationErr = i.verifyRuntime(ctx, manifest)
+		activationErr = i.startAndVerify(ctx, manifest)
 	}
 	if activationErr != nil {
 		return i.failActivation(activationErr, transaction, previousManifest, manifest)
@@ -354,56 +355,6 @@ func (r *Report) addComponent(component inspectedComponent) {
 	}
 }
 
-func (i *Installer) normalize() error {
-	if i.Paths.Root == "" || i.Paths.StateDir == "" || !filepath.IsAbs(i.Paths.Root) || !filepath.IsAbs(i.Paths.StateDir) {
-		return errors.New("bundle root and state directory must be absolute")
-	}
-	if i.Manager == nil {
-		return errors.New("native service manager is required")
-	}
-	if i.Now == nil {
-		i.Now = time.Now
-	}
-	if i.Probe == nil {
-		i.Probe = operatorProbe
-	}
-	return nil
-}
-
-func operatorProbe(ctx context.Context, component Component) error {
-	if component.OperatorEndpoint == "" {
-		return nil
-	}
-	token, err := readOperatorToken(component.OperatorTokenFile)
-	if err != nil {
-		return err
-	}
-	client, err := operatorclient.New(component.OperatorEndpoint, token, nil)
-	if err != nil {
-		return err
-	}
-	descriptor, err := client.Discover(ctx)
-	if err != nil {
-		return err
-	}
-	if descriptor.BuildID != component.BuildID {
-		return errors.New("operator build identity does not match runtime bundle")
-	}
-	return client.Health(ctx)
-}
-
-func readOperatorToken(path string) (string, error) {
-	data, err := readBounded(path, 64*1024)
-	if err != nil {
-		return "", fmt.Errorf("read operator token: %w", err)
-	}
-	token := strings.TrimSpace(string(data))
-	if token == "" {
-		return "", errors.New("operator token is empty")
-	}
-	return token, nil
-}
-
 func (i Installer) stage(manifest Manifest, data []byte, artifacts string) (string, error) {
 	if !filepath.IsAbs(artifacts) {
 		return "", errors.New("artifact directory must be absolute")
@@ -554,9 +505,11 @@ func (i Installer) restore(previous string, oldManifest, candidate Manifest) err
 		switchErr = i.switchCurrent(previous)
 	}
 	reloadErr := i.Manager.Reload(recoveryCtx)
-	startErr := i.start(recoveryCtx, oldManifest)
-	verifyErr := i.verifyRuntime(recoveryCtx, oldManifest)
-	return errors.Join(stopErr, stateErr, switchErr, reloadErr, startErr, verifyErr)
+	var activationErr error
+	if reloadErr == nil {
+		activationErr = i.startAndVerify(recoveryCtx, oldManifest)
+	}
+	return errors.Join(stopErr, stateErr, switchErr, reloadErr, activationErr)
 }
 
 func (i Installer) prepareState(previous, candidate Manifest) error {
@@ -677,35 +630,6 @@ func (i Installer) stop(ctx context.Context, manifest Manifest) error {
 		result = errors.Join(result, i.Manager.Stop(ctx, service))
 	}
 	return result
-}
-
-func (i Installer) start(ctx context.Context, manifest Manifest) error {
-	for _, service := range orderedServices(manifest, false) {
-		if err := i.Manager.Start(ctx, service); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (i Installer) verifyRuntime(ctx context.Context, manifest Manifest) error {
-	release := filepath.Join(i.Paths.Root, "releases", manifest.BundleID)
-	for _, component := range manifest.Components {
-		for _, service := range component.Services {
-			status, err := i.Manager.Status(ctx, service)
-			if err != nil || !status.Active {
-				return fmt.Errorf("service %s is not active", service)
-			}
-			expected := filepath.Join(release, component.Destination)
-			if !processPathMatches(status.Executable, expected) {
-				return fmt.Errorf("service %s executable does not match candidate bundle", service)
-			}
-		}
-		if err := i.Probe(ctx, component); err != nil {
-			return fmt.Errorf("component %s is not ready: %w", component.Name, err)
-		}
-	}
-	return nil
 }
 
 func orderedServices(manifest Manifest, stopping bool) []string {

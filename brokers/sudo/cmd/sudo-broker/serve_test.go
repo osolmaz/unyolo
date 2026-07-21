@@ -75,6 +75,34 @@ func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
 	if err := serverHelperReady(t.Context(), server); err == nil {
 		t.Fatal("server reported ready without helper")
 	}
+	delayedReady := make(chan error, 1)
+	go func() {
+		time.Sleep(2 * helperStartupInterval)
+		listener, listenErr := net.Listen("unix", opts.helperSocket)
+		if listenErr != nil {
+			delayedReady <- listenErr
+			return
+		}
+		defer func() { _ = listener.Close() }()
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			delayedReady <- acceptErr
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		_, requestErr := executorprotocol.ReadRequest(connection)
+		responseErr := executorprotocol.WriteResponse(connection, executorprotocol.Response{Version: executorprotocol.Version, Status: executorprotocol.StatusReady})
+		delayedReady <- errors.Join(requestErr, responseErr)
+	}()
+	if err := waitForServerHelper(t.Context(), server); err != nil {
+		t.Fatalf("delayed helper readiness failed: %v", err)
+	}
+	if err := <-delayedReady; err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(opts.helperSocket); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
 	if _, err := buildServerWithValidator(opts, &bytes.Buffer{}, nil); err == nil {
 		t.Fatal("nil trust validator was accepted")
 	}

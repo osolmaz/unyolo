@@ -94,7 +94,7 @@ func buildReadyServer(ctx context.Context, args []string, stderr io.Writer, buil
 	if err != nil {
 		return serveOptions{}, nil, err
 	}
-	if err := serverHelperReady(ctx, server); err != nil {
+	if err := waitForServerHelper(ctx, server); err != nil {
 		_ = server.Close()
 		return serveOptions{}, nil, err
 	}
@@ -312,6 +312,30 @@ func notifierDependencies(notifier *bktelegram.Client) (approvalnotify.Notifier,
 		return nil, nil
 	}
 	return notifier, nil
+}
+
+const (
+	helperStartupTimeout  = 5 * time.Second
+	helperStartupInterval = 50 * time.Millisecond
+)
+
+func waitForServerHelper(ctx context.Context, server *routes.Server) error {
+	readyCtx, cancel := context.WithTimeout(ctx, helperStartupTimeout)
+	defer cancel()
+	var lastErr error
+	for {
+		lastErr = serverHelperReady(readyCtx, server)
+		if lastErr == nil {
+			return nil
+		}
+		timer := time.NewTimer(helperStartupInterval)
+		select {
+		case <-readyCtx.Done():
+			timer.Stop()
+			return errors.Join(lastErr, readyCtx.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 func serverHelperReady(ctx context.Context, server *routes.Server) error {
