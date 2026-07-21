@@ -220,8 +220,8 @@ func (c Component) validateOperator(manifest Manifest) error {
 	if (c.OperatorEndpoint == "") != (c.OperatorTokenFile == "") {
 		return errors.New("operator endpoint and token file must be configured together")
 	}
-	if c.Required && c.Role == RoleProvider && c.OperatorEndpoint == "" {
-		return errors.New("required provider has no authenticated operator endpoint")
+	if c.Required && c.Role == RoleProvider && c.AgentContractDigest != "" && c.OperatorEndpoint == "" {
+		return errors.New("required agent-facing provider has no authenticated operator endpoint")
 	}
 	return nil
 }
