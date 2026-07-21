@@ -70,7 +70,7 @@ func (a adminMergeAdapter) Resolve(ctx context.Context, input Input) (Plan, erro
 	if err != nil {
 		return Plan{}, err
 	}
-	if credential.Kind != githubauth.KindUser && credential.Kind != githubauth.KindDevelopmentToken {
+	if !eligibleAdminMergeCredential(credential.Kind) {
 		return Plan{}, errors.New("GitHub admin merge requires a user identity credential")
 	}
 	identity, err := a.manager.AuthenticatedUser(ctx, credential)
@@ -88,16 +88,26 @@ func (a adminMergeAdapter) Resolve(ctx context.Context, input Input) (Plan, erro
 	if err := validateAdminMergeSnapshot(snapshot, target); err != nil {
 		return Plan{}, err
 	}
+	target["id"] = json.Number(fmt.Sprint(snapshot.ID))
+	target["node_id"] = snapshot.NodeID
+	resolvedTarget, err := json.Marshal(target)
+	if err != nil {
+		return Plan{}, errors.New("GitHub admin merge target is invalid")
+	}
 	preconditions := adminMergePreconditions{UserID: identity.ID, UserLogin: identity.Login, PullRequestNodeID: snapshot.NodeID,
 		HeadSHA: snapshot.HeadSHA, MergeableState: snapshot.MergeableState}
 	presentation := agentv1.Presentation{Title: "Admin merge a pull request",
 		Summary: fmt.Sprintf("Admin merge %s/%s#%s at %s as @%s; this may bypass GitHub merge requirements",
 			stringValue(target, "owner"), stringValue(target, "repo"), integerString(target, "number"), shortSHA(snapshot.HeadSHA), identity.Login)}
 	return Plan{
-		Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: cloneRaw(input.Target), Arguments: cloneRaw(input.Arguments),
+		Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision, Target: resolvedTarget, Arguments: cloneRaw(input.Arguments),
 		Preconditions: encodePreconditions(credential, preconditions), Credential: credential, Presentation: presentation,
 		Authorization: adminMergeAuthorization(a.descriptor, target, input.Arguments, credential),
 	}, nil
+}
+
+func eligibleAdminMergeCredential(kind githubauth.Kind) bool {
+	return kind == githubauth.KindUser || kind == githubauth.KindDevelopmentToken
 }
 
 func (a adminMergeAdapter) Authorize(plan Plan) Authorization {
@@ -263,7 +273,11 @@ func adminMergeVariables(executionID string, preconditions adminMergePreconditio
 func adminMergeAuthorization(descriptor opcatalog.Descriptor, target map[string]any, rawArguments json.RawMessage, credential githubauth.Metadata) Authorization {
 	arguments, _ := decodeObject(rawArguments)
 	fields := map[string][]string{
-		"owner": {stringValue(target, "owner")}, "repo": {stringValue(target, "repo")}, "number": {integerString(target, "number")},
+		"id":      {integerString(target, "id")},
+		"node_id": {stringValue(target, "node_id")},
+		"owner":   {stringValue(target, "owner")},
+		"repo":    {stringValue(target, "repo")},
+		"number":  {integerString(target, "number")},
 	}
 	attrs := map[string][]string{"merge_method": {stringValue(arguments, "merge_method")}}
 	if credential.UserID > 0 {

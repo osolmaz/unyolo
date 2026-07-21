@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -66,8 +67,12 @@ func TestAdminMergeBindsExactRevisionAndUsesPersistedGraphQL(t *testing.T) {
 	}
 	plan.ExecutionID = "operation-1"
 	authorization := adapter.Authorize(plan)
+	resolvedTarget, targetErr := decodeObject(plan.Target)
 	if plan.Credential.Kind != githubauth.KindDevelopmentToken || plan.Credential.UserID != 2453968 ||
-		!strings.Contains(plan.Presentation.Summary, "may bypass") || authorization.Operation != adminMergeOperation ||
+		!strings.Contains(plan.Presentation.Summary, "may bypass") || authorization.Operation != adminMergeOperation || targetErr != nil ||
+		integerString(resolvedTarget, "id") != "4081694590" || stringValue(resolvedTarget, "node_id") != "PR_node" ||
+		!slices.Equal(authorization.TargetFields["id"], []string{"4081694590"}) ||
+		!slices.Equal(authorization.TargetFields["node_id"], []string{"PR_node"}) ||
 		len(authorization.Attrs["actor_id"]) != 1 || authorization.Attrs["actor_id"][0] != "2453968" {
 		t.Fatalf("plan = %+v", plan)
 	}
