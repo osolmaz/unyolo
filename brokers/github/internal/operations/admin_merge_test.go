@@ -89,6 +89,61 @@ func TestAdminMergeBindsExactRevisionAndUsesPersistedGraphQL(t *testing.T) {
 	}
 }
 
+func TestAdminMergeReconcilesOnlyTheApprovedMergedRevision(t *testing.T) {
+	for name, reconciledHead := range map[string]string{
+		"approved revision":  adminHeadSHA,
+		"different revision": adminChangedSHA,
+	} {
+		t.Run(name, func(t *testing.T) {
+			pullRequestRequests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/user":
+					_, _ = w.Write([]byte(`{"id":2453968,"login":"osolmaz"}`))
+				case "/repos/osolmaz/solmazio/pulls/98":
+					pullRequestRequests++
+					head, merged := reconciledHead, true
+					if pullRequestRequests == 1 {
+						head, merged = adminHeadSHA, false
+					}
+					writeAdminMergeSnapshotState(t, w, head, "blocked", true, merged)
+				default:
+					t.Fatalf("unexpected request %s %s", request.Method, request.URL.Path)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), adminMergeOperation)
+			input, err := adapter.Decode(json.RawMessage(`{"kind":"pull_request","owner":"osolmaz","repo":"solmazio","number":98}`), json.RawMessage(`{"merge_method":"merge"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := adapter.Resolve(t.Context(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			outcome, err := adapter.Reconcile(t.Context(), plan)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantProven := reconciledHead == adminHeadSHA
+			if outcome.Proven != wantProven {
+				t.Fatalf("Reconcile() = %+v, want proven %t", outcome, wantProven)
+			}
+		})
+	}
+}
+
+func TestAdminMergeFallbackPresentationAndCleanup(t *testing.T) {
+	adapter := adminMergeAdapter{}
+	if presentation := adapter.Present(Plan{}); presentation.Title == "" || presentation.Summary != adminMergeOperation {
+		t.Fatalf("Present() = %+v", presentation)
+	}
+	if err := adapter.Cleanup(Plan{}); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
 func TestAdminMergeRequiresNonNullGraphQLPayload(t *testing.T) {
 	for name, test := range map[string]struct {
 		body json.RawMessage
@@ -161,11 +216,20 @@ func TestAdminMergeRejectsConflictsAtSubmission(t *testing.T) {
 	}
 }
 
-func writeAdminMergeSnapshot(t *testing.T, writer http.ResponseWriter, head, base, mergeableState string, mergeable bool) {
+func writeAdminMergeSnapshot(t *testing.T, writer http.ResponseWriter, head, _ string, mergeableState string, mergeable bool) {
 	t.Helper()
+	writeAdminMergeSnapshotState(t, writer, head, mergeableState, mergeable, false)
+}
+
+func writeAdminMergeSnapshotState(t *testing.T, writer http.ResponseWriter, head, mergeableState string, mergeable, merged bool) {
+	t.Helper()
+	state := "open"
+	if merged {
+		state = "closed"
+	}
 	_ = json.NewEncoder(writer).Encode(map[string]any{
-		"id": 4081694590, "number": 98, "node_id": "PR_node", "state": "open", "draft": false, "merged": false,
+		"id": 4081694590, "number": 98, "node_id": "PR_node", "state": state, "draft": false, "merged": merged,
 		"mergeable": mergeable, "mergeable_state": mergeableState,
-		"head": map[string]any{"sha": head}, "base": map[string]any{"sha": base, "ref": "main"},
+		"head": map[string]any{"sha": head}, "base": map[string]any{"sha": adminBaseSHA, "ref": "main"},
 	})
 }
