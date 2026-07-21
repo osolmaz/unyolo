@@ -58,10 +58,17 @@ brokerkit system rollback
 
 Linux uses `/opt/brokerkit/releases/<bundle-id>` and macOS uses
 `/Library/Application Support/BrokerKit/releases/<bundle-id>`. The `current`
-symlink is switched atomically. Providers stop after consumers and start before
-consumers. Exact readiness is checked before the activation record commits.
+symlink is switched atomically. Native service definitions use exact
+component paths below that root-controlled pointer; production setup rejects
+standalone mutable executables. Each started process is then verified against
+the selected immutable release. Providers stop after consumers and start
+before consumers. Exact readiness is checked before the activation record commits.
 Any failure restores the previous release pointer, state replacement, service
 order, and readiness before Telegram resumes.
+Before stopping a service, the host writes a private activation transaction.
+An interrupted install, upgrade, or rollback is reconciled under the host lock
+before another lifecycle command can run. A committed and healthy candidate is
+kept; an uncommitted transaction restores its recorded previous release.
 
 The closed `brokerkit.io/runtime-bundle/v1` manifest is defined by
 `protocol/runtime-bundle.schema.json`. A production manifest requires a

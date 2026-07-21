@@ -208,8 +208,90 @@ func TestValidateTrustedExecutable(t *testing.T) {
 	}
 }
 
-func TestRequiresTrustedExecutable(t *testing.T) {
-	if got := requiresTrustedExecutable(SystemdOptions{}); got != (os.Geteuid() == 0) {
-		t.Fatalf("requiresTrustedExecutable() = %t for euid %d", got, os.Geteuid())
+func TestResolveServiceExecutablePreservesManagedCurrentPath(t *testing.T) {
+	root := t.TempDir()
+	release := filepath.Join(root, "releases", "bundle-one")
+	destination := filepath.Join("bin", "test-broker")
+	if err := os.MkdirAll(filepath.Join(release, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(release, destination)
+	if err := os.WriteFile(binary, []byte("binary"), 0o755); err != nil { // #nosec G306 -- executable fixture.
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("releases", "bundle-one"), filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "current", destination)
+	for _, input := range []string{want, binary} {
+		got, managed, err := resolveServiceExecutable(input, root, destination, false)
+		if err != nil || !managed || got != want {
+			t.Fatalf("resolveServiceExecutable(%q) = %q, %t, %v", input, got, managed, err)
+		}
+	}
+}
+
+func TestResolveServiceExecutableAllowsManagedBootstrapOnly(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join("bin", "test-broker")
+	managed := filepath.Join(root, "current", destination)
+	got, selected, err := resolveServiceExecutable(managed, root, destination, false)
+	if err != nil || !selected || got != managed {
+		t.Fatalf("managed bootstrap = %q, %t, %v", got, selected, err)
+	}
+	wrong := filepath.Join(root, "current", "bin", "other")
+	if _, _, err := resolveServiceExecutable(wrong, root, destination, false); err == nil {
+		t.Fatal("wrong managed destination was accepted")
+	}
+}
+
+func TestManagedDestinationMatchesOnlyExactCurrentPath(t *testing.T) {
+	destination := filepath.Join("bin", "test-broker")
+	if got := ManagedDestination(ManagedExecutablePath(destination), destination); got != destination {
+		t.Fatalf("ManagedDestination() = %q", got)
+	}
+	if got := ManagedDestination("/usr/local/bin/test-broker", destination); got != "" {
+		t.Fatalf("standalone ManagedDestination() = %q", got)
+	}
+}
+
+func TestValidateTrustedAncestorWalksToExistingRoot(t *testing.T) {
+	missing := filepath.Join("/opt", "brokerkit-test-missing", "nested")
+	if err := validateTrustedAncestor(missing); err != nil {
+		t.Fatalf("validateTrustedAncestor() error = %v", err)
+	}
+}
+
+func TestResolveServiceExecutableRejectsEscapedCurrentPointer(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Symlink("../outside", filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join("bin", "test-broker")
+	if _, _, err := resolveServiceExecutable(filepath.Join(root, "current", destination), root, destination, false); err == nil {
+		t.Fatal("escaped managed pointer was accepted")
+	}
+}
+
+func TestResolveServiceExecutableRejectsInvalidInputs(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join("bin", "test-broker")
+	for _, test := range []struct {
+		path        string
+		destination string
+	}{
+		{path: "relative", destination: destination},
+		{path: "/bin/sh", destination: "../test-broker"},
+	} {
+		if _, _, err := resolveServiceExecutable(test.path, root, test.destination, false); err == nil {
+			t.Fatalf("resolveServiceExecutable(%q, %q) accepted invalid input", test.path, test.destination)
+		}
+	}
+	current := filepath.Join(root, "current")
+	if err := os.Mkdir(current, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := resolveServiceExecutable(filepath.Join(current, destination), root, destination, false); err == nil {
+		t.Fatal("directory current pointer was accepted")
 	}
 }

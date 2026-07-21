@@ -137,9 +137,17 @@ func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	if flags.NArg() != 0 {
 		return setupOptions{}, errors.New("setup systemd does not accept positional arguments")
 	}
-	resolved, err := resolveBinary(opts.BinaryPath)
+	resolved, managed, err := bksetup.ResolveServiceExecutable(opts.BinaryPath, filepath.Join("bin", ingressName), opts.AllowNonRoot)
 	if err != nil {
 		return setupOptions{}, err
+	}
+	if os.Geteuid() == 0 && !opts.AllowNonRoot && !opts.DryRun && !managed {
+		return setupOptions{}, errors.New("production services must use the BrokerKit managed current release path")
+	}
+	if managed && !opts.NoStart {
+		if _, err := filepath.EvalSymlinks(resolved); err != nil {
+			return setupOptions{}, errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
+		}
 	}
 	opts.BinaryPath = resolved
 	if err := validateSetupOptions(opts); err != nil {
@@ -210,17 +218,6 @@ func validateSetupPaths(opts setupOptions) error {
 	return nil
 }
 
-func resolveBinary(path string) (string, error) {
-	if path == "" {
-		var err error
-		path, err = os.Executable()
-		if err != nil {
-			return "", err
-		}
-	}
-	return filepath.EvalSymlinks(path)
-}
-
 func configuredRoutes(opts setupOptions) []string {
 	ordered := []string{telegram.RouteHuggingFace, telegram.RouteGitHub, telegram.RouteSudo}
 	result := make([]string, 0, len(ordered))
@@ -287,7 +284,8 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 		EnvironmentFile:     filepath.Join(opts.ConfigDir, "env"),
 		ExecStart:           opts.BinaryPath + " serve --config " + filepath.Join(opts.ConfigDir, "config.json"),
 		StateDir:            opts.StateDir, ConfigDir: opts.ConfigDir, HomeAccess: bkservice.HomeAccessDeny,
-		PathValidation: pathValidation,
+		PathValidation:               pathValidation,
+		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, filepath.Join("bin", ingressName)),
 	}
 	return bkservice.SystemdInstallPlan{
 		User: opts.User, Group: opts.Group, AdditionalGroups: groups,

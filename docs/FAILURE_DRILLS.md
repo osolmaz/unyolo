@@ -18,6 +18,7 @@ operation-specific cases without replacing these shared drills.
 | Shutdown with a live parent context | owned workers stop before SQLite closes | GH, HF, and sudo server shutdown tests |
 | Stale or deleted BrokerKit executable | exact contract drift stops Telegram before polling and host doctor fails | `operator/client/client_test.go`, `approval/notifier/telegram/dispatcher_test.go`, `internal/host/bundle/bundle_test.go` |
 | Partial multi-service upgrade | providers start before consumers and any failure restores the previous release and state | `internal/host/bundle/bundle_test.go` |
+| Host process exits during activation | the private transaction journal restores the prior release and activation record before another lifecycle command proceeds | `internal/host/bundle/bundle_test.go` |
 
 Every drill asserts durable terminal state or rollback state, not just an HTTP
 status. Test fixtures use bounded timeouts and synthetic local upstreams. Live

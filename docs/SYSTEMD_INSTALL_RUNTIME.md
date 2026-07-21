@@ -15,6 +15,14 @@ then provider services, switches the immutable release pointer, reloads
 systemd, starts and verifies providers, and starts Telegram last. A candidate
 failure restores the previous complete service set.
 
+Production units execute the exact component destination below
+`/opt/brokerkit/current`. Setup preserves that root-controlled pointer instead
+of resolving it into the release active at setup time. It also normalizes a
+binary invoked from `/opt/brokerkit/releases/<bundle-id>` back to the matching
+`current` path. A first installation may configure units with `--no-start` and
+the managed path before the bundle is activated; service startup occurs only
+after activation publishes and verifies the target.
+
 ## Boundary
 
 Brokerkit owns:
@@ -155,6 +163,8 @@ An install plan is rejected when:
 - the final executable is not a regular file, an ancestor is not searchable,
   or the file cannot be executed by the configured service identity including
   its supplementary groups;
+- a production service points outside its exact BrokerKit `current` component
+  destination, or an existing `current` link leaves the immutable release root;
 - non-root test mode is requested while service activation is enabled.
 
 ## Test Gates

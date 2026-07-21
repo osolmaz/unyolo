@@ -388,15 +388,16 @@ func renderEnvFile(plan systemdPlan) string {
 func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
 	opts := plan.opts
 	return bkservice.SystemdUnit{
-		Description:     "hf-broker Hugging Face credential broker",
-		User:            opts.User,
-		Group:           opts.Group,
-		EnvironmentFile: plan.envPath,
-		ExecStart:       opts.BinaryPath,
-		StateDir:        opts.StateDir,
-		ConfigDir:       opts.ConfigDir,
-		HomeAccess:      bkservice.HomeAccessDeny,
-		PathValidation:  setupPathValidation(opts),
+		Description:                  "hf-broker Hugging Face credential broker",
+		User:                         opts.User,
+		Group:                        opts.Group,
+		EnvironmentFile:              plan.envPath,
+		ExecStart:                    opts.BinaryPath,
+		StateDir:                     opts.StateDir,
+		ConfigDir:                    opts.ConfigDir,
+		HomeAccess:                   bkservice.HomeAccessDeny,
+		PathValidation:               setupPathValidation(opts),
+		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, opts.ManagedDestination),
 	}
 }
 

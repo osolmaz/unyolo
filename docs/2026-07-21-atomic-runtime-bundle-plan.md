@@ -98,9 +98,10 @@ macOS uses the same internal layout beneath:
 ```
 
 Configuration and broker state remain in their existing provider-owned
-locations. Public command links point through the active release and are
-updated only as part of activation. Units and launchd plists use an executable
-inside the selected release directory. Setup rejects a mutable executable path
+locations. Public command links, systemd units, and launchd plists use the
+root-controlled `current` path. Starting a service resolves that pointer to an
+executable in one immutable release, and runtime verification checks the
+process against that exact release. Setup rejects a mutable executable path
 such as a standalone file in `/usr/local/bin` for managed production services.
 
 Release directories are root-owned, non-symlinked below their release root,
@@ -220,7 +221,7 @@ The host command then performs one bounded transaction:
 2. stop optional shared UI consumers;
 3. stop provider services and their socket activation units;
 4. fsync the staged release and atomically switch `current`;
-5. install or update unit definitions that point into the new release;
+5. reload native service definitions that point through the managed `current` path;
 6. start provider sockets and brokers;
 7. verify authenticated discovery, readiness, state, and contract identity;
 8. start Telegram ingress and other shared consumers;
@@ -271,19 +272,19 @@ start and readiness ordering. The target supports status, emergency stop, and
 operator inspection. It is not used as a substitute for the activation
 transaction.
 
-The shared systemd runtime gains a multi-unit plan that snapshots all managed
-units before writing any of them. Existing single-provider setup commands
-delegate their service files to the host inventory. Production setup refuses
-to replace an executable independently when that executable belongs to an
-active bundle.
+Existing single-provider setup commands write service definitions through the
+shared systemd runtime and require the exact managed `current` destination for
+production. The stable unit definitions are not rewritten during an upgrade.
+Production setup refuses standalone executables and independent binary
+replacement when a service belongs to a bundle.
 
 ### macOS
 
 Add the equivalent multi-service transaction over system LaunchDaemons. The
 host command boots out Telegram first, activates provider daemons, verifies
 their Unix sockets and discovery responses, and then bootstraps Telegram.
-Plists point to immutable release paths and rollback restores the previous
-plist set with the previous release pointer.
+Plists point through the root-controlled `current` path. Rollback restores the
+previous release pointer without rewriting the stable plist set.
 
 Both adapters implement the same typed host plan and emit the same activation
 record. Platform packages contain service-manager mechanics only.

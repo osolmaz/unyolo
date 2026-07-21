@@ -462,6 +462,7 @@ func TestValidateSetupSystemdOptions(t *testing.T) {
 		ClientName: "agent-a", Endpoint: testGHAgentEndpoint,
 		AgentUser: "agent-user", OperatorUser: "operator-user",
 		AgentAccessGroup: "gh-broker-agent", OperatorAccessGroup: "gh-broker-operator",
+		ManagedDestination: filepath.Join("bin", "gh-broker"),
 	}
 	valid := setupSystemdOptions{
 		SystemdOptions:   base,

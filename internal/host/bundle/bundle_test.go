@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/protocol/contract"
 )
@@ -112,6 +113,18 @@ func TestOperatorProbeRequiresAuthenticatedExpectedBuild(t *testing.T) {
 	}
 }
 
+func TestOperatorProbeRejectsMissingTokenAndInvalidEndpoint(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-token")
+	if _, err := readOperatorToken(missing); err == nil {
+		t.Fatal("missing operator token was accepted")
+	}
+	tokenPath := filepath.Join(t.TempDir(), "operator-token")
+	writeTestFile(t, tokenPath, []byte(strings.Repeat("t", 32)))
+	if err := operatorProbe(t.Context(), Component{OperatorEndpoint: "invalid", OperatorTokenFile: tokenPath}); err == nil {
+		t.Fatal("invalid operator endpoint was accepted")
+	}
+}
+
 func TestDefaultPathsMatchPlatform(t *testing.T) {
 	original := runtimeGOOS
 	t.Cleanup(func() { runtimeGOOS = original })
@@ -122,6 +135,22 @@ func TestDefaultPathsMatchPlatform(t *testing.T) {
 	runtimeGOOS = func() string { return "linux" }
 	if got := DefaultPaths(); got.Root != "/opt/brokerkit" || got.StateDir != "/var/lib/brokerkit-host" {
 		t.Fatalf("linux paths = %+v", got)
+	}
+}
+
+func TestInstallerNormalizeRequiresHostDependencies(t *testing.T) {
+	empty := Installer{}
+	if err := empty.normalize(); err == nil {
+		t.Fatal("empty installer was accepted")
+	}
+	paths := Paths{Root: filepath.Join(t.TempDir(), "root"), StateDir: filepath.Join(t.TempDir(), "state")}
+	installer := Installer{Paths: paths}
+	if err := installer.normalize(); err == nil {
+		t.Fatal("installer without a service manager was accepted")
+	}
+	installer.Manager = &fakeManager{}
+	if err := installer.normalize(); err != nil || installer.Now == nil || installer.Probe == nil {
+		t.Fatalf("normalize() error = %v, dependencies assigned = %t", err, installer.Now != nil && installer.Probe != nil)
 	}
 }
 
@@ -169,6 +198,84 @@ func TestActivateRejectsManifestByteMismatch(t *testing.T) {
 	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: &fakeManager{}, Probe: func(context.Context, Component) error { return nil }}
 	if err := installer.Activate(t.Context(), manifest, data, artifacts); err == nil {
 		t.Fatal("activation accepted manifest bytes for a different bundle")
+	}
+}
+
+func TestStageRejectsRelativeArtifactsAndChangedBundleIdentity(t *testing.T) {
+	root, artifacts := filepath.Join(t.TempDir(), "root"), t.TempDir()
+	installer := Installer{Paths: Paths{Root: root, StateDir: filepath.Join(t.TempDir(), "state")}}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if _, err := installer.stage(manifest, data, "relative"); err == nil {
+		t.Fatal("relative artifact directory was accepted")
+	}
+	if _, err := installer.stage(manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.stage(manifest, append(append([]byte(nil), data...), '\n'), artifacts); err == nil {
+		t.Fatal("existing bundle identity accepted different manifest bytes")
+	}
+	stagedArtifact := filepath.Join(root, "releases", manifest.BundleID, manifest.Components[0].Destination)
+	if err := os.Chmod(stagedArtifact, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stagedArtifact, []byte("changed"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.verifyRelease(manifest, filepath.Join(root, "releases", manifest.BundleID)); err == nil {
+		t.Fatal("changed immutable release artifact was accepted")
+	}
+	missing := testManifest(t, "bundle-two", "two")
+	missing, missingData := writeManifestArtifacts(t, artifacts, missing)
+	if err := os.Remove(filepath.Join(artifacts, missing.Components[0].Source)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.stage(missing, missingData, artifacts); err == nil {
+		t.Fatal("bundle with a missing artifact was staged")
+	}
+}
+
+func TestReadActivationRejectsInvalidRecord(t *testing.T) {
+	state := t.TempDir()
+	installer := Installer{Paths: Paths{Root: filepath.Join(t.TempDir(), "root"), StateDir: state}}
+	path := filepath.Join(state, activationFilename)
+	for _, data := range [][]byte{[]byte("{"), []byte(`{"api_version":"unknown"}`)} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := installer.readActivation(); err == nil {
+			t.Fatal("invalid activation record was accepted")
+		}
+	}
+}
+
+func TestActivationLockRejectsConcurrentOwner(t *testing.T) {
+	state := t.TempDir()
+	first, err := acquireLock(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.close()
+	if _, err := acquireLock(state); err == nil {
+		t.Fatal("concurrent activation lock was acquired")
+	}
+}
+
+func TestClearMissingTransactionIsIdempotent(t *testing.T) {
+	state := t.TempDir()
+	installer := Installer{Paths: Paths{StateDir: state}}
+	if err := installer.clearTransaction(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBoundedReadAndDigestRejectInvalidFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "value")
+	writeTestFile(t, path, []byte("too-large"))
+	if _, err := readBounded(path, 1); err == nil {
+		t.Fatal("oversized bounded file was accepted")
+	}
+	if _, err := digestFile(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing digest source was accepted")
 	}
 }
 
@@ -287,6 +394,265 @@ func TestActivateRecordsRecoveryRequiredWhenRollbackFails(t *testing.T) {
 	}
 }
 
+func TestActivateRecoversPreviousServicesAfterPartialStopFailure(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	manager.failStopOnce = "gh.service"
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if err := installer.Activate(t.Context(), two, twoData, artifacts); err == nil {
+		t.Fatal("activation succeeded despite a partial stop failure")
+	}
+	assertCurrentBundle(t, root, "bundle-one")
+	if !manager.active["gh.service"] || !manager.active["telegram.service"] {
+		t.Fatalf("previous services were not recovered: %v", manager.active)
+	}
+}
+
+func TestFailedFirstActivationRestoresUninstalledState(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		Probe: func(context.Context, Component) error { return errors.New("injected first-install readiness failure") }}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err == nil {
+		t.Fatal("failed first activation was accepted")
+	}
+	if _, err := os.Lstat(filepath.Join(root, "current")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed first activation retained current: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(state, activationFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed first activation retained activation record: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(state, transactionFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed first activation retained transaction: %v", err)
+	}
+}
+
+func TestStatusReportsInterruptedActivation(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, transactionFilename), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := installer.Status(t.Context())
+	if err != nil || report.Healthy || !strings.Contains(strings.Join(report.Problems, "\n"), "interrupted activation") {
+		t.Fatalf("Status() = %+v, %v", report, err)
+	}
+}
+
+func TestStatusReportsCurrentPointerMismatch(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+	report, err := installer.Status(t.Context())
+	if err != nil || report.Healthy || !strings.Contains(strings.Join(report.Problems, "\n"), "pointer") {
+		t.Fatalf("Status() = %+v, %v", report, err)
+	}
+}
+
+func TestRollbackRequiresPreviousBundle(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.Rollback(t.Context()); err == nil {
+		t.Fatal("rollback without a previous bundle was accepted")
+	}
+}
+
+func TestMissingStateReplacementAndRecoveryRecord(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "provider-state")
+	backup := stateDir + ".backup"
+	if err := replaceStateDirectory(stateDir, backup); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(stateDir); err != nil || !info.IsDir() {
+		t.Fatalf("replacement state = %+v, %v", info, err)
+	}
+	if err := restoreStateDirectory(stateDir, backup); err != nil {
+		t.Fatal(err)
+	}
+	hostState := t.TempDir()
+	installer := Installer{Paths: Paths{Root: filepath.Join(t.TempDir(), "root"), StateDir: hostState}, Now: time.Now}
+	if err := installer.writeRecoveryRecord("", "bundle-one"); err != nil {
+		t.Fatal(err)
+	}
+	record, err := installer.readActivation()
+	if err != nil || !record.RecoveryRequired || record.ActiveBundleID != "bundle-one" {
+		t.Fatalf("recovery record = %+v, %v", record, err)
+	}
+}
+
+func TestInterruptedActivationRestoresPreviousReleaseAndRecord(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := installer.activationSnapshot()
+	if err != nil || previous == nil {
+		t.Fatalf("activationSnapshot() = %+v, %v", previous, err)
+	}
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if _, err := installer.stage(two, twoData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	transaction := activationTransaction{APIVersion: APIVersion, CandidateBundleID: two.BundleID,
+		PreviousBundleID: one.BundleID, PreviousActivation: previous,
+		FinalActivation: Activation{APIVersion: APIVersion, ActiveBundleID: two.BundleID, PreviousBundleID: one.BundleID, ActivatedAt: time.Now().UTC()},
+		StartedAt:       time.Now().UTC()}
+	if err := writeJSONAtomic(filepath.Join(state, transactionFilename), transaction, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.switchCurrent(two.BundleID); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.recoverInterruptedActivation(); err != nil {
+		t.Fatal(err)
+	}
+	assertCurrentBundle(t, root, one.BundleID)
+	restored, err := installer.readActivation()
+	if err != nil || restored.ActiveBundleID != one.BundleID || restored.RecoveryRequired {
+		t.Fatalf("restored activation = %+v, %v", restored, err)
+	}
+	if _, err := os.Stat(filepath.Join(state, transactionFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("completed recovery retained its transaction journal")
+	}
+}
+
+func TestInterruptedActivationKeepsCommittedCandidate(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := installer.activationSnapshot()
+	if err != nil || previous == nil {
+		t.Fatalf("activationSnapshot() = %+v, %v", previous, err)
+	}
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if _, err := installer.stage(two, twoData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	final := Activation{APIVersion: APIVersion, ActiveBundleID: two.BundleID, PreviousBundleID: one.BundleID, ActivatedAt: time.Now().UTC()}
+	transaction := activationTransaction{APIVersion: APIVersion, CandidateBundleID: two.BundleID,
+		PreviousBundleID: one.BundleID, PreviousActivation: previous, FinalActivation: final, StartedAt: time.Now().UTC()}
+	if err := writeJSONAtomic(filepath.Join(state, transactionFilename), transaction, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.switchCurrent(two.BundleID); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Reload(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.start(t.Context(), two); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONAtomic(filepath.Join(state, activationFilename), final, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.recoverInterruptedActivation(); err != nil {
+		t.Fatal(err)
+	}
+	assertCurrentBundle(t, root, two.BundleID)
+	restored, err := installer.readActivation()
+	if err != nil || restored.ActiveBundleID != two.BundleID {
+		t.Fatalf("committed activation = %+v, %v", restored, err)
+	}
+}
+
+func TestInterruptedRollbackRestoresPreCommandBundle(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if err := installer.Activate(t.Context(), two, twoData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := installer.activationSnapshot()
+	if err != nil || previous == nil {
+		t.Fatalf("activationSnapshot() = %+v, %v", previous, err)
+	}
+	final := Activation{APIVersion: APIVersion, ActiveBundleID: one.BundleID, PreviousBundleID: two.BundleID, ActivatedAt: time.Now().UTC()}
+	transaction := activationTransaction{APIVersion: APIVersion, CandidateBundleID: one.BundleID,
+		PreviousBundleID: two.BundleID, PreviousActivation: previous, FinalActivation: final, StartedAt: time.Now().UTC()}
+	if err := writeJSONAtomic(filepath.Join(state, transactionFilename), transaction, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.switchCurrent(one.BundleID); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.recoverInterruptedActivation(); err != nil {
+		t.Fatal(err)
+	}
+	assertCurrentBundle(t, root, two.BundleID)
+	restored, err := installer.readActivation()
+	if err != nil || restored.ActiveBundleID != two.BundleID || restored.PreviousBundleID != one.BundleID {
+		t.Fatalf("restored activation = %+v, %v", restored, err)
+	}
+}
+
+func TestActivationTransactionValidation(t *testing.T) {
+	now := time.Now().UTC()
+	previous := Activation{APIVersion: APIVersion, ActiveBundleID: "bundle-one", ActivatedAt: now}
+	valid := activationTransaction{APIVersion: APIVersion, CandidateBundleID: "bundle-two", PreviousBundleID: "bundle-one",
+		PreviousActivation: &previous,
+		FinalActivation:    Activation{APIVersion: APIVersion, ActiveBundleID: "bundle-two", PreviousBundleID: "bundle-one", ActivatedAt: now},
+		StartedAt:          now}
+	if !validActivationTransaction(valid) {
+		t.Fatal("valid activation transaction was rejected")
+	}
+	for name, mutate := range map[string]func(*activationTransaction){
+		"api":            func(value *activationTransaction) { value.APIVersion = "unknown" },
+		"started":        func(value *activationTransaction) { value.StartedAt = time.Time{} },
+		"same bundle":    func(value *activationTransaction) { value.CandidateBundleID = value.PreviousBundleID },
+		"missing prior":  func(value *activationTransaction) { value.PreviousActivation = nil },
+		"recovery prior": func(value *activationTransaction) { value.PreviousActivation.RecoveryRequired = true },
+		"wrong prior":    func(value *activationTransaction) { value.PreviousActivation.ActiveBundleID = "bundle-three" },
+		"wrong final":    func(value *activationTransaction) { value.FinalActivation.ActiveBundleID = "bundle-three" },
+		"final history":  func(value *activationTransaction) { value.FinalActivation.PreviousBundleID = "bundle-three" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := valid
+			prior := previous
+			candidate.PreviousActivation = &prior
+			mutate(&candidate)
+			if validActivationTransaction(candidate) {
+				t.Fatal("invalid activation transaction was accepted")
+			}
+		})
+	}
+}
+
 func TestStateFormatReplacementIsExplicitAndRollbackRestoresOldState(t *testing.T) {
 	root, hostState, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "host"), t.TempDir()
 	providerState := filepath.Join(t.TempDir(), "provider")
@@ -338,11 +704,16 @@ type fakeManager struct {
 	deleted         string
 	failStartBundle string
 	staleService    string
+	failStopOnce    string
 }
 
 func (m *fakeManager) Stop(_ context.Context, service string) error {
 	m.actions = append(m.actions, "stop:"+service)
 	m.active[service] = false
+	if m.failStopOnce == service {
+		m.failStopOnce = ""
+		return errors.New("injected stop failure")
+	}
 	return nil
 }
 

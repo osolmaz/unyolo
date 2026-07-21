@@ -54,6 +54,9 @@ classifying, validating, and executing its own operations.
 - Execute persistent services only from a verified immutable host bundle.
   Stop callback consumers before switching releases and start them only after
   provider readiness succeeds.
+- Keep native service definitions on the exact root-controlled `current`
+  destination and verify every resulting process against the selected
+  immutable release before committing activation.
 - Keep Operator credentials outside signed runtime manifests. A manifest may
   contain only the absolute token-file path needed for authenticated local
   readiness.
@@ -101,6 +104,7 @@ classifying, validating, and executing its own operations.
 | Old ingress calls a newer broker schema | Exact contract discovery fails before another Telegram update is consumed. |
 | Binary is replaced while its old process keeps running | Host doctor detects the deleted or outside-release executable and fails readiness. |
 | Host upgrade fails after stopping services | Restore the previous release, native services, and replaced state before restarting Telegram. |
+| Host exits after switching the release pointer | Reconcile the private transaction journal before another lifecycle command; retain a verified committed candidate or restore the recorded prior release. |
 | Telegram callback arrives while a broker is unavailable | Commit encrypted authority and offset, retry that route idempotently, and continue healthy routes. |
 
 ## Explicit Non-Protections

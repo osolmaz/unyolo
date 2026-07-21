@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"unicode"
 
+	"github.com/osolmaz/brokerkit/internal/host/layout"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
@@ -23,24 +24,25 @@ type CommandRunner interface {
 
 // SystemdUnit describes one broker-family systemd service.
 type SystemdUnit struct {
-	Description          string
-	User                 string
-	Group                string
-	SupplementaryGroups  []string
-	EnvironmentFile      string
-	ExecStart            string
-	StateDir             string
-	ConfigDir            string
-	RestartSec           int
-	HomeAccess           HomeAccess
-	HostFilesystemAccess HostFilesystemAccess
-	PrivilegeEscalation  PrivilegeEscalation
-	PathValidation       PathValidation
-	ExtraDirectives      []string
-	AfterUnits           []string
-	RequiresUnits        []string
-	RuntimeDirectory     string
-	RuntimeDirectoryMode os.FileMode
+	Description                  string
+	User                         string
+	Group                        string
+	SupplementaryGroups          []string
+	EnvironmentFile              string
+	ExecStart                    string
+	StateDir                     string
+	ConfigDir                    string
+	RestartSec                   int
+	HomeAccess                   HomeAccess
+	HostFilesystemAccess         HostFilesystemAccess
+	PrivilegeEscalation          PrivilegeEscalation
+	PathValidation               PathValidation
+	ExtraDirectives              []string
+	AfterUnits                   []string
+	RequiresUnits                []string
+	RuntimeDirectory             string
+	RuntimeDirectoryMode         os.FileMode
+	ManagedExecutableDestination string
 }
 
 // SystemdSocketUnit describes one deployment-owned listening socket. The
@@ -335,6 +337,9 @@ func (unit SystemdUnit) validate() error {
 	if err := validateSystemdUnitPaths(unit); err != nil {
 		return err
 	}
+	if err := validateManagedExecutableReference(unit); err != nil {
+		return err
+	}
 	if err := validateUnitDependencies(unit); err != nil {
 		return err
 	}
@@ -527,7 +532,6 @@ func validateTrustedServicePaths(unit SystemdUnit) error {
 	}{
 		"environment file": {value: unit.EnvironmentFile},
 		"config directory": {value: unit.ConfigDir},
-		"executable":       {value: strings.SplitN(unit.ExecStart, " ", 2)[0]},
 		"state directory":  {value: unit.StateDir, finalOwner: unit.User},
 	}
 	for name, path := range paths {
@@ -535,16 +539,85 @@ func validateTrustedServicePaths(unit SystemdUnit) error {
 			return err
 		}
 	}
+	if unit.ManagedExecutableDestination != "" {
+		return validateManagedExecutableAccess(unit)
+	}
+	executable := strings.SplitN(unit.ExecStart, " ", 2)[0]
+	if err := validateTrustedServicePath("executable", executable, ""); err != nil {
+		return err
+	}
 	return validateTrustedExecutableAccess(unit)
+}
+
+func validateManagedExecutableAccess(unit SystemdUnit) error {
+	return validateManagedExecutableAccessAt(unit, layout.Root())
+}
+
+func validateManagedExecutableAccessAt(unit SystemdUnit, root string) error {
+	destination := unit.ManagedExecutableDestination
+	if err := validateManagedExecutableReferenceAt(unit, root); err != nil {
+		return err
+	}
+	executable := strings.SplitN(unit.ExecStart, " ", 2)[0]
+	current := filepath.Join(root, "current")
+	if err := validateTrustedServicePath("managed release root", root, ""); err != nil {
+		return err
+	}
+	info, err := os.Lstat(current)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return errors.New("managed current release pointer is invalid")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 {
+		return errors.New("managed current release pointer must be root-owned")
+	}
+	target, err := os.Readlink(current)
+	if err != nil || !layout.ValidCurrentTarget(target) {
+		return errors.New("managed current release pointer is outside the immutable release root")
+	}
+	resolved, err := filepath.EvalSymlinks(executable)
+	if err != nil || layout.ReleaseDestination(resolved, root) != destination {
+		return errors.New("managed executable does not resolve inside the active immutable release")
+	}
+	if err := validateTrustedServicePath("executable", resolved, ""); err != nil {
+		return err
+	}
+	return validateTrustedExecutableAccessPath(resolved, unit.User, unit.Group)
+}
+
+func validateManagedExecutableReference(unit SystemdUnit) error {
+	return validateManagedExecutableReferenceAt(unit, layout.Root())
+}
+
+func validateManagedExecutableReferenceAt(unit SystemdUnit, root string) error {
+	destination := unit.ManagedExecutableDestination
+	if destination == "" {
+		return nil
+	}
+	if !layout.SafeDestination(destination) {
+		return errors.New("managed executable destination is invalid")
+	}
+	executable := strings.SplitN(unit.ExecStart, " ", 2)[0]
+	if executable != filepath.Join(root, "current", destination) {
+		return errors.New("managed executable does not use its exact current release path")
+	}
+	return nil
 }
 
 func validateTrustedExecutableAccess(unit SystemdUnit) error {
 	path := strings.SplitN(unit.ExecStart, " ", 2)[0]
-	uid, groupIDs, err := systemIdentityAccessIDs(unit.User, unit.Group)
+	return validateTrustedExecutableAccessPath(path, unit.User, unit.Group)
+}
+
+func validateTrustedExecutableAccessPath(path, userName, groupName string) error {
+	uid, groupIDs, err := systemIdentityAccessIDs(userName, groupName)
 	if err != nil {
 		return err
 	}
-	return validateExecutableAccessForIdentity(path, unit.User, uid, groupIDs)
+	return validateExecutableAccessForIdentity(path, userName, uid, groupIDs)
 }
 
 func validateExecutableAccessForIdentity(path string, userName string, uid uint64, groupIDs map[uint64]struct{}) error {

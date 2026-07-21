@@ -157,11 +157,25 @@ func finalizeSudoSystemdOptions(opts *sudoSystemdOptions) error {
 	}
 	opts.SystemdOptions = finalized
 	if opts.HelperBinary == "" {
-		opts.HelperBinary = defaultHelperBinary(opts.BinaryPath)
+		opts.HelperBinary = defaultSudoHelperBinary(opts.BinaryPath)
 	}
-	resolvedHelper, err := filepath.EvalSymlinks(opts.HelperBinary)
+	return finalizeSudoHelperBinary(opts)
+}
+
+func defaultSudoHelperBinary(frontend string) string {
+	if frontend == bksetup.ManagedExecutablePath(filepath.Join("bin", "sudo-broker")) {
+		return bksetup.ManagedExecutablePath(filepath.Join("libexec", "sudo-broker-exec"))
+	}
+	return defaultHelperBinary(frontend)
+}
+
+func finalizeSudoHelperBinary(opts *sudoSystemdOptions) error {
+	resolvedHelper, managed, err := bksetup.ResolveServiceExecutable(opts.HelperBinary, filepath.Join("libexec", "sudo-broker-exec"), opts.AllowNonRoot)
 	if err != nil {
 		return fmt.Errorf("resolve helper binary: %w", err)
+	}
+	if os.Geteuid() == 0 && !opts.AllowNonRoot && !opts.DryRun && !managed {
+		return errors.New("production helper must use the BrokerKit managed current release path")
 	}
 	opts.HelperBinary = resolvedHelper
 	return nil
@@ -347,14 +361,16 @@ func helperSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathVali
 		EnvironmentFile: paths.helperEnv, ExecStart: strings.Join([]string{opts.HelperBinary, "--catalog", paths.catalog, "--state", filepath.Join(opts.HelperStateDir, "executions.json"), "--socket", opts.HelperSocket, "--broker-user", opts.User}, " "),
 		StateDir: opts.HelperStateDir, ConfigDir: opts.ConfigDir, PrivilegeEscalation: bkservice.PrivilegeEscalationAllow,
 		PathValidation: pathValidation, RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750,
-		ExtraDirectives: hardeningDirectives(false)}
+		ManagedExecutableDestination: bksetup.ManagedDestination(opts.HelperBinary, filepath.Join("libexec", "sudo-broker-exec")),
+		ExtraDirectives:              hardeningDirectives(false)}
 }
 
 func frontendSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation bkservice.PathValidation) bkservice.SystemdUnit {
 	return bkservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
 		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
 		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
-		ExtraDirectives: hardeningDirectives(true)}
+		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, opts.ManagedDestination),
+		ExtraDirectives:              hardeningDirectives(true)}
 }
 
 func sharedStateDirectory(frontend string, helper string) string {
