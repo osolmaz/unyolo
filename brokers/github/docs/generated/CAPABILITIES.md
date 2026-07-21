@@ -965,7 +965,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `pull_request.list_requested_reviewers` | low | implemented | installation | pull_request | typed CLI/MCP |
 | `pull_request.mark_pull_request_ready_for_review` | medium | operator-only | user | pull_request | no |
 | `pull_request.merge` | high | implemented | installation | pull_request | typed CLI/MCP |
-| `pull_request.merge_pull_request` | medium | operator-only | user | pull_request | no |
+| `pull_request.merge_admin` | high | implemented | user | pull_request | typed CLI/MCP |
 | `pull_request.reactions_delete_for_pull_request_comment` | critical | implemented | installation | comment | typed CLI/MCP |
 | `pull_request.remove_pull_request_creation_cap_bypass_users` | critical | operator-only | user | pull_request | no |
 | `pull_request.remove_requested_reviewers` | critical | implemented | installation | pull_request | typed CLI/MCP |

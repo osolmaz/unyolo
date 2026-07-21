@@ -135,6 +135,14 @@ func NewGeneratedAdapters(manager *githubauth.Manager, options Options) ([]Adapt
 	descriptors := opcatalog.MustAll()
 	adapters := make([]Adapter, 0, len(descriptors))
 	for _, descriptor := range descriptors {
+		if descriptor.Name == adminMergeOperation {
+			adapter, err := newAdminMergeAdapter(descriptor, manager, options)
+			if err != nil {
+				return nil, err
+			}
+			adapters = append(adapters, adapter)
+			continue
+		}
 		adapter, ok, err := newGeneratedAdapter(descriptor, manager, options)
 		if err != nil {
 			return nil, err
@@ -795,24 +803,6 @@ func shouldHaveAdapter(descriptor opcatalog.Descriptor) bool {
 	default:
 		return false
 	}
-}
-
-func credentialPreconditions(metadata githubauth.Metadata) json.RawMessage {
-	encoded, _ := json.Marshal(metadata)
-	return encoded
-}
-
-// CredentialFromPreconditions restores the opaque credential selector bound
-// into an immutable plan. It never contains a token or private key.
-func CredentialFromPreconditions(raw json.RawMessage) (githubauth.Metadata, error) {
-	var metadata githubauth.Metadata
-	if err := strictjson.Decode(raw, &metadata, true); err != nil {
-		return githubauth.Metadata{}, errors.New("GitHub credential preconditions are invalid")
-	}
-	if strings.TrimSpace(string(metadata.Kind)) == "" {
-		return githubauth.Metadata{}, errors.New("GitHub credential preconditions are incomplete")
-	}
-	return metadata, nil
 }
 
 func decodeObject(raw json.RawMessage) (map[string]any, error) {

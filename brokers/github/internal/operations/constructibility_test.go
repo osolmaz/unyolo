@@ -30,7 +30,11 @@ func TestEveryAdvertisedOperationAcceptsConstructibleInput(t *testing.T) {
 			continue
 		}
 		targetSchema, publicSchema, _ := schemaregistry.InputSchemas(descriptor.Descriptor)
-		target := mustJSON(t, schemaExample(targetSchema))
+		targetValue := schemaExample(targetSchema)
+		if descriptor.Name == adminMergeOperation {
+			targetValue = map[string]any{"kind": "pull_request", "owner": "octocat", "repo": "hello-world", "number": 1}
+		}
+		target := mustJSON(t, targetValue)
 		public := mustJSON(t, schemaExample(publicSchema))
 		arguments := public
 		switch {

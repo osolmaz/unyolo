@@ -25,31 +25,55 @@ type ExecutionResult struct {
 	Body       json.RawMessage
 }
 
+// UserIdentity is the immutable public identity represented by a selected
+// GitHub user credential.
+type UserIdentity struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+}
+
+// AuthenticatedUser resolves the account represented by a selected credential
+// without exposing the credential itself.
+func (m *Manager) AuthenticatedUser(ctx context.Context, selector Metadata) (UserIdentity, error) {
+	if m == nil {
+		return UserIdentity{}, errors.New("GitHub credential provider is unavailable")
+	}
+	requestURL := m.relativeAPIURL(m.apiURL, "user", "user", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, http.NoBody)
+	if err != nil {
+		return UserIdentity{}, errors.New("create GitHub authenticated-user request")
+	}
+	response, err := m.doAPI(ctx, selector, request)
+	if err != nil {
+		return UserIdentity{}, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := limitedBody(response.Body, 64<<10)
+	if err != nil {
+		return UserIdentity{}, err
+	}
+	return decodeUserIdentity(body)
+}
+
+func decodeUserIdentity(body []byte) (UserIdentity, error) {
+	var identity UserIdentity
+	if strictjson.Decode(body, &identity, false) != nil || identity.ID <= 0 || strings.TrimSpace(identity.Login) == "" {
+		return UserIdentity{}, errors.New("GitHub authenticated-user response is invalid")
+	}
+	return identity, nil
+}
+
 // ValidateAuthenticatedUserTarget binds implicit /user endpoints to the
 // identity represented by the selected credential.
 func (m *Manager) ValidateAuthenticatedUserTarget(ctx context.Context, selector Metadata, target map[string]any) error {
 	if targetregistry.String(target, "kind") != "user" {
 		return errors.New("GitHub authenticated-user target is invalid")
 	}
-	requestURL := m.relativeAPIURL(m.apiURL, "user", "user", nil)
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, http.NoBody)
-	if err != nil {
-		return errors.New("create GitHub authenticated-user request")
-	}
-	response, err := m.doAPI(ctx, selector, request)
+	identity, err := m.AuthenticatedUser(ctx, selector)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = response.Body.Close() }()
-	body, err := limitedBody(response.Body, 64<<10)
-	if err != nil {
-		return err
-	}
-	var identity struct {
-		ID    int64  `json:"id"`
-		Login string `json:"login"`
-	}
-	if strictjson.Decode(body, &identity, false) != nil || !authenticatedUserMatches(target, identity.ID, identity.Login) {
+	if !authenticatedUserMatches(target, identity.ID, identity.Login) {
 		return errors.New("GitHub authenticated-user target does not match the selected credential")
 	}
 	return nil
@@ -641,13 +665,17 @@ func decodeGraphQLResponse(response *http.Response, document graphqlmanifest.Doc
 	}
 	var payload struct {
 		Data   map[string]any `json:"data"`
-		Errors []map[string]any
+		Errors []struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"errors"`
 	}
 	if err := strictjson.Decode(body, &payload, false); err != nil {
 		return ExecutionResult{}, errors.New("GitHub GraphQL response is invalid")
 	}
 	if len(payload.Errors) > 0 {
-		return ExecutionResult{}, APIError{Code: "graphql_error", StatusCode: response.StatusCode}
+		return ExecutionResult{}, APIError{Code: safeGitHubCode(payload.Errors[0].Type, "graphql_error"), StatusCode: response.StatusCode,
+			Message: safeGitHubMessage(payload.Errors[0].Message), RequestID: githubRequestID(response.Header)}
 	}
 	projected, ok := projectJSON(payload.Data, document.ResponseProjection)
 	if !ok {
@@ -658,29 +686,6 @@ func decodeGraphQLResponse(response *http.Response, document graphqlmanifest.Doc
 		return ExecutionResult{}, errors.New("encode projected GitHub GraphQL response")
 	}
 	return ExecutionResult{StatusCode: response.StatusCode, Body: encoded}, nil
-}
-
-func classifyHTTPError(response *http.Response) error {
-	status := responseStatus(response)
-	if status == http.StatusForbidden && strings.TrimSpace(response.Header.Get("Retry-After")) != "" {
-		return APIError{Code: "secondary_rate_limited", StatusCode: status}
-	}
-	if status == http.StatusTooManyRequests || response.Header.Get("X-RateLimit-Remaining") == "0" {
-		return APIError{Code: "rate_limited", StatusCode: status, RateReset: rateReset(response.Header)}
-	}
-	if status >= http.StatusMultipleChoices && status < http.StatusBadRequest {
-		return APIError{Code: "redirect_not_allowed", StatusCode: status}
-	}
-	return APIError{Code: statusCodeName(status), StatusCode: status}
-}
-
-func rateReset(header http.Header) time.Time {
-	value := strings.TrimSpace(header.Get("X-RateLimit-Reset"))
-	seconds, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || seconds <= 0 {
-		return time.Time{}
-	}
-	return time.Unix(seconds, 0).UTC()
 }
 
 func limitedBody(body io.Reader, limit int64) ([]byte, error) {

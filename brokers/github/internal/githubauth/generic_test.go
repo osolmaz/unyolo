@@ -400,6 +400,39 @@ func TestResponseAndRedirectFailureModes(t *testing.T) {
 	}
 }
 
+func TestGitHubErrorsPreserveOnlyBoundedSafeDiagnostics(t *testing.T) {
+	graphResponse := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"X-Github-Request-Id": []string{"ABCD:1234"}},
+		Body: io.NopCloser(strings.NewReader(`{"errors":[{"type":"UNPROCESSABLE","message":"Pull Request is not mergeable"}]}`))}
+	_, err := decodeGraphQLResponse(graphResponse, graphqlmanifest.Document{})
+	var graphError APIError
+	if !errors.As(err, &graphError) || graphError.Code != "unprocessable" || graphError.Message != "Pull Request is not mergeable" || graphError.RequestID != "ABCD:1234" {
+		t.Fatalf("GraphQL error = %+v, %v", graphError, err)
+	}
+
+	restResponse := &http.Response{StatusCode: http.StatusUnprocessableEntity, Header: http.Header{"X-Github-Request-Id": []string{"REST-123"}},
+		Body: io.NopCloser(strings.NewReader(`{"message":"Validation Failed"}`))}
+	var restError APIError
+	if err := classifyHTTPError(restResponse); !errors.As(err, &restError) || restError.Message != "Validation Failed" || restError.RequestID != "REST-123" {
+		t.Fatalf("REST error = %+v, %v", restError, err)
+	}
+
+	for _, unsafe := range []string{"Authorization: Bearer credential", "access_token=credential", "ghp_abcdefghijklmnopqrstuvwxyz123456", "api_key=credential", "unreviewed provider detail", strings.Repeat("x", 351)} {
+		if safeGitHubMessage(unsafe) != "" {
+			t.Fatalf("unsafe GitHub message was retained: %q", unsafe)
+		}
+	}
+	for _, unsafe := range []string{"NOT SAFE!", "ghp_abcdefghijklmnopqrstuvwxyz123456", "unreviewed_provider_code"} {
+		if safeGitHubCode(unsafe, "fallback") != "fallback" {
+			t.Fatalf("unsafe GitHub diagnostic code was retained: %q", unsafe)
+		}
+	}
+	for _, unsafe := range []string{"bad request id", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456", "github_pat_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"} {
+		if githubRequestID(http.Header{"X-Github-Request-Id": []string{unsafe}}) != "" {
+			t.Fatalf("unsafe GitHub request ID was retained: %q", unsafe)
+		}
+	}
+}
+
 func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	binding := opbinding.Binding{PathTemplate: "/repos/{owner}/{repo}/issues/{issue_number}",
 		PathParameters:       []string{"owner", "repo", "issue_number"},

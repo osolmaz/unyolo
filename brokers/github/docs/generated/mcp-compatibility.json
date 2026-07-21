@@ -2,9 +2,9 @@
   "api_version": "brokerkit.io/mcp-compatibility-manifest/v1",
   "provider": "github",
   "host_profiles": ["openclaw@2026.7.1"],
-  "agent_facing_operations": 1129,
+  "agent_facing_operations": 1130,
   "audited_operations": 1436,
-  "operation_tools": 1129,
+  "operation_tools": 1130,
   "utility_tools": 3,
   "projected_operations": [
     "action_run.actions_download_job_logs_for_workflow_run",

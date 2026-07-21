@@ -86,6 +86,60 @@ func TestGeneratedAgentV1Conformance(t *testing.T) {
 	})
 }
 
+func TestAdminMergeRequiresApprovalAndExecutesExactRevision(t *testing.T) {
+	const headSHA = "1111111111111111111111111111111111111111"
+	const baseSHA = "2222222222222222222222222222222222222222"
+	upstreamCalls := 0
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{{
+		ID: "admin-merge", Effect: policy.EffectRequest, Clients: []string{"bob"},
+		Operations: []policy.Operation{policy.Operation("pull_request.merge_admin")},
+		Targets:    []policy.Target{{Kind: "pull_request", Owner: "osolmaz", Repo: "solmazio", Number: 98}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestServerWithPolicyAndHandler(t, brokerPolicy, func(w http.ResponseWriter, request *http.Request) {
+		upstreamCalls++
+		switch request.URL.Path {
+		case "/user":
+			_, _ = w.Write([]byte(`{"id":2453968,"login":"osolmaz"}`))
+		case "/repos/osolmaz/solmazio/pulls/98":
+			_, _ = w.Write([]byte(`{"id":4081694590,"number":98,"node_id":"PR_node","state":"open","draft":false,"merged":false,"mergeable":true,"mergeable_state":"blocked","head":{"sha":"` + headSHA + `"},"base":{"sha":"` + baseSHA + `","ref":"main"}}`))
+		case "/graphql":
+			_, _ = w.Write([]byte(`{"data":{"mergePullRequest":{"__typename":"MergePullRequestPayload"}}}`))
+		default:
+			t.Fatalf("unexpected upstream request %s", request.URL.Path)
+		}
+	})
+	server.notifier = &captureNotifier{}
+	runtime, err := server.newOperationRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime = runtime
+	submission := agentv1.SubmitRequest{IdempotencyKey: "admin-merge-98", Operation: "pull_request.merge_admin",
+		Target:    json.RawMessage(`{"kind":"pull_request","owner":"osolmaz","repo":"solmazio","number":98}`),
+		Arguments: json.RawMessage(`{"merge_method":"squash"}`), Reason: "merge the exact reviewed revision"}
+	operation, _, err := server.submitAgentOperation(t.Context(), "bob", submission)
+	if err != nil || operation.State != agentv1.StatePending || operation.ApprovalID == "" || upstreamCalls != 2 {
+		t.Fatalf("pending admin merge = %+v calls=%d err=%v", operation, upstreamCalls, err)
+	}
+	grant, err := server.grants.Get(operation.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-admin-merge-98",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime.Advance(t.Context(), operation)
+	completed, err := server.operations.GetByID(operation.ID)
+	if err != nil || completed.State != agentv1.StateSucceeded || !strings.Contains(string(completed.Result), `"head_sha":"`+headSHA+`"`) || upstreamCalls != 5 {
+		t.Fatalf("completed admin merge = %+v calls=%d err=%v", completed, upstreamCalls, err)
+	}
+}
+
 func TestGeneratedAgentDirectAllowAndDenial(t *testing.T) {
 	allow := generatedPolicy(t, policy.EffectAllow)
 	server := newTestServerWithPolicyAndHandler(t, allow, func(w http.ResponseWriter, request *http.Request) {
@@ -227,7 +281,7 @@ func TestGeneratedRuntimeErrorMapping(t *testing.T) {
 		wantCode    string
 		wantMessage string
 	}{
-		"upstream rejection": {execution: githubauth.APIError{Code: "validation_failed", StatusCode: http.StatusUnprocessableEntity}, wantCode: "validation_failed", wantMessage: "GitHub rejected"},
+		"upstream rejection": {execution: githubauth.APIError{Code: "validation_failed", StatusCode: http.StatusUnprocessableEntity, Message: "Pull Request is not mergeable", RequestID: "ABCD:1234"}, wantCode: "validation_failed", wantMessage: "Pull Request is not mergeable (GitHub request ID ABCD:1234)"},
 		"reconciliation":     {reconcile: errors.New("offline"), wantCode: "operation_reconciliation_failed", wantMessage: "reconciliation failed"},
 		"unknown":            {execution: errors.New("offline"), wantCode: "upstream_result_unknown", wantMessage: "unknown"},
 	} {

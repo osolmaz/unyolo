@@ -107,7 +107,7 @@ func validateDocument(document Document, rootFields map[string]bool) error {
 	if !rootFields[document.RootType+"."+document.RootField] {
 		return fmt.Errorf("GraphQL document %q is absent from the pinned schema", document.CatalogOperation)
 	}
-	if descriptor, found := opcatalog.ByName(document.CatalogOperation); !found || descriptor.ExecutorKind != "persisted-graphql" {
+	if !catalogsDocument(document) {
 		return fmt.Errorf("GraphQL document %q is not cataloged", document.CatalogOperation)
 	}
 	if !safeDocumentBody(document) {
@@ -117,6 +117,12 @@ func validateDocument(document Document, rootFields map[string]bool) error {
 		return fmt.Errorf("GraphQL variables for %q are open", document.CatalogOperation)
 	}
 	return nil
+}
+
+func catalogsDocument(document Document) bool {
+	descriptor, found := opcatalog.ByName(document.CatalogOperation)
+	return found && (descriptor.ExecutorKind == "persisted-graphql" || descriptor.ExecutorKind == "admin-merge") &&
+		slices.Contains(descriptor.UpstreamBindingIDs, "graphql:"+document.SHA256)
 }
 
 func validDocumentMetadata(document Document) bool {

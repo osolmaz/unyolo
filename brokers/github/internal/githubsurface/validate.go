@@ -149,7 +149,7 @@ func validateSensitiveInputs(descriptor opcatalog.Descriptor, arguments map[stri
 }
 
 func validateExecutorBinding(descriptor opcatalog.Descriptor, bound map[string]bool) error {
-	if descriptor.ExecutorKind == "persisted-graphql" {
+	if descriptor.ExecutorKind == "persisted-graphql" || descriptor.ExecutorKind == "admin-merge" {
 		if _, found := graphqlmanifest.ByOperation(descriptor.Name); !found {
 			return fmt.Errorf("catalog operation %q has no persisted document", descriptor.Name)
 		}

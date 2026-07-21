@@ -273,7 +273,7 @@ func TestManagedPresetArtifactsPreserveInstalledDenies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !first.managedPreset || first.counts == nil || first.counts.Deny != 312 || first.counts.Request != 513 {
+	if !first.managedPreset || first.counts == nil || first.counts.Deny != 311 || first.counts.Request != 514 {
 		t.Fatalf("first policy = %+v", first)
 	}
 	for path, data := range map[string][]byte{

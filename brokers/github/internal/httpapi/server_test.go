@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1976,6 +1977,18 @@ func TestAgentDiscoveryAdvertisesGitHubAppOperations(t *testing.T) {
 		if !found || !descriptor.AgentFacing || descriptor.CredentialKind == string(githubauth.KindUser) {
 			t.Fatalf("invalid advertised operation %q", operation)
 		}
+	}
+}
+
+func TestAgentDiscoveryAdvertisesAdminMergeForDevelopmentUserToken(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithHandler(t, func(http.ResponseWriter, *http.Request) {
+		t.Fatal("credential discovery made an upstream request")
+	})
+	descriptor := server.discoverAgent("agent")
+	if descriptor.Credential.CredentialKind != string(githubauth.KindDevelopmentToken) ||
+		!slices.Contains(descriptor.Operations, "pull_request.merge_admin") {
+		t.Fatalf("development descriptor = %+v", descriptor)
 	}
 }
 
