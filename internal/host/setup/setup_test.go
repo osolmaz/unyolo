@@ -256,7 +256,7 @@ func TestManagedDestinationMatchesOnlyExactCurrentPath(t *testing.T) {
 }
 
 func TestValidateTrustedAncestorWalksToExistingRoot(t *testing.T) {
-	missing := filepath.Join("/opt", "brokerkit-test-missing", "nested")
+	missing := filepath.Join(string(filepath.Separator), filepath.Base(t.TempDir()), "nested")
 	if err := validateTrustedAncestor(missing); err != nil {
 		t.Fatalf("validateTrustedAncestor() error = %v", err)
 	}
