@@ -1,6 +1,13 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { BrokerClient } from "./client.js";
+import { OPERATOR_V1_SCHEMA_SHA256 } from "./operator-v1.js";
+
+const discovery = JSON.stringify({
+  api_version: "brokerkit.io/operator/v1",
+  contract_digest: OPERATOR_V1_SCHEMA_SHA256,
+  build_id: "test",
+});
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 afterEach(() => {
@@ -22,7 +29,7 @@ describe("BrokerClient", () => {
       }
       res.setHeader("content-type", "application/json");
       if (req.url === "/.well-known/brokerkit-operator")
-        return res.end('{"api_version":"brokerkit.io/operator/v1"}');
+        return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end('{"requests":[],"event_cursor":"cursor-1"}');
       if (req.url === "/api/operator/v1/events") {
@@ -66,7 +73,7 @@ describe("BrokerClient", () => {
           }),
         );
       }
-      return res.end('{"api_version":"brokerkit.io/operator/v1"}');
+      return res.end(discovery);
     });
     servers.push(server);
     await new Promise<void>((resolve) =>

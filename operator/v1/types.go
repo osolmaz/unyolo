@@ -22,7 +22,9 @@ const (
 )
 
 type Descriptor struct {
-	APIVersion string `json:"api_version"`
+	APIVersion     string `json:"api_version"`
+	ContractDigest string `json:"contract_digest"`
+	BuildID        string `json:"build_id"`
 }
 
 type Fact struct {

@@ -47,9 +47,11 @@
     "schemas": {
       "Descriptor": {
         "type": "object", "additionalProperties": false,
-        "required": ["api_version", "operations", "credential"],
+        "required": ["api_version", "contract_digest", "build_id", "operations", "credential"],
         "properties": {
           "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"},
+          "contract_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "build_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "operations": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
           "credential": {"$ref": "#/components/schemas/CredentialDescriptor"}
         }

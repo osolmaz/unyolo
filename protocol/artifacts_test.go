@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
@@ -124,6 +126,29 @@ func TestMCPV1ArtifactsAreClosedAndValid(t *testing.T) {
 		t.Fatal("MCP OpenAPI must remain machine-readable JSON/YAML")
 	}
 	assertCanonicalOpenAPI(t, document)
+}
+
+func TestContractIdentitiesAndRuntimeBundleSchema(t *testing.T) {
+	for name, digest := range map[string]string{"agent": contract.AgentV1Digest, "operator": contract.OperatorV1Digest} {
+		if len(digest) != len("sha256:")+64 || !strings.HasPrefix(digest, "sha256:") {
+			t.Fatalf("%s contract digest = %q", name, digest)
+		}
+	}
+	data, err := os.ReadFile("runtime-bundle.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if schema["type"] != "object" || schema["additionalProperties"] != false {
+		t.Fatal("runtime bundle schema is not closed")
+	}
+	properties := schema["properties"].(map[string]any)
+	if properties["operator_contract_digest"] == nil || properties["agent_contract_digest"] == nil || properties["components"] == nil {
+		t.Fatal("runtime bundle schema omits compatibility identity")
+	}
 }
 
 func assertCanonicalOpenAPI(t *testing.T, document map[string]any) {

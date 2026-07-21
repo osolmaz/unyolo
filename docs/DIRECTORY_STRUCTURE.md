@@ -52,6 +52,12 @@ Use these rules in order:
 6. Standalone installation assets belong under `install/`; service rendering
    and setup implementation belong under `internal/host/`.
 
+Host-wide immutable activation lives in `internal/host/bundle`. Native
+service-manager mechanics stay in platform-suffixed files in that package. The
+operator-facing entrypoint is `cmd/brokerkit`; individual broker setup commands
+must not duplicate bundle staging, protocol identity, rollback, or host doctor
+logic.
+
 Do not create `pkg/`, `src/`, `common/`, `shared/`, or `utils/`. A new top-level
 directory requires a durable product domain, not merely code that does not fit
 the first package considered.

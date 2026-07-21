@@ -6,6 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseConfig } from "./config.js";
 import { BrokerRuntime } from "./runtime.js";
 import type { Subscription } from "./store.js";
+import { OPERATOR_V1_SCHEMA_SHA256 } from "./operator-v1.js";
+
+const discovery = JSON.stringify({
+  api_version: "brokerkit.io/operator/v1",
+  contract_digest: OPERATOR_V1_SCHEMA_SHA256,
+  build_id: "test",
+});
 
 const servers: Array<ReturnType<typeof createServer>> = [];
 afterEach(() => {
@@ -46,7 +53,7 @@ describe("BrokerRuntime", () => {
         return res.end();
       }
       if (req.url === "/.well-known/brokerkit-operator")
-        return res.end('{"api_version":"brokerkit.io/operator/v1"}');
+        return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end(
           JSON.stringify({
@@ -160,6 +167,8 @@ describe("BrokerRuntime", () => {
               req.headers.authorization === "Bearer good"
                 ? "brokerkit.io/operator/v1"
                 : "brokerkit.io/operator/v2",
+            contract_digest: OPERATOR_V1_SCHEMA_SHA256,
+            build_id: "test",
           }),
         );
       }
@@ -208,7 +217,7 @@ describe("BrokerRuntime", () => {
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
       if (req.url === "/.well-known/brokerkit-operator")
-        return res.end('{"api_version":"brokerkit.io/operator/v1"}');
+        return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?")) {
         listCalls += 1;
         return res.end('{"requests":[],"event_cursor":"cursor-1"}');

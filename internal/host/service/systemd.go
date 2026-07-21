@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -23,24 +22,25 @@ type CommandRunner interface {
 
 // SystemdUnit describes one broker-family systemd service.
 type SystemdUnit struct {
-	Description          string
-	User                 string
-	Group                string
-	SupplementaryGroups  []string
-	EnvironmentFile      string
-	ExecStart            string
-	StateDir             string
-	ConfigDir            string
-	RestartSec           int
-	HomeAccess           HomeAccess
-	HostFilesystemAccess HostFilesystemAccess
-	PrivilegeEscalation  PrivilegeEscalation
-	PathValidation       PathValidation
-	ExtraDirectives      []string
-	AfterUnits           []string
-	RequiresUnits        []string
-	RuntimeDirectory     string
-	RuntimeDirectoryMode os.FileMode
+	Description                  string
+	User                         string
+	Group                        string
+	SupplementaryGroups          []string
+	EnvironmentFile              string
+	ExecStart                    string
+	StateDir                     string
+	ConfigDir                    string
+	RestartSec                   int
+	HomeAccess                   HomeAccess
+	HostFilesystemAccess         HostFilesystemAccess
+	PrivilegeEscalation          PrivilegeEscalation
+	PathValidation               PathValidation
+	ExtraDirectives              []string
+	AfterUnits                   []string
+	RequiresUnits                []string
+	RuntimeDirectory             string
+	RuntimeDirectoryMode         os.FileMode
+	ManagedExecutableDestination string
 }
 
 // SystemdSocketUnit describes one deployment-owned listening socket. The
@@ -335,6 +335,9 @@ func (unit SystemdUnit) validate() error {
 	if err := validateSystemdUnitPaths(unit); err != nil {
 		return err
 	}
+	if err := validateManagedExecutableReference(unit); err != nil {
+		return err
+	}
 	if err := validateUnitDependencies(unit); err != nil {
 		return err
 	}
@@ -527,7 +530,6 @@ func validateTrustedServicePaths(unit SystemdUnit) error {
 	}{
 		"environment file": {value: unit.EnvironmentFile},
 		"config directory": {value: unit.ConfigDir},
-		"executable":       {value: strings.SplitN(unit.ExecStart, " ", 2)[0]},
 		"state directory":  {value: unit.StateDir, finalOwner: unit.User},
 	}
 	for name, path := range paths {
@@ -535,119 +537,14 @@ func validateTrustedServicePaths(unit SystemdUnit) error {
 			return err
 		}
 	}
+	if unit.ManagedExecutableDestination != "" {
+		return validateManagedExecutableAccess(unit)
+	}
+	executable := strings.SplitN(unit.ExecStart, " ", 2)[0]
+	if err := validateTrustedServicePath("executable", executable, ""); err != nil {
+		return err
+	}
 	return validateTrustedExecutableAccess(unit)
-}
-
-func validateTrustedExecutableAccess(unit SystemdUnit) error {
-	path := strings.SplitN(unit.ExecStart, " ", 2)[0]
-	uid, groupIDs, err := systemIdentityAccessIDs(unit.User, unit.Group)
-	if err != nil {
-		return err
-	}
-	return validateExecutableAccessForIdentity(path, unit.User, uid, groupIDs)
-}
-
-func validateExecutableAccessForIdentity(path string, userName string, uid uint64, groupIDs map[uint64]struct{}) error {
-	mode, ownerUID, ownerGID, err := trustedExecutableMetadata(path)
-	if err != nil {
-		return err
-	}
-	if err := validateExecutableAncestorAccess(path, uid, groupIDs); err != nil {
-		return err
-	}
-	if !identityCanExecuteWithGroups(mode, ownerUID, ownerGID, uid, groupIDs) {
-		return fmt.Errorf("executable is not executable by service user %s", userName)
-	}
-	return nil
-}
-
-func validateExecutableAncestorAccess(path string, uid uint64, groupIDs map[uint64]struct{}) error {
-	components := strings.Split(strings.TrimPrefix(filepath.Dir(path), string(filepath.Separator)), string(filepath.Separator))
-	current := string(filepath.Separator)
-	for _, component := range components {
-		if component != "" {
-			current = filepath.Join(current, component)
-		}
-		info, err := os.Lstat(current)
-		if err != nil {
-			return fmt.Errorf("inspect executable ancestor: %w", err)
-		}
-		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok {
-			return fmt.Errorf("executable ancestor ownership is unavailable: %s", current)
-		}
-		if !identityCanSearch(info.Mode().Perm(), uint64(stat.Uid), uint64(stat.Gid), uid, groupIDs) {
-			return fmt.Errorf("executable ancestor is not searchable by service user: %s", current)
-		}
-	}
-	return nil
-}
-
-func trustedExecutableMetadata(path string) (os.FileMode, uint64, uint64, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf("inspect executable: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return 0, 0, 0, errors.New("executable must be a regular file")
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, 0, 0, errors.New("executable ownership is unavailable")
-	}
-	return info.Mode().Perm(), uint64(stat.Uid), uint64(stat.Gid), nil
-}
-
-func systemIdentityIDs(userName string, groupName string) (uint64, uint64, error) {
-	account, err := lookupSystemUser(userName)
-	if err != nil {
-		return 0, 0, fmt.Errorf("lookup service user %q: %w", userName, err)
-	}
-	group, err := lookupSystemGroup(groupName)
-	if err != nil {
-		return 0, 0, fmt.Errorf("lookup service group %q: %w", groupName, err)
-	}
-	uid, err := parseSystemID("uid", userName, account.Uid)
-	if err != nil {
-		return 0, 0, err
-	}
-	gid, err := parseSystemID("gid", groupName, group.Gid)
-	if err != nil {
-		return 0, 0, err
-	}
-	return uid, gid, nil
-}
-
-func systemIdentityAccessIDs(userName string, groupName string) (uint64, map[uint64]struct{}, error) {
-	uid, primaryGID, err := systemIdentityIDs(userName, groupName)
-	if err != nil {
-		return 0, nil, err
-	}
-	account, err := lookupSystemUser(userName)
-	if err != nil {
-		return 0, nil, fmt.Errorf("lookup service user %q groups: %w", userName, err)
-	}
-	values, err := lookupSystemGroupIDs(account)
-	if err != nil {
-		return 0, nil, fmt.Errorf("lookup supplementary groups for %q: %w", userName, err)
-	}
-	groupIDs := map[uint64]struct{}{primaryGID: {}}
-	for _, value := range values {
-		gid, err := parseSystemID("supplementary gid", userName, value)
-		if err != nil {
-			return 0, nil, err
-		}
-		groupIDs[gid] = struct{}{}
-	}
-	return uid, groupIDs, nil
-}
-
-func parseSystemID(kind string, name string, value string) (uint64, error) {
-	id, err := strconv.ParseUint(value, 10, 32)
-	if err != nil {
-		return 0, fmt.Errorf("parse %s for %q: %w", kind, name, err)
-	}
-	return id, nil
 }
 
 func identityCanExecute(mode os.FileMode, ownerUID uint64, ownerGID uint64, uid uint64, gid uint64) bool {
@@ -747,9 +644,9 @@ func systemUserUID(name string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("lookup user %q: %w", name, err)
 	}
-	uid, err := strconv.ParseUint(account.Uid, 10, 32)
+	uid, err := parseSystemID("uid", name, account.Uid)
 	if err != nil {
-		return 0, fmt.Errorf("parse uid for %q: %w", name, err)
+		return 0, err
 	}
 	return uid, nil
 }

@@ -129,9 +129,11 @@ type CredentialDescriptor struct {
 
 // Descriptor defines model for Descriptor.
 type Descriptor struct {
-	ApiVersion DescriptorApiVersion `json:"api_version"`
-	Credential CredentialDescriptor `json:"credential"`
-	Operations []string             `json:"operations"`
+	ApiVersion     DescriptorApiVersion `json:"api_version"`
+	BuildId        string               `json:"build_id"`
+	ContractDigest string               `json:"contract_digest"`
+	Credential     CredentialDescriptor `json:"credential"`
+	Operations     []string             `json:"operations"`
 }
 
 // DescriptorApiVersion defines model for Descriptor.ApiVersion.

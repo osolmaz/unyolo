@@ -40,6 +40,57 @@ platform archives, the checksum manifest, and the SBOM. The remaining
 `BROKERKIT_*` URL and platform variables are test seams. Normal installs do not
 need them.
 
+### Atomic host bundles
+
+Persistent BrokerKit services are deployed as one signed runtime bundle. The
+`brokerkit` host command stages each separately released broker and ingress
+binary under an immutable release directory, verifies its digest and exact
+Agent and Operator contract identities, then activates the complete set:
+
+```text
+brokerkit system plan --manifest manifest.json --signature manifest.sig --public-key release.pub
+brokerkit system install --manifest manifest.json --signature manifest.sig --public-key release.pub
+brokerkit system upgrade --manifest manifest.json --signature manifest.sig --public-key release.pub
+brokerkit system status
+brokerkit system doctor
+brokerkit system rollback
+```
+
+Linux uses `/opt/brokerkit/releases/<bundle-id>` and macOS uses
+`/Library/Application Support/BrokerKit/releases/<bundle-id>`. The `current`
+symlink is switched atomically. Native service definitions use exact
+component paths below that root-controlled pointer; production setup rejects
+standalone mutable executables. Each started process is then verified against
+the selected immutable release. Providers stop after consumers and start
+before consumers. Exact readiness is checked before the activation record commits.
+Any failure restores the previous release pointer, state replacement, service
+order, and readiness before Telegram resumes.
+Before stopping a service, the host writes a private activation transaction.
+An interrupted install, upgrade, or rollback is reconciled under the host lock
+before another lifecycle command can run. A committed and healthy candidate is
+kept; an uncommitted transaction restores its recorded previous release.
+
+The closed `brokerkit.io/runtime-bundle/v1` manifest is defined by
+`protocol/runtime-bundle.schema.json`. A production manifest requires a
+detached Ed25519 signature. `--development` permits unsigned local fixtures,
+but development build identities cannot enter a signed production bundle.
+Development activation requires explicit isolated root and state directories;
+it cannot write the production activation paths.
+The public key supplied for the first production install is pinned under the
+private host state directory. Later plans and upgrades use that key and reject
+attempted key replacement.
+
+Each required provider component names its local Operator endpoint and the
+absolute path of its Operator token file. The token itself is never stored in
+the manifest. Activation and `doctor` use that local credential to verify the
+running provider's exact contract and build identity without exposing it.
+
+State-format changes are explicit replacements. The old service is stopped,
+its state directory is archived beside the original, and the candidate starts
+with fresh current-format state. Rollback restores the archived directory with
+the old executable. Runtime compatibility readers and mixed-format state are
+not supported.
+
 ## Setup
 
 Package `internal/host/setup` owns:
@@ -163,6 +214,13 @@ Provider-specific probes remain in each broker. For example, hf-broker owns
 Hugging Face credential-source and mirror checks, gh-broker owns GitHub App and
 ruleset checks, and sudo-broker owns catalog, target-user, and
 privileged-executor checks.
+
+`brokerkit system doctor` adds the host-level view. It compares the activation
+record, immutable artifact digests, native service state, process executable
+paths, and active bundle. A Linux executable ending in `(deleted)`, any process
+outside the active release, a digest mismatch, or an incomplete rollback makes
+the host unhealthy. JSON output contains no provider credentials or callback
+authority.
 
 ## State Maintenance
 

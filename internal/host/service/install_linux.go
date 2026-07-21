@@ -271,6 +271,12 @@ func validateInstallUnit(plan SystemdInstallPlan) error {
 	if _, err := RenderSystemd(preview); err != nil {
 		return err
 	}
+	if plan.Unit.ManagedExecutableDestination != "" && !plan.NoStart {
+		executable := strings.SplitN(plan.Unit.ExecStart, " ", 2)[0]
+		if _, err := filepath.EvalSymlinks(executable); err != nil {
+			return errors.New("managed executable must exist before service activation")
+		}
+	}
 	return validateSocketInstallUnits(plan)
 }
 

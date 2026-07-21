@@ -20,12 +20,16 @@ import (
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operator/v1"
 	"github.com/osolmaz/brokerkit/operator/wire"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 	"github.com/osolmaz/brokerkit/protocol/operatorwire"
 	"github.com/osolmaz/brokerkit/transport/http"
 	"github.com/osolmaz/brokerkit/transport/http/client"
 )
 
 const maxResponseBytes = 2 * 1024 * 1024
+
+// ErrContractMismatch reports an exact Operator V1 identity mismatch.
+var ErrContractMismatch = errors.New("operator contract mismatch")
 
 type Client struct {
 	baseURL    string
@@ -68,10 +72,10 @@ func (c *Client) Discover(ctx context.Context) (operatorv1.Descriptor, error) {
 	//nolint:bodyclose // decodeClientResponse owns and closes generated responses.
 	response, requestErr := api.DiscoverOperator(ctx)
 	err = decodeClientResponse(response, requestErr, &wire)
-	if err == nil && string(wire.ApiVersion) != operatorv1.APIVersion {
-		return operatorv1.Descriptor{}, fmt.Errorf("unsupported operator API version %q", wire.ApiVersion)
+	if err == nil && (string(wire.ApiVersion) != operatorv1.APIVersion || wire.ContractDigest != contract.OperatorV1Digest) {
+		return operatorv1.Descriptor{}, fmt.Errorf("%w: %q", ErrContractMismatch, wire.ContractDigest)
 	}
-	return operatorv1.Descriptor{APIVersion: string(wire.ApiVersion)}, err
+	return operatorv1.Descriptor{APIVersion: string(wire.ApiVersion), ContractDigest: wire.ContractDigest, BuildID: wire.BuildId}, err
 }
 
 func (c *Client) Health(ctx context.Context) error {
@@ -87,6 +91,9 @@ func (c *Client) Health(ctx context.Context) error {
 	}
 	if status.Status != "ok" {
 		return errors.New("operator source is unhealthy")
+	}
+	if status.ContractDigest != contract.OperatorV1Digest {
+		return ErrContractMismatch
 	}
 	return nil
 }

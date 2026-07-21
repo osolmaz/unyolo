@@ -16,6 +16,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
 	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 	"github.com/osolmaz/brokerkit/operator/client"
 	"github.com/osolmaz/brokerkit/transport/endpoint"
@@ -112,6 +113,7 @@ func writeIngressDryRun(opts setupOptions, plan bkservice.SystemdInstallPlan, st
 	return err
 }
 
+//nolint:cyclop // Setup parsing centralizes dependent flag defaults and production-path validation.
 func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	opts := defaultSetupOptions()
 	flags := flag.NewFlagSet("brokerkit-telegram setup systemd", flag.ContinueOnError)
@@ -136,9 +138,17 @@ func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	if flags.NArg() != 0 {
 		return setupOptions{}, errors.New("setup systemd does not accept positional arguments")
 	}
-	resolved, err := resolveBinary(opts.BinaryPath)
+	resolved, managed, err := bksetup.ResolveServiceExecutable(opts.BinaryPath, filepath.Join("bin", ingressName), opts.AllowNonRoot)
 	if err != nil {
 		return setupOptions{}, err
+	}
+	if os.Geteuid() == 0 && !opts.AllowNonRoot && !opts.DryRun && !managed {
+		return setupOptions{}, errors.New("production services must use the BrokerKit managed current release path")
+	}
+	if managed && !opts.NoStart {
+		if _, err := filepath.EvalSymlinks(resolved); err != nil {
+			return setupOptions{}, errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
+		}
 	}
 	opts.BinaryPath = resolved
 	if err := validateSetupOptions(opts); err != nil {
@@ -209,17 +219,6 @@ func validateSetupPaths(opts setupOptions) error {
 	return nil
 }
 
-func resolveBinary(path string) (string, error) {
-	if path == "" {
-		var err error
-		path, err = os.Executable()
-		if err != nil {
-			return "", err
-		}
-	}
-	return filepath.EvalSymlinks(path)
-}
-
 func configuredRoutes(opts setupOptions) []string {
 	ordered := []string{telegram.RouteHuggingFace, telegram.RouteGitHub, telegram.RouteSudo}
 	result := make([]string, 0, len(ordered))
@@ -239,10 +238,17 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 	managedConfig := ingressConfig{
 		TelegramBotTokenFile: filepath.Join(opts.ConfigDir, "telegram-bot-token"),
 		TelegramChatID:       opts.TelegramChatID,
+		InboxPath:            filepath.Join(opts.StateDir, "callbacks.db"),
+		InboxKeyFile:         filepath.Join(opts.ConfigDir, "inbox-key"),
 		Routes:               map[string]routeConfig{},
+	}
+	inboxKey, err := existingOrGeneratedInboxKey(filepath.Join(opts.ConfigDir, "inbox-key"), opts.DryRun || opts.AllowNonRoot)
+	if err != nil {
+		return bkservice.SystemdInstallPlan{}, err
 	}
 	files := []bkservice.ManagedFile{
 		{Area: bkservice.ManagedFileConfig, Name: "telegram-bot-token", Data: []byte(botToken + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"},
+		{Area: bkservice.ManagedFileConfig, Name: "inbox-key", Data: []byte(inboxKey + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-inbox"},
 		{Area: bkservice.ManagedFileConfig, Name: "env", Data: []byte("# managed by brokerkit-telegram\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
 	}
 	groups := make([]string, 0, len(opts.Routes))
@@ -279,7 +285,8 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 		EnvironmentFile:     filepath.Join(opts.ConfigDir, "env"),
 		ExecStart:           opts.BinaryPath + " serve --config " + filepath.Join(opts.ConfigDir, "config.json"),
 		StateDir:            opts.StateDir, ConfigDir: opts.ConfigDir, HomeAccess: bkservice.HomeAccessDeny,
-		PathValidation: pathValidation,
+		PathValidation:               pathValidation,
+		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, filepath.Join("bin", ingressName)),
 	}
 	return bkservice.SystemdInstallPlan{
 		User: opts.User, Group: opts.Group, AdditionalGroups: groups,
@@ -288,6 +295,17 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 		ReadyCheck:   ingressReadyCheck(readyClients),
 		AllowNonRoot: opts.AllowNonRoot, Runner: opts.Runner,
 	}, nil
+}
+
+func existingOrGeneratedInboxKey(path string, preview bool) (string, error) {
+	value, err := readSecretFile(path)
+	if err == nil {
+		return value, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) && !preview {
+		return "", fmt.Errorf("read existing Telegram inbox key: %w", err)
+	}
+	return bksetup.GenerateSecret()
 }
 
 func ingressReadyCheck(clients []*operatorclient.Client) bkservice.ReadinessCheck {

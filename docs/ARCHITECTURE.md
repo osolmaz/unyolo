@@ -79,6 +79,9 @@ brokerkit may contain:
 - provider-neutral Agent Operations V1 wire types and schemas
 - strict MCP stdio protocol handling and Agent Operations lifecycle projection
 - bounded authenticated sealed-payload and stream transfer clients
+- exact generated Agent and Operator contract identities;
+- signed immutable host release activation and rollback; and
+- a durable encrypted Telegram callback inbox.
 
 ## What Does Not Belong Here
 
@@ -92,6 +95,10 @@ brokerkit must not contain:
 - provider-specific approval wording
 - command parsing for Unix shells
 - broad framework wiring that makes simple brokers harder to understand
+
+The systemd and launchd exclusion concerns provider operation execution.
+BrokerKit does own the narrow native service-manager adapters required to
+activate and roll back its own immutable host bundle.
 
 ## Provider Responsibilities
 
@@ -140,6 +147,10 @@ brokerkit must preserve these invariants:
   input, raw upstream responses, or token metadata.
 - Grant records must be scoped to one client, one operation, one target, and the
   attrs approved by policy.
+- A persistent callback consumer must match the exact Operator contract of
+  every broker it can call before it consumes another update.
+- A managed host is healthy only when every running executable belongs to the
+  active signed bundle.
 
 ## Shared-Package Rule
 

@@ -7,6 +7,22 @@ a broker as a Linux systemd service. Consumers provide provider-specific file
 contents and the already typed `SystemdUnit`; they do not create accounts,
 resolve numeric ids, write or chown files, or invoke `systemctl` themselves.
 
+Single-service setup remains the configuration and account bootstrap boundary.
+Production binary upgrades use the host bundle transaction described in
+`OPERATIONS_RUNTIME.md`; independently replacing a running executable is not a
+service upgrade. Bundle activation stops `brokerkit-telegram.service` first,
+then provider services, switches the immutable release pointer, reloads
+systemd, starts and verifies providers, and starts Telegram last. A candidate
+failure restores the previous complete service set.
+
+Production units execute the exact component destination below
+`/opt/brokerkit/current`. Setup preserves that root-controlled pointer instead
+of resolving it into the release active at setup time. It also normalizes a
+binary invoked from `/opt/brokerkit/releases/<bundle-id>` back to the matching
+`current` path. A first installation may configure units with `--no-start` and
+the managed path before the bundle is activated; service startup occurs only
+after activation publishes and verifies the target.
+
 ## Boundary
 
 Brokerkit owns:
@@ -147,6 +163,8 @@ An install plan is rejected when:
 - the final executable is not a regular file, an ancestor is not searchable,
   or the file cannot be executed by the configured service identity including
   its supplementary groups;
+- a production service points outside its exact BrokerKit `current` component
+  destination, or an existing `current` link leaves the immutable release root;
 - non-root test mode is requested while service activation is enabled.
 
 ## Test Gates
@@ -164,6 +182,11 @@ An install plan is rejected when:
   executable;
 - Linux race tests, coverage, vet, lint, Slophammer, review, and consumer tests
   all pass.
+- old-ingress/new-broker contract drift is rejected before Telegram consumes
+  an update;
+- complete bundle activation and injected readiness failure restore the exact
+  prior release and provider-before-consumer ordering;
+- a deleted or outside-release process fails host doctor.
 
 Mutation tooling remains checked in but is disabled and non-blocking. It must
 not run in the default required workflow unless a later explicit decision

@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/host/service"
 	"github.com/osolmaz/brokerkit/operator/client"
 	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/brokerkit/protocol/contract"
 )
 
 func TestParseSetupOptionsCapturesConfiguredRoutes(t *testing.T) {
@@ -101,7 +102,8 @@ func TestIngressReadyCheckAuthenticatesOperatorRoute(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"error":{"code":"unauthorized","message":"denied","correlation_id":"test"}}`))
 			return
 		}
-		_ = json.NewEncoder(writer).Encode(operatorv1.Descriptor{APIVersion: operatorv1.APIVersion})
+		_ = json.NewEncoder(writer).Encode(operatorv1.Descriptor{APIVersion: operatorv1.APIVersion,
+			ContractDigest: contract.OperatorV1Digest, BuildID: "test"})
 	}))
 	defer server.Close()
 	endpoint := strings.Replace(server.URL, "http://", "tcp://", 1)

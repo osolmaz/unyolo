@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +20,8 @@ const maxConfigBytes = 64 * 1024
 type ingressConfig struct {
 	TelegramBotTokenFile string                 `json:"telegram_bot_token_file"`
 	TelegramChatID       int64                  `json:"telegram_chat_id"`
+	InboxPath            string                 `json:"inbox_path"`
+	InboxKeyFile         string                 `json:"inbox_key_file"`
 	Routes               map[string]routeConfig `json:"routes"`
 }
 
@@ -51,6 +55,9 @@ func validateIngressConfig(cfg ingressConfig) error {
 	if cfg.TelegramChatID == 0 {
 		return errors.New("telegram_chat_id is required")
 	}
+	if !filepath.IsAbs(cfg.InboxPath) || !filepath.IsAbs(cfg.InboxKeyFile) {
+		return errors.New("inbox_path and inbox_key_file must be absolute")
+	}
 	if len(cfg.Routes) == 0 {
 		return errors.New("at least one Telegram route is required")
 	}
@@ -77,32 +84,52 @@ func supportedRoute(route string) bool {
 	}
 }
 
-func buildIngress(cfg ingressConfig) (*telegram.Client, *telegram.Dispatcher, error) {
+//nolint:cyclop // Construction keeps every secret and route dependency failure attributable to its source.
+func buildIngress(ctx context.Context, cfg ingressConfig) (*telegram.Client, *telegram.Dispatcher, *telegram.Inbox, error) {
 	botToken, err := readSecretFile(cfg.TelegramBotTokenFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read Telegram bot token: %w", err)
+		return nil, nil, nil, fmt.Errorf("read Telegram bot token: %w", err)
 	}
 	client, err := telegram.New(botToken, cfg.TelegramChatID, nil, "")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	routes := make(map[string]telegram.OperatorSource, len(cfg.Routes))
 	for route, source := range cfg.Routes {
 		token, readErr := readSecretFile(source.OperatorTokenFile)
 		if readErr != nil {
-			return nil, nil, fmt.Errorf("read route %q operator token: %w", route, readErr)
+			return nil, nil, nil, fmt.Errorf("read route %q operator token: %w", route, readErr)
 		}
 		operator, clientErr := operatorclient.New(source.OperatorEndpoint, token, nil)
 		if clientErr != nil {
-			return nil, nil, fmt.Errorf("configure route %q: %w", route, clientErr)
+			return nil, nil, nil, fmt.Errorf("configure route %q: %w", route, clientErr)
 		}
 		routes[route] = operator
 	}
 	dispatcher, err := telegram.NewDispatcher(routes)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return client, dispatcher, nil
+	keyText, err := readSecretFile(cfg.InboxKeyFile)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("read Telegram inbox key: %w", err)
+	}
+	key, err := hex.DecodeString(keyText)
+	if err != nil || len(key) != 32 {
+		return nil, nil, nil, errors.New("telegram inbox key is invalid")
+	}
+	inbox, err := telegram.OpenInbox(ctx, cfg.InboxPath, key)
+	clearSecret(key)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return client, dispatcher, inbox, nil
+}
+
+func clearSecret(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
 }
 
 func readSecretFile(path string) (string, error) {

@@ -7,6 +7,7 @@ on:
       - "gh-broker/v*"
       - "sudo-broker/v*"
       - "brokerkit-telegram/v*"
+      - "brokerkit/v*"
 
 permissions:
   contents: write
@@ -61,6 +62,11 @@ jobs:
               echo "broker=brokerkit-telegram" >> "$GITHUB_OUTPUT"
               echo "directory=." >> "$GITHUB_OUTPUT"
               echo "command=./cmd/brokerkit-telegram" >> "$GITHUB_OUTPUT"
+              ;;
+            brokerkit/*)
+              echo "broker=brokerkit" >> "$GITHUB_OUTPUT"
+              echo "directory=." >> "$GITHUB_OUTPUT"
+              echo "command=./cmd/brokerkit" >> "$GITHUB_OUTPUT"
               ;;
             *) exit 64 ;;
           esac

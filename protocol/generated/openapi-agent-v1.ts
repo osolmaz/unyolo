@@ -91,6 +91,8 @@ export interface components {
     Descriptor: {
       /** @constant */
       api_version: "brokerkit.io/agent/v1";
+      contract_digest: string;
+      build_id: string;
       operations: string[];
       credential: components["schemas"]["CredentialDescriptor"];
     };

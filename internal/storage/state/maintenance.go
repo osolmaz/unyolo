@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/internal/fsx"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	sqlite "modernc.org/sqlite"
 )
@@ -585,10 +586,4 @@ func writeSyncedFile(path string, data []byte, mode os.FileMode) error {
 	return errors.Join(writeErr, file.Sync(), file.Close())
 }
 
-func syncDirectory(path string) error {
-	directory, err := os.Open(path) // #nosec G304 -- operator-selected maintenance directory.
-	if err != nil {
-		return err
-	}
-	return errors.Join(directory.Sync(), directory.Close())
-}
+func syncDirectory(path string) error { return fsx.SyncDirectory(path) }

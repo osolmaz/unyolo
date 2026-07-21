@@ -124,9 +124,13 @@ export interface components {
     Descriptor: {
       /** @constant */
       api_version: "brokerkit.io/operator/v1";
+      contract_digest: string;
+      build_id: string;
     };
     Health: {
       status: string;
+      contract_digest: string;
+      build_id: string;
     };
     /** @enum {string} */
     Action: "approve" | "deny" | "revoke";

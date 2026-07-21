@@ -29,9 +29,11 @@ const (
 )
 
 type Descriptor struct {
-	APIVersion string               `json:"api_version"`
-	Operations []string             `json:"operations"`
-	Credential CredentialDescriptor `json:"credential"`
+	APIVersion     string               `json:"api_version"`
+	ContractDigest string               `json:"contract_digest"`
+	BuildID        string               `json:"build_id"`
+	Operations     []string             `json:"operations"`
+	Credential     CredentialDescriptor `json:"credential"`
 }
 
 // CredentialDescriptor is the client-safe credential readiness projection.

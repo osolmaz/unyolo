@@ -9,8 +9,8 @@ It keeps protected credentials and Unix privilege boundaries inside dedicated
 broker processes, so untrusted clients such as coding agents receive only a
 narrowly scoped, revocable broker credential instead of the real one.
 
-The repository ships three separate broker executables, one UI plugin, and the
-shared protocol they speak:
+The repository ships three separate broker executables, one host command, one
+UI plugin, and the shared protocol they speak:
 
 - [hf-broker](brokers/huggingface/README.md) brokers Hugging Face credentials
   for Git, LFS, Hub, and inference operations.
@@ -20,14 +20,18 @@ shared protocol they speak:
   another Unix user through a root helper.
 - [openclaw-brokerkit](plugins/openclaw/README.md) adds a provider-neutral
   approvals tab and `/brokerkit` commands to OpenClaw.
+- `brokerkit` activates signed, immutable runtime bundles and verifies that
+  every managed service runs the expected build and protocol contract.
 - [protocol](protocol/README.md) holds the canonical Operator V1 and
   Agent V1 wire artifacts and MCP operation documents shared by all of the
   above.
 
-Each broker is a separate process with its own listener, credential domain,
-state directory, release artifact, and audit stream. Install and operate them
-independently; every broker README covers its own install, setup, and
-day-to-day workflows.
+Each broker remains a separate process with its own listener, credential
+domain, state directory, release artifact, and audit stream. Persistent
+production services are activated together through a signed host bundle so a
+partial upgrade cannot mix incompatible processes. User-local clients remain
+independent. Every broker README covers its provider-specific configuration
+and day-to-day workflows.
 
 ## How a broker works
 
@@ -92,10 +96,13 @@ in [go.mod](go.mod):
 go build ./brokers/huggingface/cmd/hf-broker
 go build ./brokers/github/cmd/gh-broker
 go build ./brokers/sudo/cmd/sudo-broker ./brokers/sudo/cmd/sudo-broker-exec
+go build ./cmd/brokerkit ./cmd/brokerkit-telegram
 ```
 
-For release installs, use each broker's `install.sh` bootstrap as described in
-its README.
+Use the provider setup commands for credentials, policy, accounts, and native
+service definitions. Use `brokerkit system install` and `upgrade` for
+persistent production binaries; see
+[Operations runtime](docs/OPERATIONS_RUNTIME.md).
 
 ## License
 

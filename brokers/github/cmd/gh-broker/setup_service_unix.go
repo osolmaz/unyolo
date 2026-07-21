@@ -462,15 +462,16 @@ func optionalAppClientEnv(plan systemdPlan) string {
 
 func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
 	return bkservice.SystemdUnit{
-		Description:     "gh-broker GitHub credential broker",
-		User:            plan.opts.User,
-		Group:           plan.opts.Group,
-		EnvironmentFile: plan.envPath,
-		ExecStart:       plan.opts.BinaryPath,
-		StateDir:        plan.opts.StateDir,
-		ConfigDir:       plan.opts.ConfigDir,
-		HomeAccess:      bkservice.HomeAccessDeny,
-		PathValidation:  setupPathValidation(plan.opts),
+		Description:                  "gh-broker GitHub credential broker",
+		User:                         plan.opts.User,
+		Group:                        plan.opts.Group,
+		EnvironmentFile:              plan.envPath,
+		ExecStart:                    plan.opts.BinaryPath,
+		StateDir:                     plan.opts.StateDir,
+		ConfigDir:                    plan.opts.ConfigDir,
+		HomeAccess:                   bkservice.HomeAccessDeny,
+		PathValidation:               setupPathValidation(plan.opts),
+		ManagedExecutableDestination: bksetup.ManagedDestination(plan.opts.BinaryPath, plan.opts.ManagedDestination),
 	}
 }
 

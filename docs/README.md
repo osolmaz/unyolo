@@ -36,6 +36,7 @@ component documentation.
 
 ## Implementation Records
 
+- [Atomic runtime bundle](2026-07-21-atomic-runtime-bundle-plan.md)
 - [Native Git client integration](2026-07-19-native-git-client-integration-plan.md)
 - [Provider credential lifecycle](2026-07-18-provider-credential-lifecycle-plan.md)
 - [Hugging Face credential lifecycle](2026-07-18-hugging-face-credential-lifecycle-plan.md)

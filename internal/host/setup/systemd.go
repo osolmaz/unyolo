@@ -4,10 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/osolmaz/brokerkit/internal/config/client"
 	"github.com/osolmaz/brokerkit/internal/validatex"
@@ -16,11 +14,12 @@ import (
 
 // SystemdDefaults configures shared Linux service setup flags.
 type SystemdDefaults struct {
-	BrokerName string
-	User       string
-	Group      string
-	ClientName string
-	Endpoint   string
+	BrokerName         string
+	User               string
+	Group              string
+	ClientName         string
+	Endpoint           string
+	ManagedDestination string
 }
 
 // SystemdOptions contains the broker-neutral service setup fields.
@@ -43,11 +42,12 @@ type SystemdOptions struct {
 	DryRun              bool
 	NoStart             bool
 	AllowNonRoot        bool
+	ManagedDestination  string
 }
 
 // DefaultSystemdOptions returns the common broker-family Linux layout.
 func DefaultSystemdOptions(defaults SystemdDefaults) SystemdOptions {
-	return SystemdOptions{
+	options := SystemdOptions{
 		BrokerName:          defaults.BrokerName,
 		User:                defaults.User,
 		Group:               defaults.Group,
@@ -58,7 +58,12 @@ func DefaultSystemdOptions(defaults SystemdDefaults) SystemdOptions {
 		Endpoint:            defaults.Endpoint,
 		AgentAccessGroup:    defaults.BrokerName + "-agent",
 		OperatorAccessGroup: defaults.BrokerName + "-operator",
+		ManagedDestination:  defaults.ManagedDestination,
 	}
+	if options.ManagedDestination == "" {
+		options.ManagedDestination = filepath.Join("bin", defaults.BrokerName)
+	}
+	return options
 }
 
 // BindSystemdFlags adds the shared setup systemd flags to fs.
@@ -84,79 +89,20 @@ func BindSystemdFlags(fs *flag.FlagSet, opts *SystemdOptions) {
 
 // FinalizeSystemd resolves the current executable and validates opts.
 func FinalizeSystemd(opts SystemdOptions) (SystemdOptions, error) {
-	resolved, err := resolveExecutablePath(opts.BinaryPath)
+	resolved, managed, err := ResolveServiceExecutable(opts.BinaryPath, opts.ManagedDestination, opts.AllowNonRoot)
 	if err != nil {
 		return SystemdOptions{}, err
 	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return SystemdOptions{}, fmt.Errorf("stat executable path: %w", err)
+	if requiresManagedExecutable(opts) && !managed {
+		return SystemdOptions{}, errors.New("production services must use the BrokerKit managed current release path")
 	}
-	if err := validateExecutableInfo(info); err != nil {
-		return SystemdOptions{}, err
-	}
-	if requiresTrustedExecutable(opts) {
-		if err := validateTrustedExecutable(resolved); err != nil {
-			return SystemdOptions{}, err
+	if managed && !opts.NoStart {
+		if _, err := filepath.EvalSymlinks(resolved); err != nil {
+			return SystemdOptions{}, errors.New("managed executable must exist before service activation; use --no-start for initial bundle setup")
 		}
 	}
 	opts.BinaryPath = resolved
 	return opts, opts.Validate()
-}
-
-func requiresTrustedExecutable(opts SystemdOptions) bool {
-	return os.Geteuid() == 0
-}
-
-func validateTrustedExecutable(path string) error {
-	current := string(filepath.Separator)
-	for _, component := range strings.Split(strings.TrimPrefix(filepath.Clean(path), current), current) {
-		current = filepath.Join(current, component)
-		info, err := os.Lstat(current)
-		if err != nil {
-			return fmt.Errorf("inspect executable path: %w", err)
-		}
-		if err := validateTrustedPathComponent(current, info); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateTrustedPathComponent(path string, info os.FileInfo) error {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fmt.Errorf("executable path ownership is unavailable for %s", path)
-	}
-	if stat.Uid != 0 {
-		return fmt.Errorf("executable path component must be root-owned: %s", path)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
-		return fmt.Errorf("executable path component must not be mutable by non-root users: %s", path)
-	}
-	return nil
-}
-
-func resolveExecutablePath(path string) (string, error) {
-	if path == "" {
-		resolved, err := os.Executable()
-		if err != nil {
-			return "", fmt.Errorf("resolve executable path: %w", err)
-		}
-		path = resolved
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", fmt.Errorf("resolve executable path: %w", err)
-	}
-	return resolved, nil
-}
-
-func validateExecutableInfo(info os.FileInfo) error {
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
-		return errors.New("executable path must be a regular executable file")
-	}
-	return nil
 }
 
 // Validate validates shared Linux service setup fields.
@@ -175,6 +121,9 @@ func (opts SystemdOptions) Validate() error {
 	}
 	if err := validatex.AbsolutePaths(map[string]string{"config-dir": opts.ConfigDir, "state-dir": opts.StateDir, "systemd-dir": opts.SystemdDir, "binary": opts.BinaryPath}, true); err != nil {
 		return err
+	}
+	if !safeManagedDestination(opts.ManagedDestination) {
+		return errors.New("managed executable destination is invalid")
 	}
 	parsed, err := endpoint.Parse(opts.Endpoint, endpoint.ParseOptions{})
 	if err != nil {

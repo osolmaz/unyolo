@@ -41,6 +41,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 func runServe(ctx context.Context, args []string, stderr io.Writer) error {
+	if ctx.Err() != nil {
+		return nil
+	}
 	flags := flag.NewFlagSet("brokerkit-telegram serve", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", "/etc/brokerkit-telegram/config.json", "absolute ingress config path")
@@ -54,10 +57,14 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	client, dispatcher, err := buildIngress(cfg)
+	client, dispatcher, inbox, err := buildIngress(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	client.Poll(ctx, dispatcher.Handle)
-	return nil
+	defer func() { _ = inbox.Close() }()
+	err = client.PollDurableReady(ctx, inbox, dispatcher.Handle, dispatcher.Compatible)
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }

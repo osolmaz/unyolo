@@ -59,3 +59,23 @@ Native Git discovery, upload-pack, receive-pack, and LFS requests continue to
 emit the provider's existing policy and proxy audit records. The dedicated Git
 listener identity response contains only the provider id. Credential-helper
 input, output, and Basic credentials are never logged.
+
+## Host bundle diagnostics
+
+`brokerkit system status --json` and `brokerkit system doctor --json` provide a
+closed host-level report. It contains bundle IDs, release build IDs, artifact
+digest results, native service names, PIDs, executable paths, active state, and
+recovery-required state. It never contains credentials, Telegram destinations,
+decision authority, reasons, or provider payloads.
+
+The host is unhealthy when an artifact digest changes, a required service is
+inactive, a process executable differs from the immutable active release, a
+Linux executable is marked deleted, or rollback did not complete. Exact Agent
+and Operator digests are exposed by discovery and health responses so clients
+can report contract drift without logging response bodies.
+
+Telegram callback authority is observable only as aggregate queue lifecycle.
+The durable inbox stores redacted terminal answers after deleting encrypted
+authority. Operational logs may report callback receipt, retry, terminal state,
+route, update ID, and bounded attempt count. They must not report callback data,
+decision tokens, rendered messages, usernames, or chat IDs.
