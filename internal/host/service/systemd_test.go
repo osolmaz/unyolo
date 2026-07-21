@@ -59,14 +59,15 @@ func TestRenderSystemdRequiresExactManagedExecutableReference(t *testing.T) {
 
 func TestManagedExecutableReleasePointerValidation(t *testing.T) {
 	root := t.TempDir()
-	if err := validateCurrentReleasePointer(root); err != nil {
+	active, err := validateCurrentReleasePointer(root)
+	if err != nil || active {
 		t.Fatalf("missing current pointer: %v", err)
 	}
 	current := filepath.Join(root, "current")
 	if err := os.WriteFile(current, []byte("not a link"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateCurrentReleasePointer(root); err == nil {
+	if _, err := validateCurrentReleasePointer(root); err == nil {
 		t.Fatal("regular current pointer accepted")
 	}
 	if err := os.Remove(current); err != nil {
@@ -75,15 +76,15 @@ func TestManagedExecutableReleasePointerValidation(t *testing.T) {
 	if err := os.Symlink("../outside", current); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateCurrentReleasePointer(root); err == nil {
+	if _, err := validateCurrentReleasePointer(root); err == nil {
 		t.Fatal("unsafe current pointer accepted")
 	}
 }
 
 func TestManagedExecutableAccessRejectsMissingRelease(t *testing.T) {
 	unit := SystemdUnit{ExecStart: "/current/bin/broker serve", ManagedExecutableDestination: "bin/broker"}
-	if err := validateManagedExecutableAccessAt(unit, "/"); err == nil {
-		t.Fatal("missing managed release executable accepted")
+	if err := validateManagedExecutableAccessAt(unit, "/"); err != nil {
+		t.Fatalf("first-install managed release rejected: %v", err)
 	}
 	if err := validateResolvedManagedExecutable(unit, "/"); err == nil {
 		t.Fatal("missing resolved executable accepted")

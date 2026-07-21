@@ -23,29 +23,30 @@ func validateManagedExecutableAccessAt(unit SystemdUnit, root string) error {
 	if err := validateTrustedServicePath("managed release root", root, ""); err != nil {
 		return err
 	}
-	if err := validateCurrentReleasePointer(root); err != nil {
+	active, err := validateCurrentReleasePointer(root)
+	if err != nil || !active {
 		return err
 	}
 	return validateResolvedManagedExecutable(unit, root)
 }
 
-func validateCurrentReleasePointer(root string) error {
+func validateCurrentReleasePointer(root string) (bool, error) {
 	current := filepath.Join(root, "current")
 	info, err := os.Lstat(current)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return false, nil
 	}
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		return errors.New("managed current release pointer is invalid")
+		return false, errors.New("managed current release pointer is invalid")
 	}
 	target, err := os.Readlink(current)
 	if err != nil || !layout.ValidCurrentTarget(target) {
-		return errors.New("managed current release pointer is outside the immutable release root")
+		return false, errors.New("managed current release pointer is outside the immutable release root")
 	}
 	if !rootOwned(info) {
-		return errors.New("managed current release pointer must be root-owned")
+		return false, errors.New("managed current release pointer must be root-owned")
 	}
-	return nil
+	return true, nil
 }
 
 func rootOwned(info os.FileInfo) bool {

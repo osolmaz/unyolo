@@ -50,18 +50,20 @@ func verifyDurableRoutes(ctx context.Context, ready func(context.Context) error)
 func (c *Client) pollDurableOnce(ctx context.Context, inbox *Inbox,
 	handler func(context.Context, notify.Decision) notify.DecisionResult) (bool, error) {
 	if err := c.dispatchPending(ctx, inbox, handler); err != nil {
-		return true, nil
+		return retryDurablePoll()
 	}
 	offset, err := inbox.nextOffset(ctx)
 	if err != nil {
-		return true, nil
+		return retryDurablePoll()
 	}
 	updates, err := c.getUpdates(ctx, offset)
 	if err != nil {
-		return true, nil
+		return retryDurablePoll()
 	}
 	return false, c.persistUpdates(ctx, inbox, updates)
 }
+
+func retryDurablePoll() (bool, error) { return true, nil }
 
 func (c *Client) persistUpdates(ctx context.Context, inbox *Inbox, updates []telegramUpdate) error {
 	for _, update := range updates {
