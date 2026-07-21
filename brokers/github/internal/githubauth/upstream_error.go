@@ -77,21 +77,20 @@ func safeGitHubMessage(value string) string {
 	return publicGitHubMessages[value]
 }
 
-func safeGitHubCode(value, fallback string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" || len(value) > 64 || !validGitHubCode(value) {
-		return fallback
-	}
-	return value
+var publicGitHubCodes = map[string]string{
+	"forbidden":           "forbidden",
+	"insufficient_scopes": "insufficient_scopes",
+	"not_found":           "not_found",
+	"rate_limited":        "rate_limited",
+	"unprocessable":       "unprocessable",
 }
 
-func validGitHubCode(value string) bool {
-	for _, char := range value {
-		if char != '_' && char != '-' && (char < 'a' || char > 'z') && (char < '0' || char > '9') {
-			return false
-		}
+func safeGitHubCode(value, fallback string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if code, found := publicGitHubCodes[value]; found {
+		return code
 	}
-	return true
+	return fallback
 }
 
 func rateReset(header http.Header) time.Time {

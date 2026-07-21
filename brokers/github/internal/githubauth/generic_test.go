@@ -421,8 +421,10 @@ func TestGitHubErrorsPreserveOnlyBoundedSafeDiagnostics(t *testing.T) {
 			t.Fatalf("unsafe GitHub message was retained: %q", unsafe)
 		}
 	}
-	if safeGitHubCode("NOT SAFE!", "fallback") != "fallback" {
-		t.Fatal("unsafe GitHub diagnostic code was retained")
+	for _, unsafe := range []string{"NOT SAFE!", "ghp_abcdefghijklmnopqrstuvwxyz123456", "unreviewed_provider_code"} {
+		if safeGitHubCode(unsafe, "fallback") != "fallback" {
+			t.Fatalf("unsafe GitHub diagnostic code was retained: %q", unsafe)
+		}
 	}
 	for _, unsafe := range []string{"bad request id", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456", "github_pat_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"} {
 		if githubRequestID(http.Header{"X-Github-Request-Id": []string{unsafe}}) != "" {
