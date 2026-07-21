@@ -7,13 +7,24 @@ import (
 	"strings"
 )
 
+const (
+	linuxRoot  = "/opt/brokerkit"
+	darwinRoot = "/Library/Application Support/BrokerKit"
+)
+
 // Root returns the production bundle root for the current operating system.
 func Root() string {
 	if runtime.GOOS == "darwin" {
-		return "/Library/Application Support/BrokerKit"
+		return DarwinRoot()
 	}
-	return "/opt/brokerkit"
+	return LinuxRoot()
 }
+
+// LinuxRoot returns the production bundle root used by systemd hosts.
+func LinuxRoot() string { return linuxRoot }
+
+// DarwinRoot returns the production bundle root used by launchd hosts.
+func DarwinRoot() string { return darwinRoot }
 
 // ExecutablePath returns one stable path through the active release pointer.
 func ExecutablePath(destination string) string {

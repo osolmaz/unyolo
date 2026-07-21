@@ -550,7 +550,7 @@ func validateTrustedServicePaths(unit SystemdUnit) error {
 }
 
 func validateManagedExecutableAccess(unit SystemdUnit) error {
-	return validateManagedExecutableAccessAt(unit, layout.Root())
+	return validateManagedExecutableAccessAt(unit, layout.LinuxRoot())
 }
 
 func validateManagedExecutableAccessAt(unit SystemdUnit, root string) error {
@@ -589,7 +589,7 @@ func validateManagedExecutableAccessAt(unit SystemdUnit, root string) error {
 }
 
 func validateManagedExecutableReference(unit SystemdUnit) error {
-	return validateManagedExecutableReferenceAt(unit, layout.Root())
+	return validateManagedExecutableReferenceAt(unit, layout.LinuxRoot())
 }
 
 func validateManagedExecutableReferenceAt(unit SystemdUnit, root string) error {

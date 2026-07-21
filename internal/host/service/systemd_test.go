@@ -39,8 +39,9 @@ func TestRenderSystemd(t *testing.T) {
 
 func TestRenderSystemdRequiresExactManagedExecutableReference(t *testing.T) {
 	destination := filepath.Join("bin", "test-broker")
+	executable := filepath.Join(layout.LinuxRoot(), "current", destination)
 	unit := SystemdUnit{Description: "test", User: "broker", Group: "broker", EnvironmentFile: "/etc/test/env",
-		ExecStart: layout.ExecutablePath(destination) + " serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
+		ExecStart: executable + " serve", StateDir: "/var/lib/test", ConfigDir: "/etc/test",
 		PathValidation: PathValidationPreview, ManagedExecutableDestination: destination}
 	if _, err := RenderSystemd(unit); err != nil {
 		t.Fatal(err)
@@ -49,7 +50,7 @@ func TestRenderSystemdRequiresExactManagedExecutableReference(t *testing.T) {
 	if _, err := RenderSystemd(unit); err == nil {
 		t.Fatal("standalone executable was accepted as a managed component")
 	}
-	unit.ExecStart = layout.ExecutablePath(destination) + " serve"
+	unit.ExecStart = executable + " serve"
 	unit.ManagedExecutableDestination = "../test-broker"
 	if _, err := RenderSystemd(unit); err == nil {
 		t.Fatal("unsafe managed destination was accepted")

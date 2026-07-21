@@ -7,6 +7,9 @@ import (
 )
 
 func TestRootAndExecutablePath(t *testing.T) {
+	if LinuxRoot() != "/opt/brokerkit" || DarwinRoot() != "/Library/Application Support/BrokerKit" {
+		t.Fatal("platform roots changed unexpectedly")
+	}
 	wantRoot := "/opt/brokerkit"
 	if runtime.GOOS == "darwin" {
 		wantRoot = "/Library/Application Support/BrokerKit"
