@@ -76,7 +76,7 @@ func TestAdminMergeBindsExactRevisionAndUsesPersistedGraphQL(t *testing.T) {
 	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK {
 		t.Fatalf("outcome = %+v err = %v", outcome, err)
 	}
-	assertJSONEqual(t, outcome.Result, `{"merged":true,"head_sha":"1111111111111111111111111111111111111111","base_sha":"2222222222222222222222222222222222222222","merge_method":"squash"}`)
+	assertJSONEqual(t, outcome.Result, `{"merged":true,"head_sha":"1111111111111111111111111111111111111111","merge_method":"squash"}`)
 	if requests != 5 {
 		t.Fatalf("requests = %d, want identity and revision checks plus merge", requests)
 	}

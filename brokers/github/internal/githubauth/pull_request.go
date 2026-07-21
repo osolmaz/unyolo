@@ -22,8 +22,6 @@ type PullRequestSnapshot struct {
 	Mergeable      *bool
 	MergeableState string
 	HeadSHA        string
-	BaseSHA        string
-	BaseRef        string
 }
 
 type pullRequestPayload struct {
@@ -38,10 +36,6 @@ type pullRequestPayload struct {
 	Head           struct {
 		SHA string `json:"sha"`
 	} `json:"head"`
-	Base struct {
-		SHA string `json:"sha"`
-		Ref string `json:"ref"`
-	} `json:"base"`
 }
 
 // PullRequest returns one bounded merge-state snapshot using the credential
@@ -86,12 +80,10 @@ func decodePullRequestSnapshot(body []byte, number int64) (PullRequestSnapshot, 
 	}
 	return PullRequestSnapshot{
 		ID: payload.ID, Number: payload.Number, NodeID: payload.NodeID, State: payload.State, Draft: payload.Draft, Merged: payload.Merged,
-		Mergeable: payload.Mergeable, MergeableState: payload.MergeableState,
-		HeadSHA: payload.Head.SHA, BaseSHA: payload.Base.SHA, BaseRef: payload.Base.Ref,
+		Mergeable: payload.Mergeable, MergeableState: payload.MergeableState, HeadSHA: payload.Head.SHA,
 	}, nil
 }
 
 func validPullRequestPayload(payload pullRequestPayload, number int64) bool {
-	return payload.ID > 0 && payload.Number == number && strings.TrimSpace(payload.NodeID) != "" &&
-		strings.TrimSpace(payload.Head.SHA) != "" && strings.TrimSpace(payload.Base.SHA) != "" && strings.TrimSpace(payload.Base.Ref) != ""
+	return payload.ID > 0 && payload.Number == number && strings.TrimSpace(payload.NodeID) != "" && strings.TrimSpace(payload.Head.SHA) != ""
 }

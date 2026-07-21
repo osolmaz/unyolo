@@ -30,8 +30,6 @@ type adminMergePreconditions struct {
 	UserLogin         string `json:"user_login"`
 	PullRequestNodeID string `json:"pull_request_node_id"`
 	HeadSHA           string `json:"head_sha"`
-	BaseSHA           string `json:"base_sha"`
-	BaseRef           string `json:"base_ref"`
 	MergeableState    string `json:"mergeable_state,omitempty"`
 }
 
@@ -90,7 +88,7 @@ func (a adminMergeAdapter) Resolve(ctx context.Context, input Input) (Plan, erro
 		return Plan{}, err
 	}
 	preconditions := adminMergePreconditions{UserID: identity.ID, UserLogin: identity.Login, PullRequestNodeID: snapshot.NodeID,
-		HeadSHA: snapshot.HeadSHA, BaseSHA: snapshot.BaseSHA, BaseRef: snapshot.BaseRef, MergeableState: snapshot.MergeableState}
+		HeadSHA: snapshot.HeadSHA, MergeableState: snapshot.MergeableState}
 	presentation := agentv1.Presentation{Title: "Admin merge a pull request",
 		Summary: fmt.Sprintf("Admin merge %s/%s#%s at %s as @%s; this may bypass GitHub merge requirements",
 			stringValue(target, "owner"), stringValue(target, "repo"), integerString(target, "number"), shortSHA(snapshot.HeadSHA), identity.Login)}
@@ -202,9 +200,6 @@ func validateAdminMergeExecution(current githubauth.PullRequestSnapshot, approve
 	if !strings.EqualFold(current.HeadSHA, approved.HeadSHA) {
 		return githubauth.APIError{Code: "stale_pull_request_head", StatusCode: http.StatusConflict, Message: "Pull request head changed after approval"}
 	}
-	if !strings.EqualFold(current.BaseSHA, approved.BaseSHA) || current.BaseRef != approved.BaseRef {
-		return githubauth.APIError{Code: "stale_pull_request_base", StatusCode: http.StatusConflict, Message: "Pull request base changed after approval"}
-	}
 	if current.Draft {
 		return githubauth.APIError{Code: "pull_request_draft", StatusCode: http.StatusConflict, Message: "Pull request became a draft after approval"}
 	}
@@ -231,8 +226,7 @@ func decodeAdminMergePlan(plan Plan) (adminMergePreconditions, adminMergeArgumen
 }
 
 func validAdminMergePreconditions(value adminMergePreconditions) bool {
-	return value.UserID > 0 && value.UserLogin != "" && value.PullRequestNodeID != "" && value.HeadSHA != "" &&
-		value.BaseSHA != "" && value.BaseRef != ""
+	return value.UserID > 0 && value.UserLogin != "" && value.PullRequestNodeID != "" && value.HeadSHA != ""
 }
 
 func adminMergeVariables(executionID string, preconditions adminMergePreconditions, arguments adminMergeArguments) map[string]any {
@@ -266,7 +260,7 @@ func adminMergeAuthorization(descriptor opcatalog.Descriptor, target map[string]
 }
 
 func (a adminMergeAdapter) successOutcome(status int, preconditions adminMergePreconditions, arguments adminMergeArguments) (Outcome, error) {
-	result, _ := json.Marshal(map[string]any{"merged": true, "head_sha": preconditions.HeadSHA, "base_sha": preconditions.BaseSHA, "merge_method": arguments.MergeMethod})
+	result, _ := json.Marshal(map[string]any{"merged": true, "head_sha": preconditions.HeadSHA, "merge_method": arguments.MergeMethod})
 	if err := schemaregistry.ValidateResult(a.descriptor.Name, result); err != nil {
 		return Outcome{}, err
 	}

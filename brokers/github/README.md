@@ -256,8 +256,9 @@ gh-broker operation submit pull_request.merge_admin \
 
 Admin merge is a distinct high-risk, explicit, one-use operation and requests
 operator approval by default. BrokerKit resolves the pull request itself,
-binds approval to the exact head and base commits, and rechecks both before
-calling GitHub's persisted `mergePullRequest` mutation. Administrator
+binds approval to the exact pull-request head commit, rechecks it before
+execution, and supplies it to GitHub as the mutation's atomic
+`expectedHeadOid` guard. Administrator
 privileges may bypass review, update, or merge-queue requirements, but do not
 bypass merge conflicts. A changed pull request must be submitted and approved
 again.

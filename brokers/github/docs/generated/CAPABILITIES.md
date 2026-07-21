@@ -949,9 +949,9 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `pull_request.delete_pull_request_review` | critical | operator-only | user | pull_request | no |
 | `pull_request.delete_pull_request_review_comment` | critical | operator-only | user | pull_request | no |
 | `pull_request.dequeue_pull_request` | medium | operator-only | user | pull_request | no |
-| `pull_request.disable_pull_request_auto_merge` | critical | operator-only | user | pull_request | no |
+| `pull_request.disable_pull_request_auto_merge` | medium | operator-only | user | pull_request | no |
 | `pull_request.dismiss_pull_request_review` | medium | operator-only | user | pull_request | no |
-| `pull_request.enable_pull_request_auto_merge` | critical | operator-only | user | pull_request | no |
+| `pull_request.enable_pull_request_auto_merge` | medium | operator-only | user | pull_request | no |
 | `pull_request.enqueue_pull_request` | medium | operator-only | user | pull_request | no |
 | `pull_request.get` | low | implemented | installation | pull_request | typed CLI/MCP |
 | `pull_request.interactions_get_pull_request_bypass_list_for_repo` | low | implemented | installation | repo | typed CLI/MCP |
@@ -1119,7 +1119,7 @@ Generated from the pinned GitHub REST and GraphQL inventories. Do not edit by ha
 | `repo.marketplace_listing` | low | operator-only | user | repo | no |
 | `repo.marketplace_listings` | low | operator-only | user | repo | no |
 | `repo.merge` | medium | implemented | installation | repo | typed CLI/MCP |
-| `repo.merge_branch` | critical | operator-only | user | repo | no |
+| `repo.merge_branch` | medium | operator-only | user | repo | no |
 | `repo.merge_policy.update` | high | implemented | installation | repo | typed CLI/MCP |
 | `repo.merge_upstream` | medium | implemented | installation | repo | typed CLI/MCP |
 | `repo.metadata.read` | low | implemented | installation | repo | typed CLI/MCP |

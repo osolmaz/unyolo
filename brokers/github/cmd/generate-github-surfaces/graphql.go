@@ -322,10 +322,9 @@ func adminMergeResultSchema() map[string]any {
 		"properties": map[string]any{
 			"merged":       map[string]any{"type": "boolean", "const": true},
 			"head_sha":     map[string]any{"type": "string", "pattern": "^[0-9a-fA-F]{40,64}$"},
-			"base_sha":     map[string]any{"type": "string", "pattern": "^[0-9a-fA-F]{40,64}$"},
 			"merge_method": map[string]any{"type": "string", "enum": []string{"merge", "squash", "rebase"}},
 		},
-		"required": []string{"merged", "head_sha", "base_sha", "merge_method"},
+		"required": []string{"merged", "head_sha", "merge_method"},
 	}
 }
 
@@ -338,7 +337,7 @@ func classifyGraphQLRiskClasses(root, field string) []string {
 		name  string
 		terms []string
 	}{
-		{"destructive", []string{"delete", "remove", "revoke", "abort", "cancel", "terminate", "transfer", "archive", "merge"}},
+		{"destructive", []string{"delete", "remove", "revoke", "abort", "cancel", "terminate", "transfer", "archive"}},
 		{"permission", []string{"permission", "role", "member", "admin", "access", "block", "bypass"}},
 		{"billing", []string{"billing", "sponsor", "invoice", "budget", "plan"}},
 		{"organization", []string{"organization"}}, {"enterprise", []string{"enterprise"}},
@@ -351,6 +350,9 @@ func classifyGraphQLRiskClasses(root, field string) []string {
 	}
 	if !strings.Contains(text, "secretscanning") && containsAny(text, []string{"secret", "key", "token", "credential"}) {
 		result = append(result, "secret")
+	}
+	if field == "mergePullRequest" {
+		result = append(result, "destructive")
 	}
 	slices.Sort(result)
 	return result
