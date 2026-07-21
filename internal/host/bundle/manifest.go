@@ -89,21 +89,44 @@ func Load(path, signaturePath, publicKeyPath string, development bool) (Manifest
 }
 
 // Validate checks the closed manifest's platform, protocol, and path invariants.
-//
-//nolint:cyclop // Manifest validation keeps the closed top-level trust contract explicit.
 func (m Manifest) Validate(development bool) error {
+	if err := m.validateIdentity(); err != nil {
+		return err
+	}
+	if err := m.validatePlatform(); err != nil {
+		return err
+	}
+	if err := m.validateContracts(); err != nil {
+		return err
+	}
+	return m.validateComponents(development)
+}
+
+func (m Manifest) validateIdentity() error {
 	if m.APIVersion != APIVersion {
 		return fmt.Errorf("unsupported runtime bundle API %q", m.APIVersion)
 	}
 	if !identifierPattern.MatchString(m.BundleID) || !commitPattern.MatchString(m.SourceCommit) {
 		return errors.New("runtime bundle identity is invalid")
 	}
+	return nil
+}
+
+func (m Manifest) validatePlatform() error {
 	if m.OperatingSystem != runtime.GOOS || m.Architecture != runtime.GOARCH {
 		return fmt.Errorf("runtime bundle targets %s/%s, host is %s/%s", m.OperatingSystem, m.Architecture, runtime.GOOS, runtime.GOARCH)
 	}
+	return nil
+}
+
+func (m Manifest) validateContracts() error {
 	if m.OperatorContractDigest != contract.OperatorV1Digest || m.AgentContractDigest != contract.AgentV1Digest {
 		return errors.New("runtime bundle protocol contract does not match this host command")
 	}
+	return nil
+}
+
+func (m Manifest) validateComponents(development bool) error {
 	if len(m.Components) == 0 || len(m.Components) > 32 {
 		return errors.New("runtime bundle must contain 1 to 32 components")
 	}
@@ -116,8 +139,25 @@ func (m Manifest) Validate(development bool) error {
 	return nil
 }
 
-//nolint:cyclop // Component validation is a closed security checklist with cross-field uniqueness invariants.
 func (c Component) validate(development bool, manifest Manifest, names, destinations, services map[string]bool) error {
+	checks := []func() error{
+		func() error { return c.registerIdentity(names, destinations) },
+		c.validateDigests,
+		c.validateState,
+		func() error { return c.validateBuild(development) },
+		func() error { return c.registerServices(services) },
+		func() error { return c.validateOperator(manifest) },
+		func() error { return c.validateProcess(manifest) },
+	}
+	for _, check := range checks {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c Component) registerIdentity(names, destinations map[string]bool) error {
 	if !identifierPattern.MatchString(c.Name) || names[c.Name] {
 		return errors.New("name is invalid or duplicated")
 	}
@@ -126,30 +166,54 @@ func (c Component) validate(development bool, manifest Manifest, names, destinat
 		return errors.New("source or destination is unsafe or duplicated")
 	}
 	destinations[c.Destination] = true
+	return nil
+}
+
+func (c Component) validateDigests() error {
 	if !digestPattern.MatchString(c.SHA256) || !digestPattern.MatchString(c.StateFormatDigest) {
 		return errors.New("artifact or state-format digest is invalid")
 	}
-	if c.StateDir != "" && (!filepath.IsAbs(c.StateDir) || filepath.Clean(c.StateDir) != c.StateDir) {
+	return nil
+}
+
+func (c Component) validateState() error {
+	if !optionalAbsolutePath(c.StateDir) {
 		return errors.New("state directory is unsafe")
 	}
-	if c.OperatorTokenFile != "" && (!filepath.IsAbs(c.OperatorTokenFile) || filepath.Clean(c.OperatorTokenFile) != c.OperatorTokenFile) {
+	if !optionalAbsolutePath(c.OperatorTokenFile) {
 		return errors.New("operator token file is unsafe")
 	}
 	if c.ReplaceState && c.StateDir == "" {
 		return errors.New("state replacement requires a state directory")
 	}
+	return nil
+}
+
+func optionalAbsolutePath(path string) bool {
+	return path == "" || (filepath.IsAbs(path) && filepath.Clean(path) == path)
+}
+
+func (c Component) validateBuild(development bool) error {
 	if !identifierPattern.MatchString(c.BuildID) || (!development && strings.HasPrefix(c.BuildID, "dev")) {
 		return errors.New("release build identity is invalid")
 	}
 	if !slices.Contains([]Role{RoleProvider, RoleConsumer, RoleCompanion}, c.Role) {
 		return errors.New("role is invalid")
 	}
+	return nil
+}
+
+func (c Component) registerServices(services map[string]bool) error {
 	for _, service := range c.Services {
 		if !identifierPattern.MatchString(service) || services[service] {
 			return errors.New("service identity is invalid or duplicated")
 		}
 		services[service] = true
 	}
+	return nil
+}
+
+func (c Component) validateOperator(manifest Manifest) error {
 	if c.OperatorEndpoint != "" && c.OperatorContractDigest != manifest.OperatorContractDigest {
 		return errors.New("operator contract digest does not match bundle")
 	}
@@ -159,6 +223,10 @@ func (c Component) validate(development bool, manifest Manifest, names, destinat
 	if c.Required && c.Role == RoleProvider && c.OperatorEndpoint == "" {
 		return errors.New("required provider has no authenticated operator endpoint")
 	}
+	return nil
+}
+
+func (c Component) validateProcess(manifest Manifest) error {
 	if c.AgentContractDigest != "" && c.AgentContractDigest != manifest.AgentContractDigest {
 		return errors.New("agent contract digest does not match bundle")
 	}

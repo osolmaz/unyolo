@@ -16,17 +16,21 @@ func validateManagedExecutableAccess(unit SystemdUnit) error {
 	return validateManagedExecutableAccessAt(unit, layout.LinuxRoot())
 }
 
-//nolint:cyclop // Validation keeps every ownership, link-target, and release-boundary check explicit.
 func validateManagedExecutableAccessAt(unit SystemdUnit, root string) error {
-	destination := unit.ManagedExecutableDestination
 	if err := validateManagedExecutableReferenceAt(unit, root); err != nil {
 		return err
 	}
-	executable := strings.SplitN(unit.ExecStart, " ", 2)[0]
-	current := filepath.Join(root, "current")
 	if err := validateTrustedServicePath("managed release root", root, ""); err != nil {
 		return err
 	}
+	if err := validateCurrentReleasePointer(root); err != nil {
+		return err
+	}
+	return validateResolvedManagedExecutable(unit, root)
+}
+
+func validateCurrentReleasePointer(root string) error {
+	current := filepath.Join(root, "current")
 	info, err := os.Lstat(current)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -42,8 +46,13 @@ func validateManagedExecutableAccessAt(unit SystemdUnit, root string) error {
 	if err != nil || !layout.ValidCurrentTarget(target) {
 		return errors.New("managed current release pointer is outside the immutable release root")
 	}
+	return nil
+}
+
+func validateResolvedManagedExecutable(unit SystemdUnit, root string) error {
+	executable := strings.SplitN(unit.ExecStart, " ", 2)[0]
 	resolved, err := filepath.EvalSymlinks(executable)
-	if err != nil || layout.ReleaseDestination(resolved, root) != destination {
+	if err != nil || layout.ReleaseDestination(resolved, root) != unit.ManagedExecutableDestination {
 		return errors.New("managed executable does not resolve inside the active immutable release")
 	}
 	if err := validateTrustedServicePath("executable", resolved, ""); err != nil {

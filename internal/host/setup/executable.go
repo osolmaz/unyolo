@@ -37,28 +37,43 @@ func ResolveServiceExecutable(path, destination string, allowNonRoot bool) (stri
 	return resolveServiceExecutable(path, ManagedRoot(), destination, os.Geteuid() == 0 && !allowNonRoot)
 }
 
-//nolint:cyclop // Resolution keeps managed, immutable-release, and standalone trust cases visibly separate.
 func resolveServiceExecutable(path, root, destination string, trusted bool) (string, bool, error) {
 	if !safeManagedDestination(destination) {
 		return "", false, errors.New("managed executable destination is invalid")
 	}
+	path, err := resolveInputExecutable(path)
+	if err != nil {
+		return "", false, err
+	}
+	managed := filepath.Join(root, "current", destination)
+	if path == managed {
+		return resolveManagedExecutable(managed, root, destination, trusted)
+	}
+	return resolveExistingExecutable(path, managed, root, destination, trusted)
+}
+
+func resolveInputExecutable(path string) (string, error) {
 	if path == "" {
 		var err error
 		path, err = os.Executable()
 		if err != nil {
-			return "", false, fmt.Errorf("resolve executable path: %w", err)
+			return "", fmt.Errorf("resolve executable path: %w", err)
 		}
 	}
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return "", false, errors.New("executable path must be absolute and normalized")
+		return "", errors.New("executable path must be absolute and normalized")
 	}
-	managed := filepath.Join(root, "current", destination)
-	if path == managed {
-		if err := validateManagedExecutable(root, destination, trusted); err != nil {
-			return "", false, err
-		}
-		return managed, true, nil
+	return path, nil
+}
+
+func resolveManagedExecutable(managed, root, destination string, trusted bool) (string, bool, error) {
+	if err := validateManagedExecutable(root, destination, trusted); err != nil {
+		return "", false, err
 	}
+	return managed, true, nil
+}
+
+func resolveExistingExecutable(path, managed, root, destination string, trusted bool) (string, bool, error) {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", false, fmt.Errorf("resolve executable path: %w", err)
