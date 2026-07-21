@@ -368,7 +368,8 @@ func FuzzDecodeOperatorCursors(f *testing.F) {
 }
 
 func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {
-	store := New(t.TempDir()+"/grants.json", Options{PendingTimeout: 25 * time.Millisecond})
+	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
+	store := New(t.TempDir()+"/grants.json", Options{Now: func() time.Time { return now }, PendingTimeout: time.Minute})
 	result, _, err := store.Request(Request{
 		Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"}, Reason: "expire without traffic",
 	})
@@ -379,7 +380,8 @@ func TestWaitForEventsEmitsTimeDrivenExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	now = now.Add(2 * time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	page, err := store.WaitForEvents(ctx, created.NextCursor)
 	if err != nil || len(page.Events) != 1 || page.Events[0].Kind != EventRequestExpired {
