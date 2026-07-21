@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
@@ -58,8 +59,7 @@ func validGitHubRequestID(value string) bool {
 }
 
 func githubRequestIDCharacter(char rune) bool {
-	return char == ':' || char == '-' || char == '_' || char >= 'A' && char <= 'Z' ||
-		char >= 'a' && char <= 'z' || char >= '0' && char <= '9'
+	return char <= unicode.MaxASCII && (unicode.IsLetter(char) || unicode.IsDigit(char) || strings.ContainsRune(":-_", char))
 }
 
 var publicGitHubMessages = map[string]string{

@@ -597,6 +597,25 @@ func TestUserRotationRevocationFailureRestoresOldCredentialAndAuditsFailure(t *t
 	}
 }
 
+func TestSupportsCredentialKindReflectsConfiguredProviders(t *testing.T) {
+	if (*Manager)(nil).SupportsCredentialKind(KindUser, 7) {
+		t.Fatal("nil manager reported credential support")
+	}
+	development := &Manager{development: &Credential{}}
+	if !development.SupportsCredentialKind(KindUser, 0) {
+		t.Fatal("development credential did not substitute for user credentials")
+	}
+	if !(&Manager{app: &appProvider{}}).SupportsCredentialKind(KindAppJWT, 0) {
+		t.Fatal("app provider did not report app JWT support")
+	}
+	if !(&Manager{installation: &installationProvider{}}).SupportsCredentialKind(KindInstallation, 0) {
+		t.Fatal("installation provider did not report installation support")
+	}
+	if (&Manager{}).SupportsCredentialKind(Kind("unknown"), 0) {
+		t.Fatal("unknown credential kind was supported")
+	}
+}
+
 func TestInspectStoredUserCredentialsReturnsOnlyLifecycleMetadata(t *testing.T) {
 	now := time.Date(2026, 7, 14, 1, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -622,6 +641,9 @@ func TestInspectStoredUserCredentialsReturnsOnlyLifecycleMetadata(t *testing.T) 
 		AccessExpiresAt: now.Add(time.Hour), RefreshExpiresAt: now.Add(24 * time.Hour)}
 	if err := manager.EnrollUser(t.Context(), enrollment); err != nil {
 		t.Fatal(err)
+	}
+	if !manager.SupportsCredentialKind(KindUser, 7) || manager.SupportsCredentialKind(KindUser, 8) {
+		t.Fatal("user credential support did not match enrolled identities")
 	}
 	statuses, err := InspectStoredUserCredentials(stateDir)
 	if err != nil || len(statuses) != 1 || statuses[0].UserID != 7 || !statuses[0].AccessExpiresAt.Equal(enrollment.AccessExpiresAt) {

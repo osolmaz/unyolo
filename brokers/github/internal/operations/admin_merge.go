@@ -54,33 +54,22 @@ func (a adminMergeAdapter) Decode(target, arguments json.RawMessage) (Input, err
 		return Input{}, err
 	}
 	targetMap, err := decodeObject(target)
-	if err != nil || stringValue(targetMap, "kind") != "pull_request" || stringValue(targetMap, "owner") == "" ||
-		stringValue(targetMap, "repo") == "" || integerString(targetMap, "number") == "" {
+	if err != nil || !validAdminMergeTarget(targetMap) {
 		return Input{}, errors.New("GitHub admin merge target must identify one pull request by owner, repository, and number")
 	}
 	return Input{Target: cloneRaw(target), Arguments: cloneRaw(arguments)}, nil
 }
 
+func validAdminMergeTarget(target map[string]any) bool {
+	return stringValue(target, "kind") == "pull_request" && stringValue(target, "owner") != "" &&
+		stringValue(target, "repo") != "" && integerString(target, "number") != ""
+}
+
 func (a adminMergeAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
-	target, err := decodeObject(input.Target)
-	if err != nil {
-		return Plan{}, errors.New("GitHub admin merge target is invalid")
-	}
-	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, target, a.userID)
+	target, credential, identity, err := a.resolveIdentity(ctx, input.Target)
 	if err != nil {
 		return Plan{}, err
 	}
-	if !eligibleAdminMergeCredential(credential.Kind) {
-		return Plan{}, errors.New("GitHub admin merge requires a user identity credential")
-	}
-	identity, err := a.manager.AuthenticatedUser(ctx, credential)
-	if err != nil {
-		return Plan{}, err
-	}
-	if credential.UserID > 0 && credential.UserID != identity.ID {
-		return Plan{}, errors.New("GitHub admin merge user credential does not match its configured identity")
-	}
-	credential.UserID = identity.ID
 	snapshot, err := a.pullRequest(ctx, credential, target)
 	if err != nil {
 		return Plan{}, err
@@ -104,6 +93,34 @@ func (a adminMergeAdapter) Resolve(ctx context.Context, input Input) (Plan, erro
 		Preconditions: encodePreconditions(credential, preconditions), Credential: credential, Presentation: presentation,
 		Authorization: adminMergeAuthorization(a.descriptor, target, input.Arguments, credential),
 	}, nil
+}
+
+func (a adminMergeAdapter) resolveIdentity(ctx context.Context, rawTarget json.RawMessage) (map[string]any, githubauth.Metadata, githubauth.UserIdentity, error) {
+	target, err := decodeObject(rawTarget)
+	if err != nil {
+		return nil, githubauth.Metadata{}, githubauth.UserIdentity{}, errors.New("GitHub admin merge target is invalid")
+	}
+	credential, err := a.manager.SelectMetadata(ctx, a.descriptor, target, a.userID)
+	if err != nil {
+		return nil, githubauth.Metadata{}, githubauth.UserIdentity{}, err
+	}
+	credential, identity, err := a.authenticateIdentity(ctx, credential)
+	return target, credential, identity, err
+}
+
+func (a adminMergeAdapter) authenticateIdentity(ctx context.Context, credential githubauth.Metadata) (githubauth.Metadata, githubauth.UserIdentity, error) {
+	if !eligibleAdminMergeCredential(credential.Kind) {
+		return githubauth.Metadata{}, githubauth.UserIdentity{}, errors.New("GitHub admin merge requires a user identity credential")
+	}
+	identity, err := a.manager.AuthenticatedUser(ctx, credential)
+	if err != nil {
+		return githubauth.Metadata{}, githubauth.UserIdentity{}, err
+	}
+	if credential.UserID > 0 && credential.UserID != identity.ID {
+		return githubauth.Metadata{}, githubauth.UserIdentity{}, errors.New("GitHub admin merge user credential does not match its configured identity")
+	}
+	credential.UserID = identity.ID
+	return credential, identity, nil
 }
 
 func eligibleAdminMergeCredential(kind githubauth.Kind) bool {
@@ -130,18 +147,7 @@ func (a adminMergeAdapter) Execute(ctx context.Context, plan Plan) (Outcome, err
 	if err != nil {
 		return Outcome{}, err
 	}
-	identity, err := a.manager.AuthenticatedUser(ctx, plan.Credential)
-	if err != nil {
-		return Outcome{}, err
-	}
-	if identity.ID != preconditions.UserID || !strings.EqualFold(identity.Login, preconditions.UserLogin) {
-		return Outcome{}, githubauth.APIError{Code: "stale_github_user", StatusCode: http.StatusConflict, Message: "GitHub user identity changed after approval"}
-	}
-	current, err := a.pullRequest(ctx, plan.Credential, target)
-	if err != nil {
-		return Outcome{}, err
-	}
-	if err := validateAdminMergeExecution(current, preconditions); err != nil {
+	if err := a.revalidate(ctx, plan.Credential, target, preconditions); err != nil {
 		return Outcome{}, err
 	}
 	variables := adminMergeVariables(plan.ExecutionID, preconditions, arguments)
@@ -153,6 +159,21 @@ func (a adminMergeAdapter) Execute(ctx context.Context, plan Plan) (Outcome, err
 		return Outcome{}, &PossiblePartialError{Err: errors.New("upstream_result_unknown")}
 	}
 	return a.successOutcome(execution.StatusCode, preconditions, arguments)
+}
+
+func (a adminMergeAdapter) revalidate(ctx context.Context, credential githubauth.Metadata, target map[string]any, preconditions adminMergePreconditions) error {
+	identity, err := a.manager.AuthenticatedUser(ctx, credential)
+	if err != nil {
+		return err
+	}
+	if identity.ID != preconditions.UserID || !strings.EqualFold(identity.Login, preconditions.UserLogin) {
+		return githubauth.APIError{Code: "stale_github_user", StatusCode: http.StatusConflict, Message: "GitHub user identity changed after approval"}
+	}
+	current, err := a.pullRequest(ctx, credential, target)
+	if err != nil {
+		return err
+	}
+	return validateAdminMergeExecution(current, preconditions)
 }
 
 func (a adminMergeAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

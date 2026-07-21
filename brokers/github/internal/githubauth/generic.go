@@ -52,6 +52,10 @@ func (m *Manager) AuthenticatedUser(ctx context.Context, selector Metadata) (Use
 	if err != nil {
 		return UserIdentity{}, err
 	}
+	return decodeUserIdentity(body)
+}
+
+func decodeUserIdentity(body []byte) (UserIdentity, error) {
 	var identity UserIdentity
 	if strictjson.Decode(body, &identity, false) != nil || identity.ID <= 0 || strings.TrimSpace(identity.Login) == "" {
 		return UserIdentity{}, errors.New("GitHub authenticated-user response is invalid")

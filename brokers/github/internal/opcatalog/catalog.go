@@ -98,7 +98,7 @@ func validateProviderMetadata(value Descriptor) error {
 	if invalidHighRiskMetadata(value) {
 		return fmt.Errorf("high-risk GitHub operation %q is not explicit-only", value.Name)
 	}
-	if value.DelegatedUserCredential && (value.CredentialKind != "user" || !value.AgentFacing || !value.ExplicitOnly) {
+	if invalidDelegatedUserMetadata(value) {
 		return fmt.Errorf("GitHub operation %q has invalid delegated user credential metadata", value.Name)
 	}
 	if invalidSealedMetadata(value) {
@@ -129,6 +129,10 @@ func invalidPermissionlessInstallation(value Descriptor) bool {
 
 func invalidHighRiskMetadata(value Descriptor) bool {
 	return (value.Risk == capability.RiskHigh || value.Risk == capability.RiskCritical) && value.AuthorizationMode == capability.ModeExecution && !value.ExplicitOnly
+}
+
+func invalidDelegatedUserMetadata(value Descriptor) bool {
+	return value.DelegatedUserCredential && (value.CredentialKind != "user" || !value.AgentFacing || !value.ExplicitOnly)
 }
 
 func invalidSealedMetadata(value Descriptor) bool {
