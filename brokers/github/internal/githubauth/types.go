@@ -118,6 +118,8 @@ type APIError struct {
 	Code       string
 	StatusCode int
 	RateReset  time.Time
+	Message    string
+	RequestID  string
 }
 
 func (e APIError) Error() string {
@@ -146,22 +148,31 @@ func classifyAPIError(err error) error {
 	}
 	var rateLimit *github.RateLimitError
 	if errors.As(err, &rateLimit) {
-		return APIError{Code: "rate_limited", StatusCode: responseStatus(rateLimit.Response), RateReset: rateLimit.Rate.Reset.UTC()}
+		return APIError{Code: "rate_limited", StatusCode: responseStatus(rateLimit.Response), RateReset: rateLimit.Rate.Reset.UTC(),
+			RequestID: responseRequestID(rateLimit.Response)}
 	}
 	var abuse *github.AbuseRateLimitError
 	if errors.As(err, &abuse) {
-		return APIError{Code: "secondary_rate_limited", StatusCode: responseStatus(abuse.Response)}
+		return APIError{Code: "secondary_rate_limited", StatusCode: responseStatus(abuse.Response), RequestID: responseRequestID(abuse.Response)}
 	}
 	var responseError *github.ErrorResponse
 	if errors.As(err, &responseError) {
 		status := responseStatus(responseError.Response)
-		return APIError{Code: statusCodeName(status), StatusCode: status}
+		return APIError{Code: statusCodeName(status), StatusCode: status, Message: safeGitHubMessage(responseError.Message),
+			RequestID: responseRequestID(responseError.Response)}
 	}
 	var apiErr APIError
 	if errors.As(err, &apiErr) {
 		return apiErr
 	}
 	return APIError{Code: "unavailable"}
+}
+
+func responseRequestID(response *http.Response) string {
+	if response == nil {
+		return ""
+	}
+	return githubRequestID(response.Header)
 }
 
 func responseStatus(response *http.Response) int {

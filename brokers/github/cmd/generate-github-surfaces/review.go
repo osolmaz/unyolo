@@ -7,7 +7,7 @@ import (
 
 func buildHighRiskReview(rest []restCoverage, graphql []graphqlCoverage) highRiskReview {
 	rules := map[string]string{
-		"destructive":  "delete, removal, revocation, transfer, archival, cancellation, and termination mutations",
+		"destructive":  "delete, removal, revocation, transfer, archival, cancellation, termination, and merge mutations",
 		"secret":       "secret, private-key, token, credential, and deploy-key mutations",
 		"permission":   "permission, role, membership, collaborator, access, suspension, blocking, and bypass mutations",
 		"billing":      "billing, spending, budget, sponsorship, invoice, and plan mutations",

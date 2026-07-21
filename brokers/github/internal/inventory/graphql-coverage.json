@@ -1314,7 +1314,7 @@
     "field": "mergePullRequest",
     "deprecated": false,
     "disposition": "graphql",
-    "catalog_operation": "pull_request.merge_pull_request",
+    "catalog_operation": "pull_request.merge_admin",
     "required_credential": "user",
     "persisted_digest": "112ae291f11dbe98d741de150bce3a921e6e21ec4f9c8aba2cda6e3751d267a6",
     "reviewed": true

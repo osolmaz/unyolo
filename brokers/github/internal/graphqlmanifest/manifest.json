@@ -8878,7 +8878,7 @@
       "credential_kind": "user"
     },
     {
-      "catalog_operation": "pull_request.merge_pull_request",
+      "catalog_operation": "pull_request.merge_admin",
       "root_type": "mutation",
       "root_field": "mergePullRequest",
       "operation_name": "MutationMergePullRequest",

@@ -19,12 +19,12 @@ func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {
 	if len(values) != ExpectedCount {
 		t.Fatalf("catalog count=%d", len(values))
 	}
-	for _, name := range []string{"repo.metadata.read", "repo.contents.read", "repo.visibility.update", "pull_request.create", "pull_request.merge", "installation.repo.list"} {
+	for _, name := range []string{"repo.metadata.read", "repo.contents.read", "repo.visibility.update", "pull_request.create", "pull_request.merge", "pull_request.merge_admin", "installation.repo.list"} {
 		value, found := ByName(name)
 		if !found {
 			t.Fatalf("operation %q missing", name)
 		}
-		if name == "repo.visibility.update" || name == "pull_request.merge" {
+		if name == "repo.visibility.update" || name == "pull_request.merge" || name == "pull_request.merge_admin" {
 			if !value.ExplicitOnly || value.Risk != RiskHigh || value.MaxUses != 1 {
 				t.Fatalf("high-risk descriptor=%+v", value)
 			}
@@ -83,8 +83,12 @@ func TestPersistedGraphQLRequiresReviewedTargetBindings(t *testing.T) {
 			t.Fatalf("unbound GraphQL operation %q has status %q", descriptor.Name, descriptor.Implementation)
 		}
 	}
-	if count != 284 {
-		t.Fatalf("persisted GraphQL operations=%d, want 284", count)
+	if count != 283 {
+		t.Fatalf("unbound persisted GraphQL operations=%d, want 283", count)
+	}
+	admin, found := ByName("pull_request.merge_admin")
+	if !found || admin.ExecutorKind != "admin-merge" || !admin.DelegatedUserCredential || admin.CredentialKind != "user" || !admin.AgentFacing {
+		t.Fatalf("reviewed admin merge descriptor = %+v", admin)
 	}
 }
 
@@ -110,7 +114,7 @@ func TestEveryGitHubOperationHasReviewedDefaultPolicyEffect(t *testing.T) {
 		}
 	}
 	want := map[capability.DefaultPolicyEffect]int{
-		capability.DefaultEffectAllow: 611, capability.DefaultEffectRequest: 514, capability.DefaultEffectDeny: 311,
+		capability.DefaultEffectAllow: 611, capability.DefaultEffectRequest: 515, capability.DefaultEffectDeny: 310,
 	}
 	if !maps.Equal(counts, want) {
 		t.Fatalf("default policy counts = %v, want %v", counts, want)

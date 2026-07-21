@@ -236,6 +236,37 @@ gh-broker operation submit pull_request.create \
 Reuse a stable `--request-id` when retrying, and resume interrupted
 operations with `gh-broker operation get|wait|cancel <id>`.
 
+### Admin merge a pull request
+
+`pull_request.merge_admin` mirrors the direct merge path selected by
+`gh pr merge --admin`. It uses the GitHub user identity already held by the
+broker; there is no separate admin credential and no caller-supplied `admin`
+flag sent to GitHub. In production, enroll the user credential as described
+above. Development-token mode uses the account represented by its protected
+token.
+
+```sh
+gh-broker operation submit pull_request.merge_admin \
+  --target-json '{"kind":"pull_request","owner":"osolmaz","repo":"brokerkit","number":123}' \
+  --arguments-json '{"merge_method":"squash"}' \
+  --reason "Merge the reviewed pull request despite its remaining GitHub requirement" \
+  --request-id admin-merge-brokerkit-123 \
+  --wait
+```
+
+Admin merge is a distinct high-risk, explicit, one-use operation and requests
+operator approval by default. BrokerKit resolves the pull request itself,
+binds approval to the exact head and base commits, and rechecks both before
+calling GitHub's persisted `mergePullRequest` mutation. Administrator
+privileges may bypass review, update, or merge-queue requirements, but do not
+bypass merge conflicts. A changed pull request must be submitted and approved
+again.
+
+GitHub rejection messages and request IDs are retained only after bounded
+secret-safe validation. The durable operation therefore reports actionable
+failures such as a stale approved revision or GitHub's merge rejection instead
+of reducing every response to a generic upstream error.
+
 ### Operation catalog
 
 The operation surface is generated from pinned GitHub REST and GraphQL

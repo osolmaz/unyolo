@@ -69,6 +69,7 @@ type Server struct {
 	notifier            approvalnotify.Notifier
 	telegram            *bktelegram.Client
 	githubCredentials   *githubauth.Manager
+	githubUserID        int64
 	githubWebhookSecret string
 	githubClient        *http.Client
 	githubGitClient     *http.Client
@@ -154,8 +155,8 @@ func newServerSkeleton(
 		echo: newEcho(), policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
 		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,
 		githubCredentials: github.appSource, githubWebhookSecret: github.webhookSecret,
-		credentialStore: github.credentialStore,
-		githubClient:    github.client, githubGitClient: github.gitClient,
+		credentialStore: github.credentialStore, githubUserID: cfg.GitHubUserID,
+		githubClient: github.client, githubGitClient: github.gitClient,
 		githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: github.receivePackLimit,
 		operatorConfigured: cfg.OperatorSecret != "",
@@ -256,12 +257,11 @@ func (s *Server) discoverAgent(_ string) agentv1.Descriptor {
 	kind := s.githubCredentials.CredentialKind()
 	descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{},
 		Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "github", CredentialKind: string(kind), Generation: 1, VerificationState: "valid"}}
-	if kind != githubauth.KindInstallation {
-		return descriptor
-	}
 	adapter := githubauth.ProviderAdapter{}
 	for _, operation := range opcatalog.MustAll() {
-		if !operation.AgentFacing || operation.CredentialKind == string(githubauth.KindUser) {
+		credentialKind := githubauth.Kind(operation.CredentialKind)
+		if !operation.AgentFacing || credentialKind == githubauth.KindUser && !operation.DelegatedUserCredential ||
+			!s.githubCredentials.SupportsCredentialKind(credentialKind, s.githubUserID) {
 			continue
 		}
 		if _, found := adapter.Requirement(operation.Name); found {

@@ -50,7 +50,11 @@ func generateGraphQL(state *generatedState, response graphqlResponse, fingerprin
 				Disposition: disposition, CatalogOperation: operation, RequiredCredential: credential, PersistedDigest: digestString, Reviewed: true})
 			descriptor := descriptorForGraphQL(operation, root.name, field, digestString, disposition, variables)
 			state.descriptors = append(state.descriptors, descriptor)
-			state.schemas.Operations[operation] = operationSchemas{Target: descriptor.TargetSchema, Arguments: variables, Result: resultSchema}
+			if operation == "pull_request.merge_admin" {
+				state.schemas.Operations[operation] = operationSchemas{Target: descriptor.TargetSchema, Arguments: adminMergeArgumentSchema(), Result: adminMergeResultSchema()}
+			} else {
+				state.schemas.Operations[operation] = operationSchemas{Target: descriptor.TargetSchema, Arguments: variables, Result: resultSchema}
+			}
 		}
 	}
 	if activeQueries != activeQueryRoots || activeMutations != activeMutationRoots {
@@ -61,6 +65,17 @@ func generateGraphQL(state *generatedState, response graphqlResponse, fingerprin
 }
 
 func descriptorForGraphQL(name, root string, field introspectionField, digest, disposition string, variables map[string]any) opcatalog.Descriptor {
+	if name == "pull_request.merge_admin" {
+		tool, command := "gh_pull_request_merge_admin", "pull_request merge_admin"
+		return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: name, OperationRevision: 1, Summary: "Admin merge a pull request",
+			Disposition: "E/X/O", AuthorizationMode: capability.ModeExecution, ExplicitOnly: true,
+			Implementation: capability.StatusImplemented, Risk: capability.RiskHigh,
+			TargetKind: "pull_request", MaxUses: 1, RequestTTLSeconds: 300, ApprovalTTLSeconds: 600,
+			FamilyGlobAllowed: false, AgentFacing: true, MCPTool: &tool, CLICommand: &command,
+			TargetSchema: "target.pull_request.v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
+			CredentialKind: "user", UpstreamBindingIDs: []string{"graphql:" + digest},
+			ExecutorKind: "admin-merge", ReconcilerKind: "pull-request-state"}, DelegatedUserCredential: true}
+	}
 	mutation := root == "mutation"
 	sealedInputPaths := sensitiveTopLevelPaths(variables)
 	mode, flags, maxUses := capability.ModeWindow, "W", 100
@@ -111,6 +126,9 @@ func graphqlRootDisposition(field string) string {
 }
 
 func canonicalGraphQLOperation(root, field string) string {
+	if root == "mutation" && field == "mergePullRequest" {
+		return "pull_request.merge_admin"
+	}
 	family := graphqlTargetKind(field)
 	action := normalizeIdentifier(field)
 	if root == "query" && !strings.Contains(action, "read") && !strings.Contains(action, "list") && !strings.Contains(action, "search") {
@@ -286,6 +304,31 @@ func safeGraphQLName(value string) string {
 	return value
 }
 
+func adminMergeArgumentSchema() map[string]any {
+	return map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+		"properties": map[string]any{
+			"merge_method":   map[string]any{"type": "string", "enum": []string{"merge", "squash", "rebase"}},
+			"commit_title":   map[string]any{"type": "string", "maxLength": 1024},
+			"commit_message": map[string]any{"type": "string", "maxLength": 1 << 20},
+		},
+		"required": []string{"merge_method"},
+	}
+}
+
+func adminMergeResultSchema() map[string]any {
+	return map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+		"properties": map[string]any{
+			"merged":       map[string]any{"type": "boolean", "const": true},
+			"head_sha":     map[string]any{"type": "string", "pattern": "^[0-9a-fA-F]{40,64}$"},
+			"base_sha":     map[string]any{"type": "string", "pattern": "^[0-9a-fA-F]{40,64}$"},
+			"merge_method": map[string]any{"type": "string", "enum": []string{"merge", "squash", "rebase"}},
+		},
+		"required": []string{"merged", "head_sha", "base_sha", "merge_method"},
+	}
+}
+
 func classifyGraphQLRiskClasses(root, field string) []string {
 	if root != "mutation" {
 		return nil
@@ -295,7 +338,7 @@ func classifyGraphQLRiskClasses(root, field string) []string {
 		name  string
 		terms []string
 	}{
-		{"destructive", []string{"delete", "remove", "revoke", "abort", "cancel", "terminate", "transfer", "archive"}},
+		{"destructive", []string{"delete", "remove", "revoke", "abort", "cancel", "terminate", "transfer", "archive", "merge"}},
 		{"permission", []string{"permission", "role", "member", "admin", "access", "block", "bypass"}},
 		{"billing", []string{"billing", "sponsor", "invoice", "budget", "plan"}},
 		{"organization", []string{"organization"}}, {"enterprise", []string{"enterprise"}},

@@ -276,11 +276,22 @@ func operationExecutionFailure(executionErr, reconcileErr error) operationruntim
 	failure := operationruntime.Failure{Code: "upstream_result_unknown", Message: "Operation result is unknown and was not retried"}
 	var upstream githubauth.APIError
 	if errors.As(executionErr, &upstream) && upstream.StatusCode > 0 && upstream.StatusCode < http.StatusInternalServerError {
-		failure.Code, failure.Message = upstream.Code, "GitHub rejected the operation"
+		failure.Code, failure.Message = upstream.Code, githubRejectionMessage(upstream)
 	} else if executionErr == nil && reconcileErr != nil {
 		failure.Code, failure.Message = "operation_reconciliation_failed", "Operation completed but reconciliation failed"
 	}
 	return failure
+}
+
+func githubRejectionMessage(upstream githubauth.APIError) string {
+	message := "GitHub rejected the operation"
+	if upstream.Message != "" {
+		message += ": " + upstream.Message
+	}
+	if upstream.RequestID != "" {
+		message += " (GitHub request ID " + upstream.RequestID + ")"
+	}
+	return message
 }
 
 func mapOperationSubmissionError(err error) error {

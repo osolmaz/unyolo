@@ -14,7 +14,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := OperationCounts{Total: 1436, Allow: 611, Request: 514, Deny: 311}
+	want := OperationCounts{Total: 1436, Allow: 611, Request: 515, Deny: 310}
 	if artifacts.Manifest.Provider != "github" || artifacts.Manifest.OperationCounts != want {
 		t.Fatalf("manifest = %+v, want provider github and counts %+v", artifacts.Manifest, want)
 	}
@@ -23,6 +23,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	}
 	assertEffect(t, artifacts, "repo.contents.read", "allow")
 	assertEffect(t, artifacts, "repo.delete", "request")
+	assertEffect(t, artifacts, "pull_request.merge_admin", "request")
 }
 
 func TestRenderNormalizesAndPreservesDenyOverrides(t *testing.T) {

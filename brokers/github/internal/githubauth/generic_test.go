@@ -400,6 +400,32 @@ func TestResponseAndRedirectFailureModes(t *testing.T) {
 	}
 }
 
+func TestGitHubErrorsPreserveOnlyBoundedSafeDiagnostics(t *testing.T) {
+	graphResponse := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"X-Github-Request-Id": []string{"ABCD:1234"}},
+		Body: io.NopCloser(strings.NewReader(`{"errors":[{"type":"UNPROCESSABLE","message":"Pull Request is not mergeable"}]}`))}
+	_, err := decodeGraphQLResponse(graphResponse, graphqlmanifest.Document{})
+	var graphError APIError
+	if !errors.As(err, &graphError) || graphError.Code != "unprocessable" || graphError.Message != "Pull Request is not mergeable" || graphError.RequestID != "ABCD:1234" {
+		t.Fatalf("GraphQL error = %+v, %v", graphError, err)
+	}
+
+	restResponse := &http.Response{StatusCode: http.StatusUnprocessableEntity, Header: http.Header{"X-Github-Request-Id": []string{"REST-123"}},
+		Body: io.NopCloser(strings.NewReader(`{"message":"Validation Failed"}`))}
+	var restError APIError
+	if err := classifyHTTPError(restResponse); !errors.As(err, &restError) || restError.Message != "Validation Failed" || restError.RequestID != "REST-123" {
+		t.Fatalf("REST error = %+v, %v", restError, err)
+	}
+
+	for _, unsafe := range []string{"Authorization: Bearer credential", "access_token=credential", strings.Repeat("x", 351)} {
+		if safeGitHubMessage(unsafe) != "" {
+			t.Fatalf("unsafe GitHub message was retained: %q", unsafe)
+		}
+	}
+	if safeGitHubCode("NOT SAFE!", "fallback") != "fallback" || githubRequestID(http.Header{"X-Github-Request-Id": []string{"bad request id"}}) != "" {
+		t.Fatal("unsafe GitHub diagnostic metadata was retained")
+	}
+}
+
 func TestRESTPathQueryAndProjectionHelpers(t *testing.T) {
 	binding := opbinding.Binding{PathTemplate: "/repos/{owner}/{repo}/issues/{issue_number}",
 		PathParameters:       []string{"owner", "repo", "issue_number"},

@@ -961,7 +961,7 @@
     "pull_request.list_requested_reviewers": "allow",
     "pull_request.mark_pull_request_ready_for_review": "deny",
     "pull_request.merge": "request",
-    "pull_request.merge_pull_request": "deny",
+    "pull_request.merge_admin": "request",
     "pull_request.reactions_delete_for_pull_request_comment": "request",
     "pull_request.remove_pull_request_creation_cap_bypass_users": "deny",
     "pull_request.remove_requested_reviewers": "request",

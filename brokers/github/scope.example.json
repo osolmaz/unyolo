@@ -60,6 +60,14 @@
       }
     },
     {
+      "id": "approve-admin-merge",
+      "effect": "request",
+      "clients": ["agent-a"],
+      "operations": ["pull_request.merge_admin"],
+      "targets": [{"kind": "pull_request", "owner": "osolmaz", "repo": "brokerkit"}],
+      "attrs": {"merge_method": ["merge", "squash", "rebase"]}
+    },
+    {
       "id": "approve-repository-delete",
       "effect": "request",
       "clients": ["agent-a"],

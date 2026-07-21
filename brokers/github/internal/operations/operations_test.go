@@ -193,7 +193,7 @@ func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 	if err != nil || metadata.Kind != githubauth.KindDevelopmentToken {
 		t.Fatalf("credential preconditions = %+v, %v", metadata, err)
 	}
-	for _, invalid := range []json.RawMessage{json.RawMessage(`{}`), json.RawMessage(`{"kind":"development-token","kind":"user"}`), json.RawMessage(`{`)} {
+	for _, invalid := range []json.RawMessage{json.RawMessage(`{}`), json.RawMessage(`{"credential":{"Kind":"development-token"},"credential":{"Kind":"user"}}`), json.RawMessage(`{`)} {
 		if _, err := CredentialFromPreconditions(invalid); err == nil {
 			t.Fatalf("invalid credential preconditions accepted: %s", invalid)
 		}

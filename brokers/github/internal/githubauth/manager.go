@@ -142,7 +142,32 @@ func (m *Manager) CredentialKind() Kind {
 	if m != nil && m.app != nil {
 		return KindInstallation
 	}
+	if m != nil && m.user != nil {
+		return KindUser
+	}
 	return KindDevelopmentToken
+}
+
+// SupportsCredentialKind reports whether the runtime can select the reviewed
+// credential class for an operation. Development mode deliberately substitutes
+// its protected user token for catalog credentials.
+func (m *Manager) SupportsCredentialKind(kind Kind, userID int64) bool {
+	if m == nil {
+		return false
+	}
+	if m.development != nil {
+		return true
+	}
+	switch kind {
+	case KindAppJWT:
+		return m.app != nil
+	case KindInstallation:
+		return m.installation != nil
+	case KindUser:
+		return m.user != nil && userID > 0 && m.user.store.Exists(userSlot(userID))
+	default:
+		return false
+	}
 }
 
 func (m *Manager) CheckApp(ctx context.Context) error {

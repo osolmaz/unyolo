@@ -107,7 +107,9 @@ func validateDocument(document Document, rootFields map[string]bool) error {
 	if !rootFields[document.RootType+"."+document.RootField] {
 		return fmt.Errorf("GraphQL document %q is absent from the pinned schema", document.CatalogOperation)
 	}
-	if descriptor, found := opcatalog.ByName(document.CatalogOperation); !found || descriptor.ExecutorKind != "persisted-graphql" {
+	descriptor, found := opcatalog.ByName(document.CatalogOperation)
+	if !found || descriptor.ExecutorKind != "persisted-graphql" && descriptor.ExecutorKind != "admin-merge" ||
+		!slices.Contains(descriptor.UpstreamBindingIDs, "graphql:"+document.SHA256) {
 		return fmt.Errorf("GraphQL document %q is not cataloged", document.CatalogOperation)
 	}
 	if !safeDocumentBody(document) {

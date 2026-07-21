@@ -22,6 +22,7 @@ type Descriptor struct {
 	RequiredGitHubPermissions         map[string]string `json:"required_github_permissions,omitempty"`
 	RequiredRepositorySelection       bool              `json:"required_repository_selection,omitempty"`
 	AllowEmptyInstallationPermissions bool              `json:"allow_empty_installation_permissions,omitempty"`
+	DelegatedUserCredential           bool              `json:"delegated_user_credential,omitempty"`
 }
 type AuthorizationMode = capability.AuthorizationMode
 type ImplementationStatus = capability.ImplementationStatus
@@ -96,6 +97,9 @@ func validateProviderMetadata(value Descriptor) error {
 	}
 	if invalidHighRiskMetadata(value) {
 		return fmt.Errorf("high-risk GitHub operation %q is not explicit-only", value.Name)
+	}
+	if value.DelegatedUserCredential && (value.CredentialKind != "user" || !value.AgentFacing || !value.ExplicitOnly) {
+		return fmt.Errorf("GitHub operation %q has invalid delegated user credential metadata", value.Name)
 	}
 	if invalidSealedMetadata(value) {
 		return errors.New("GitHub sealed-input metadata drifted")

@@ -25,7 +25,7 @@
     },
     {
       "name": "destructive",
-      "rule": "delete, removal, revocation, transfer, archival, cancellation, and termination mutations",
+      "rule": "delete, removal, revocation, transfer, archival, cancellation, termination, and merge mutations",
       "operations": [
         "action_run.actions_cancel_workflow_run",
         "action_run.actions_delete_workflow_run",
@@ -168,7 +168,10 @@
         "pull_request.archive_pull_request",
         "pull_request.delete_pull_request_review",
         "pull_request.delete_pull_request_review_comment",
+        "pull_request.disable_pull_request_auto_merge",
+        "pull_request.enable_pull_request_auto_merge",
         "pull_request.interactions_remove_pull_request_bypass_list_for_repo",
+        "pull_request.merge_admin",
         "pull_request.reactions_delete_for_pull_request_comment",
         "pull_request.remove_pull_request_creation_cap_bypass_users",
         "pull_request.remove_requested_reviewers",
@@ -195,6 +198,7 @@
         "repo.delete_repository_custom_property",
         "repo.delete_repository_ruleset",
         "repo.delete_verifiable_domain",
+        "repo.merge_branch",
         "repo.remove_assignees_from_assignable",
         "repo.remove_blocked_by",
         "repo.remove_outside_collaborator",
