@@ -674,8 +674,12 @@ func decodeGraphQLResponse(response *http.Response, document graphqlmanifest.Doc
 		return ExecutionResult{}, errors.New("GitHub GraphQL response is invalid")
 	}
 	if len(payload.Errors) > 0 {
+		messages := make([]string, 0, len(payload.Errors))
+		for _, graphqlError := range payload.Errors {
+			messages = append(messages, graphqlError.Message)
+		}
 		return ExecutionResult{}, APIError{Code: safeGitHubCode(payload.Errors[0].Type, "graphql_error"), StatusCode: response.StatusCode,
-			Message: safeGitHubMessage(payload.Errors[0].Message), RequestID: githubRequestID(response.Header)}
+			Message: safeGitHubResponseMessages(messages, response), RequestID: githubRequestID(response.Header)}
 	}
 	projected, ok := projectJSON(payload.Data, document.ResponseProjection)
 	if !ok {

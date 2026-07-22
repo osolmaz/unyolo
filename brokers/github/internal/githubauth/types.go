@@ -158,8 +158,8 @@ func classifyAPIError(err error) error {
 	var responseError *github.ErrorResponse
 	if errors.As(err, &responseError) {
 		status := responseStatus(responseError.Response)
-		return APIError{Code: statusCodeName(status), StatusCode: status, Message: safeGitHubMessage(responseError.Message),
-			RequestID: responseRequestID(responseError.Response)}
+		return APIError{Code: statusCodeName(status), StatusCode: status,
+			Message: safeGitHubResponseMessages([]string{responseError.Message}, responseError.Response), RequestID: responseRequestID(responseError.Response)}
 	}
 	var apiErr APIError
 	if errors.As(err, &apiErr) {

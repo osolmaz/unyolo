@@ -515,7 +515,7 @@ func (a generatedAdapter) executeBoundOperation(ctx context.Context, plan Plan, 
 	}
 	result, err := a.manager.ExecuteREST(ctx, plan.Credential, *a.binding, target, arguments)
 	if err != nil {
-		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+		return Outcome{}, a.classifyExecutionError(a.binding.Method, err)
 	}
 	return validatedExecutionResult(*a.binding, a.descriptor.Name, result)
 }
@@ -634,7 +634,7 @@ func (a generatedAdapter) executeStreamUpload(ctx context.Context, plan Plan, ta
 	defer func() { _ = file.Close() }()
 	result, err := a.manager.ExecuteRESTUpload(ctx, plan.Credential, *a.binding, target, public, file, arguments.StreamInput.Size, arguments.StreamInput.MediaType)
 	if err != nil {
-		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+		return Outcome{}, a.classifyExecutionError(a.binding.Method, err)
 	}
 	return validatedExecutionResult(*a.binding, a.descriptor.Name, result)
 }
@@ -645,7 +645,7 @@ func (a generatedAdapter) executeStreamDownload(ctx context.Context, plan Plan, 
 	}
 	response, err := a.manager.ExecuteRESTDownload(ctx, plan.Credential, *a.binding, target, arguments)
 	if err != nil {
-		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+		return Outcome{}, a.classifyExecutionError(a.binding.Method, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	return a.storeStreamDownloadResult(plan, response)
@@ -743,7 +743,7 @@ func (a generatedAdapter) executeCredentialOutput(ctx context.Context, plan Plan
 	}
 	result, err := a.manager.ExecuteRESTRaw(ctx, plan.Credential, *a.binding, target, arguments)
 	if err != nil {
-		return Outcome{}, classifyExecutionError(a.binding.Method, err)
+		return Outcome{}, a.classifyExecutionError(a.binding.Method, err)
 	}
 	defer zero(result.Body)
 	upstream, err := decodeCredentialResponse(*a.binding, result)
@@ -828,6 +828,19 @@ func presentDescriptor(descriptor opcatalog.Descriptor, target map[string]any) a
 		Title:   descriptor.Summary,
 		Summary: descriptor.Name + " on " + targetSummary(descriptor.TargetKind, target),
 	}
+}
+
+func (a generatedAdapter) classifyExecutionError(method string, err error) error {
+	// GitHub can echo request values in diagnostics. Sealed operations therefore
+	// keep only the stable provider code, status, and request ID.
+	if a.descriptor.Sealed {
+		var apiErr githubauth.APIError
+		if errors.As(err, &apiErr) {
+			apiErr.Message = ""
+			err = apiErr
+		}
+	}
+	return classifyExecutionError(method, err)
 }
 
 func classifyExecutionError(method string, err error) error {
