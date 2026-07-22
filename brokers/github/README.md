@@ -263,10 +263,13 @@ privileges may bypass review, update, or merge-queue requirements, but do not
 bypass merge conflicts. A changed pull request must be submitted and approved
 again.
 
-Reviewed GitHub rejection messages and request IDs are retained only after
-strict allowlist validation. The durable operation therefore reports actionable
-failures such as a stale approved revision or GitHub's merge rejection instead
-of reducing every response to a generic upstream error.
+BrokerKit parses GitHub's documented error `message` fields, removes control
+characters, redacts credential-like values, and limits the text before returning
+it to the requesting client. Raw response bodies, GraphQL paths, and extensions
+are not retained. Sealed operations omit provider messages because GitHub may echo
+request values. Durable operations can therefore report errors such as a
+disabled merge method while machine behavior continues to use validated codes,
+HTTP status, and request IDs.
 
 ### Operation catalog
 
