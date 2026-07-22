@@ -31,6 +31,13 @@ under a component directory may add stricter requirements.
   coordinated fresh-state cutover; do not introduce v0, v2, compatibility
   readers, or migrations. Package release versions are separate from format
   versions.
+- Build approval-gated client workflows as durable blocking waits. After
+  submission, the client must keep waiting or polling the same operation until
+  the user records a decision and execution reaches a terminal state. A poll,
+  transport, or tool timeout is an internal retry boundary, not a successful
+  pending return. Reuse the same operation ID and return control only for a
+  terminal result, explicit user cancellation, or unrecoverable error. This
+  keeps agent turns alive so work continues automatically after the user clicks.
 - Mutation tooling stays checked in but is disabled and non-blocking. Run it
   only when explicitly requested.
 

@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "build": "pnpm run clean && vite build && tsc -p tsconfig.build.json && tsc -p tsconfig.operator-contract.json",
+    "build": "pnpm run clean && vite build && tsc -p tsconfig.build.json && tsc -p tsconfig.operator-contract.json && pnpm run stage:skills",
     "check": "pnpm run generate:check && pnpm run typecheck && pnpm run lint && pnpm run format:check",
     "clean": "rm -rf dist",
     "test": "vitest run --config vitest.config.ts",
@@ -39,6 +39,7 @@
     "generate": "../../scripts/generate-protocol.sh",
     "generate:check": "../../scripts/check-protocol.sh && node scripts/generate-redaction-fixture.mjs --check",
     "generate:redaction-fixture": "node scripts/generate-redaction-fixture.mjs",
+    "stage:skills": "node scripts/stage-skills.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check ."

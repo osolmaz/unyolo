@@ -3,6 +3,7 @@
   "activation": { "onStartup": true },
   "name": "BrokerKit",
   "description": "Provider-neutral approval inbox for BrokerKit sources.",
+  "skills": ["./dist/skills"],
   "configSchema": {
     "type": "object",
     "$defs": {
