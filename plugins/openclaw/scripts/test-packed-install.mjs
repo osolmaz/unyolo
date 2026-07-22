@@ -107,6 +107,10 @@ const installed = JSON.parse(
     "utf8",
   ),
 );
+if (installed.engines?.node !== ">=24.15.0 <25")
+  throw new Error(
+    "packed plugin has an unexpected Node.js compatibility range",
+  );
 if (installed.peerDependencies?.openclaw !== ">=2026.7.1")
   throw new Error(
     "packed plugin has an unexpected OpenClaw compatibility range",
