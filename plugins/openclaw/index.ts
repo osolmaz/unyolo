@@ -24,6 +24,7 @@ type DelegatedBootstrap = {
 
 export function registerBrokerKit(api: OpenClawPluginApi): void {
   const config = parseConfig(api.pluginConfig);
+  if (config.mode === "skills-only") return;
   const capability =
     config.mode === "direct"
       ? randomBytes(32).toString("base64url")

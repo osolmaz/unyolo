@@ -82,6 +82,10 @@
           }
         },
         "required": ["mode", "delegatedWeb"]
+      },
+      {
+        "additionalProperties": false,
+        "properties": { "mode": { "const": "skills-only" } }
       }
     ]
   },

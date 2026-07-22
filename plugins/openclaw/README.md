@@ -25,11 +25,16 @@ openclaw plugins install --link ./plugins/openclaw
 ```
 
 The enabled plugin automatically provides `gh-broker`, `hf-broker`, and
-`sudo-broker` skills. They teach agents to use the installed broker clients
-instead of looking for upstream provider credentials or unrestricted privilege
-escalation. OpenClaw loads them from the plugin package; it does not copy them
-into the agent workspace. A skill becomes eligible only when its matching
-broker executable is available, and the skill itself grants no access.
+`sudo-broker` skills. An installation without plugin configuration defaults to
+`skills-only` mode, which registers no approval UI, routes, commands, or
+background service. Configure `direct` or `delegated-web` mode when OpenClaw
+should also expose approval surfaces.
+
+The skills teach agents to use the installed broker clients instead of looking
+for upstream provider credentials or unrestricted privilege escalation.
+OpenClaw loads them from the plugin package; it does not copy them into the
+agent workspace. A skill becomes eligible only when its matching broker
+executable is available, and the skill itself grants no access.
 
 ## Operator V1 consumers
 
@@ -51,6 +56,8 @@ invalid bounds, unsafe integers, and protocol drift.
 
 ## Choose a trust mode
 
+- `skills-only` is the default when configuration is absent. It loads the
+  packaged client skills without registering approval surfaces.
 - `direct` trusts the OpenClaw process with operator SecretRefs and enables
   the tab, background reconciliation, `/brokerkit` commands, and channel
   delivery.

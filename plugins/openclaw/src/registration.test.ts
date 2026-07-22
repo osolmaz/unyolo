@@ -2,6 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { registerBrokerKit } from "../index.js";
 
 describe("plugin registration", () => {
+  it("registers no approval surfaces in the default skills-only mode", () => {
+    const registerService = vi.fn();
+    const registerCommand = vi.fn();
+    const registerHttpRoute = vi.fn();
+    registerBrokerKit({
+      pluginConfig: {},
+      registerService,
+      registerCommand,
+      registerHttpRoute,
+    } as never);
+    expect(registerService).not.toHaveBeenCalled();
+    expect(registerCommand).not.toHaveBeenCalled();
+    expect(registerHttpRoute).not.toHaveBeenCalled();
+  });
   it("registers only the tab and static route in delegated web mode", () => {
     const registerService = vi.fn();
     const registerCommand = vi.fn();
