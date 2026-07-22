@@ -59,6 +59,10 @@ const directConfig = z
     }
   });
 
+const skillsOnlyConfig = z
+  .object({ mode: z.literal("skills-only").default("skills-only") })
+  .strict();
+
 const delegatedWebConfig = z
   .object({
     mode: z.literal("delegated-web"),
@@ -78,16 +82,17 @@ const delegatedWebConfig = z
   })
   .strict();
 
-export const configSchema = z.discriminatedUnion("mode", [
+export const configSchema = z.union([
   directConfig,
   delegatedWebConfig,
+  skillsOnlyConfig,
 ]);
 
 export type PluginConfig = z.infer<typeof configSchema>;
 export type DirectPluginConfig = z.infer<typeof directConfig>;
 export type BrokerConfig = DirectPluginConfig["brokers"][number];
 export function parseConfig(value: unknown): PluginConfig {
-  return configSchema.parse(value);
+  return configSchema.parse(value ?? {});
 }
 
 function validDelegatedBasePath(value: string): boolean {

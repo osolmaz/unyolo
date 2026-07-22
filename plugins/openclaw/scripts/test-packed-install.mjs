@@ -78,6 +78,29 @@ run(
   ],
   temporary,
 );
+const openClawHome = mkdtempSync(
+  path.join(os.tmpdir(), "openclaw-brokerkit-host-"),
+);
+const openClawCli = path.join(
+  temporary,
+  "node_modules",
+  "openclaw",
+  "dist",
+  "index.js",
+);
+const openClawEnvironment = { HOME: openClawHome };
+run(
+  process.execPath,
+  [openClawCli, "plugins", "install", "--force", packageTarball],
+  temporary,
+  openClawEnvironment,
+);
+run(
+  process.execPath,
+  [openClawCli, "plugins", "doctor"],
+  temporary,
+  openClawEnvironment,
+);
 const installed = JSON.parse(
   readFileSync(
     path.join(temporary, "node_modules", "openclaw-brokerkit", "package.json"),
@@ -164,10 +187,11 @@ if (
 if (uiIndex.includes("crossorigin"))
   throw new Error("packed UI assets must not require CORS mode");
 
-function run(command, args, cwd) {
+function run(command, args, cwd, environment = {}) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
+    env: { ...process.env, ...environment },
     stdio: "pipe",
   });
   if (result.status !== 0) {

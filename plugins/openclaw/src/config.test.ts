@@ -65,7 +65,14 @@ describe("parseConfig", () => {
       ).toThrow();
     }
   });
-  it("requires an explicit mode and rejects fields from the other mode", () => {
+  it("defaults empty plugin config to skills-only mode", () => {
+    expect(parseConfig(undefined)).toEqual({ mode: "skills-only" });
+    expect(parseConfig({})).toEqual({ mode: "skills-only" });
+    expect(parseConfig({ mode: "skills-only" })).toEqual({
+      mode: "skills-only",
+    });
+  });
+  it("rejects missing direct mode and fields from another mode", () => {
     expect(() => parseConfig({ brokers: valid.brokers })).toThrow();
     expect(() =>
       parseConfig({
@@ -73,6 +80,9 @@ describe("parseConfig", () => {
         delegatedWeb: { basePath: "/api/brokerkit" },
         brokers: valid.brokers,
       }),
+    ).toThrow();
+    expect(() =>
+      parseConfig({ mode: "skills-only", brokers: valid.brokers }),
     ).toThrow();
   });
 });
