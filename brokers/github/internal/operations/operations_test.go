@@ -265,6 +265,20 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 	}
 }
 
+func TestSealedOperationSuppressesProviderDiagnosticMessage(t *testing.T) {
+	providerError := githubauth.APIError{Code: "unprocessable", StatusCode: http.StatusUnprocessableEntity, Message: "upstream echoed protected input"}
+	for _, test := range []struct {
+		sealed      bool
+		wantMessage string
+	}{{false, providerError.Message}, {true, ""}} {
+		adapter := generatedAdapter{descriptor: opcatalog.Descriptor{Descriptor: capability.Descriptor{Sealed: test.sealed}}}
+		var classified githubauth.APIError
+		if err := adapter.classifyExecutionError(http.MethodPost, providerError); !errors.As(err, &classified) || classified.Message != test.wantMessage {
+			t.Fatalf("sealed=%t classified error = %+v, %v", test.sealed, classified, err)
+		}
+	}
+}
+
 func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	attrs := authorizationAttrs(map[string]any{"input": map[string]any{
 		"actorId": json.Number("1"), "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
