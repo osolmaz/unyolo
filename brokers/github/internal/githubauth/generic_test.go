@@ -76,7 +76,7 @@ func TestAuthenticatedUserTargetMustMatchCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, target := range []map[string]any{
-		{"kind": "user", "name": "dutifuldev"},
+		{"kind": "user", "name": "other-user"},
 		{"kind": "user", "name": "osolmaz", "id": float64(8)},
 		{"kind": "repo", "name": "osolmaz"},
 	} {

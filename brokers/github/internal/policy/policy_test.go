@@ -17,11 +17,11 @@ func TestPolicyAllowsPRWorkflowButNotDefaultBranchPush(t *testing.T) {
 	p := testPolicy(t)
 
 	allowed := []Request{
-		repoRequest(OperationGitFetch, "dutifuldev", "gh-broker", nil),
-		repoRequest(OperationGitPushBranchCreate, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/bob/work"}),
-		repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/agent/work"}),
-		repoRequest(Operation("pull_request.create"), "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/bob/work", "base_ref": "refs/heads/main"}),
-		repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": "README.md"}),
+		repoRequest(OperationGitFetch, "osolmaz", "gh-broker", nil),
+		repoRequest(OperationGitPushBranchCreate, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/bob/work"}),
+		repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/agent/work"}),
+		repoRequest(Operation("pull_request.create"), "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/bob/work", "base_ref": "refs/heads/main"}),
+		repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": "README.md"}),
 	}
 	for _, request := range allowed {
 		if decision := p.Evaluate(request); !decision.Allowed {
@@ -29,7 +29,7 @@ func TestPolicyAllowsPRWorkflowButNotDefaultBranchPush(t *testing.T) {
 		}
 	}
 
-	decision := p.Evaluate(repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"}))
+	decision := p.Evaluate(repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/main"}))
 	if decision.Allowed || decision.Effect != EffectDeny {
 		t.Fatalf("main push decision = %+v, want deny", decision)
 	}
@@ -38,7 +38,7 @@ func TestPolicyAllowsPRWorkflowButNotDefaultBranchPush(t *testing.T) {
 func TestPolicyCanAllowDirectMainPushForSpecificRepo(t *testing.T) {
 	t.Parallel()
 	p := testPolicy(t)
-	decision := p.Evaluate(repoRequest(OperationGitPushForce, "dutifuldev", "direct-main", map[string]string{"ref": "refs/heads/main"}))
+	decision := p.Evaluate(repoRequest(OperationGitPushForce, "osolmaz", "direct-main", map[string]string{"ref": "refs/heads/main"}))
 	if !decision.Allowed || !strings.Contains(strings.Join(decision.MatchedRuleIDs, ","), "direct-main") {
 		t.Fatalf("decision = %+v, want direct-main allow", decision)
 	}
@@ -90,7 +90,7 @@ func TestScopeExampleSeparatesDirectAndApprovalOperations(t *testing.T) {
 func TestPolicyDenyWinsOverAllow(t *testing.T) {
 	t.Parallel()
 	p := testPolicy(t)
-	decision := p.Evaluate(repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"}))
+	decision := p.Evaluate(repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/main"}))
 	if decision.Allowed || decision.Effect != EffectDeny {
 		t.Fatalf("force decision = %+v, want deny", decision)
 	}
@@ -131,18 +131,18 @@ func TestPolicyCanScopeContentsReadByRef(t *testing.T) {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{Operation("repo.contents.read")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"paths": {"*"}, "refs": {"main"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	allowed := p.Evaluate(repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": "README.md", "ref": "main"}))
+	allowed := p.Evaluate(repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": "README.md", "ref": "main"}))
 	if !allowed.Allowed {
 		t.Fatalf("main contents decision = %+v, want allowed", allowed)
 	}
-	denied := p.Evaluate(repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": "README.md", "ref": "private"}))
+	denied := p.Evaluate(repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": "README.md", "ref": "private"}))
 	if denied.Allowed {
 		t.Fatalf("private contents decision = %+v, want denied", denied)
 	}
@@ -156,18 +156,18 @@ func TestPolicyCanonicalizesHeadRefAlias(t *testing.T) {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{Operation("pull_request.create")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"head_refs": {"refs/heads/agent/*"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	allowed := p.Evaluate(repoRequest(Operation("pull_request.create"), "dutifuldev", "gh-broker", map[string]string{"head_refs": "refs/heads/agent/work"}))
+	allowed := p.Evaluate(repoRequest(Operation("pull_request.create"), "osolmaz", "gh-broker", map[string]string{"head_refs": "refs/heads/agent/work"}))
 	if !allowed.Allowed {
 		t.Fatalf("head_refs decision = %+v, want allowed", allowed)
 	}
-	denied := p.Evaluate(repoRequest(Operation("pull_request.create"), "dutifuldev", "gh-broker", map[string]string{"head_ref": "refs/heads/bob/work"}))
+	denied := p.Evaluate(repoRequest(Operation("pull_request.create"), "osolmaz", "gh-broker", map[string]string{"head_ref": "refs/heads/bob/work"}))
 	if denied.Allowed {
 		t.Fatalf("other head_ref decision = %+v, want denied", denied)
 	}
@@ -181,18 +181,18 @@ func TestPolicyPathStarDoesNotMatchNestedContent(t *testing.T) {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{Operation("repo.contents.read")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"paths": {"*"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	rootFile := p.Evaluate(repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": "README.md"}))
+	rootFile := p.Evaluate(repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": "README.md"}))
 	if !rootFile.Allowed {
 		t.Fatalf("root file decision = %+v, want allowed", rootFile)
 	}
-	nestedFile := p.Evaluate(repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": ".github/workflows/ci.yml"}))
+	nestedFile := p.Evaluate(repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": ".github/workflows/ci.yml"}))
 	if nestedFile.Allowed {
 		t.Fatalf("nested file decision = %+v, want denied", nestedFile)
 	}
@@ -206,18 +206,18 @@ func TestPolicyPreservesPathWhitespaceDuringMatching(t *testing.T) {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{Operation("repo.contents.read")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"paths": {"README.md"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	allowed := p.Evaluate(repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": "README.md"}))
+	allowed := p.Evaluate(repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": "README.md"}))
 	if !allowed.Allowed {
 		t.Fatalf("exact path decision = %+v, want allowed", allowed)
 	}
-	denied := p.Evaluate(repoRequest(Operation("repo.contents.read"), "dutifuldev", "gh-broker", map[string]string{"path": " README.md "}))
+	denied := p.Evaluate(repoRequest(Operation("repo.contents.read"), "osolmaz", "gh-broker", map[string]string{"path": " README.md "}))
 	if denied.Allowed {
 		t.Fatalf("space-padded path decision = %+v, want denied", denied)
 	}
@@ -245,13 +245,13 @@ func TestIncompleteRequest(t *testing.T) {
 	if !incompleteRequest(Request{}) {
 		t.Fatal("incompleteRequest(empty) = false, want true")
 	}
-	if !incompleteRequest(Request{Client: "bob", Operation: OperationGitFetch, Target: Target{Kind: "repo", Owner: "dutifuldev"}}) {
+	if !incompleteRequest(Request{Client: "bob", Operation: OperationGitFetch, Target: Target{Kind: "repo", Owner: "osolmaz"}}) {
 		t.Fatal("incompleteRequest(missing repo name) = false, want true")
 	}
 	if incompleteRequest(Request{Client: "bob", Operation: Operation("installation.repo.list"), Target: Target{Kind: "installation"}}) {
 		t.Fatal("incompleteRequest(installation list) = true, want false")
 	}
-	if incompleteRequest(repoRequest(OperationGitFetch, "dutifuldev", "gh-broker", nil)) {
+	if incompleteRequest(repoRequest(OperationGitFetch, "osolmaz", "gh-broker", nil)) {
 		t.Fatal("incompleteRequest(repo fetch) = true, want false")
 	}
 }
@@ -293,11 +293,11 @@ func TestGeneratedPathSelectorsAreOperationSpecificPolicyAttributes(t *testing.T
 
 func TestCoreTargetsForOperation(t *testing.T) {
 	t.Parallel()
-	targets, err := coreTargetsForOperation([]Target{{Kind: "*", Owner: "dutifuldev", Name: "gh-broker"}}, OperationGitFetch)
+	targets, err := coreTargetsForOperation([]Target{{Kind: "*", Owner: "osolmaz", Name: "gh-broker"}}, OperationGitFetch)
 	if err != nil {
 		t.Fatalf("coreTargetsForOperation(repo) error = %v", err)
 	}
-	if len(targets) != 1 || targets[0]["kind"] != "repo" || targets[0]["owner"] != "dutifuldev" {
+	if len(targets) != 1 || targets[0]["kind"] != "repo" || targets[0]["owner"] != "osolmaz" {
 		t.Fatalf("repo targets = %+v, want repo target", targets)
 	}
 	installTargets, err := coreTargetsForOperation([]Target{{Kind: "*"}}, Operation("installation.repo.list"))
@@ -349,12 +349,12 @@ func TestPolicyDoesNotMixRules(t *testing.T) {
 	t.Parallel()
 	p, err := New(Scope{Rules: []Rule{
 		{ID: "operation-only", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "other", Name: "*"}}},
-		{ID: "target-only", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{Operation("repo.contents.read")}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}}},
+		{ID: "target-only", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{Operation("repo.contents.read")}, Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}}},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	decision := p.Evaluate(repoRequest(OperationGitFetch, "dutifuldev", "gh-broker", nil))
+	decision := p.Evaluate(repoRequest(OperationGitFetch, "osolmaz", "gh-broker", nil))
 	if decision.Allowed {
 		t.Fatalf("decision = %+v, want denied because one rule must match every dimension", decision)
 	}
@@ -368,13 +368,13 @@ func TestPolicyDeduplicatesRepeatedOperations(t *testing.T) {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitFetch, OperationGitFetch},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	decision := p.Evaluate(repoRequest(OperationGitFetch, "dutifuldev", "gh-broker", nil))
+	decision := p.Evaluate(repoRequest(OperationGitFetch, "osolmaz", "gh-broker", nil))
 	if !decision.Allowed || !slices.Equal(decision.MatchedRuleIDs, []string{"duplicate-read"}) {
 		t.Fatalf("decision = %+v, want one duplicate-read match", decision)
 	}
@@ -388,7 +388,7 @@ func TestRequestGrantPolicyIsSingleUse(t *testing.T) {
 			Effect:     EffectRequest,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitPushFastForward},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		},
 	}})
 	if err != nil {
@@ -415,14 +415,14 @@ func TestRequestRulesRequireGrantForExecution(t *testing.T) {
 			Effect:     EffectRequest,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitPushForce},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	request := repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"})
+	request := repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/main"})
 	execute := p.Evaluate(request)
 	if execute.Allowed || execute.Effect != EffectRequest || execute.GrantPolicy != nil {
 		t.Fatalf("Evaluate() = %+v, want approval required but not executable", execute)
@@ -441,14 +441,14 @@ func TestActiveGrantAllowsExactRequestAndDenyStillWins(t *testing.T) {
 			Effect:     EffectDeny,
 			Clients:    []string{"*"},
 			Operations: []Operation{OperationGitPushForce},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	request := repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/main"})
+	request := repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/main"})
 	grant := corepolicy.Grant{
 		ID:        "grant-1",
 		Client:    "bob",
@@ -467,7 +467,7 @@ func TestActiveGrantAllowsExactRequestAndDenyStillWins(t *testing.T) {
 		Effect:     EffectAllow,
 		Clients:    []string{"alice"},
 		Operations: []Operation{OperationGitFetch},
-		Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 	}}})
 	if err != nil {
 		t.Fatalf("New(empty) error = %v", err)
@@ -476,7 +476,7 @@ func TestActiveGrantAllowsExactRequestAndDenyStillWins(t *testing.T) {
 	if !allowed.Allowed || allowed.GrantID != grant.ID || !slices.Equal(allowed.MatchedRuleIDs, []string{grant.ID}) {
 		t.Fatalf("active grant decision = %+v, want grant allow", allowed)
 	}
-	other := empty.Evaluate(repoRequest(OperationGitPushForce, "dutifuldev", "gh-broker", map[string]string{"ref": "refs/heads/other"}), grant)
+	other := empty.Evaluate(repoRequest(OperationGitPushForce, "osolmaz", "gh-broker", map[string]string{"ref": "refs/heads/other"}), grant)
 	if other.Allowed {
 		t.Fatalf("other ref decision = %+v, want no grant match", other)
 	}
@@ -561,12 +561,12 @@ func TestLoadFileRejectsUnsafeOrUnknownScope(t *testing.T) {
 	cases := map[string]string{
 		"missing rules":     `{}`,
 		"null rules":        `{"rules":null}`,
-		"unknown operation": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["github.raw.request"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}]}]}`,
-		"unknown attr":      `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"unknown":["x"]}}]}`,
-		"incompatible attr": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"attrs":{"base_refs":["refs/heads/main"]}}]}`,
-		"unknown field":     `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}],"extra":true}]}`,
+		"unknown operation": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["github.raw.request"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}]}]}`,
+		"unknown attr":      `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"attrs":{"unknown":["x"]}}]}`,
+		"incompatible attr": `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"attrs":{"base_refs":["refs/heads/main"]}}]}`,
+		"unknown field":     `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"extra":true}]}`,
 		"deep glob":         `{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"**","name":"*"}]}]}`,
-		"trailing json":     `{"rules":[{"id":"ok","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"dutifuldev","name":"*"}]}]}{"rules":[]}`,
+		"trailing json":     `{"rules":[{"id":"ok","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}]}]}{"rules":[]}`,
 	}
 	for name, body := range cases {
 		if _, err := LoadFile(writeScopeFile(t, body)); err == nil {
@@ -584,7 +584,7 @@ func TestLoadFileAcceptsExplicitDenyAllScope(t *testing.T) {
 	decision := policy.Evaluate(Request{
 		Client:    "bob",
 		Operation: OperationGitFetch,
-		Target:    Target{Kind: "repo", Owner: "dutifuldev", Name: "demo"},
+		Target:    Target{Kind: "repo", Owner: "osolmaz", Name: "demo"},
 	})
 	if decision.Allowed || decision.Effect != EffectNoMatch {
 		t.Fatalf("empty rules decision = %+v, want deny-all no-match", decision)
@@ -599,7 +599,7 @@ func testPolicy(t *testing.T) *Policy {
 			Effect:     EffectDeny,
 			Clients:    []string{"*"},
 			Operations: []Operation{OperationGitPushForce},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 		{
@@ -614,14 +614,14 @@ func testPolicy(t *testing.T) *Policy {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitFetch, Operation("repo.metadata.read")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 		},
 		{
 			ID:         "bob-contents-read",
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{Operation("repo.contents.read")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 			Attrs:      map[string][]string{"paths": {"*", "docs/*", "."}},
 		},
 		{
@@ -636,14 +636,14 @@ func testPolicy(t *testing.T) *Policy {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitPushAdvertise},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 		},
 		{
 			ID:         "bob-push-branches",
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitPushBranchCreate, OperationGitPushForce},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/bob/*", "refs/heads/agent/*"}},
 		},
 		{
@@ -651,7 +651,7 @@ func testPolicy(t *testing.T) *Policy {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{Operation("pull_request.create")},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/*", "refs/heads/agent/*"},
 				"base_refs": {"refs/heads/main"},
@@ -662,7 +662,7 @@ func testPolicy(t *testing.T) *Policy {
 			Effect:     EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []Operation{OperationGitPushForce},
-			Targets:    []Target{{Kind: "repo", Owner: "dutifuldev", Name: "direct-main"}},
+			Targets:    []Target{{Kind: "repo", Owner: "osolmaz", Name: "direct-main"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 	}})
@@ -694,13 +694,13 @@ func writeScopeFile(t *testing.T, body string) string {
 func TestPolicyRequestEffectAndAllowsHelper(t *testing.T) {
 	t.Parallel()
 	p, err := New(Scope{Rules: []Rule{
-		{ID: "request-merge", Effect: EffectRequest, Clients: []string{"bob"}, Operations: []Operation{Operation("pull_request.merge")}, Targets: []Target{{Kind: "pull_request", Owner: "dutifuldev", Name: "gh-broker", Number: 7}}},
+		{ID: "request-merge", Effect: EffectRequest, Clients: []string{"bob"}, Operations: []Operation{Operation("pull_request.merge")}, Targets: []Target{{Kind: "pull_request", Owner: "osolmaz", Name: "gh-broker", Number: 7}}},
 		{ID: "wildcard-read", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{"*"}, Targets: []Target{{Kind: "repo", Owner: "openclaw", Name: "*"}}},
 	}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	requestDecision := p.Evaluate(Request{Client: "bob", Operation: Operation("pull_request.merge"), Target: Target{Kind: "pull_request", Owner: "dutifuldev", Name: "gh-broker", Number: 7}})
+	requestDecision := p.Evaluate(Request{Client: "bob", Operation: Operation("pull_request.merge"), Target: Target{Kind: "pull_request", Owner: "osolmaz", Name: "gh-broker", Number: 7}})
 	if requestDecision.Allowed || requestDecision.Effect != EffectRequest {
 		t.Fatalf("request decision = %+v, want request effect", requestDecision)
 	}
@@ -716,11 +716,11 @@ func TestPolicyRejectsIncompleteRequest(t *testing.T) {
 	t.Parallel()
 	p := testPolicy(t)
 	cases := map[string]Request{
-		"missing client":     {Operation: OperationGitFetch, Target: Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
-		"missing operation":  {Client: "bob", Target: Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		"missing client":     {Operation: OperationGitFetch, Target: Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
+		"missing operation":  {Client: "bob", Target: Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		"missing kind":       {Client: "bob", Operation: OperationGitFetch},
 		"missing repo owner": {Client: "bob", Operation: OperationGitPushForce, Target: Target{Kind: "repo", Name: "gh-broker"}, Attrs: map[string]string{"ref": "refs/heads/main"}},
-		"missing repo name":  {Client: "bob", Operation: OperationGitPushForce, Target: Target{Kind: "repo", Owner: "dutifuldev"}, Attrs: map[string]string{"ref": "refs/heads/main"}},
+		"missing repo name":  {Client: "bob", Operation: OperationGitPushForce, Target: Target{Kind: "repo", Owner: "osolmaz"}, Attrs: map[string]string{"ref": "refs/heads/main"}},
 	}
 	for name, request := range cases {
 		decision := p.Evaluate(request)
@@ -743,9 +743,9 @@ func TestAllGitHubGrantableOperationsCanRequest(t *testing.T) {
 		Operation("pull_request.merge"),
 	}
 	for _, operation := range operations {
-		target := Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}
+		target := Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}
 		if targetKindForOperation(operation) == "pull_request" {
-			target = Target{Kind: "pull_request", Owner: "dutifuldev", Name: "gh-broker", Number: 7}
+			target = Target{Kind: "pull_request", Owner: "osolmaz", Name: "gh-broker", Number: 7}
 		}
 		p, err := New(Scope{Rules: []Rule{
 			{
@@ -770,13 +770,13 @@ func TestPolicyValidationRejectsMoreInvalidRules(t *testing.T) {
 	t.Parallel()
 	cases := map[string]Scope{
 		"duplicate id": {Rules: []Rule{
-			{ID: "dup", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}}},
-			{ID: "dup", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{Operation("repo.contents.read")}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}}},
+			{ID: "dup", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}}},
+			{ID: "dup", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{Operation("repo.contents.read")}, Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}}},
 		}},
-		"bad effect":        {Rules: []Rule{{ID: "bad", Effect: Effect("maybe"), Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}}}}},
-		"empty client":      {Rules: []Rule{{ID: "bad", Effect: EffectAllow, Clients: []string{""}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}}}}},
-		"bad target kind":   {Rules: []Rule{{ID: "bad", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "org", Owner: "dutifuldev", Name: "*"}}}}},
-		"missing repo name": {Rules: []Rule{{ID: "bad", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "dutifuldev"}}}}},
+		"bad effect":        {Rules: []Rule{{ID: "bad", Effect: Effect("maybe"), Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}}}}},
+		"empty client":      {Rules: []Rule{{ID: "bad", Effect: EffectAllow, Clients: []string{""}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}}}}},
+		"bad target kind":   {Rules: []Rule{{ID: "bad", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "org", Owner: "osolmaz", Name: "*"}}}}},
+		"missing repo name": {Rules: []Rule{{ID: "bad", Effect: EffectAllow, Clients: []string{"bob"}, Operations: []Operation{OperationGitFetch}, Targets: []Target{{Kind: "repo", Owner: "osolmaz"}}}}},
 	}
 	for name, scope := range cases {
 		if _, err := New(scope); err == nil {

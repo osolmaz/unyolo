@@ -14,17 +14,17 @@ func TestProtectedDefaultBranchWriteFailsBeforeGitDispatch(t *testing.T) {
 	t.Parallel()
 	server, gitCalls := newProtectedWriteTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/dutifuldev/gh-broker":
+		case "/repos/osolmaz/gh-broker":
 			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
-		case "/repos/dutifuldev/gh-broker/rules/branches/main":
+		case "/repos/osolmaz/gh-broker/rules/branches/main":
 			http.NotFound(w, r)
-		case "/repos/dutifuldev/gh-broker/branches/main/protection":
+		case "/repos/osolmaz/gh-broker/branches/main/protection":
 			_, _ = w.Write([]byte(`{"required_pull_request_reviews":{}}`))
 		default:
 			http.NotFound(w, r)
 		}
 	})
-	response := doWithHeaders(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", map[string]string{
+	response := doWithHeaders(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", map[string]string{
 		"Authorization": bearerAuth(), "Content-Type": "application/x-git-receive-pack-request",
 	}, receivePackCommands(commandLine(oid("1"), oid("2"), "refs/heads/main")))
 	if response.Code != http.StatusForbidden || *gitCalls != 0 {
@@ -37,7 +37,7 @@ func TestUninspectableBranchStateFailsClosed(t *testing.T) {
 	server, gitCalls := newProtectedWriteTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)
 	})
-	response := doWithHeaders(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", map[string]string{
+	response := doWithHeaders(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", map[string]string{
 		"Authorization": bearerAuth(), "Content-Type": "application/x-git-receive-pack-request",
 	}, receivePackCommands(commandLine(oid("1"), oid("2"), "refs/heads/work")))
 	if response.Code != http.StatusServiceUnavailable || *gitCalls != 0 {
@@ -50,7 +50,7 @@ func newProtectedWriteTestServer(t *testing.T, apiHandler http.HandlerFunc) (*Se
 	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{{
 		ID: "allow-test-write", Effect: policy.EffectAllow, Clients: []string{"bob"},
 		Operations: []policy.Operation{policy.OperationGitPushForce},
-		Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		Attrs:      map[string][]string{"refs": {"refs/heads/*"}},
 	}}})
 	if err != nil {

@@ -47,7 +47,7 @@ func TestGitCompatibleRoutesRequireAuth(t *testing.T) {
 	request := httptest.NewRequestWithContext(
 		context.Background(),
 		http.MethodGet,
-		"/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack",
+		"/osolmaz/gh-broker.git/info/refs?service=git-upload-pack",
 		http.NoBody,
 	)
 	response := httptest.NewRecorder()
@@ -74,7 +74,7 @@ func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
 	server := newTestServer(t)
 	server.githubWebhookSecret = "webhook-secret"
 	server.auditWriter = bkaudit.New(&logs)
-	body := []byte(`{"action":"added","installation":{"id":42},"repositories_added":[{"full_name":"dutifuldev/gh-broker"}]}`)
+	body := []byte(`{"action":"added","installation":{"id":42},"repositories_added":[{"full_name":"osolmaz/gh-broker"}]}`)
 	response := doWebhook(t, server, body, map[string]string{
 		"X-GitHub-Event":      "installation_repositories",
 		"X-GitHub-Delivery":   "delivery-1",
@@ -85,7 +85,7 @@ func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 	logText := logs.String()
-	for _, want := range []string{`"github_event":"installation_repositories"`, `"github_delivery":"delivery-1"`, `"github_action":"added"`, `"github_installation_id":"42"`, `"target":"dutifuldev/gh-broker"`} {
+	for _, want := range []string{`"github_event":"installation_repositories"`, `"github_delivery":"delivery-1"`, `"github_action":"added"`, `"github_installation_id":"42"`, `"target":"osolmaz/gh-broker"`} {
 		if !strings.Contains(logText, want) {
 			t.Fatalf("webhook audit missing %s: %s", want, logText)
 		}
@@ -144,7 +144,7 @@ func TestGitFetchUsesPolicy(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	allowed := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	allowed := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if allowed.Code != http.StatusOK {
 		t.Fatalf("allowed status = %d, body = %s", allowed.Code, allowed.Body.String())
 	}
@@ -162,7 +162,7 @@ func TestGitInfoRefsDirectHandler(t *testing.T) {
 		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
-	context := newGitContext(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", nil)
+	context := newGitContext(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", nil)
 	if err := server.gitInfoRefs(context); err != nil {
 		t.Fatalf("gitInfoRefs() error = %v", err)
 	}
@@ -170,7 +170,7 @@ func TestGitInfoRefsDirectHandler(t *testing.T) {
 		t.Fatalf("upstream calls = %d, want 1", upstreamCalls)
 	}
 
-	badContext := newGitContext(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=bad", nil)
+	badContext := newGitContext(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=bad", nil)
 	if err := server.gitInfoRefs(badContext); err == nil {
 		t.Fatal("gitInfoRefs(bad service) error = nil, want unsupported service")
 	}
@@ -183,11 +183,11 @@ func TestProxyGitDirect(t *testing.T) {
 		gotPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 	})
-	context := newGitContext(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-upload-pack", []byte("want refs"))
+	context := newGitContext(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-upload-pack", []byte("want refs"))
 	if err := server.proxyGit(context); err != nil {
 		t.Fatalf("proxyGit() error = %v", err)
 	}
-	if gotPath != "/dutifuldev/gh-broker.git/git-upload-pack" {
+	if gotPath != "/osolmaz/gh-broker.git/git-upload-pack" {
 		t.Fatalf("upstream path = %q, want upload-pack path", gotPath)
 	}
 }
@@ -195,7 +195,7 @@ func TestProxyGitDirect(t *testing.T) {
 func TestGitProxyUsesStreamTimeout(t *testing.T) {
 	t.Parallel()
 	upstream := httptest.NewServer(withDefaultGitHubSafetyState(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/dutifuldev/gh-broker.git/info/refs" {
+		if request.URL.Path != "/osolmaz/gh-broker.git/info/refs" {
 			t.Fatalf("upstream path = %q", request.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -216,7 +216,7 @@ func TestGitProxyUsesStreamTimeout(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = server.Close() })
 
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if response.Code != http.StatusOK || response.Body.String() != "stream-complete" {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
@@ -230,7 +230,7 @@ func TestGitReceivePackDiscoveryUsesPushPolicy(t *testing.T) {
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitFetch},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		},
 	}})
 	if err != nil {
@@ -239,11 +239,11 @@ func TestGitReceivePackDiscoveryUsesPushPolicy(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, fetchOnlyPolicy, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	fetch := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	fetch := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if fetch.Code != http.StatusOK {
 		t.Fatalf("fetch discovery status = %d, body = %s", fetch.Code, fetch.Body.String())
 	}
-	push := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	push := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
 	if push.Code != http.StatusForbidden {
 		t.Fatalf("receive-pack discovery status = %d, want %d", push.Code, http.StatusForbidden)
 	}
@@ -256,11 +256,11 @@ func TestGitUploadPackPostRouteUsesPolicy(t *testing.T) {
 		gotPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 	})
-	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-upload-pack", bearerAuth(), []byte("want refs"))
+	response := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-upload-pack", bearerAuth(), []byte("want refs"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if gotPath != "/dutifuldev/gh-broker.git/git-upload-pack" {
+	if gotPath != "/osolmaz/gh-broker.git/git-upload-pack" {
 		t.Fatalf("upstream path = %q, want upload-pack path", gotPath)
 	}
 }
@@ -272,7 +272,7 @@ func TestGitReceivePackRejectsBadOID(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload("not-an-oid", oid("2"), "refs/heads/bob/work"),
 	)
@@ -292,7 +292,7 @@ func TestGitReceivePackRejectsTagUpdateByDefault(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(zeroOID(), oid("1"), "refs/tags/v0.1.0"),
 	)
@@ -308,14 +308,14 @@ func TestGitReceivePackEmptyRequestStillUsesPolicy(t *testing.T) {
 	t.Parallel()
 	var gotGitPush bool
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		[]byte("0000"),
 	)
@@ -334,14 +334,14 @@ func TestGitReceivePackAllowsFeatureBranchCreate(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/compare/") {
 			t.Fatal("branch creation should not compare ancestry")
 		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackCreate("refs/heads/bob/work"),
 	)
@@ -357,7 +357,7 @@ func TestGitReceivePackAllowsShallowFeatureBranchCreate(t *testing.T) {
 	t.Parallel()
 	var gotGitPush bool
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	body := append(
@@ -368,7 +368,7 @@ func TestGitReceivePackAllowsShallowFeatureBranchCreate(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		body,
 	)
@@ -387,14 +387,14 @@ func TestGitReceivePackAllowsFeatureBranchUpdateWithForcePolicy(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/compare/") {
 			t.Fatal("branch update should not compare ancestry before upload")
 		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/agent/work"),
 	)
@@ -414,7 +414,7 @@ func TestGitReceivePackExistingBranchUpdateRequiresForcePolicy(t *testing.T) {
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushFastForward},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/agent/*"}},
 		},
 	}})
@@ -430,7 +430,7 @@ func TestGitReceivePackExistingBranchUpdateRequiresForcePolicy(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/agent/work"),
 	)
@@ -449,14 +449,14 @@ func TestGitReceivePackRejectsMainBranchByPolicy(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/compare/") {
 			t.Fatal("denied branch update should not compare ancestry")
 		}
-		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
@@ -475,14 +475,14 @@ func TestGitReceivePackAllowsDirectMainForSpecificRepo(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/compare/") {
 			t.Fatal("direct branch update should not compare ancestry before upload")
 		}
-		gotGitPush = r.URL.Path == "/dutifuldev/direct-main.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/direct-main.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/direct-main.git/git-receive-pack",
+		"/osolmaz/direct-main.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
@@ -498,14 +498,14 @@ func TestGitReceivePackDeniesUnsupportedRefUpdate(t *testing.T) {
 	t.Parallel()
 	var gotGitPush bool
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
-		gotGitPush = r.URL.Path == "/dutifuldev/gh-broker.git/git-receive-pack"
+		gotGitPush = r.URL.Path == "/osolmaz/gh-broker.git/git-receive-pack"
 		w.WriteHeader(http.StatusOK)
 	})
 	response := doWithBody(
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/notes/commits"),
 	)
@@ -524,7 +524,7 @@ func TestGitReceivePackRejectsRefDelete(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), zeroOID(), "refs/heads/bob/work"),
 	)
@@ -540,7 +540,7 @@ func TestGitReceivePackRejectsMalformedRequest(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		[]byte("bad"),
 	)
@@ -563,7 +563,7 @@ func TestGitReceivePackRejectsMalformedPktLines(t *testing.T) {
 			t,
 			server,
 			http.MethodPost,
-			"/dutifuldev/gh-broker.git/git-receive-pack",
+			"/osolmaz/gh-broker.git/git-receive-pack",
 			bearerAuth(),
 			body,
 		)
@@ -581,7 +581,7 @@ func TestGitReceivePackRejectsOversizedRequest(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		[]byte("0000extra"),
 	)
@@ -647,7 +647,7 @@ func TestPullRequestGitHubShapedAliasIsNotRegistered(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/repos/dutifuldev/gh-broker/pulls",
+		"/repos/osolmaz/gh-broker/pulls",
 		bearerAuth(),
 		[]byte(`{"title":"work","head":"bob/work","base":"main"}`),
 	)
@@ -677,7 +677,7 @@ func TestDenyOverridesActiveGrant(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
@@ -701,7 +701,7 @@ func TestGrantBackedReceivePackConsumesGrant(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
@@ -727,7 +727,7 @@ func TestGitReceivePackWaitsForApprovalAndContinues(t *testing.T) {
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+		responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
 	grant, token := waitForGitApproval(t, server, notifier, 1)
 	if len(notifier.messages) != 1 || upstreamCalls != 0 {
@@ -746,8 +746,8 @@ func TestGitReceivePackWaitsForApprovalAndContinues(t *testing.T) {
 func TestGitReceivePackGroupsAtomicMultiRefApproval(t *testing.T) {
 	t.Parallel()
 	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{
-		{ID: "request-force", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGitPushForce}, Targets: []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}, Attrs: map[string][]string{"refs": {"refs/heads/bob/**"}}},
-		{ID: "request-delete", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGitRefDelete}, Targets: []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}, Attrs: map[string][]string{"refs": {"refs/heads/bob/**"}}},
+		{ID: "request-force", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGitPushForce}, Targets: []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}}, Attrs: map[string][]string{"refs": {"refs/heads/bob/**"}}},
+		{ID: "request-delete", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGitRefDelete}, Targets: []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}}, Attrs: map[string][]string{"refs": {"refs/heads/bob/**"}}},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -765,7 +765,7 @@ func TestGitReceivePackGroupsAtomicMultiRefApproval(t *testing.T) {
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+		responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
 	grant, token := waitForGitApproval(t, server, notifier, 1)
 	if got := grant.Attrs["ref"]; !reflect.DeepEqual(got, []string{"refs/heads/bob/delete", "refs/heads/bob/update"}) {
@@ -803,7 +803,7 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 
 	firstResponses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		firstResponses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+		firstResponses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
 	firstGrant, firstToken := waitForGitApproval(t, server, notifier, 1)
 	if _, err := server.grants.Deny(firstGrant.ID, firstToken, "operator"); err != nil {
@@ -815,7 +815,7 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 	}
 	secondResponses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		secondResponses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+		secondResponses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
 	secondGrant, secondToken := waitForGitApproval(t, server, notifier, 2)
 	if _, err := server.grants.Approve(secondGrant.ID, secondToken, "operator"); err != nil {
@@ -897,7 +897,7 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 	responses := make(chan *httptest.ResponseRecorder, 2)
 	for range 2 {
 		go func() {
-			responses <- doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), body)
+			responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 		}()
 	}
 	grant, token := waitForGitApproval(t, server, notifier, 1)
@@ -934,7 +934,7 @@ func TestGitReceivePackReportsUnavailableApprovalChannel(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestTagPushPolicy(t), func(http.ResponseWriter, *http.Request) {
 		t.Fatal("unapproved Git push reached upstream")
 	})
-	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(), receivePackCreate("refs/tags/v1.0.0"))
+	response := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), receivePackCreate("refs/tags/v1.0.0"))
 	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "approval channel is not configured") {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
@@ -951,7 +951,7 @@ func TestGrantBackedReceivePackRetainsGrantOnProxyError(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
@@ -983,7 +983,7 @@ func TestGrantBackedReceivePackCommitFailureReturnsError(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackPayload(oid("1"), oid("2"), "refs/heads/main"),
 	)
@@ -1274,7 +1274,7 @@ func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
 		t.Fatalf("ReserveUse() error = %v", err)
 	}
 	c := server.echo.NewContext(httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", http.NoBody), httptest.NewRecorder())
-	request := policy.Request{Client: "bob", Operation: policy.OperationGitPushForce, Target: policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}}
+	request := policy.Request{Client: "bob", Operation: policy.OperationGitPushForce, Target: policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}}
 	decision := policy.Decision{GrantID: result.Grant.ID}
 	if err := server.runAuthorizedBrokerRequest(c, request, decision, []grants.Grant{reserved}, func(echo.Context) error {
 		return errors.New("credential lookup failed")
@@ -1502,7 +1502,7 @@ func TestGetGrantDirect(t *testing.T) {
 		Client:          "bob",
 		ClientRequestID: "get-direct",
 		Operation:       string(policy.Operation("pull_request.create")),
-		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "get direct",
 		Duration:        5 * time.Minute,
@@ -1528,7 +1528,7 @@ func TestGetGrantDirect(t *testing.T) {
 func createGrant(t *testing.T, server *Server, requestID string, reason string) *httptest.ResponseRecorder {
 	t.Helper()
 	body := fmt.Sprintf(
-		`{"client_request_id":%q,"operation":"git.push.force","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":%q,"minutes":5}`,
+		`{"client_request_id":%q,"operation":"git.push.force","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":%q,"minutes":5}`,
 		requestID,
 		reason,
 	)
@@ -1578,10 +1578,10 @@ func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 		want int
 	}{
 		"bad json":               {body: `{`, want: http.StatusBadRequest},
-		"missing reason":         {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
-		"non protocol operation": {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"open PR"}`, want: http.StatusBadRequest},
-		"not requestable":        {body: `{"client_request_id":"bad","operation":"git.fetch","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"reason":"fetch"}`, want: http.StatusBadRequest},
-		"too long":               {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
+		"missing reason":         {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"}}`, want: http.StatusBadRequest},
+		"non protocol operation": {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"open PR"}`, want: http.StatusBadRequest},
+		"not requestable":        {body: `{"client_request_id":"bad","operation":"git.fetch","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"reason":"fetch"}`, want: http.StatusBadRequest},
+		"too long":               {body: `{"client_request_id":"bad","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work","head_ref":"refs/heads/bob/work","base_ref":"refs/heads/main"},"reason":"too long","minutes":99}`, want: http.StatusBadRequest},
 	}
 	for name, tc := range cases {
 		response := doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(tc.body))
@@ -1615,7 +1615,7 @@ func TestGrantStoreHTTPError(t *testing.T) {
 func TestDecodeGrantCreateDirect(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	valid := newBodyContext(t, server, `{"client_request_id":"request-1","operation":"pull_request.create","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"open PR"}`)
+	valid := newBodyContext(t, server, `{"client_request_id":"request-1","operation":"pull_request.create","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"open PR"}`)
 	payload, err := decodeGrantCreate(valid)
 	if err != nil {
 		t.Fatalf("decodeGrantCreate(valid) error = %v", err)
@@ -1645,7 +1645,7 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	body := `{"client_request_id":"request-1","operation":"git.push.force","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"force push work branch","minutes":5}`
+	body := `{"client_request_id":"request-1","operation":"git.push.force","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"force push work branch","minutes":5}`
 	noNotifier := newBodyContext(t, server, body)
 	if _, err := server.planGrantCreate(noNotifier); err == nil {
 		t.Fatal("planGrantCreate(no notifier) error = nil, want service unavailable")
@@ -1658,7 +1658,7 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 	if plan.request.Client != "bob" || plan.maxUses != 1 || plan.duration != 5*time.Minute {
 		t.Fatalf("plan = %+v, want requestable bob grant", plan)
 	}
-	notRequestable := `{"client_request_id":"request-2","operation":"git.fetch","target":{"kind":"repo","owner":"dutifuldev","name":"gh-broker"},"reason":"fetch"}`
+	notRequestable := `{"client_request_id":"request-2","operation":"git.fetch","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"reason":"fetch"}`
 	if _, err := server.planGrantCreate(newBodyContext(t, server, notRequestable)); err == nil {
 		t.Fatal("planGrantCreate(not requestable) error = nil, want forbidden")
 	}
@@ -1673,7 +1673,7 @@ func TestTelegramDecisionDenyAndErrors(t *testing.T) {
 		Client:          "bob",
 		ClientRequestID: "deny-pr",
 		Operation:       string(policy.Operation("pull_request.create")),
-		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "deny test",
 		Duration:        5 * time.Minute,
@@ -1717,7 +1717,7 @@ func TestDenyTelegramGrantDirect(t *testing.T) {
 		Client:          "bob",
 		ClientRequestID: "deny-direct",
 		Operation:       string(policy.Operation("pull_request.create")),
-		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
 		Reason:          "deny direct",
 		Duration:        5 * time.Minute,
@@ -1748,7 +1748,7 @@ func TestAPIGrantFromStoreIncludesSafeStatusFields(t *testing.T) {
 		ID:               "grant-1",
 		Status:           grants.StatusActive,
 		Operation:        string(policy.OperationGitPushForce),
-		Target:           policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Target:           policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
 		Attrs:            map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:           "test",
 		Duration:         5 * time.Minute,
@@ -1768,7 +1768,7 @@ func TestAPIGrantFromStoreIncludesSafeStatusFields(t *testing.T) {
 	if api.UsesRemaining != 1 || api.UsedCount != 1 || api.Minutes != 5 {
 		t.Fatalf("api grant = %+v, want safe use counters", api)
 	}
-	if api.Target.Owner != "dutifuldev" || api.Target.Name != "gh-broker" || api.ClientRequestID != "request-1" {
+	if api.Target.Owner != "osolmaz" || api.Target.Name != "gh-broker" || api.ClientRequestID != "request-1" {
 		t.Fatalf("api grant = %+v, want target and request id", api)
 	}
 }
@@ -1855,7 +1855,7 @@ func TestAuditLogRecordsActualReceivePackOperation(t *testing.T) {
 		t,
 		server,
 		http.MethodPost,
-		"/dutifuldev/gh-broker.git/git-receive-pack",
+		"/osolmaz/gh-broker.git/git-receive-pack",
 		bearerAuth(),
 		receivePackCreate("refs/heads/bob/work"),
 	)
@@ -1912,7 +1912,7 @@ func TestGitProxyUsesServerSideCredential(t *testing.T) {
 		gotAuthorization = r.Header.Get("Authorization")
 		w.WriteHeader(http.StatusOK)
 	})
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -1927,7 +1927,7 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 	var tokenMints int
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/dutifuldev/gh-broker/installation":
+		case "/repos/osolmaz/gh-broker/installation":
 			writeRawJSON(w, `{"id":42}`)
 		case "/app/installations/42/access_tokens":
 			tokenMints++
@@ -1936,11 +1936,11 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 			} else {
 				writeRawJSON(w, `{"token":"ghs_repo_token","expires_at":"2099-07-09T18:00:00Z"}`)
 			}
-		case "/repos/dutifuldev/gh-broker":
-			writeRawJSON(w, `{"id":99,"name":"gh-broker","owner":{"login":"dutifuldev"}}`)
+		case "/repos/osolmaz/gh-broker":
+			writeRawJSON(w, `{"id":99,"name":"gh-broker","owner":{"login":"osolmaz"}}`)
 		case "/installation/token":
 			w.WriteHeader(http.StatusNoContent)
-		case "/dutifuldev/gh-broker.git/info/refs":
+		case "/osolmaz/gh-broker.git/info/refs":
 			gotAuthorization = r.Header.Get("Authorization")
 			w.WriteHeader(http.StatusOK)
 		default:
@@ -1948,7 +1948,7 @@ func TestGitProxyUsesGitHubAppInstallationToken(t *testing.T) {
 		}
 	})
 	server.githubCredentials = newTestGitHubAppManager(t, server)
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -1998,21 +1998,21 @@ func TestReceivePackUsesWriteAndInspectionInstallationTokens(t *testing.T) {
 	var gitAuthorization string
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/dutifuldev/gh-broker/installation":
+		case "/repos/osolmaz/gh-broker/installation":
 			writeRawJSON(w, `{"id":42}`)
 		case "/app/installations/42/access_tokens":
 			body, _ := io.ReadAll(r.Body)
 			tokenRequests = append(tokenRequests, string(body))
 			writeRawJSON(w, fmt.Sprintf(`{"token":"ghs_token_%d","expires_at":"2099-07-09T18:00:00Z"}`, len(tokenRequests)))
-		case "/repos/dutifuldev/gh-broker":
-			writeRawJSON(w, `{"id":99,"name":"gh-broker","default_branch":"main","owner":{"login":"dutifuldev"}}`)
+		case "/repos/osolmaz/gh-broker":
+			writeRawJSON(w, `{"id":99,"name":"gh-broker","default_branch":"main","owner":{"login":"osolmaz"}}`)
 		case "/installation/token":
 			w.WriteHeader(http.StatusNoContent)
-		case "/repos/dutifuldev/gh-broker/rules/branches/bob/work":
+		case "/repos/osolmaz/gh-broker/rules/branches/bob/work":
 			writeRawJSON(w, `[]`)
-		case "/repos/dutifuldev/gh-broker/branches/bob/work/protection":
+		case "/repos/osolmaz/gh-broker/branches/bob/work/protection":
 			http.NotFound(w, r)
-		case "/dutifuldev/gh-broker.git/git-receive-pack":
+		case "/osolmaz/gh-broker.git/git-receive-pack":
 			gitAuthorization = r.Header.Get("Authorization")
 			w.WriteHeader(http.StatusOK)
 		default:
@@ -2020,7 +2020,7 @@ func TestReceivePackUsesWriteAndInspectionInstallationTokens(t *testing.T) {
 		}
 	})
 	server.githubCredentials = newTestGitHubAppManager(t, server)
-	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/git-receive-pack", bearerAuth(),
+	response := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(),
 		receivePackCreate("refs/heads/bob/work"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
@@ -2048,7 +2048,7 @@ func TestProxyDoesNotForwardClientCredentialHeaders(t *testing.T) {
 		t,
 		server,
 		http.MethodGet,
-		"/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack",
+		"/osolmaz/gh-broker.git/info/refs?service=git-upload-pack",
 		map[string]string{
 			"Authorization": bearerAuth(),
 			"Cookie":        "session=client-secret",
@@ -2080,7 +2080,7 @@ func TestProxyDropsHopByHopHeaders(t *testing.T) {
 		t,
 		server,
 		http.MethodGet,
-		"/dutifuldev/gh-broker.git/info/refs?service=git-upload-pack",
+		"/osolmaz/gh-broker.git/info/refs?service=git-upload-pack",
 		map[string]string{
 			"Authorization": bearerAuth(),
 			"Connection":    "keep-alive",
@@ -2125,7 +2125,7 @@ func TestGitHubCredentialMetadataHeaderPredicate(t *testing.T) {
 func TestUnsupportedGitServiceIsRejected(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=bad-service", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=bad-service", bearerAuth())
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
@@ -2265,7 +2265,7 @@ func requestPRPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectRequest,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.Operation("pull_request.create")},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/work"},
 				"head_refs": {"refs/heads/bob/work"},
@@ -2277,7 +2277,7 @@ func requestPRPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectRequest,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushForce},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/bob/work"}},
 		},
 	}})
@@ -2295,7 +2295,7 @@ func denyMainWithRequestPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectDeny,
 			Clients:    []string{"*"},
 			Operations: []policy.Operation{policy.OperationGitPushForce},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 		{
@@ -2303,7 +2303,7 @@ func denyMainWithRequestPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectRequest,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushForce},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 	}})
@@ -2319,7 +2319,7 @@ func grantsRequestForMainPush(t *testing.T) grants.Request {
 		Client:          "bob",
 		ClientRequestID: "main-push",
 		Operation:       string(policy.OperationGitPushForce),
-		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}),
+		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
 		Attrs:           map[string][]string{"ref": {"refs/heads/main"}},
 		Reason:          "test deny over grant",
 		Duration:        5 * time.Minute,
@@ -2336,7 +2336,7 @@ func requestMainPushPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectRequest,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushForce},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 	}})
@@ -2351,7 +2351,7 @@ func requestTagPushPolicy(t *testing.T) *policy.Policy {
 	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{{
 		ID: "request-tag", Effect: policy.EffectRequest, Clients: []string{"bob"},
 		Operations: []policy.Operation{policy.OperationGitTagUpdate},
-		Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		Attrs:      map[string][]string{"refs": {"refs/tags/*"}},
 	}}})
 	if err != nil {
@@ -2556,7 +2556,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectDeny,
 			Clients:    []string{"*"},
 			Operations: []policy.Operation{policy.OperationGitPushForce, policy.OperationGitRefDelete},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 		{
@@ -2565,7 +2565,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitFetch, policy.Operation("repo.metadata.read")},
 			Targets: []policy.Target{
-				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
+				{Kind: "repo", Owner: "osolmaz", Name: "*"},
 				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
 			},
 		},
@@ -2575,7 +2575,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.Operation("repo.contents.read")},
 			Targets: []policy.Target{
-				{Kind: "repo", Owner: "dutifuldev", Name: "*"},
+				{Kind: "repo", Owner: "osolmaz", Name: "*"},
 				{Kind: "repo", Owner: "openclaw", Name: "openclaw"},
 			},
 			Attrs: map[string][]string{"paths": {"*", "docs/*"}},
@@ -2592,14 +2592,14 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushAdvertise, policy.OperationGitLFSWrite},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 		},
 		{
 			ID:         "bob-push-branches",
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushBranchCreate, policy.OperationGitPushForce},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/bob/*", "refs/heads/agent/*"}},
 		},
 		{
@@ -2607,7 +2607,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.Operation("pull_request.create")},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "*"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "*"}},
 			Attrs: map[string][]string{
 				"refs":      {"refs/heads/bob/*", "refs/heads/agent/*"},
 				"base_refs": {"refs/heads/main"},
@@ -2618,7 +2618,7 @@ func testBrokerPolicy(t *testing.T) *policy.Policy {
 			Effect:     policy.EffectAllow,
 			Clients:    []string{"bob"},
 			Operations: []policy.Operation{policy.OperationGitPushForce},
-			Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "direct-main"}},
+			Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "direct-main"}},
 			Attrs:      map[string][]string{"refs": {"refs/heads/main"}},
 		},
 	}})
@@ -2703,7 +2703,7 @@ func newGitContext(t *testing.T, server *Server, method string, path string, bod
 	context := server.echo.NewContext(request, httptest.NewRecorder())
 	context.Set("gh-broker.client", "bob")
 	context.SetParamNames("owner", "repoGit")
-	context.SetParamValues("dutifuldev", "gh-broker.git")
+	context.SetParamValues("osolmaz", "gh-broker.git")
 	return context
 }
 

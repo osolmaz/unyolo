@@ -80,7 +80,7 @@ func TestReceivePackAdvertisementRemovesThinPack(t *testing.T) {
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(advertisement)
 	})
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
@@ -94,7 +94,7 @@ func TestReceivePackAdvertisementRejectsMalformedUpstream(t *testing.T) {
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("bad"))
 	})
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
@@ -105,7 +105,7 @@ func TestReceivePackAdvertisementPreservesUpstreamRefusal(t *testing.T) {
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)
 	})
-	response := do(t, server, http.MethodGet, "/dutifuldev/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	response := do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
 	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "denied") {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
@@ -117,7 +117,7 @@ func TestGitHubLFSBatchKeepsSignedActionInsideBroker(t *testing.T) {
 	var actionAuthorization string
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/dutifuldev/gh-broker.git/info/lfs/objects/batch":
+		case "/osolmaz/gh-broker.git/info/lfs/objects/batch":
 			w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
 			_, _ = w.Write([]byte(`{"objects":[{"oid":"` + oid + `","size":4,"actions":{"download":{"href":"http://` + r.Host + `/signed/download","header":{"Authorization":"storage-secret"}}}}]}`))
 		case "/signed/download":
@@ -127,7 +127,7 @@ func TestGitHubLFSBatchKeepsSignedActionInsideBroker(t *testing.T) {
 			t.Fatalf("unexpected upstream path %s", r.URL.Path)
 		}
 	})
-	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download","objects":[{"oid":"`+oid+`","size":4}]}`))
+	response := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download","objects":[{"oid":"`+oid+`","size":4}]}`))
 	if response.Code != http.StatusOK {
 		t.Fatalf("batch status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -172,7 +172,7 @@ func TestGitHubLFSBatchDecompressesUpstreamResponse(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	response := doWithHeaders(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", map[string]string{
+	response := doWithHeaders(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", map[string]string{
 		"Authorization":   bearerAuth(),
 		"Accept-Encoding": "gzip",
 	}, []byte(`{"operation":"download"}`))
@@ -184,11 +184,11 @@ func TestGitHubLFSBatchDecompressesUpstreamResponse(t *testing.T) {
 func TestGitHubLFSRejectsUnknownAndOversizedBatch(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	unknown := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"remove"}`))
+	unknown := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"remove"}`))
 	if unknown.Code != http.StatusBadRequest {
 		t.Fatalf("unknown operation status = %d", unknown.Code)
 	}
-	oversized := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(strings.Repeat("x", maxGitHubLFSBatch+1)))
+	oversized := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(strings.Repeat("x", maxGitHubLFSBatch+1)))
 	if oversized.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized status = %d", oversized.Code)
 	}
@@ -225,8 +225,8 @@ func TestGitHubLFSDirectRoutesUseReadAndWritePolicy(t *testing.T) {
 		path string
 		want policy.Operation
 	}{
-		{path: "/dutifuldev/gh-broker.git/info/lfs/locks", want: policy.OperationGitLFSWrite},
-		{path: "/dutifuldev/gh-broker.git/info/lfs/locks/verify", want: policy.OperationGitFetch},
+		{path: "/osolmaz/gh-broker.git/info/lfs/locks", want: policy.OperationGitLFSWrite},
+		{path: "/osolmaz/gh-broker.git/info/lfs/locks/verify", want: policy.OperationGitFetch},
 	} {
 		response := doWithBody(t, server, http.MethodPost, test.path, bearerAuth(), []byte(`{}`))
 		if response.Code != http.StatusOK {
@@ -245,20 +245,20 @@ func TestGitHubLFSResponseFailures(t *testing.T) {
 			server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte(responseBody))
 			})
-			response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
+			response := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
 			if response.Code != http.StatusBadGateway {
 				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 			}
 		})
 	}
 	server := newTestServerWithHandler(t, func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "denied", http.StatusForbidden) })
-	response := doWithBody(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
+	response := doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("upstream refusal status = %d", response.Code)
 	}
 	failing := newTestServer(t)
 	failing.githubGitClient = &http.Client{Transport: errorRoundTripper{}}
-	response = doWithBody(t, failing, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
+	response = doWithBody(t, failing, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(), []byte(`{"operation":"download"}`))
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("transport failure status = %d", response.Code)
 	}
@@ -287,7 +287,7 @@ func TestDoGitHubLFSRequestFailsClosed(t *testing.T) {
 func TestRewriteGitHubLFSObjectRejectsInvalidObjects(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
-	context := newGitContext(t, server, http.MethodPost, "/dutifuldev/gh-broker.git/info/lfs/objects/batch", nil)
+	context := newGitContext(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", nil)
 	server.rewriteGitHubLFSObject(context, "bob", policy.OperationGitFetch, "invalid")
 	invalid := map[string]any{"oid": "bad", "size": json.Number("4"), "actions": map[string]any{"download": map[string]any{}}}
 	server.rewriteGitHubLFSObject(context, "bob", policy.OperationGitFetch, invalid)

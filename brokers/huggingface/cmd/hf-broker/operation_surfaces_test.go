@@ -290,7 +290,7 @@ func TestMCPWindowOperationSubmitsAgentOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_repo_contents_read", Arguments: json.RawMessage(
-		`{"target":{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"},"arguments":{"path":"README.md"},"reason":"inspect data","request_id":"read-1"}`)})
+		`{"target":{"kind":"repo","type":"dataset","owner":"osolmaz","name":"data"},"arguments":{"path":"README.md"},"reason":"inspect data","request_id":"read-1"}`)})
 	operation, ok := value.(mcpoperation.Operation)
 	if err != nil || !ok || operation.Operation != "repo.contents.read" || submitted["operation"] != "repo.contents.read" {
 		t.Fatalf("operation=%#v submitted=%#v err=%v", value, submitted, err)
@@ -427,7 +427,7 @@ func TestCatalogCLIExecutionAndWindowOperations(t *testing.T) {
 	stdout.Reset()
 	readDescriptor, _ := opcatalog.ByName("repo.contents.read")
 	if err := runCatalogOperation(t.Context(), client, &stdout, &stderr, readDescriptor, []string{
-		"--target-json", `{"kind":"repo","type":"dataset","owner":"dutifuldev","name":"data"}`,
+		"--target-json", `{"kind":"repo","type":"dataset","owner":"osolmaz","name":"data"}`,
 		"--arguments-json", `{"path":"README.md"}`, "--request-id", "read-1", "--wait=false", "--json",
 	}); err != nil {
 		t.Fatal(err)

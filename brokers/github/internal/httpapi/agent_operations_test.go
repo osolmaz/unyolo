@@ -29,7 +29,7 @@ type lifecycleContextKey struct{}
 func TestGeneratedAgentV1Conformance(t *testing.T) {
 	stateDirectory := filepath.Join(t.TempDir(), "state")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/repos/dutifuldev/gh-broker/pulls" || request.Header.Get("Authorization") != "Bearer "+testGitHubToken {
+		if request.URL.Path != "/repos/osolmaz/gh-broker/pulls" || request.Header.Get("Authorization") != "Bearer "+testGitHubToken {
 			t.Fatalf("upstream request = %s, auth %q", request.URL.Path, request.Header.Get("Authorization"))
 		}
 		var payload map[string]any
@@ -38,7 +38,7 @@ func TestGeneratedAgentV1Conformance(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":7,"node_id":"PR_7","number":42,"state":"open","url":"https://api.github.test/repos/dutifuldev/gh-broker/pulls/42","created_at":"2026-07-14T00:00:00Z","updated_at":"2026-07-14T00:00:00Z"}`))
+		_, _ = w.Write([]byte(`{"id":7,"node_id":"PR_7","number":42,"state":"open","url":"https://api.github.test/repos/osolmaz/gh-broker/pulls/42","created_at":"2026-07-14T00:00:00Z","updated_at":"2026-07-14T00:00:00Z"}`))
 	}))
 	defer upstream.Close()
 
@@ -143,7 +143,7 @@ func TestAdminMergeRequiresApprovalAndExecutesExactRevision(t *testing.T) {
 func TestGeneratedAgentDirectAllowAndDenial(t *testing.T) {
 	allow := generatedPolicy(t, policy.EffectAllow)
 	server := newTestServerWithPolicyAndHandler(t, allow, func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/repos/dutifuldev/gh-broker/pulls" {
+		if request.URL.Path != "/repos/osolmaz/gh-broker/pulls" {
 			t.Fatalf("upstream path = %q", request.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -343,7 +343,7 @@ func generatedPullRequestSubmission(key string) agentv1.SubmitRequest {
 	return agentv1.SubmitRequest{
 		IdempotencyKey: key,
 		Operation:      "pull_request.create",
-		Target:         json.RawMessage(`{"kind":"repo","owner":"dutifuldev","name":"gh-broker"}`),
+		Target:         json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"gh-broker"}`),
 		Arguments:      json.RawMessage(`{"input":{"title":"Agent cutover","body":"ready","head":"bob/work","base":"main"}}`),
 		Reason:         "verify generated GitHub operation lifecycle",
 	}
@@ -359,7 +359,7 @@ func generatedPolicy(t *testing.T, effect policy.Effect) *policy.Policy {
 	value, err := policy.New(policy.Scope{Rules: []policy.Rule{{
 		ID: "generated-pull-request", Effect: effect, Clients: []string{"bob"},
 		Operations: []policy.Operation{policy.Operation("pull_request.create")},
-		Targets:    []policy.Target{{Kind: "repo", Owner: "dutifuldev", Name: "gh-broker"}},
+		Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 	}}})
 	if err != nil {
 		t.Fatal(err)
