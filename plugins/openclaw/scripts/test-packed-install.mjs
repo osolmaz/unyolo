@@ -102,6 +102,27 @@ const pluginManifest = JSON.parse(
 );
 if (JSON.stringify(pluginManifest.skills) !== '["./dist/skills"]')
   throw new Error("packed plugin skill directory is not declared");
+const requiredGuidance = {
+  "gh-broker": [
+    "pull_request.merge_admin",
+    "gh-broker operation get OPERATION-ID",
+    "unknown upstream result",
+    "Approval waiting is part of the same agent turn.",
+    "If a wait interval expires",
+  ],
+  "hf-broker": [
+    "hf-broker client operation get OPERATION-ID",
+    "hf-broker client operation cancel OPERATION-ID",
+    "Approval waiting is part of the same agent turn.",
+    "If a wait interval expires",
+  ],
+  "sudo-broker": [
+    "--operation-id STABLE-OPERATION-ID",
+    "Never retry an ambiguous execution",
+    "Approval waiting is part of the same agent turn.",
+    "without ending the agent turn",
+  ],
+};
 for (const skill of pluginSkills) {
   const source = readFileSync(
     path.resolve(packageDir, skill.source, "SKILL.md"),
@@ -115,7 +136,19 @@ for (const skill of pluginSkills) {
     throw new Error(
       `packed plugin skill ${skill.name} differs from its source`,
     );
+  for (const guidance of requiredGuidance[skill.name] ?? []) {
+    if (!packed.includes(guidance))
+      throw new Error(
+        `packed plugin skill ${skill.name} is missing current guidance: ${guidance}`,
+      );
+  }
 }
+const githubSkill = readFileSync(
+  path.join(installedRoot, "dist", "skills", "gh-broker", "SKILL.md"),
+  "utf8",
+);
+if (githubSkill.includes("pull_request.merge_pull_request"))
+  throw new Error("packed GitHub skill retained a superseded merge operation");
 const uiIndex = readFileSync(
   path.join(installedRoot, "dist", "ui", "index.html"),
   "utf8",

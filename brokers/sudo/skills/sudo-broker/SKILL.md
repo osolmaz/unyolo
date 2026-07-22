@@ -44,14 +44,23 @@ If the required command is not cataloged, report that the operator must add a
 narrow command and policy rule.
 
 Use a stable operation ID for retries. Never retry an ambiguous execution with
-a new ID.
+a new ID. `sudo-broker run` stays attached until approval and command execution
+finish. If the caller times out or is interrupted, immediately rerun the exact
+request with the same operation ID to recover it.
+
+Approval waiting is part of the same agent turn. Do not return control to the
+user while the operation remains pending. Keep the blocking command alive, or
+recover it with the same operation ID, until the user clicks or otherwise
+records a decision and execution reaches a terminal state. Stop only for a
+terminal result, an explicit user cancellation, or an unrecoverable broker
+error.
 
 ## Approval behavior
 
 A pending request means the operation is waiting for an authorized decision;
-it does not mean the client credential is missing. Keep the request alive or
-report its durable identifier as appropriate. Do not approve your own request,
-modify policy, or access operator credentials.
+it does not mean the client credential is missing. Keep the request alive
+without ending the agent turn. Do not approve your own request, modify policy,
+or access operator credentials.
 
 After approval, treat the broker's exit status and bounded output as the
 command result. Confirm the intended host effect separately when the original

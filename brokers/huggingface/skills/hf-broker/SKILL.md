@@ -43,19 +43,37 @@ BrokerKit policy and grants. Do not work around a broker rejection.
 
 ## Typed Hub operations
 
-Use the fixed client commands for protected Hub mutations. Supply exact typed
-target and argument JSON:
+Use the generated catalog client commands for typed Hub operations. Supply the
+exact target and argument JSON accepted by the command:
 
 ```sh
 hf-broker client repo create \
   --target-json '{"kind":"repo","type":"dataset","owner":"OWNER","name":"REPO"}' \
-  --arguments-json '{"visibility":"private"}'
+  --arguments-json '{"visibility":"private"}' \
+  --reason "Create the requested private dataset repository" \
+  --request-id STABLE-REQUEST-ID \
+  --wait=true \
+  --wait-timeout 15m
 ```
 
-If an operation is interrupted, recover the printed durable operation ID:
+Catalog commands wait by default. Keep that behavior for agent-driven work so
+the command returns after completion or the wait timeout. A timeout can leave
+the operation pending.
+
+Approval waiting is part of the same agent turn. Do not return control to the
+user while the operation remains pending. If a wait interval expires,
+immediately wait again with the same operation ID. Continue until the user
+clicks or otherwise records a decision and the operation reaches a terminal
+state. Stop only for a terminal result, an explicit user cancellation, or an
+unrecoverable broker error.
+
+Use a stable request ID for mutations. If a call is interrupted, recover the
+printed durable operation instead of submitting it again:
 
 ```sh
-hf-broker client operation wait OPERATION-ID
+hf-broker client operation get OPERATION-ID
+hf-broker client operation wait --wait-timeout 15m OPERATION-ID
+hf-broker client operation cancel OPERATION-ID
 ```
 
 For capabilities exposed through the MCP adapter, run `hf-broker mcp` and use
@@ -80,6 +98,8 @@ hf-broker client grant request git.push.force OWNER/REPO \
 
 Resume grant state with `hf-broker client grant get|wait|cancel|revoke`. A
 pending request means approval is required, not that authentication is absent.
+Keep waiting on the same grant without ending the agent turn until the user
+records a decision or explicitly cancels it.
 
 ## Inference
 
