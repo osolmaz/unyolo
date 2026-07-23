@@ -80,6 +80,35 @@ func TestKernelRepositoryRulesAreSupported(t *testing.T) {
 	}
 }
 
+func TestBucketListAllowsExactNamespaceWildcardTarget(t *testing.T) {
+	t.Parallel()
+	request := Request{Client: "agent", Operation: Operation("bucket.list"),
+		Target: Target{Kind: KindBucket, Owner: "acme", Name: "*"}}
+	if err := ValidateRequest(request); err != nil {
+		t.Fatalf("bucket list request validation error = %v", err)
+	}
+	policy := mustParse(t, `{"rules":[{"id":"list-buckets","effect":"allow","clients":["agent"],"operations":["bucket.list"],"targets":[{"kind":"bucket","owner":"acme","name":"*"}]}]}`)
+	if decision := policy.Decide(request, nil, time.Now(), false); decision.Effect != EffectAllow {
+		t.Fatalf("bucket list decision = %+v", decision)
+	}
+}
+
+func TestWildcardListTargetValidation(t *testing.T) {
+	t.Parallel()
+	if err := validateRepoListTarget(Target{Type: TypeDataset, Owner: "acme"}); err != nil {
+		t.Fatalf("valid repository list target = %v", err)
+	}
+	if err := validateRepoListTarget(Target{Type: TypeAny, Owner: "*"}); err == nil {
+		t.Fatal("invalid repository list target succeeded")
+	}
+	if err := validateBucketListTarget(Target{Owner: "acme"}); err != nil {
+		t.Fatalf("valid bucket list target = %v", err)
+	}
+	if err := validateBucketListTarget(Target{Owner: "*"}); err == nil {
+		t.Fatal("invalid bucket list target succeeded")
+	}
+}
+
 func TestRequestableDoesNotMeanExecutable(t *testing.T) {
 	pol := mustParse(t, `{
 		"rules": [

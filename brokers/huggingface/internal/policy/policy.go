@@ -501,16 +501,34 @@ func ValidateRequest(req Request) error {
 
 func validatePolicyRequestTarget(req Request) error {
 	if isWildcardRepoList(req) {
-		if !validConcreteRepoType(req.Target.Type) || !validRequestSegment(req.Target.Owner) {
-			return errors.New("invalid repo list target")
-		}
-		return nil
+		return validateRepoListTarget(req.Target)
+	}
+	if isWildcardBucketList(req) {
+		return validateBucketListTarget(req.Target)
 	}
 	return validateRequestTarget(req.Target)
 }
 
+func validateRepoListTarget(target Target) error {
+	if !validConcreteRepoType(target.Type) || !validRequestSegment(target.Owner) {
+		return errors.New("invalid repo list target")
+	}
+	return nil
+}
+
+func validateBucketListTarget(target Target) error {
+	if !validRequestSegment(target.Owner) {
+		return errors.New("invalid bucket list target")
+	}
+	return nil
+}
+
 func isWildcardRepoList(req Request) bool {
 	return req.Operation == OpRepoList && req.Target.Kind == KindRepo && req.Target.Name == "*"
+}
+
+func isWildcardBucketList(req Request) bool {
+	return req.Operation == Operation("bucket.list") && req.Target.Kind == KindBucket && req.Target.Name == "*"
 }
 
 func validateExactTargetConstraints(target Target) error {
