@@ -112,9 +112,13 @@ func (renderer) Operations() ([]shared.Operation, error) {
 		if err != nil {
 			return nil, fmt.Errorf("fingerprint operation %s: %w", descriptor.Name, err)
 		}
+		defaultEffect := descriptor.DefaultPolicyEffect
+		if descriptor.Implementation == opcatalog.StatusBlockedUpstream {
+			defaultEffect = opcatalog.DefaultEffectDeny
+		}
 		operations = append(operations, shared.Operation{
 			Name: descriptor.Name, OperationRevision: descriptor.OperationRevision,
-			DefaultEffect: descriptor.DefaultPolicyEffect, AuthorizationDigest: digest,
+			DefaultEffect: defaultEffect, AuthorizationDigest: digest,
 		})
 	}
 	return operations, nil

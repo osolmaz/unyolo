@@ -20,7 +20,9 @@ The catalog stores an explicit `default_policy_effect` for each operation:
 | `deny` | Internal and non-agent operations plus credential-output operations cannot be requested by the agent. |
 
 These effects are data in the reviewed provider catalog. The renderer never
-guesses from an operation name or risk label. Catalog validation also prevents
+guesses from an operation name or risk label. An operation marked
+`blocked-upstream` is always rendered as deny even if its future target effect
+would otherwise be allow or request. Catalog validation also prevents
 high-risk, critical, execution-scoped, explicit-only, or sealed operations from
 defaulting to `allow`.
 

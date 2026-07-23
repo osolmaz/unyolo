@@ -126,6 +126,31 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 	}
 }
 
+func TestCatalogHasNoUnresolvedProtocolPlaceholders(t *testing.T) {
+	bound, native, blocked := 0, 0, 0
+	for _, descriptor := range MustAll() {
+		if descriptor.Implementation == StatusProtocol {
+			t.Fatalf("%s retains an unresolved protocol placeholder", descriptor.Name)
+		}
+		if !descriptor.AgentFacing {
+			continue
+		}
+		switch {
+		case descriptor.Implementation == StatusBlockedUpstream && descriptor.ExecutorKind == "":
+			blocked++
+		case descriptor.Implementation == StatusImplemented && descriptor.ExecutorKind == "native-protocol":
+			native++
+		case descriptor.Implementation == StatusImplemented && descriptor.ExecutorKind != "":
+			bound++
+		default:
+			t.Fatalf("agent-facing operation %s has unresolved binding: %+v", descriptor.Name, descriptor)
+		}
+	}
+	if bound != 149 || native != 3 || blocked != 105 {
+		t.Fatalf("catalog bindings = bound:%d native:%d blocked:%d", bound, native, blocked)
+	}
+}
+
 func TestCatalogLookupMissesUnknownOperation(t *testing.T) {
 	if _, found := ByName("http.request"); found {
 		t.Fatal("unknown operation found")

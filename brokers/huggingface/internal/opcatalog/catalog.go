@@ -100,6 +100,9 @@ func Validate(values []Descriptor) error {
 }
 
 func validateExecutorBinding(value Descriptor) error {
+	if value.Implementation == StatusProtocol {
+		return fmt.Errorf("HF operation %q has an unresolved protocol placeholder", value.Name)
+	}
 	if value.Implementation != StatusImplemented {
 		return validateUnimplementedExecutor(value)
 	}
