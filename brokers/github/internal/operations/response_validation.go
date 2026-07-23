@@ -1,6 +1,8 @@
 package operations
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -26,7 +28,20 @@ func validatedExecutionResult(binding opbinding.Binding, operation string, resul
 	if err := schemaregistry.ValidateResult(operation, result.Body); err != nil {
 		return Outcome{}, classifyResponseValidationError(binding.Method, err)
 	}
-	return Outcome{Proven: true, Result: result.Body, UpstreamStatus: result.StatusCode}, nil
+	return Outcome{Proven: true, Result: agentOperationResult(result.Body), UpstreamStatus: result.StatusCode}, nil
+}
+
+func agentOperationResult(result json.RawMessage) json.RawMessage {
+	trimmed := bytes.TrimSpace(result)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		return result
+	}
+	key := "value"
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		key = "items"
+	}
+	wrapped, _ := json.Marshal(map[string]json.RawMessage{key: result})
+	return wrapped
 }
 
 func decodeCredentialResponse(binding opbinding.Binding, result githubauth.ExecutionResult) (credentialResponse, error) {
