@@ -50,7 +50,7 @@ jobs:
       - run: govulncheck ./...
       - run: GOTOOLCHAIN=go1.26.5 go install github.com/zricethezav/gitleaks/v8@v8.28.0
       - run: gitleaks git --no-banner --redact .
-      - run: go install github.com/osolmaz/slophammer/go/cmd/slophammer-go@v0.4.0
+      - run: go install github.com/osolmaz/slophammer/go/cmd/slophammer-go@v0.4.1
       - name: Slophammer DRY gates
         run: |
           slophammer-go dry .
