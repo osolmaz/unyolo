@@ -43,6 +43,21 @@ declared by the root module:
 go install ./brokers/huggingface/cmd/hf-broker
 ```
 
+Bucket object writes use the maintained Xet implementation. Install the pinned
+helper in a broker-only Python environment and point HF Broker at its
+interpreter:
+
+```sh
+python3 -m venv /opt/hf-broker/xet
+/opt/hf-broker/xet/bin/pip install 'hf-xet==1.5.2'
+export HF_BROKER_XET_PYTHON=/opt/hf-broker/xet/bin/python
+```
+
+The helper receives the Hub token only over a private stdin pipe. It uploads
+content to Xet and returns the file hash; it does not receive client requests or
+choose Hub URLs. Bucket reads and all non-Xet operations do not import the
+helper.
+
 HF Broker treats the permissions and resource scopes on its dedicated
 fine-grained token as a hard upstream authority ceiling. Repair an installed
 service interactively with:
@@ -111,7 +126,7 @@ files; otherwise the isolation boundary does not hold.
 
 `scope.json` is a manually edited rule file and the authorization source of
 truth. A request without a matching rule is denied. This minimal rule lets
-one client read, fetch, and append-push one dataset repo:
+one client read and fetch one dataset repo, then append-push it:
 
 ```json
 {
@@ -145,7 +160,7 @@ hf-broker git doctor
 ```
 
 Normal `https://huggingface.co/...` and Hugging Face SSH-form remotes now use
-the broker for clone, fetch, pull, push, and supported Git LFS routes. Remotes
+the broker for clone and fetch operations plus pull and push. Supported Git LFS routes use it too. Remotes
 contain no broker or provider credential. The listener port belongs to the
 deployment; BrokerKit defines no fixed Git port.
 
@@ -192,6 +207,16 @@ hf-broker client repo create \
 hf-broker client repo delete \
   --target-json '{"kind":"repo","type":"dataset","owner":"osolmaz","name":"test-data"}' \
   --arguments-json '{}'
+
+hf-broker client bucket object list \
+  --target-json '{"kind":"bucket","namespace":"osolmaz","name":"artifacts"}' \
+  --arguments-json '{"prefix":"runs/","recursive":true,"limit":100}'
+
+hf-broker client bucket object write \
+  --target-json '{"kind":"bucket","namespace":"osolmaz","name":"artifacts"}' \
+  --arguments-json '{"path":"runs/result.json","overwrite":false}' \
+  --source ./result.json \
+  --request-id publish-result
 ```
 
 If policy requires approval, the command prints the durable operation ID and
@@ -250,9 +275,10 @@ hf-broker client grant cancel <grant-id>
 hf-broker client grant revoke <grant-id>
 ```
 
-Repository requests use repeatable `--ref` flags. The broker validates the
-operation, target, attributes, duration, and use budget against the exact
-matched policy rule before creating an approval.
+Repository requests use repeatable `--ref` and `--path` flags. Bucket requests
+use repeatable `--key` flags. A path or key may be exact or a single bounded
+trailing `/**` prefix. The broker validates the operation, scope, duration, and
+use budget against the exact matched policy rule before creating an approval.
 
 Grantable git capabilities are `git.push.force` for history rewrites,
 `git.ref.delete` for non-tag branch/ref deletion, and `git.tag.update` for
@@ -325,7 +351,7 @@ to run without Telegram; pending requests remain available in the operator
 inbox. Use `--dry-run` to preview without writing files.
 
 A fresh setup installs the provider-owned `request-all-agent-operations`
-policy preset: safe reads, discovery, and inference are allowed directly;
+policy preset: safe reads and discovery plus inference are allowed directly;
 writes, administration, and destructive operations require approval; internal
 and credential-output operations are denied. Add repeatable
 `--deny-operation <exact-name>` flags to disable more operations. Setup

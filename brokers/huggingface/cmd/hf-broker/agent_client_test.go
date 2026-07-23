@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/mcp/grant"
 	"github.com/osolmaz/brokerkit/mcp/operation"
 	"github.com/osolmaz/brokerkit/protocol/contract"
@@ -218,6 +221,53 @@ func TestDecodeMCPGrantRequestPreservesUnlimitedScopedWrite(t *testing.T) {
 	}
 	if !input.MaxUses.Specified || !input.MaxUses.Limit.IsUnlimited() || input.Minutes != 10080 || !slices.Equal(input.Target.Keys, []string{"runs/**"}) {
 		t.Fatalf("input = %+v", input)
+	}
+}
+
+func TestBucketObjectWriteCLIUploadsAndBindsLocalSource(t *testing.T) {
+	t.Parallel()
+	var submitted agentv1.SubmitRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/agent/v1/streams":
+			body, _ := io.ReadAll(r.Body)
+			if string(body) != "artifact" || r.Header.Get("X-Broker-Operation") != "bucket.object.write" || r.Header.Get("X-Broker-Idempotency-Key") != "write-1" {
+				t.Fatalf("stream request = %q headers=%v", body, r.Header)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(streamstore.Reference{ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "bucket.object.write",
+				RequestKey: "write-1", Digest: strings.Repeat("a", 64), Size: 8, MediaType: "application/octet-stream", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+		case "/api/agent/v1/operations":
+			if err := json.NewDecoder(r.Body).Decode(&submitted); err != nil {
+				t.Fatal(err)
+			}
+			_ = json.NewEncoder(w).Encode(testAgentOperation(agentv1.StatePending))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor, _ := opcatalog.ByName("bucket.object.write")
+	source := filepath.Join(t.TempDir(), "artifact.bin")
+	if err := os.WriteFile(source, []byte("artifact"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	err = runCatalogOperation(t.Context(), client, &stdout, &bytes.Buffer{}, descriptor, []string{
+		"--target-json", `{"kind":"bucket","namespace":"acme","name":"artifacts"}`,
+		"--arguments-json", `{"path":"runs/artifact.bin"}`, "--source", source,
+		"--request-id", "write-1", "--wait=false", "--json",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments := string(submitted.Arguments)
+	if submitted.Operation != "bucket.object.write" || !strings.Contains(arguments, `"transfer_id":"write-1"`) || strings.Contains(arguments, "request_key") || strings.Contains(arguments, `"content"`) {
+		t.Fatalf("submitted = %+v", submitted)
 	}
 }
 

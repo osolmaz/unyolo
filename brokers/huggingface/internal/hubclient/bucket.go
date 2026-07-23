@@ -5,13 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 )
 
-const maxBucketBatchOperations = 1000
+const (
+	maxBucketBatchOperations = 1000
+	maxBucketObjectBytes     = int64(512 << 20)
+)
 
 func (c *Client) BucketInfo(ctx context.Context, ref BucketRef) (BucketInfo, error) {
 	if err := ref.Validate(); err != nil {
@@ -89,39 +93,72 @@ func (c *Client) BucketObjectInfo(ctx context.Context, ref BucketRef, path strin
 	return values[0], nil
 }
 
-// ReadBucketObject reads one bounded exact object and strips the broker token
-// from trusted content redirects.
+// ReadBucketObject reads one small bounded exact object and strips the broker
+// token from trusted content redirects.
 func (c *Client) ReadBucketObject(ctx context.Context, ref BucketRef, path string) (BucketObject, error) {
-	if err := ref.Validate(); err != nil || !validObjectPath(path) {
-		return BucketObject{}, errors.New("hubclient: bucket object identity is invalid")
-	}
-	ctx, cancel := c.callContext(ctx)
-	defer cancel()
-	request, err := c.newRequest(ctx, callSpec{method: http.MethodGet, path: "/buckets/" + url.PathEscape(ref.Namespace) + "/" + url.PathEscape(ref.Name) + "/resolve/" + url.PathEscape(path)})
+	reader, err := c.OpenBucketObject(ctx, ref, path)
 	if err != nil {
 		return BucketObject{}, err
+	}
+	defer func() { _ = reader.Body.Close() }()
+	payload, err := io.ReadAll(io.LimitReader(reader.Body, c.maxResponseBytes+1))
+	if err != nil {
+		return BucketObject{}, &Error{Code: CodeUnavailable}
+	}
+	if int64(len(payload)) > c.maxResponseBytes {
+		return BucketObject{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
+	}
+	return BucketObject{Path: path, Content: payload, ContentType: reader.ContentType}, nil
+}
+
+// OpenBucketObject opens one bounded exact object for streaming.
+func (c *Client) OpenBucketObject(ctx context.Context, ref BucketRef, path string) (BucketObjectReader, error) {
+	if err := ref.Validate(); err != nil || !validObjectPath(path) {
+		return BucketObjectReader{}, errors.New("hubclient: bucket object identity is invalid")
+	}
+	requestContext, cancel := c.callContext(ctx)
+	request, err := c.newRequest(requestContext, callSpec{method: http.MethodGet, path: "/buckets/" + url.PathEscape(ref.Namespace) + "/" + url.PathEscape(ref.Name) + "/resolve/" + url.PathEscape(path)})
+	if err != nil {
+		cancel()
+		return BucketObjectReader{}, err
 	}
 	client := &http.Client{Transport: c.httpClient.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(request)
 	if err != nil {
-		return BucketObject{}, &Error{Code: CodeUnavailable}
+		cancel()
+		return BucketObjectReader{}, &Error{Code: CodeUnavailable}
 	}
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
-		response, err = c.followRepoFileRedirect(ctx, client, response)
+		response, err = c.followRepoFileRedirect(requestContext, client, response)
 		if err != nil {
-			return BucketObject{}, err
+			cancel()
+			return BucketObjectReader{}, err
 		}
 	}
-	defer func() { _ = response.Body.Close() }()
-	payload, err := c.readResponsePayload(response)
-	if err != nil {
-		return BucketObject{}, err
+	if response.StatusCode < 200 || response.StatusCode >= 300 || response.ContentLength > maxBucketObjectBytes {
+		_ = response.Body.Close()
+		cancel()
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return BucketObjectReader{}, statusError(response.StatusCode, response.Header)
+		}
+		return BucketObjectReader{}, &Error{Code: CodeResponseInvalid, StatusCode: response.StatusCode}
 	}
 	mediaType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
-	return BucketObject{Path: path, Content: payload, ContentType: mediaType}, nil
+	return BucketObjectReader{Body: &cancelReadCloser{ReadCloser: response.Body, cancel: cancel}, Size: response.ContentLength, ContentType: mediaType}, nil
+}
+
+type cancelReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (reader *cancelReadCloser) Close() error {
+	err := reader.ReadCloser.Close()
+	reader.cancel()
+	return err
 }
 
 func validateBucketInfo(info BucketInfo) error {

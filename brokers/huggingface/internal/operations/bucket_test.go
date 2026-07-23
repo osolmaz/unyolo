@@ -3,13 +3,16 @@ package operations
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
 )
 
 type bucketFake struct {
@@ -61,6 +64,13 @@ func (f *bucketFake) ReadBucketObject(_ context.Context, _ hubclient.BucketRef, 
 		return hubclient.BucketObject{}, &hubclient.Error{Code: hubclient.CodeNotFound, StatusCode: http.StatusNotFound}
 	}
 	return f.object, nil
+}
+
+func (f *bucketFake) OpenBucketObject(_ context.Context, _ hubclient.BucketRef, path string) (hubclient.BucketObjectReader, error) {
+	if f.object.Path != path {
+		return hubclient.BucketObjectReader{}, &hubclient.Error{Code: hubclient.CodeNotFound, StatusCode: http.StatusNotFound}
+	}
+	return hubclient.BucketObjectReader{Body: io.NopCloser(strings.NewReader(string(f.object.Content))), Size: int64(len(f.object.Content)), ContentType: f.object.ContentType}, nil
 }
 
 func (f *bucketFake) ApplyBucketBatch(_ context.Context, _ hubclient.BucketRef, operations []hubclient.BucketBatchOperation) error {
@@ -143,7 +153,11 @@ func TestBucketReadAdaptersFilterDiscoveryAndReadExactObjects(t *testing.T) {
 	authorize := func(_ string, operation hfpolicy.Operation, target hfpolicy.Target, _ *grants.Grant) bool {
 		return target.Name != "private" && (operation != hfpolicy.OpBucketObjectList || target.Keys[0] != "secret/token.txt")
 	}
-	adapters, err := NewBucketReadAdapters(client, authorize)
+	streams, err := streamstore.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapters, err := NewBucketReadAdapters(client, authorize, streams, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,6 +187,35 @@ func TestBucketReadAdaptersFilterDiscoveryAndReadExactObjects(t *testing.T) {
 				t.Fatalf("Execute() = %s, %v", outcome.Result, err)
 			}
 		})
+	}
+}
+
+func TestBucketObjectReadUsesOwnedStreamForLargeContent(t *testing.T) {
+	t.Parallel()
+	content := strings.Repeat("x", int(maxInlineBucketObjectBytes)+1)
+	hash := strings.Repeat("f", 64)
+	client := &bucketFake{infos: map[string]hubclient.BucketInfo{"acme/artifacts": {ID: "acme/artifacts"}},
+		tree:   []hubclient.BucketTreeEntry{{Type: "file", Path: "large.bin", Size: int64(len(content)), XetHash: hash}},
+		object: hubclient.BucketObject{Path: "large.bin", Content: []byte(content), ContentType: "application/octet-stream"}}
+	streams, _ := streamstore.Open(t.TempDir())
+	adapters, err := NewBucketReadAdapters(client, func(string, hfpolicy.Operation, hfpolicy.Target, *grants.Grant) bool { return true }, streams, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, _ := NewRegistry(adapters...)
+	adapter, _ := registry.Lookup("bucket.object.read")
+	input, _ := adapter.Decode(json.RawMessage(`{"kind":"bucket","namespace":"acme","name":"artifacts"}`), json.RawMessage(`{"path":"large.bin"}`))
+	plan, _ := adapter.Resolve(t.Context(), input)
+	plan.Policy.Client = "agent"
+	outcome, err := adapter.Execute(t.Context(), plan)
+	if err != nil || !outcome.Proven || strings.Contains(string(outcome.Result), `"content"`) {
+		t.Fatalf("Execute() = %s, %v", outcome.Result, err)
+	}
+	var result struct {
+		Stream bucketStreamReference `json:"stream"`
+	}
+	if json.Unmarshal(outcome.Result, &result) != nil || result.Stream.Owner != "agent" || result.Stream.Size != int64(len(content)) || streams.Validate(result.Stream.canonical()) != nil {
+		t.Fatalf("stream result = %+v", result)
 	}
 }
 

@@ -3,6 +3,7 @@ package hubclient
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"regexp"
 	"strings"
@@ -173,6 +174,14 @@ type BucketTreeEntry struct {
 type BucketObject struct {
 	Path        string
 	Content     []byte
+	ContentType string
+}
+
+// BucketObjectReader is a bounded authenticated object response. The caller
+// must close Body.
+type BucketObjectReader struct {
+	Body        io.ReadCloser
+	Size        int64
 	ContentType string
 }
 

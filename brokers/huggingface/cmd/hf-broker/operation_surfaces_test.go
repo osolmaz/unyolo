@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -27,7 +28,7 @@ import (
 
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	descriptors := agentFacingDescriptors()
-	if len(descriptors) != 148 {
+	if len(descriptors) != 149 {
 		t.Fatalf("descriptors=%d", len(descriptors))
 	}
 	for _, descriptor := range descriptors {
@@ -86,6 +87,23 @@ func catalogMCPToolSchemaForTest(t *testing.T, descriptor opcatalog.Descriptor) 
 		}
 	}()
 	return catalogMCPToolSchema(descriptor)
+}
+
+func TestBucketObjectReadMaterializesInlineContentWithoutOverwrite(t *testing.T) {
+	t.Parallel()
+	descriptor, _ := opcatalog.ByName("bucket.object.read")
+	operation := agentv1.Operation{State: agentv1.StateSucceeded, Result: json.RawMessage(`{"encoding":"base64","content":"ZGF0YQ=="}`)}
+	output := filepath.Join(t.TempDir(), "result.bin")
+	if err := materializeBucketObjectRead(t.Context(), nil, descriptor, operation, output); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(output)
+	if err != nil || string(content) != "data" {
+		t.Fatalf("output = %q, %v", content, err)
+	}
+	if err := materializeBucketObjectRead(t.Context(), nil, descriptor, operation, output); err == nil {
+		t.Fatal("materialization overwrote an existing output")
+	}
 }
 
 func TestCapturedResultsAreTranscriptSafe(t *testing.T) {

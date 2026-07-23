@@ -113,7 +113,7 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			continue
 		}
 		switch value.ExecutorKind {
-		case "inline", "credential":
+		case "inline", "credential", "bounded-stream":
 			bound++
 		case "native-protocol":
 			native++
@@ -121,7 +121,7 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			t.Fatalf("%s executor = %q", value.Name, value.ExecutorKind)
 		}
 	}
-	if bound != 148 || native != 3 {
+	if bound != 149 || native != 3 {
 		t.Fatalf("agent bound = %d, native = %d", bound, native)
 	}
 }

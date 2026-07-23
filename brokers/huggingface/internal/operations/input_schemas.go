@@ -47,6 +47,7 @@ var customInputSchemaExamples = map[string]inputSchemaExamples{
 	"bucket.metadata.read":    {bucketTarget{}, emptyArguments{}, nil},
 	"bucket.object.list":      {bucketTarget{}, bucketObjectListArguments{}, nil},
 	"bucket.object.read":      {bucketTarget{}, bucketObjectReadArguments{}, nil},
+	"bucket.object.write":     {bucketTarget{}, bucketObjectWriteArguments{}, nil},
 	"bucket.sync.apply":       {bucketTarget{}, bucketBatchArguments{}, nil},
 	"bucket.move":             {bucketTarget{}, bucketMoveArguments{}, nil},
 	"bucket.object.delete":    {bucketTarget{}, bucketDeleteArguments{}, nil},
@@ -81,7 +82,12 @@ func CustomInputSchemas(name string) (InputSchemas, bool) {
 		properties := target["properties"].(map[string]any)
 		properties["name"] = map[string]any{"type": "string", "pattern": `^(?:\*|[A-Za-z0-9][A-Za-z0-9._-]{0,95})$`}
 	}
-	return InputSchemas{Target: target, Arguments: structuralSchema(examples.arguments), Sealed: optionalStructuralSchema(examples.sealed)}, true
+	arguments := structuralSchema(examples.arguments)
+	if name == "bucket.object.write" {
+		properties := arguments["properties"].(map[string]any)
+		properties["public"] = structuralSchema(bucketObjectWritePublic{})
+	}
+	return InputSchemas{Target: target, Arguments: arguments, Sealed: optionalStructuralSchema(examples.sealed)}, true
 }
 
 // WindowTargetSchema is the closed provider policy target accepted by bounded

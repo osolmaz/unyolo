@@ -237,7 +237,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "high",
     "target_kind": "bucket",
     "max_uses": 25,
@@ -247,7 +247,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_object_write",
     "cli_command": "bucket object write",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "bounded-stream"
   },
   {
     "name": "bucket.resource_group.set",

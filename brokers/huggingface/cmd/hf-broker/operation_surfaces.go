@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"mime"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,7 +25,10 @@ import (
 	"github.com/osolmaz/brokerkit/operation/capability"
 )
 
-const maxOperationInputBytes = 1 << 20
+const (
+	maxOperationInputBytes = 1 << 20
+	maxBucketStreamBytes   = int64(512 << 20)
+)
 
 type operationClientOptions struct {
 	target         json.RawMessage
@@ -30,6 +36,9 @@ type operationClientOptions struct {
 	attrs          map[string]any
 	sealedFile     string
 	credentialSlot string
+	sourceFile     string
+	mediaType      string
+	outputFile     string
 	reason         string
 	idempotencyKey string
 	minutes        int
@@ -81,12 +90,18 @@ func runCatalogOperation(ctx context.Context, client *agentClient, stdout, stder
 	if err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
+	if err := prepareBucketObjectWrite(ctx, client, descriptor, &options); err != nil {
+		return err
+	}
 	request, err := buildOperationSubmitRequest(ctx, client, descriptor, options.target, options.arguments, options.sealedFile, nil, options.credentialSlot, options.reason, options.idempotencyKey)
 	if err != nil {
 		return err
 	}
 	operation, err := submitAndReportCatalogOperation(ctx, client, stderr, request, options)
 	if err != nil {
+		return err
+	}
+	if err := materializeBucketObjectRead(ctx, client, descriptor, operation, options.outputFile); err != nil {
 		return err
 	}
 	return printClientOperation(stdout, operation, options.jsonOutput)
@@ -124,6 +139,9 @@ func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string)
 	flags.StringVar(&inputs.attrsJSON, "attrs-json", "", "window grant attributes JSON")
 	flags.StringVar(&options.sealedFile, "sealed-file", "", "file containing secret argument JSON")
 	flags.StringVar(&options.credentialSlot, "credential-slot", "", "encrypted destination for generated credentials")
+	flags.StringVar(&options.sourceFile, "source", "", "local file for a bounded stream upload")
+	flags.StringVar(&options.mediaType, "media-type", "", "stream media type; inferred from source when omitted")
+	flags.StringVar(&options.outputFile, "output", "", "write bucket object content to a new local file")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
 	flags.StringVar(&options.idempotencyKey, "request-id", "", "stable retry key")
 	flags.IntVar(&options.minutes, "minutes", 0, "window duration; omit for policy default")
@@ -208,10 +226,126 @@ func validateOperationClientOptions(descriptor opcatalog.Descriptor, options ope
 	if strings.TrimSpace(options.reason) == "" || len(options.reason) > 2000 || options.waitTimeout <= 0 {
 		return errors.New("reason must contain at most 2000 characters and wait timeout must be positive")
 	}
+	if descriptor.Name == "bucket.object.write" {
+		if options.sourceFile == "" || options.sealedFile != "" || options.credentialSlot != "" {
+			return errors.New("bucket.object.write requires source and does not accept sealed arguments or credential slots")
+		}
+	} else if options.sourceFile != "" || options.mediaType != "" {
+		return errors.New("source and media-type apply only to bucket.object.write")
+	}
+	if options.outputFile != "" && (descriptor.Name != "bucket.object.read" || !options.wait) {
+		return errors.New("output requires a waiting bucket.object.read command")
+	}
 	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
 		return validateWindowOperationClientOptions(options)
 	}
 	return validateExecutionOperationClientOptions(descriptor, options)
+}
+
+func prepareBucketObjectWrite(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, options *operationClientOptions) error {
+	if descriptor.Name != "bucket.object.write" {
+		return nil
+	}
+	requestID, err := resolveClientRequestID(options.idempotencyKey)
+	if err != nil {
+		return err
+	}
+	options.idempotencyKey = requestID
+	file, err := os.Open(options.sourceFile) // #nosec G304 -- the requester explicitly selects the upload source.
+	if err != nil {
+		return errors.New("source file is unavailable")
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxBucketStreamBytes {
+		return errors.New("source file is empty, unavailable, or too large")
+	}
+	mediaType := options.mediaType
+	if mediaType == "" {
+		mediaType = mime.TypeByExtension(filepath.Ext(options.sourceFile))
+		if mediaType == "" {
+			mediaType = "application/octet-stream"
+		}
+	}
+	reference, err := client.operations.UploadStream(ctx, descriptor.Name, requestID, mediaType, file, info.Size(), maxBucketStreamBytes)
+	if err != nil {
+		return err
+	}
+	var public map[string]any
+	if strictjson.Decode(options.arguments, &public, true) != nil || public == nil {
+		return errors.New("bucket object write arguments must be one JSON object")
+	}
+	wrapped, err := json.Marshal(map[string]any{"public": public, "stream_input": map[string]any{
+		"id": reference.ID, "owner": reference.Owner, "purpose": reference.Purpose,
+		"transfer_id": reference.RequestKey, "digest": reference.Digest, "size": reference.Size,
+		"media_type": reference.MediaType, "expires_at": reference.ExpiresAt,
+	}})
+	if err != nil {
+		return errors.New("could not bind bucket object stream")
+	}
+	options.arguments = wrapped
+	return nil
+}
+
+func materializeBucketObjectRead(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, operation agentv1.Operation, output string) error {
+	if descriptor.Name != "bucket.object.read" || output == "" {
+		return nil
+	}
+	if operation.State != agentv1.StateSucceeded {
+		return errors.New("bucket object read did not succeed")
+	}
+	var result struct {
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+		Stream   struct {
+			ID string `json:"id"`
+		} `json:"stream"`
+	}
+	if strictjson.Decode(operation.Result, &result, false) != nil {
+		return errors.New("bucket object read result is invalid")
+	}
+	return writeNewOutputFile(output, func(destination io.Writer) error {
+		if result.Stream.ID != "" {
+			_, err := client.operations.DownloadStream(ctx, result.Stream.ID, destination, maxBucketStreamBytes)
+			return err
+		}
+		var content []byte
+		switch result.Encoding {
+		case "utf-8":
+			content = []byte(result.Content)
+		case "base64":
+			var err error
+			content, err = base64.StdEncoding.DecodeString(result.Content)
+			if err != nil {
+				return errors.New("bucket object read result has invalid base64")
+			}
+		default:
+			return errors.New("bucket object read result has no content stream")
+		}
+		if int64(len(content)) > maxBucketStreamBytes {
+			return errors.New("bucket object read result exceeds its limit")
+		}
+		_, err := destination.Write(content)
+		return err
+	})
+}
+
+func writeNewOutputFile(path string, write func(io.Writer) error) error {
+	directory, name := filepath.Dir(path), filepath.Base(path)
+	file, err := os.CreateTemp(directory, "."+name+".partial-*") // #nosec G304 -- the requester explicitly selects the output directory.
+	if err != nil {
+		return errors.New("output file could not be created")
+	}
+	temporary := file.Name()
+	defer func() { _ = os.Remove(temporary) }()
+	if os.Chmod(temporary, 0o600) != nil || write(file) != nil || file.Sync() != nil || file.Close() != nil {
+		_ = file.Close()
+		return errors.New("output file could not be written")
+	}
+	if err := os.Link(temporary, path); err != nil {
+		return errors.New("output file already exists or could not be installed")
+	}
+	return nil
 }
 
 func validateWindowOperationClientOptions(options operationClientOptions) error {
