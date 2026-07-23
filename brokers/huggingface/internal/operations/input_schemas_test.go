@@ -18,6 +18,14 @@ func TestCustomInputSchemasAreClosedAndComplete(t *testing.T) {
 	if _, found := CustomInputSchemas("http.request"); found {
 		t.Fatal("unknown custom operation has schemas")
 	}
+	write, _ := CustomInputSchemas("bucket.object.write")
+	properties := write.Arguments["properties"].(map[string]any)
+	if properties["path"] == nil || properties["public"] != nil || properties["stream_input"] != nil {
+		t.Fatalf("bucket write public arguments = %#v", properties)
+	}
+	if BucketStreamInputSchema()["additionalProperties"] != false {
+		t.Fatal("bucket stream input schema is not closed")
+	}
 }
 
 func TestStructuralSchemaCoversJSONFieldShapes(t *testing.T) {

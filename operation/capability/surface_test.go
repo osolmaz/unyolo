@@ -11,7 +11,7 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 	credentialTool, credentialCommand := "hf_token_create", "token create"
 	credentialKind := "service-token"
 	descriptors := []Descriptor{
-		{Name: "repo.read", AuthorizationMode: ModeWindow, AgentFacing: true, MCPTool: &windowTool, CLICommand: &windowCommand},
+		{Name: "repo.read", AuthorizationMode: ModeWindow, AgentFacing: true, ExecutorKind: "bounded-stream", MCPTool: &windowTool, CLICommand: &windowCommand},
 		{Name: "secret.set", AuthorizationMode: ModeExecution, AgentFacing: true, Sealed: true, MCPTool: &secretTool, CLICommand: &secretCommand},
 		{Name: "token.create", AuthorizationMode: ModeExecution, AgentFacing: true, Sealed: true,
 			CredentialOutputKind: &credentialKind, MCPTool: &credentialTool, CLICommand: &credentialCommand},
@@ -28,6 +28,12 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 			return map[string]any{"type": "object"}, map[string]any{"type": "object"}, sealed
 		},
 		ToolDescription: func(descriptor Descriptor) string { return "Run " + descriptor.Name },
+		StreamInputSchema: func(descriptor Descriptor) map[string]any {
+			if descriptor.ExecutorKind == "bounded-stream" {
+				return map[string]any{"type": "object"}
+			}
+			return nil
+		},
 	}
 	if facing := AgentFacing(descriptors); len(facing) != 3 {
 		t.Fatalf("agent-facing descriptors = %d", len(facing))
@@ -57,8 +63,9 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 	operationWindowOptions.WindowSubmitsOperation = true
 	operationWindow := MCPToolSchema(descriptors[0], operationWindowOptions)
 	operationProperties := operationWindow["properties"].(map[string]any)
-	if operationProperties["arguments"] == nil || operationProperties["attrs"] != nil || operationProperties["minutes"] != nil ||
-		operationProperties["max_uses"] != nil || !slices.Contains(RequiredPropertyNames(operationWindow), "arguments") {
+	if operationProperties["arguments"] == nil || operationProperties["stream_input"] == nil || operationProperties["attrs"] != nil || operationProperties["minutes"] != nil ||
+		operationProperties["max_uses"] != nil || !slices.Contains(RequiredPropertyNames(operationWindow), "arguments") ||
+		!slices.Contains(RequiredPropertyNames(operationWindow), "stream_input") {
 		t.Fatalf("operation window schema = %#v", operationWindow)
 	}
 	secret := MCPToolSchema(descriptors[1], options)

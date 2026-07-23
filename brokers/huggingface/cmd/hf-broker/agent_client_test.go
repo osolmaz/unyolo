@@ -288,6 +288,37 @@ func TestCallMCPGrantRequestProjectsActiveGrant(t *testing.T) {
 	}
 }
 
+func TestCallMCPGrantRequestWaitsByDefault(t *testing.T) {
+	t.Parallel()
+	var reads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		status := "pending"
+		if r.Method == http.MethodGet {
+			reads.Add(1)
+			status = "active"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": map[string]any{"grant": hfClientGrant{
+			ID: "grant-pending", Status: status, Operation: "bucket.object.write", Mode: policy.GrantModeWindow,
+			Target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/**"}},
+			Attrs:  map[string]any{}, Minutes: 5, MaxUses: 1, ClientRequestID: "bucket-pending",
+		}}})
+	}))
+	defer server.Close()
+	client, err := newHFGrantClient("tcp://"+strings.TrimPrefix(server.URL, "http://"), strings.Repeat("s", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant, err := callMCPGrantRequest(t.Context(), client, json.RawMessage(`{
+		"operation":"bucket.object.write",
+		"target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/**"]},
+		"attrs":{},"minutes":5,"max_uses":1,"reason":"publish artifacts","request_id":"bucket-pending"
+	}`))
+	if err != nil || grant.ID != "grant-pending" || grant.Status != "active" || reads.Load() == 0 {
+		t.Fatalf("grant = %+v, reads = %d, error = %v", grant, reads.Load(), err)
+	}
+}
+
 func TestBucketObjectWriteCLIUploadsAndBindsLocalSource(t *testing.T) {
 	t.Parallel()
 	var submitted agentv1.SubmitRequest

@@ -67,6 +67,9 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 			if sealed, found := properties["sealed_arguments"]; found {
 				assertClosedSchema(t, descriptor.Name+" sealed arguments", sealed)
 			}
+			if stream, found := properties["stream_input"]; found {
+				assertClosedSchema(t, descriptor.Name+" stream input", stream)
+			}
 		})
 	}
 	if t.Failed() {
@@ -75,6 +78,39 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	tools := catalogMCPTools()
 	if len(tools) != len(descriptors)+4 {
 		t.Fatalf("descriptors=%d tools=%d", len(descriptors), len(tools))
+	}
+}
+
+func TestMCPBucketWriteBindsBrokerStreamInput(t *testing.T) {
+	t.Parallel()
+	var submitted agentv1.SubmitRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent/v1/operations" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&submitted); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(testAgentOperation(agentv1.StatePending))
+	}))
+	defer server.Close()
+	client, err := loadAgentClient(agentClientTestEnv(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := callMCPTool(t.Context(), client, mcpToolCall{Name: "hf_bucket_object_write", Arguments: json.RawMessage(`{
+		"target":{"kind":"bucket","namespace":"acme","name":"artifacts"},
+		"arguments":{"path":"runs/result.txt"},
+		"stream_input":{"id":"stream_012345678901234567890123","owner":"agent","purpose":"bucket.object.write","transfer_id":"bucket-write","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":4,"media_type":"text/plain","expires_at":2000000000},
+		"reason":"publish result","request_id":"bucket-write"
+	}`)})
+	if _, ok := value.(mcpoperation.Operation); err != nil || !ok {
+		t.Fatalf("bucket write MCP call = %#v, %v", value, err)
+	}
+	if submitted.Operation != "bucket.object.write" || submitted.IdempotencyKey != "bucket-write" ||
+		!strings.Contains(string(submitted.Arguments), `"stream_input"`) || !strings.Contains(string(submitted.Arguments), `"public":{"path":"runs/result.txt"}`) {
+		t.Fatalf("submitted request = %+v", submitted)
 	}
 }
 

@@ -55,6 +55,7 @@ type mcpCatalogOperationInput struct {
 	Attrs           map[string]any  `json:"attrs"`
 	SealedArguments json.RawMessage `json:"sealed_arguments"`
 	CredentialSlot  string          `json:"credential_slot"`
+	StreamInput     json.RawMessage `json:"stream_input"`
 	Reason          string          `json:"reason"`
 	RequestID       string          `json:"request_id"`
 }
@@ -539,6 +540,12 @@ func hfSurfaceOptions() capability.SurfaceOptions {
 		ToolDescription: func(descriptor capability.Descriptor) string {
 			return fmt.Sprintf("Run %s through HF Broker policy and approval. Never request a Hugging Face token.", descriptor.Name)
 		},
+		StreamInputSchema: func(descriptor capability.Descriptor) map[string]any {
+			if descriptor.ExecutorKind == "bounded-stream" {
+				return operations.BucketStreamInputSchema()
+			}
+			return nil
+		},
 	}
 }
 
@@ -603,6 +610,9 @@ func validateMCPCatalogOperation(descriptor opcatalog.Descriptor, input mcpCatal
 		"credential_slot is required"); err != nil {
 		return err
 	}
+	if err := validateMCPStreamInput(descriptor, input.StreamInput); err != nil {
+		return err
+	}
 	return validateMCPSealedOperation(descriptor, input)
 }
 
@@ -637,6 +647,14 @@ func validateCredentialOutputSealedInput(hasSealedInput bool) error {
 func validateCredentialOutputSlot(slot, missingSlotMessage string) error {
 	if !credentialstore.ValidSlot(slot) {
 		return errors.New(missingSlotMessage)
+	}
+	return nil
+}
+
+func validateMCPStreamInput(descriptor opcatalog.Descriptor, stream json.RawMessage) error {
+	required := descriptor.ExecutorKind == "bounded-stream"
+	if required != (len(stream) > 0) {
+		return errors.New("stream_input is required only for bounded stream operations")
 	}
 	return nil
 }

@@ -61,6 +61,18 @@ func (f *xetUploadFake) Upload(_ context.Context, _ hubclient.BucketRef, file *o
 	return xetuploader.Result{Hash: strings.Repeat("e", 64), Size: size}, nil
 }
 
+func TestBindBucketObjectStreamInput(t *testing.T) {
+	t.Parallel()
+	stream := json.RawMessage(`{"id":"stream_012345678901234567890123","owner":"agent","purpose":"bucket.object.write","transfer_id":"write-1","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":4,"media_type":"text/plain","expires_at":2000000000}`)
+	bound, err := BindBucketObjectStreamInput(json.RawMessage(`{"path":"runs/result.txt"}`), stream, "write-1")
+	if err != nil || !strings.Contains(string(bound), `"stream_input"`) || !strings.Contains(string(bound), `"public":{"path":"runs/result.txt"}`) {
+		t.Fatalf("BindBucketObjectStreamInput() = %s, %v", bound, err)
+	}
+	if _, err := BindBucketObjectStreamInput(json.RawMessage(`{"path":"runs/result.txt"}`), stream, "other"); err == nil {
+		t.Fatal("mismatched stream transfer ID succeeded")
+	}
+}
+
 func TestBucketObjectWriteBindsStreamAndVerifiesReadback(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()

@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/mcp/grant"
@@ -89,7 +90,7 @@ func newHFMCPBridge(client *agentClient) (*agentmcp.Bridge, error) {
 func prepareHFMCPInput(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, input *agentmcp.Input) error {
 	local := mcpCatalogOperationInput{
 		Target: input.Target, Arguments: input.Arguments, SealedArguments: input.SealedArguments,
-		CredentialSlot: input.CredentialSlot, Reason: input.Reason, RequestID: input.RequestID,
+		CredentialSlot: input.CredentialSlot, StreamInput: input.StreamInput, Reason: input.Reason, RequestID: input.RequestID,
 	}
 	if err := validateMCPCatalogOperation(descriptor, local); err != nil {
 		return err
@@ -97,6 +98,12 @@ func prepareHFMCPInput(ctx context.Context, client *agentClient, descriptor opca
 	arguments, err := mcpprojection.ArgumentsToCanonical(descriptor, local.Arguments)
 	if err != nil {
 		return err
+	}
+	if descriptor.ExecutorKind == "bounded-stream" {
+		arguments, err = operations.BindBucketObjectStreamInput(arguments, local.StreamInput, local.RequestID)
+		if err != nil {
+			return err
+		}
 	}
 	request, err := buildOperationSubmitRequest(ctx, client, descriptor, local.Target, arguments, "", local.SealedArguments,
 		local.CredentialSlot, local.Reason, local.RequestID)
@@ -124,7 +131,7 @@ func mcpTools(operations []string) []map[string]any {
 	}
 	tools = filtered
 	return append(tools,
-		map[string]any{"name": "hf_grant_request", "description": "Request a scoped temporary HF Broker grant. This does not execute the operation.", "inputSchema": mcpGrantRequestSchema()},
+		map[string]any{"name": "hf_grant_request", "description": "Request a scoped temporary HF Broker grant and wait up to 25 seconds for its decision. This does not execute the operation.", "inputSchema": mcpGrantRequestSchema()},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait briefly for a temporary HF Broker grant decision, then call again if it remains pending.", "inputSchema": mcpIDSchema("grant_id", true)},
 		map[string]any{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
@@ -154,7 +161,7 @@ func mcpGrantRequestSchema() map[string]any {
 			"max_uses":     map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": 25},
 			"reason":       map[string]any{"type": "string", "minLength": 1, "maxLength": 2000},
 			"request_id":   map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
-			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": mcpoperation.MaxWaitSeconds},
+			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": mcpoperation.MaxWaitSeconds, "default": mcpoperation.DefaultWaitSeconds},
 		},
 	}
 }
@@ -212,10 +219,13 @@ func buildMCPGrantRequest(raw json.RawMessage) (mcpGrantRequestInput, hfGrantReq
 }
 
 func waitForPendingMCPGrant(ctx context.Context, client *hfGrantClient, grant hfClientGrant, waitSeconds int) (hfClientGrant, error) {
-	if waitSeconds > 0 && grant.Status == string(grants.StatusPending) {
-		return waitForMCPGrant(ctx, client, grant.ID, time.Duration(waitSeconds)*time.Second)
+	if grant.Status != string(grants.StatusPending) {
+		return grant, nil
 	}
-	return grant, nil
+	if waitSeconds == 0 {
+		waitSeconds = mcpoperation.DefaultWaitSeconds
+	}
+	return waitForMCPGrant(ctx, client, grant.ID, time.Duration(waitSeconds)*time.Second)
 }
 
 func decodeMCPGrantRequest(raw json.RawMessage) (mcpGrantRequestInput, error) {

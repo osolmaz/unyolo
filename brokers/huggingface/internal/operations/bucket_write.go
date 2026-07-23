@@ -108,6 +108,29 @@ func (a *bucketObjectWriteAdapter) Decode(targetRaw, argumentsRaw json.RawMessag
 	return Input{Target: canonicalTarget, Arguments: canonicalArguments}, nil
 }
 
+// BindBucketObjectStreamInput combines public MCP arguments with one
+// broker-owned stream reference. The stream remains validated again at the
+// authenticated Agent V1 boundary before submission is accepted.
+func BindBucketObjectStreamInput(argumentsRaw, streamRaw json.RawMessage, requestID string) (json.RawMessage, error) {
+	var public bucketObjectWritePublic
+	var reference bucketStreamReference
+	if strictjson.Decode(argumentsRaw, &public, true) != nil || !validBucketObjectPath(public.Path) ||
+		strictjson.Decode(streamRaw, &reference, true) != nil || !validMCPBucketStream(reference, requestID) {
+		return nil, errors.New("bucket object write stream input is invalid")
+	}
+	publicRaw, err := canonical(public)
+	if err != nil {
+		return nil, err
+	}
+	return canonical(bucketObjectWriteArguments{Public: publicRaw, StreamInput: &reference})
+}
+
+func validMCPBucketStream(reference bucketStreamReference, requestID string) bool {
+	return reference.ID != "" && reference.Owner != "" && reference.Purpose == "bucket.object.write" &&
+		reference.TransferID == requestID && reference.Digest != "" && reference.Size > 0 &&
+		reference.MediaType != "" && reference.ExpiresAt > 0
+}
+
 func decodeBucketObjectWriteArguments(raw json.RawMessage) (bucketObjectWriteArguments, bucketObjectWritePublic, error) {
 	var arguments bucketObjectWriteArguments
 	var public bucketObjectWritePublic
