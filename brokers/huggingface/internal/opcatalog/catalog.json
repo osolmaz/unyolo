@@ -1144,7 +1144,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "blocked-upstream",
+    "implementation_status": "implemented",
     "risk": "high",
     "target_kind": "repo",
     "max_uses": 25,
@@ -1154,7 +1154,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_git_push_append",
     "cli_command": "git push append",
-    "default_policy_effect": "request"
+    "default_policy_effect": "request",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "git.push.force",
