@@ -31744,6 +31744,17 @@
             "description": "Number uniquely identifying the issue within its repository",
             "type": "integer"
           },
+          "pull_request": {
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "format": "uri",
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "state": {
             "description": "State of the issue; either 'open' or 'closed'",
             "maxLength": 1048576,
@@ -33210,6 +33221,17 @@
             "number": {
               "description": "Number uniquely identifying the issue within its repository",
               "type": "integer"
+            },
+            "pull_request": {
+              "additionalProperties": false,
+              "properties": {
+                "url": {
+                  "format": "uri",
+                  "maxLength": 1048576,
+                  "type": "string"
+                }
+              },
+              "type": "object"
             },
             "state": {
               "description": "State of the issue; either 'open' or 'closed'",

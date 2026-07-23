@@ -720,6 +720,9 @@ func responseProjection(operation string, schema map[string]any) []string {
 	}
 	paths := map[string]bool{}
 	collectResponseProjection(schema, allowed, "", paths, 0)
+	if operation == "issue.issues_get" || operation == "issue.issues_list_for_repo" {
+		paths["pull_request.url"] = true
+	}
 	result := make([]string, 0, len(paths))
 	for path := range paths {
 		result = append(result, path)
