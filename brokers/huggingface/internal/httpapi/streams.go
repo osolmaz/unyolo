@@ -30,13 +30,13 @@ func (s *Server) uploadStream(c echo.Context) error {
 	upload, err := hfStreamUploadFromRequest(client, c.Request(), s.utcNow())
 	if err != nil {
 		writeJSendFail(c.Response(), http.StatusBadRequest, "stream_input_invalid", "A bounded bucket object stream is required")
-		return nil
+		return nil //nolint:nilerr // the HTTP failure response is complete
 	}
 	reference, err := s.streamStore.Put(upload.client, upload.operation, upload.requestKey, upload.mediaType,
 		c.Request().Body, upload.limit, upload.expiresAt)
 	if err != nil {
 		writeJSendFail(c.Response(), http.StatusBadRequest, "stream_input_invalid", "The stream is empty or exceeds its limit")
-		return nil
+		return nil //nolint:nilerr // the HTTP failure response is complete
 	}
 	return c.JSON(http.StatusCreated, reference)
 }
@@ -46,14 +46,21 @@ func hfStreamUploadFromRequest(client string, request *http.Request, now time.Ti
 	requestKey := strings.TrimSpace(request.Header.Get("X-Broker-Idempotency-Key"))
 	mediaType := strings.TrimSpace(strings.Split(request.Header.Get("Content-Type"), ";")[0])
 	descriptor, found := opcatalog.ByName(operation)
-	if !found || operation != "bucket.object.write" || !descriptor.AgentFacing || descriptor.ExecutorKind != "bounded-stream" ||
-		!agentv1.ValidIdempotencyKey(requestKey) || mediaType == "" || mediaType == "application/json" || len(mediaType) > 255 ||
-		request.ContentLength <= 0 || request.ContentLength > maxBucketObjectStreamBytes {
+	if !validHFStreamDescriptor(descriptor, found) || !validHFStreamRequest(request, requestKey, mediaType) {
 		return streamUpload{}, errors.New("stream upload is invalid")
 	}
 	return streamUpload{client: client, operation: operation, requestKey: requestKey, mediaType: mediaType,
 		limit:     maxBucketObjectStreamBytes,
 		expiresAt: now.Add(time.Duration(descriptor.RequestTTLSeconds+descriptor.ApprovalTTLSeconds+3600) * time.Second)}, nil
+}
+
+func validHFStreamDescriptor(descriptor opcatalog.Descriptor, found bool) bool {
+	return found && descriptor.Name == "bucket.object.write" && descriptor.AgentFacing && descriptor.ExecutorKind == "bounded-stream"
+}
+
+func validHFStreamRequest(request *http.Request, requestKey, mediaType string) bool {
+	return agentv1.ValidIdempotencyKey(requestKey) && mediaType != "" && mediaType != "application/json" &&
+		len(mediaType) <= 255 && request.ContentLength > 0 && request.ContentLength <= maxBucketObjectStreamBytes
 }
 
 func (s *Server) downloadStream(c echo.Context) error {

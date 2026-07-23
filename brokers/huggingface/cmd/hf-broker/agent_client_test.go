@@ -17,6 +17,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/mcp/grant"
 	"github.com/osolmaz/brokerkit/mcp/operation"
@@ -221,6 +222,38 @@ func TestDecodeMCPGrantRequestPreservesUnlimitedScopedWrite(t *testing.T) {
 	}
 	if !input.MaxUses.Specified || !input.MaxUses.Limit.IsUnlimited() || input.Minutes != 10080 || !slices.Equal(input.Target.Keys, []string{"runs/**"}) {
 		t.Fatalf("input = %+v", input)
+	}
+}
+
+func TestCallMCPGrantRequestProjectsActiveGrant(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/grants" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": map[string]any{"grant": hfClientGrant{
+			ID: "grant-1", Status: "active", Operation: "bucket.object.write", Mode: policy.GrantModeWindow,
+			Target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/**"}},
+			Attrs:  map[string]any{}, Minutes: 10080, MaxUses: 0, UsesRemaining: -1, ClientRequestID: "bucket-week",
+		}}})
+	}))
+	defer server.Close()
+	client, err := newHFGrantClient("tcp://"+strings.TrimPrefix(server.URL, "http://"), strings.Repeat("s", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant, err := callMCPGrantRequest(t.Context(), client, json.RawMessage(`{
+		"operation":"bucket.object.write",
+		"target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/**"]},
+		"attrs":{},"minutes":10080,"max_uses":null,"reason":"publish artifacts","request_id":"bucket-week"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grant.ID != "grant-1" || grant.Status != "active" || grant.RequestID != "bucket-week" || grant.UsesRemaining != -1 {
+		t.Fatalf("grant = %+v", grant)
 	}
 }
 

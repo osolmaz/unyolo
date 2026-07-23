@@ -63,7 +63,7 @@ type bucketObjectReadArguments struct {
 
 func NewBucketReadAdapters(client bucketReadClient, authorize RepositoryAuthorization, streams bucketReadStreamStore, now func() time.Time) ([]Adapter, error) {
 	if client == nil || authorize == nil || streams == nil {
-		return nil, errors.New("Hugging Face bucket read dependencies are required")
+		return nil, errors.New("bucket read dependencies are required")
 	}
 	if now == nil {
 		now = time.Now
@@ -95,28 +95,40 @@ func decodeBucketListTarget(raw json.RawMessage) (bucketTarget, error) {
 func (a *bucketReadAdapter) decodeArguments(raw json.RawMessage) (any, error) {
 	switch a.descriptor.Name {
 	case "bucket.list":
-		value, err := decodeValidated(raw, maxArgumentsBytes, func(value bucketListArguments) bool {
-			return value.Limit >= 0 && value.Limit <= 100 && len(value.Search) <= 128 && !strings.ContainsRune(value.Search, 0)
-		}, "bucket list arguments are invalid")
-		if value.Limit == 0 {
-			value.Limit = 100
-		}
-		return value, err
+		return decodeBucketListArguments(raw)
 	case "bucket.metadata.read":
 		return decodeEmptyArguments(raw, "bucket metadata arguments must be empty")
 	case "bucket.object.list":
-		value, err := decodeValidated(raw, maxArgumentsBytes, validBucketObjectListArguments, "bucket object list arguments are invalid")
-		if value.Limit == 0 {
-			value.Limit = 100
-		}
-		return value, err
+		return decodeBucketObjectListArguments(raw)
 	case "bucket.object.read":
-		return decodeValidatedArguments(raw, func(value bucketObjectReadArguments) bool {
-			return validBucketObjectPath(value.Path)
-		}, "bucket object read arguments are invalid")
+		return decodeBucketObjectReadArguments(raw)
 	default:
 		return nil, errors.New("bucket read operation is not implemented")
 	}
+}
+
+func decodeBucketListArguments(raw json.RawMessage) (bucketListArguments, error) {
+	value, err := decodeValidated(raw, maxArgumentsBytes, func(value bucketListArguments) bool {
+		return value.Limit >= 0 && value.Limit <= 100 && len(value.Search) <= 128 && !strings.ContainsRune(value.Search, 0)
+	}, "bucket list arguments are invalid")
+	if value.Limit == 0 {
+		value.Limit = 100
+	}
+	return value, err
+}
+
+func decodeBucketObjectListArguments(raw json.RawMessage) (bucketObjectListArguments, error) {
+	value, err := decodeValidated(raw, maxArgumentsBytes, validBucketObjectListArguments, "bucket object list arguments are invalid")
+	if value.Limit == 0 {
+		value.Limit = 100
+	}
+	return value, err
+}
+
+func decodeBucketObjectReadArguments(raw json.RawMessage) (any, error) {
+	return decodeValidatedArguments(raw, func(value bucketObjectReadArguments) bool {
+		return validBucketObjectPath(value.Path)
+	}, "bucket object read arguments are invalid")
 }
 
 func validBucketObjectListArguments(value bucketObjectListArguments) bool {
@@ -126,9 +138,15 @@ func validBucketObjectListArguments(value bucketObjectListArguments) bool {
 }
 
 func validBucketObjectPath(value string) bool {
-	if value == "" || len(value) > 1024 || strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") || strings.ContainsAny(value, "\\\x00") {
-		return false
-	}
+	return validBucketObjectPathShape(value) && validBucketObjectPathParts(value)
+}
+
+func validBucketObjectPathShape(value string) bool {
+	return value != "" && len(value) <= 1024 && !strings.HasPrefix(value, "/") &&
+		!strings.HasSuffix(value, "/") && !strings.ContainsAny(value, "\\\x00")
+}
+
+func validBucketObjectPathParts(value string) bool {
 	for _, part := range strings.Split(value, "/") {
 		if part == "" || part == "." || part == ".." {
 			return false
@@ -302,8 +320,8 @@ func (a *bucketReadAdapter) readObject(ctx context.Context, plan Plan, target bu
 }
 
 func (a *bucketReadAdapter) readObjectStream(ctx context.Context, plan Plan, target bucketTarget, metadata hubclient.BucketTreeEntry) (any, error) {
-	if metadata.Size <= 0 || metadata.Size > maxStreamBucketObjectBytes || plan.Policy.Client == "" {
-		return nil, errors.New("bucket object is too large for a bounded stream")
+	if err := validateBucketObjectStreamRequest(plan.Policy.Client, metadata.Size); err != nil {
+		return nil, err
 	}
 	reader, err := a.client.OpenBucketObject(ctx, target.ref(), metadata.Path)
 	if err != nil {
@@ -313,24 +331,38 @@ func (a *bucketReadAdapter) readObjectStream(ctx context.Context, plan Plan, tar
 	if reader.Size >= 0 && reader.Size != metadata.Size {
 		return nil, errors.New("bucket object size changed before streaming")
 	}
-	requestKey := "bucket-read-" + digestValue(map[string]any{
-		"client": plan.Policy.Client, "bucket": target.Namespace + "/" + target.Name,
-		"path": metadata.Path, "xet_hash": metadata.XetHash,
-	})
-	reference, err := a.streams.Put(plan.Policy.Client, a.descriptor.Name, requestKey, reader.ContentType,
-		reader.Body, metadata.Size, a.now().Add(15*time.Minute))
+	reference, err := a.storeBucketObjectStream(plan.Policy.Client, target, metadata, reader)
 	if err != nil {
 		return nil, err
-	}
-	if reference.Size != metadata.Size {
-		_ = a.streams.Delete(reference)
-		return nil, errors.New("bucket object size changed while streaming")
 	}
 	return map[string]any{"bucket": target.Namespace + "/" + target.Name, "path": metadata.Path,
 		"size": metadata.Size, "xet_hash": metadata.XetHash, "content_type": reader.ContentType,
 		"stream": bucketStreamReference{ID: reference.ID, Owner: reference.Owner, Purpose: reference.Purpose,
 			TransferID: reference.RequestKey, Digest: reference.Digest, Size: reference.Size,
 			MediaType: reference.MediaType, ExpiresAt: reference.ExpiresAt}}, nil
+}
+
+func validateBucketObjectStreamRequest(client string, size int64) error {
+	if size <= 0 || size > maxStreamBucketObjectBytes || client == "" {
+		return errors.New("bucket object is too large for a bounded stream")
+	}
+	return nil
+}
+
+func (a *bucketReadAdapter) storeBucketObjectStream(client string, target bucketTarget, metadata hubclient.BucketTreeEntry,
+	reader hubclient.BucketObjectReader) (streamstore.Reference, error) {
+	requestKey := "bucket-read-" + digestValue(map[string]any{"client": client,
+		"bucket": target.Namespace + "/" + target.Name, "path": metadata.Path, "xet_hash": metadata.XetHash})
+	reference, err := a.streams.Put(client, a.descriptor.Name, requestKey, reader.ContentType,
+		reader.Body, metadata.Size, a.now().Add(15*time.Minute))
+	if err != nil {
+		return streamstore.Reference{}, err
+	}
+	if reference.Size != metadata.Size {
+		_ = a.streams.Delete(reference)
+		return streamstore.Reference{}, errors.New("bucket object size changed while streaming")
+	}
+	return reference, nil
 }
 
 func (a *bucketReadAdapter) Reconcile(ctx context.Context, plan Plan) (Outcome, error) {

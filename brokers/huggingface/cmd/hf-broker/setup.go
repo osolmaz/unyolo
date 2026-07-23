@@ -251,6 +251,19 @@ func validateSetupPreset(opts setupSystemdOptions) error {
 }
 
 func validateSetupNarrowRepo(opts setupSystemdOptions) error {
+	if err := validateNarrowRepoPolicyOptions(opts); err != nil {
+		return err
+	}
+	if !validRepo(opts.Repo) {
+		return exitError{code: 64, message: "--repo must be owner/name"}
+	}
+	if !validRepoType(opts.RepoType) {
+		return exitError{code: 64, message: "--repo-type must be model, dataset, or space"}
+	}
+	return nil
+}
+
+func validateNarrowRepoPolicyOptions(opts setupSystemdOptions) error {
 	if opts.PolicyPresetExplicit {
 		return exitError{code: 64, message: "--policy-preset cannot be combined with --repo and --repo-type"}
 	}
@@ -262,12 +275,6 @@ func validateSetupNarrowRepo(opts setupSystemdOptions) error {
 	}
 	if opts.ResetDeniedOperations {
 		return exitError{code: 64, message: "--reset-denied-operations requires preset policy mode without --repo"}
-	}
-	if !validRepo(opts.Repo) {
-		return exitError{code: 64, message: "--repo must be owner/name"}
-	}
-	if !validRepoType(opts.RepoType) {
-		return exitError{code: 64, message: "--repo-type must be model, dataset, or space"}
 	}
 	return nil
 }

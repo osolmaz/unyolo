@@ -79,20 +79,31 @@ func (renderer) PresetName() string { return RequestAllAgentOperations }
 
 func (renderer) ValidateProfile(profile shared.Profile) error {
 	for _, target := range profile.ProtectedTargets {
-		switch target.Kind {
-		case string(policy.KindRepo):
-			if target.Type != "model" && target.Type != "dataset" && target.Type != "space" && target.Type != "kernel" {
-				return fmt.Errorf("protected repository %s/%s requires an exact type", target.Owner, target.Name)
-			}
-		case string(policy.KindBucket):
-			if target.Type != "" {
-				return fmt.Errorf("protected bucket %s/%s must not set type", target.Owner, target.Name)
-			}
-		default:
-			return fmt.Errorf("protected target kind %q is unsupported", target.Kind)
+		if err := validateProtectedTarget(target); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validateProtectedTarget(target shared.ProtectedTarget) error {
+	switch target.Kind {
+	case string(policy.KindRepo):
+		if !validProtectedRepoType(target.Type) {
+			return fmt.Errorf("protected repository %s/%s requires an exact type", target.Owner, target.Name)
+		}
+	case string(policy.KindBucket):
+		if target.Type != "" {
+			return fmt.Errorf("protected bucket %s/%s must not set type", target.Owner, target.Name)
+		}
+	default:
+		return fmt.Errorf("protected target kind %q is unsupported", target.Kind)
+	}
+	return nil
+}
+
+func validProtectedRepoType(value string) bool {
+	return value == "model" || value == "dataset" || value == "space" || value == "kernel"
 }
 
 func (renderer) Operations() ([]shared.Operation, error) {

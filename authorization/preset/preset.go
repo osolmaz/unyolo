@@ -354,11 +354,8 @@ func invalidCatalogOperation(operation Operation, previous string) bool {
 }
 
 func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool, dropUnknown bool) (Profile, error) {
-	if profile.Version != ProfileVersion {
-		return Profile{}, fmt.Errorf("policy profile version must be %d", ProfileVersion)
-	}
-	if profile.Preset != renderer.PresetName() {
-		return Profile{}, fmt.Errorf("unknown %s policy preset %q", renderer.ProviderID(), profile.Preset)
+	if err := validateProfileIdentity(renderer, profile); err != nil {
+		return Profile{}, err
 	}
 	clients, err := normalizeExactValues("clients", profile.Clients, false)
 	if err != nil {
@@ -368,28 +365,38 @@ func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool,
 	if err != nil {
 		return Profile{}, err
 	}
-	protected, err := normalizeProtectedTargets(profile.ProtectedTargets)
+	profile, err = normalizeProtectedProfile(renderer, profile)
 	if err != nil {
 		return Profile{}, err
 	}
-	profile.ProtectedTargets = protected
-	if validator, ok := renderer.(ProfileValidator); ok {
-		if err := validator.ValidateProfile(profile); err != nil {
-			return Profile{}, err
-		}
-	} else if len(protected) > 0 {
-		return Profile{}, fmt.Errorf("%s policy profiles do not support protected targets", renderer.ProviderID())
+	kept, err := filterKnownDeniedOperations(denied, known, dropUnknown)
+	if err != nil {
+		return Profile{}, err
 	}
+	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(kept)
+	return profile, nil
+}
+
+func validateProfileIdentity(renderer Renderer, profile Profile) error {
+	if profile.Version != ProfileVersion {
+		return fmt.Errorf("policy profile version must be %d", ProfileVersion)
+	}
+	if profile.Preset != renderer.PresetName() {
+		return fmt.Errorf("unknown %s policy preset %q", renderer.ProviderID(), profile.Preset)
+	}
+	return nil
+}
+
+func filterKnownDeniedOperations(denied []string, known map[string]bool, dropUnknown bool) ([]string, error) {
 	kept := denied[:0]
 	for _, operation := range denied {
 		if known[operation] {
 			kept = append(kept, operation)
 		} else if !dropUnknown {
-			return Profile{}, fmt.Errorf("denied_operations contains unknown operation %q", operation)
+			return nil, fmt.Errorf("denied_operations contains unknown operation %q", operation)
 		}
 	}
-	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(kept)
-	return profile, nil
+	return kept, nil
 }
 
 func normalizeInstalledForManifest(renderer Renderer, profile Profile, operations []Operation, manifest Manifest) (Profile, error) {
@@ -426,17 +433,24 @@ func normalizeProfileFields(renderer Renderer, profile Profile) (Profile, error)
 	if err != nil {
 		return Profile{}, err
 	}
+	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(denied)
+	return normalizeProtectedProfile(renderer, profile)
+}
+
+func normalizeProtectedProfile(renderer Renderer, profile Profile) (Profile, error) {
 	protected, err := normalizeProtectedTargets(profile.ProtectedTargets)
 	if err != nil {
 		return Profile{}, err
 	}
-	profile.Clients, profile.DeniedOperations, profile.ProtectedTargets = clients, slicex.NonNil(denied), protected
-	if validator, ok := renderer.(ProfileValidator); ok {
+	profile.ProtectedTargets = protected
+	validator, supported := renderer.(ProfileValidator)
+	if !supported && len(protected) > 0 {
+		return Profile{}, fmt.Errorf("%s policy profiles do not support protected targets", renderer.ProviderID())
+	}
+	if supported {
 		if err := validator.ValidateProfile(profile); err != nil {
 			return Profile{}, err
 		}
-	} else if len(protected) > 0 {
-		return Profile{}, fmt.Errorf("%s policy profiles do not support protected targets", renderer.ProviderID())
 	}
 	return profile, nil
 }
@@ -444,20 +458,31 @@ func normalizeProfileFields(renderer Renderer, profile Profile) (Profile, error)
 func normalizeProtectedTargets(values []ProtectedTarget) ([]ProtectedTarget, error) {
 	normalized := slices.Clone(values)
 	for _, target := range normalized {
-		if !validProtectedTargetValue(target.Kind) || target.Type != "" && !validProtectedTargetValue(target.Type) ||
-			!validProtectedTargetValue(target.Owner) || !validProtectedTargetValue(target.Name) {
+		if !validProtectedTarget(target) {
 			return nil, errors.New("protected_targets contains an invalid or non-exact target")
 		}
 	}
 	slices.SortFunc(normalized, func(left, right ProtectedTarget) int {
 		return strings.Compare(protectedTargetKey(left), protectedTargetKey(right))
 	})
-	for index := 1; index < len(normalized); index++ {
-		if normalized[index] == normalized[index-1] {
-			return nil, errors.New("protected_targets contains duplicate targets")
-		}
+	if protectedTargetsContainDuplicate(normalized) {
+		return nil, errors.New("protected_targets contains duplicate targets")
 	}
 	return slicex.NonNil(normalized), nil
+}
+
+func validProtectedTarget(target ProtectedTarget) bool {
+	return validProtectedTargetValue(target.Kind) && (target.Type == "" || validProtectedTargetValue(target.Type)) &&
+		validProtectedTargetValue(target.Owner) && validProtectedTargetValue(target.Name)
+}
+
+func protectedTargetsContainDuplicate(values []ProtectedTarget) bool {
+	for index := 1; index < len(values); index++ {
+		if values[index] == values[index-1] {
+			return true
+		}
+	}
+	return false
 }
 
 func validProtectedTargetValue(value string) bool {

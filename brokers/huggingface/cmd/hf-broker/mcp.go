@@ -179,29 +179,43 @@ type mcpGrantRequestInput struct {
 }
 
 func callMCPGrantRequest(ctx context.Context, client *hfGrantClient, raw json.RawMessage) (mcpgrant.Grant, error) {
-	input, err := decodeMCPGrantRequest(raw)
+	input, request, err := buildMCPGrantRequest(raw)
 	if err != nil {
 		return mcpgrant.Grant{}, err
-	}
-	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
-	if err != nil {
-		return mcpgrant.Grant{}, err
-	}
-	request := hfGrantRequest{
-		Operation: policy.Operation(input.Operation), Target: input.Target, Attrs: input.Attrs,
-		Minutes: input.Minutes, Reason: input.Reason, ClientRequestID: requestID,
-	}
-	if input.MaxUses.Specified {
-		request.MaxUses = &input.MaxUses.Limit
 	}
 	grant, err := client.Request(ctx, request)
-	if err == nil && input.WaitSeconds > 0 && grant.Status == string(grants.StatusPending) {
-		grant, err = waitForMCPGrant(ctx, client, grant.ID, time.Duration(input.WaitSeconds)*time.Second)
+	if err != nil {
+		return mcpgrant.Grant{}, err
 	}
+	grant, err = waitForPendingMCPGrant(ctx, client, grant, input.WaitSeconds)
 	if err != nil {
 		return mcpgrant.Grant{}, err
 	}
 	return projectHFMCPGrant(grant)
+}
+
+func buildMCPGrantRequest(raw json.RawMessage) (mcpGrantRequestInput, hfGrantRequest, error) {
+	input, err := decodeMCPGrantRequest(raw)
+	if err != nil {
+		return input, hfGrantRequest{}, err
+	}
+	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if err != nil {
+		return input, hfGrantRequest{}, err
+	}
+	request := hfGrantRequest{Operation: policy.Operation(input.Operation), Target: input.Target, Attrs: input.Attrs,
+		Minutes: input.Minutes, Reason: input.Reason, ClientRequestID: requestID}
+	if input.MaxUses.Specified {
+		request.MaxUses = &input.MaxUses.Limit
+	}
+	return input, request, nil
+}
+
+func waitForPendingMCPGrant(ctx context.Context, client *hfGrantClient, grant hfClientGrant, waitSeconds int) (hfClientGrant, error) {
+	if waitSeconds > 0 && grant.Status == string(grants.StatusPending) {
+		return waitForMCPGrant(ctx, client, grant.ID, time.Duration(waitSeconds)*time.Second)
+	}
+	return grant, nil
 }
 
 func decodeMCPGrantRequest(raw json.RawMessage) (mcpGrantRequestInput, error) {
@@ -210,13 +224,18 @@ func decodeMCPGrantRequest(raw json.RawMessage) (mcpGrantRequestInput, error) {
 		return input, err
 	}
 	input.Operation, input.Reason = strings.TrimSpace(input.Operation), strings.TrimSpace(input.Reason)
-	if !policy.IsOperation(input.Operation) || input.Reason == "" || input.Minutes < 0 || input.WaitSeconds < 0 || input.WaitSeconds > mcpoperation.MaxWaitSeconds {
+	if !validMCPGrantRequestInput(input) {
 		return input, errors.New("grant request input is invalid")
 	}
 	if err := policy.ValidateGrantRequest(policy.Request{Operation: policy.Operation(input.Operation), Target: input.Target, Attrs: input.Attrs}); err != nil {
 		return input, err
 	}
 	return input, nil
+}
+
+func validMCPGrantRequestInput(input mcpGrantRequestInput) bool {
+	return policy.IsOperation(input.Operation) && input.Reason != "" && input.Minutes >= 0 &&
+		input.WaitSeconds >= 0 && input.WaitSeconds <= mcpoperation.MaxWaitSeconds
 }
 
 func projectHFMCPGrant(grant hfClientGrant) (mcpgrant.Grant, error) {

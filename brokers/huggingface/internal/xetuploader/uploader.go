@@ -62,15 +62,28 @@ func validEndpoint(endpoint *url.URL) bool {
 // Upload sends one verified private stream file to Xet and returns its Xet
 // file hash. The Hub token travels only over the child process stdin pipe.
 func (u *Uploader) Upload(ctx context.Context, ref hubclient.BucketRef, file *os.File, size int64) (Result, error) {
-	if u == nil || ref.Validate() != nil || file == nil || size <= 0 || !filepath.IsAbs(file.Name()) {
+	if !validUploadInput(u, ref, file, size) {
 		return Result{}, errors.New("xet upload input is invalid")
 	}
 	ctx, cancel := context.WithTimeout(ctx, u.timeout)
 	defer cancel()
-	input := helperInput{
-		Path: file.Name(), Size: size, Token: u.token,
-		RefreshURL: u.endpoint + "/api/buckets/" + url.PathEscape(ref.Namespace) + "/" + url.PathEscape(ref.Name) + "/xet-write-token",
+	stdout, err := u.runHelper(ctx, helperInput{Path: file.Name(), Size: size, Token: u.token,
+		RefreshURL: u.endpoint + "/api/buckets/" + url.PathEscape(ref.Namespace) + "/" + url.PathEscape(ref.Name) + "/xet-write-token"})
+	if err != nil {
+		return Result{}, err
 	}
+	var result Result
+	if strictjson.Decode(stdout, &result, true) != nil || result.Size != size || !validHash(result.Hash) {
+		return Result{}, errors.New("xet upload returned invalid metadata")
+	}
+	return result, nil
+}
+
+func validUploadInput(u *Uploader, ref hubclient.BucketRef, file *os.File, size int64) bool {
+	return u != nil && ref.Validate() == nil && file != nil && size > 0 && filepath.IsAbs(file.Name())
+}
+
+func (u *Uploader) runHelper(ctx context.Context, input helperInput) ([]byte, error) {
 	payload, _ := json.Marshal(input)
 	command := exec.CommandContext(ctx, u.python, "-I", "-c", helperScript) // #nosec G204 -- interpreter is resolved at trusted startup; script and arguments are fixed.
 	command.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "PYTHONNOUSERSITE=1"}
@@ -79,13 +92,9 @@ func (u *Uploader) Upload(ctx context.Context, ref hubclient.BucketRef, file *os
 	command.Stdout = &limitedWriter{destination: &stdout, remaining: maxHelperOutput}
 	command.Stderr = &limitedWriter{remaining: maxHelperOutput}
 	if err := command.Run(); err != nil {
-		return Result{}, errors.New("xet upload failed")
+		return nil, errors.New("xet upload failed")
 	}
-	var result Result
-	if strictjson.Decode(stdout.Bytes(), &result, true) != nil || result.Size != size || !validHash(result.Hash) {
-		return Result{}, errors.New("xet upload returned invalid metadata")
-	}
-	return result, nil
+	return stdout.Bytes(), nil
 }
 
 type helperInput struct {

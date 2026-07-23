@@ -564,21 +564,35 @@ func ValidateGrantRequest(req Request) error {
 }
 
 func validateGrantTargetConstraints(target Target) error {
-	for _, values := range [][]string{target.Refs, target.Visibility} {
-		for _, value := range values {
-			if !validExactGrantConstraint(value) {
-				return errors.New("grant refs and visibility constraints must be exact bounded values")
-			}
-		}
+	if !validExactGrantConstraints(target.Refs, target.Visibility) {
+		return errors.New("grant refs and visibility constraints must be exact bounded values")
 	}
-	for _, values := range [][]string{target.Paths, target.Keys} {
-		for _, value := range values {
-			if !validExactGrantConstraint(value) && !validGrantPrefixConstraint(value) {
-				return errors.New("grant path and key constraints must be exact values or bounded /** prefixes")
-			}
-		}
+	if !validGrantPathConstraints(target.Paths, target.Keys) {
+		return errors.New("grant path and key constraints must be exact values or bounded /** prefixes")
 	}
 	return nil
+}
+
+func validExactGrantConstraints(groups ...[]string) bool {
+	for _, values := range groups {
+		for _, value := range values {
+			if !validExactGrantConstraint(value) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validGrantPathConstraints(groups ...[]string) bool {
+	for _, values := range groups {
+		for _, value := range values {
+			if !validExactGrantConstraint(value) && !validGrantPrefixConstraint(value) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validExactGrantConstraint(value string) bool {

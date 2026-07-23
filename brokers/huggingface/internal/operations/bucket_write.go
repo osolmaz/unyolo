@@ -79,7 +79,7 @@ type bucketObjectWritePreconditions struct {
 
 func NewBucketObjectWriteAdapter(client bucketWriteClient, uploader bucketXetUploader, streams bucketStreamStore, now func() time.Time) (Adapter, error) {
 	if client == nil || uploader == nil || streams == nil {
-		return nil, errors.New("Hugging Face bucket object write dependencies are required")
+		return nil, errors.New("bucket object write dependencies are required")
 	}
 	descriptor, found := opcatalog.ByName("bucket.object.write")
 	if !found {
@@ -154,21 +154,31 @@ func (a *bucketObjectWriteAdapter) Resolve(ctx context.Context, input Input) (Pl
 	preconditions := bucketObjectWritePreconditions{
 		CredentialIdentity: identity.Name, BucketDigest: bucketInfoDigest(bucket), Stream: arguments.StreamInput.canonical(),
 	}
-	existing, err := a.client.BucketObjectInfo(ctx, target.ref(), public.Path)
-	if hubclient.IsNotFound(err) {
-		preconditions.ExistingAbsent = true
-	} else if err != nil {
+	if err := a.resolveExistingPrecondition(ctx, target, public, &preconditions); err != nil {
 		return Plan{}, err
-	} else if !public.Overwrite {
-		return Plan{}, errors.New("operation target already exists and overwrite was not approved")
-	} else {
-		preconditions.ExistingDigest = digestValue(existing)
 	}
 	encoded, _ := canonical(preconditions)
 	presentation, request := bucketWritePresentationAndPolicy(target, public)
 	return Plan{Operation: a.descriptor.Name, OperationRevision: a.descriptor.OperationRevision,
 		Target: input.Target, Arguments: input.Arguments, Preconditions: encoded,
 		Presentation: presentation, Policy: request}, nil
+}
+
+func (a *bucketObjectWriteAdapter) resolveExistingPrecondition(ctx context.Context, target bucketTarget,
+	public bucketObjectWritePublic, preconditions *bucketObjectWritePreconditions) error {
+	existing, err := a.client.BucketObjectInfo(ctx, target.ref(), public.Path)
+	if hubclient.IsNotFound(err) {
+		preconditions.ExistingAbsent = true
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !public.Overwrite {
+		return errors.New("operation target already exists and overwrite was not approved")
+	}
+	preconditions.ExistingDigest = digestValue(existing)
+	return nil
 }
 
 func (a *bucketObjectWriteAdapter) Authorize(plan Plan) hfpolicy.Request {
@@ -211,33 +221,58 @@ func (a *bucketObjectWriteAdapter) Execute(ctx context.Context, plan Plan) (Outc
 	if err := a.checkPreconditions(ctx, target, public, preconditions); err != nil {
 		return Outcome{}, err
 	}
-	file, err := a.streams.OpenStream(preconditions.Stream)
+	upload, err := a.uploadStream(ctx, target, preconditions.Stream)
 	if err != nil {
 		return Outcome{}, err
+	}
+	return a.commitUpload(ctx, target, public, preconditions, upload)
+}
+
+func (a *bucketObjectWriteAdapter) uploadStream(ctx context.Context, target bucketTarget, reference streamstore.Reference) (xetuploader.Result, error) {
+	file, err := a.streams.OpenStream(reference)
+	if err != nil {
+		return xetuploader.Result{}, err
 	}
 	defer func() { _ = file.Close() }()
-	upload, err := a.uploader.Upload(ctx, target.ref(), file, preconditions.Stream.Size)
-	if err != nil {
-		return Outcome{}, err
-	}
+	return a.uploader.Upload(ctx, target.ref(), file, reference.Size)
+}
+
+func (a *bucketObjectWriteAdapter) commitUpload(ctx context.Context, target bucketTarget, public bucketObjectWritePublic,
+	preconditions bucketObjectWritePreconditions, upload xetuploader.Result) (Outcome, error) {
 	operation := hubclient.BucketBatchOperation{Type: "addFile", Path: public.Path, XetHash: upload.Hash,
 		MTime: a.now().UTC().UnixMilli(), ContentType: preconditions.Stream.MediaType}
 	batchErr := a.client.ApplyBucketBatch(ctx, target.ref(), []hubclient.BucketBatchOperation{operation})
 	observed, readErr := a.client.BucketObjectInfo(ctx, target.ref(), public.Path)
-	proven := readErr == nil && observed.Path == public.Path && observed.XetHash == upload.Hash && observed.Size == upload.Size
-	if proven {
-		_ = a.streams.Retire(preconditions.Stream, a.now().Add(15*time.Minute))
-		result, _ := canonical(map[string]any{"bucket": target.Namespace + "/" + target.Name, "path": public.Path,
-			"size": upload.Size, "xet_hash": upload.Hash, "content_type": preconditions.Stream.MediaType, "overwritten": !preconditions.ExistingAbsent})
-		return Outcome{Proven: true, Result: result}, nil
+	if bucketUploadMatches(observed, readErr, public.Path, upload) {
+		return a.successfulUpload(target, public, preconditions, upload)
 	}
-	if batchErr != nil && definitiveBucketWriteError(batchErr) {
+	return failedBucketUpload(batchErr)
+}
+
+func failedBucketUpload(batchErr error) (Outcome, error) {
+	if definitiveBucketWriteError(batchErr) {
 		return Outcome{}, batchErr
 	}
+	return possiblePartialBucketUpload(batchErr)
+}
+
+func possiblePartialBucketUpload(batchErr error) (Outcome, error) {
 	if batchErr == nil {
 		batchErr = errors.New("bucket object readback did not match the uploaded content")
 	}
 	return Outcome{}, &PossiblePartialError{Err: batchErr}
+}
+
+func bucketUploadMatches(observed hubclient.BucketTreeEntry, err error, path string, upload xetuploader.Result) bool {
+	return err == nil && observed.Path == path && observed.XetHash == upload.Hash && observed.Size == upload.Size
+}
+
+func (a *bucketObjectWriteAdapter) successfulUpload(target bucketTarget, public bucketObjectWritePublic,
+	preconditions bucketObjectWritePreconditions, upload xetuploader.Result) (Outcome, error) {
+	_ = a.streams.Retire(preconditions.Stream, a.now().Add(15*time.Minute))
+	result, err := canonical(map[string]any{"bucket": target.Namespace + "/" + target.Name, "path": public.Path,
+		"size": upload.Size, "xet_hash": upload.Hash, "content_type": preconditions.Stream.MediaType, "overwritten": !preconditions.ExistingAbsent})
+	return Outcome{Proven: err == nil, Result: result}, err
 }
 
 func definitiveBucketWriteError(err error) bool {
@@ -255,11 +290,15 @@ func (a *bucketObjectWriteAdapter) decodePlan(plan Plan) (bucketTarget, bucketOb
 		return target, public, bucketObjectWritePreconditions{}, err
 	}
 	var preconditions bucketObjectWritePreconditions
-	if decodeClosed(plan.Preconditions, &preconditions, maxArgumentsBytes) != nil || preconditions.CredentialIdentity == "" ||
-		preconditions.BucketDigest == "" || preconditions.Stream.ID == "" || preconditions.ExistingAbsent == (preconditions.ExistingDigest != "") {
+	if decodeClosed(plan.Preconditions, &preconditions, maxArgumentsBytes) != nil || !validBucketWritePreconditions(preconditions) {
 		return target, public, preconditions, errors.New("bucket object write plan preconditions are invalid")
 	}
 	return target, public, preconditions, nil
+}
+
+func validBucketWritePreconditions(value bucketObjectWritePreconditions) bool {
+	return value.CredentialIdentity != "" && value.BucketDigest != "" && value.Stream.ID != "" &&
+		value.ExistingAbsent != (value.ExistingDigest != "")
 }
 
 func (a *bucketObjectWriteAdapter) checkPreconditions(ctx context.Context, target bucketTarget, public bucketObjectWritePublic, expected bucketObjectWritePreconditions) error {
@@ -275,14 +314,12 @@ func (a *bucketObjectWriteAdapter) checkPreconditions(ctx context.Context, targe
 		return errors.New("operation_precondition_failed")
 	}
 	existing, err := a.client.BucketObjectInfo(ctx, target.ref(), public.Path)
+	return checkExistingBucketObject(expected, existing, err)
+}
+
+func checkExistingBucketObject(expected bucketObjectWritePreconditions, existing hubclient.BucketTreeEntry, err error) error {
 	if expected.ExistingAbsent {
-		if hubclient.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		return errors.New("operation_precondition_failed")
+		return checkAbsentBucketObject(err)
 	}
 	if err != nil {
 		return err
@@ -291,6 +328,16 @@ func (a *bucketObjectWriteAdapter) checkPreconditions(ctx context.Context, targe
 		return errors.New("operation_precondition_failed")
 	}
 	return nil
+}
+
+func checkAbsentBucketObject(err error) error {
+	if hubclient.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New("operation_precondition_failed")
 }
 
 func (a *bucketObjectWriteAdapter) Reconcile(context.Context, Plan) (Outcome, error) {

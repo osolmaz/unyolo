@@ -33,7 +33,7 @@ func (c *Client) BucketInfo(ctx context.Context, ref BucketRef) (BucketInfo, err
 
 // ListBuckets returns one bounded Hub page for an exact namespace.
 func (c *Client) ListBuckets(ctx context.Context, namespace, search string, limit int) ([]BucketInfo, error) {
-	if err := (BucketRef{Namespace: namespace, Name: "probe"}).Validate(); err != nil || limit < 1 || limit > 100 || len(search) > 128 || strings.ContainsRune(search, 0) {
+	if !validBucketListQuery(namespace, search, limit) {
 		return nil, errors.New("hubclient: bucket list query is invalid")
 	}
 	query := url.Values{"limit": {strconv.Itoa(limit)}}
@@ -44,28 +44,36 @@ func (c *Client) ListBuckets(ctx context.Context, namespace, search string, limi
 	if err := c.call(ctx, callSpec{method: http.MethodGet, path: "/api/buckets/" + url.PathEscape(namespace), query: query, out: &values}); err != nil {
 		return nil, err
 	}
-	if len(values) > limit {
-		return nil, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
-	}
-	for _, value := range values {
-		if err := validateBucketInfo(value); err != nil {
-			return nil, err
-		}
+	if err := validateBucketInfos(values, limit); err != nil {
+		return nil, err
 	}
 	return values, nil
 }
 
+func validBucketListQuery(namespace, search string, limit int) bool {
+	return (BucketRef{Namespace: namespace, Name: "probe"}).Validate() == nil &&
+		limit >= 1 && limit <= 100 && len(search) <= 128 && !strings.ContainsRune(search, 0)
+}
+
+func validateBucketInfos(values []BucketInfo, limit int) error {
+	if len(values) > limit {
+		return &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
+	}
+	for _, value := range values {
+		if err := validateBucketInfo(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ListBucketTree returns one bounded object tree page.
 func (c *Client) ListBucketTree(ctx context.Context, ref BucketRef, prefix string, recursive bool, limit int) ([]BucketTreeEntry, error) {
-	if err := ref.Validate(); err != nil || !validBucketPrefix(prefix) || limit < 1 || limit > 1000 {
+	if !validBucketTreeQuery(ref, prefix, limit) {
 		return nil, errors.New("hubclient: bucket tree query is invalid")
 	}
-	path := ref.apiPath("tree")
-	if prefix != "" {
-		path += "/" + url.PathEscape(prefix)
-	}
 	var values []BucketTreeEntry
-	if err := c.call(ctx, callSpec{method: http.MethodGet, path: path,
+	if err := c.call(ctx, callSpec{method: http.MethodGet, path: bucketTreePath(ref, prefix),
 		query: url.Values{"recursive": {strconv.FormatBool(recursive)}, "limit": {strconv.Itoa(limit)}}, out: &values}); err != nil {
 		return nil, err
 	}
@@ -73,6 +81,18 @@ func (c *Client) ListBucketTree(ctx context.Context, ref BucketRef, prefix strin
 		return nil, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
 	}
 	return values, nil
+}
+
+func validBucketTreeQuery(ref BucketRef, prefix string, limit int) bool {
+	return ref.Validate() == nil && validBucketPrefix(prefix) && limit >= 1 && limit <= 1000
+}
+
+func bucketTreePath(ref BucketRef, prefix string) string {
+	path := ref.apiPath("tree")
+	if prefix != "" {
+		path += "/" + url.PathEscape(prefix)
+	}
+	return path
 }
 
 // BucketObjectInfo returns metadata for one exact object path.
@@ -84,13 +104,21 @@ func (c *Client) BucketObjectInfo(ctx context.Context, ref BucketRef, path strin
 	if err := c.call(ctx, callSpec{method: http.MethodPost, path: ref.apiPath("paths-info"), body: map[string]any{"paths": []string{path}}, out: &values}); err != nil {
 		return BucketTreeEntry{}, err
 	}
+	return exactBucketObjectInfo(values, path)
+}
+
+func exactBucketObjectInfo(values []BucketTreeEntry, path string) (BucketTreeEntry, error) {
 	if len(values) == 0 {
 		return BucketTreeEntry{}, &Error{Code: CodeNotFound, StatusCode: http.StatusNotFound}
 	}
-	if len(values) != 1 || values[0].Path != path || validateBucketTree(values) != nil || values[0].Type != "file" {
+	if !validExactBucketObjectInfo(values, path) {
 		return BucketTreeEntry{}, &Error{Code: CodeResponseInvalid, StatusCode: http.StatusOK}
 	}
 	return values[0], nil
+}
+
+func validExactBucketObjectInfo(values []BucketTreeEntry, path string) bool {
+	return len(values) == 1 && values[0].Path == path && values[0].Type == "file" && validateBucketTree(values) == nil
 }
 
 // ReadBucketObject reads one small bounded exact object and strips the broker
@@ -117,37 +145,55 @@ func (c *Client) OpenBucketObject(ctx context.Context, ref BucketRef, path strin
 		return BucketObjectReader{}, errors.New("hubclient: bucket object identity is invalid")
 	}
 	requestContext, cancel := c.callContext(ctx)
-	request, err := c.newRequest(requestContext, callSpec{method: http.MethodGet, path: "/buckets/" + url.PathEscape(ref.Namespace) + "/" + url.PathEscape(ref.Name) + "/resolve/" + url.PathEscape(path)})
+	response, err := c.requestBucketObject(requestContext, ref, path)
 	if err != nil {
 		cancel()
 		return BucketObjectReader{}, err
 	}
+	reader, err := bucketObjectReader(response, cancel)
+	if err != nil {
+		cancel()
+		return BucketObjectReader{}, err
+	}
+	return reader, nil
+}
+
+func (c *Client) requestBucketObject(ctx context.Context, ref BucketRef, path string) (*http.Response, error) {
+	request, err := c.newRequest(ctx, callSpec{method: http.MethodGet, path: "/buckets/" + url.PathEscape(ref.Namespace) + "/" + url.PathEscape(ref.Name) + "/resolve/" + url.PathEscape(path)})
+	if err != nil {
+		return nil, err
+	}
 	client := &http.Client{Transport: c.httpClient.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(request)
 	if err != nil {
-		cancel()
-		return BucketObjectReader{}, &Error{Code: CodeUnavailable}
+		return nil, &Error{Code: CodeUnavailable}
 	}
-	if response.StatusCode >= 300 && response.StatusCode < 400 {
-		response, err = c.followRepoFileRedirect(requestContext, client, response)
-		if err != nil {
-			cancel()
-			return BucketObjectReader{}, err
-		}
+	if response.StatusCode < 300 || response.StatusCode >= 400 {
+		return response, nil
 	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 || response.ContentLength > maxBucketObjectBytes {
+	return c.followRepoFileRedirect(ctx, client, response)
+}
+
+func bucketObjectReader(response *http.Response, cancel context.CancelFunc) (BucketObjectReader, error) {
+	if err := validateBucketObjectResponse(response); err != nil {
 		_ = response.Body.Close()
-		cancel()
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return BucketObjectReader{}, statusError(response.StatusCode, response.Header)
-		}
-		return BucketObjectReader{}, &Error{Code: CodeResponseInvalid, StatusCode: response.StatusCode}
+		return BucketObjectReader{}, err
 	}
 	mediaType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
 	return BucketObjectReader{Body: &cancelReadCloser{ReadCloser: response.Body, cancel: cancel}, Size: response.ContentLength, ContentType: mediaType}, nil
+}
+
+func validateBucketObjectResponse(response *http.Response) error {
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return statusError(response.StatusCode, response.Header)
+	}
+	if response.ContentLength > maxBucketObjectBytes {
+		return &Error{Code: CodeResponseInvalid, StatusCode: response.StatusCode}
+	}
+	return nil
 }
 
 type cancelReadCloser struct {
@@ -175,23 +221,26 @@ func validBucketPrefix(prefix string) bool {
 
 func validateBucketTree(values []BucketTreeEntry) error {
 	for _, value := range values {
-		if !validObjectPath(value.Path) || value.Size < 0 {
-			return errors.New("hubclient: upstream bucket tree is invalid")
-		}
-		switch value.Type {
-		case "file":
-			if !validXetHash(strings.ToLower(value.XetHash)) {
-				return errors.New("hubclient: upstream bucket tree is invalid")
-			}
-		case "directory":
-			if value.XetHash != "" || value.Size != 0 {
-				return errors.New("hubclient: upstream bucket tree is invalid")
-			}
-		default:
+		if !validBucketTreeEntry(value) {
 			return errors.New("hubclient: upstream bucket tree is invalid")
 		}
 	}
 	return nil
+}
+
+func validBucketTreeEntry(value BucketTreeEntry) bool {
+	return validObjectPath(value.Path) && value.Size >= 0 && validBucketTreeEntryType(value)
+}
+
+func validBucketTreeEntryType(value BucketTreeEntry) bool {
+	switch value.Type {
+	case "file":
+		return validXetHash(strings.ToLower(value.XetHash))
+	case "directory":
+		return value.XetHash == "" && value.Size == 0
+	default:
+		return false
+	}
 }
 
 func (c *Client) ApplyBucketBatch(ctx context.Context, ref BucketRef, operations []BucketBatchOperation) error {

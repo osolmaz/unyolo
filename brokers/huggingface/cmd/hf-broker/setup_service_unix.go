@@ -237,11 +237,16 @@ func setupProtectedTargets(plan systemdPlan) ([]policypreset.ProtectedTarget, er
 	if installed == nil {
 		return requested, nil
 	}
+	return mergeInstalledProtectedTargets(plan.opts.ResetDeniedOperations, installed, requested)
+}
+
+func mergeInstalledProtectedTargets(reset bool, installed *installedSetupPolicy,
+	requested []policypreset.ProtectedTarget) ([]policypreset.ProtectedTarget, error) {
 	profile, err := policypreset.ParseInstalledProfile(installed.profile)
 	if err != nil {
 		return nil, fmt.Errorf("parse installed protected targets: %w", err)
 	}
-	if plan.opts.ResetDeniedOperations {
+	if reset {
 		return mergeProtectedTargets(profile.ProtectedTargets, requested), nil
 	}
 	report := policypreset.Check(installed.profile, installed.manifest, installed.scope)

@@ -72,7 +72,7 @@ func Project(input Input) (Grant, error) {
 }
 
 func validate(grant Grant) error {
-	if grant.ID == "" || grant.Operation == "" || grant.Minutes < 1 || grant.UsedCount < 0 || grant.UsesRemaining < -1 {
+	if !validGrantProjection(grant) {
 		return errors.New("grant projection is invalid")
 	}
 	if grant.Mode != "window" && grant.Mode != "execution" {
@@ -81,10 +81,18 @@ func validate(grant Grant) error {
 	if !validStatus(grant.Status) {
 		return errors.New("grant status is invalid")
 	}
-	if len(grant.Target) == 0 || string(grant.Target) == "null" || len(grant.Attrs) == 0 || string(grant.Attrs) == "null" {
+	if !validGrantScope(grant) {
 		return errors.New("grant scope is invalid")
 	}
 	return nil
+}
+
+func validGrantProjection(grant Grant) bool {
+	return grant.ID != "" && grant.Operation != "" && grant.Minutes >= 1 && grant.UsedCount >= 0 && grant.UsesRemaining >= -1
+}
+
+func validGrantScope(grant Grant) bool {
+	return len(grant.Target) > 0 && string(grant.Target) != "null" && len(grant.Attrs) > 0 && string(grant.Attrs) != "null"
 }
 
 func validStatus(status string) bool {

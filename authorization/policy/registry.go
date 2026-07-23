@@ -159,14 +159,28 @@ func validateNonGrantableOperationModes(name string, op OperationSpec) error {
 }
 
 func validateOperationGrantBounds(name string, op OperationSpec) error {
-	if op.MaxGrantMinutes < 0 || op.MaxGrantMinutes > absoluteMaxGrantMinutes {
-		return fmt.Errorf("registry operation %q has invalid maximum grant duration", name)
+	if err := validateOperationGrantDuration(name, op.MaxGrantMinutes); err != nil {
+		return err
 	}
-	if op.MaxGrantUses < 0 || op.MaxGrantUses > absoluteMaxGrantUses {
-		return fmt.Errorf("registry operation %q has invalid maximum grant uses", name)
+	if err := validateOperationGrantUses(name, op.MaxGrantUses); err != nil {
+		return err
 	}
 	if defaultedGrantMode(op.GrantMode) == GrantModeExecution && op.MaxGrantUses > 1 {
 		return fmt.Errorf("registry execution operation %q has invalid reusable grant settings", name)
+	}
+	return nil
+}
+
+func validateOperationGrantDuration(name string, minutes int) error {
+	if minutes < 0 || minutes > absoluteMaxGrantMinutes {
+		return fmt.Errorf("registry operation %q has invalid maximum grant duration", name)
+	}
+	return nil
+}
+
+func validateOperationGrantUses(name string, uses usebudget.Limit) error {
+	if uses < 0 || uses > absoluteMaxGrantUses {
+		return fmt.Errorf("registry operation %q has invalid maximum grant uses", name)
 	}
 	return nil
 }

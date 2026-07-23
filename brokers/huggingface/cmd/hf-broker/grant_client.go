@@ -198,20 +198,30 @@ func validateGrantRequestOptions(options grantRequestOptions) error {
 	if !found || options.target == "" {
 		return errors.New("a registered operation and OWNER/NAME target are required")
 	}
-	if descriptor.TargetKind != string(policy.KindRepo) && descriptor.TargetKind != string(policy.KindBucket) {
-		return errors.New("grant request CLI supports repository and bucket operations")
-	}
-	if descriptor.TargetKind == string(policy.KindRepo) && !validGrantRepoType(options.repoType) {
-		return errors.New("type must be model, dataset, or space")
-	}
-	if descriptor.TargetKind == string(policy.KindBucket) && (len(options.refs) > 0 || len(options.paths) > 0) {
-		return errors.New("bucket grant scopes accept keys, not refs or paths")
-	}
-	if descriptor.TargetKind == string(policy.KindRepo) && len(options.keys) > 0 {
-		return errors.New("repository grant scopes do not accept bucket keys")
+	if err := validateGrantTargetOptions(descriptor, options); err != nil {
+		return err
 	}
 	if options.minutes < 0 || options.waitTimeout <= 0 || strings.TrimSpace(options.reason) == "" {
 		return errors.New("minutes, reason, or wait timeout is invalid")
+	}
+	return nil
+}
+
+func validateGrantTargetOptions(descriptor opcatalog.Descriptor, options grantRequestOptions) error {
+	switch descriptor.TargetKind {
+	case string(policy.KindRepo):
+		if !validGrantRepoType(options.repoType) {
+			return errors.New("type must be model, dataset, or space")
+		}
+		if len(options.keys) > 0 {
+			return errors.New("repository grant scopes do not accept bucket keys")
+		}
+	case string(policy.KindBucket):
+		if len(options.refs) > 0 || len(options.paths) > 0 {
+			return errors.New("bucket grant scopes accept keys, not refs or paths")
+		}
+	default:
+		return errors.New("grant request CLI supports repository and bucket operations")
 	}
 	return nil
 }
@@ -243,19 +253,34 @@ func buildHFGrantRequest(options *grantRequestOptions) (hfGrantRequest, error) {
 }
 
 func buildHFGrantTarget(options grantRequestOptions) (policy.Target, error) {
-	owner, name, ok := strings.Cut(options.target, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return policy.Target{}, errors.New("target must be OWNER/NAME")
+	owner, name, err := parseGrantTargetName(options.target)
+	if err != nil {
+		return policy.Target{}, err
 	}
 	descriptor, found := opcatalog.ByName(options.operation)
 	if !found {
 		return policy.Target{}, errors.New("operation is not registered")
 	}
+	return grantTargetForDescriptor(options, descriptor, owner, name)
+}
+
+func parseGrantTargetName(value string) (string, string, error) {
+	owner, name, ok := strings.Cut(value, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return "", "", errors.New("target must be OWNER/NAME")
+	}
+	return owner, name, nil
+}
+
+func grantTargetForDescriptor(options grantRequestOptions, descriptor opcatalog.Descriptor, owner, name string) (policy.Target, error) {
 	target := policy.Target{Kind: policy.TargetKind(descriptor.TargetKind), Owner: owner, Name: name}
-	if target.Kind == policy.KindRepo {
+	switch target.Kind {
+	case policy.KindRepo:
 		target.Type, target.Refs, target.Paths = policy.RepoType(options.repoType), options.refs, options.paths
-	} else if target.Kind == policy.KindBucket {
+	case policy.KindBucket:
 		target.Keys = options.keys
+	case policy.KindInference:
+		return policy.Target{}, errors.New("grant target kind is unsupported")
 	}
 	return target, nil
 }
