@@ -4,7 +4,14 @@ set -euo pipefail
 
 minimum_total_coverage="85.0"
 coverfile="$(mktemp)"
-mapfile -t test_packages < <(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | sed '/^$/d')
+# Deterministic generators and thin brokerkit-* process wrappers are covered by
+# their artifact/package gates rather than statement coverage.
+excluded_packages='/brokers/github/cmd/generate-github-surfaces$|/cmd/brokerkit-[^/]+$'
+mapfile -t test_packages < <(
+  go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... |
+    sed '/^$/d' |
+    grep -Ev "$excluded_packages"
+)
 
 cleanup() {
   rm -f "$coverfile"
