@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/authorization/budget"
 )
 
 // MatchMode selects how a provider-owned policy field is matched.
@@ -43,11 +45,14 @@ type Registry struct {
 
 // OperationSpec describes one provider operation.
 type OperationSpec struct {
-	TargetKinds []string
-	Attrs       []string
-	Grantable   bool
-	GrantMode   GrantMode
-	GrantModes  []GrantMode
+	TargetKinds                []string
+	Attrs                      []string
+	Grantable                  bool
+	GrantMode                  GrantMode
+	GrantModes                 []GrantMode
+	MaxGrantMinutes            int
+	MaxGrantUses               usebudget.Limit
+	DisallowUnlimitedGrantUses bool
 }
 
 // TargetSpec describes one target kind.
@@ -140,12 +145,28 @@ func validateOperationGrantMode(name string, op OperationSpec) error {
 	if !validGrantMode(defaultedGrantMode(op.GrantMode)) {
 		return fmt.Errorf("registry operation %q has unsupported grant mode %q", name, op.GrantMode)
 	}
-	return validateAllowedGrantModes(name, op)
+	if err := validateAllowedGrantModes(name, op); err != nil {
+		return err
+	}
+	return validateOperationGrantBounds(name, op)
 }
 
 func validateNonGrantableOperationModes(name string, op OperationSpec) error {
-	if op.GrantMode != "" || len(op.GrantModes) > 0 {
-		return fmt.Errorf("registry operation %q is not grantable but declares grant modes", name)
+	if op.GrantMode != "" || len(op.GrantModes) > 0 || op.MaxGrantMinutes != 0 || op.MaxGrantUses != 0 || op.DisallowUnlimitedGrantUses {
+		return fmt.Errorf("registry operation %q is not grantable but declares grant settings", name)
+	}
+	return nil
+}
+
+func validateOperationGrantBounds(name string, op OperationSpec) error {
+	if op.MaxGrantMinutes < 0 || op.MaxGrantMinutes > absoluteMaxGrantMinutes {
+		return fmt.Errorf("registry operation %q has invalid maximum grant duration", name)
+	}
+	if op.MaxGrantUses < 0 || op.MaxGrantUses > absoluteMaxGrantUses {
+		return fmt.Errorf("registry operation %q has invalid maximum grant uses", name)
+	}
+	if defaultedGrantMode(op.GrantMode) == GrantModeExecution && op.MaxGrantUses > 1 {
+		return fmt.Errorf("registry execution operation %q has invalid reusable grant settings", name)
 	}
 	return nil
 }

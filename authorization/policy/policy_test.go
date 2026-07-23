@@ -155,6 +155,38 @@ func TestRequestRuleMayAllowUnlimitedUseBudget(t *testing.T) {
 	}
 }
 
+func TestRequestRuleHonorsOperationGrantBounds(t *testing.T) {
+	t.Parallel()
+	registry := testRegistry()
+	registry.Operations["session.shell"] = OperationSpec{
+		TargetKinds:     []string{"user"},
+		Grantable:       true,
+		MaxGrantMinutes: 7 * 24 * 60,
+	}
+	policy, err := Parse([]byte(`{"rules":[{
+		"id":"week","effect":"request","clients":["bob"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"default_minutes":5,"max_minutes":10080,"default_max_uses":1,"max_uses":null}
+	}]}`), registry)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	request := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
+	decision := policy.Decide(request, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.MaxMinutes != 10080 || !decision.GrantPolicy.MaxUses.IsUnlimited() {
+		t.Fatalf("decision = %+v", decision)
+	}
+
+	registry.Operations["session.shell"] = OperationSpec{TargetKinds: []string{"user"}, Grantable: true}
+	if _, err := Parse([]byte(`{"rules":[{
+		"id":"too-long","effect":"request","clients":["bob"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"default_minutes":5,"max_minutes":10080}
+	}]}`), registry); err == nil || !strings.Contains(err.Error(), "grant bound") {
+		t.Fatalf("Parse() error = %v, want operation bound", err)
+	}
+}
+
 func TestRequestRuleRejectsUnlimitedDefaultUseBudget(t *testing.T) {
 	t.Parallel()
 	_, err := Parse([]byte(`{"rules":[{

@@ -253,7 +253,7 @@ func TestAttributeAndGrantPolicyBoundaryBranches(t *testing.T) {
 		t.Fatal("request rule accepted missing grant policy")
 	}
 	invalidMode := "invalid"
-	if _, err := normalizeGrantPolicy(&rawGrantPolicy{Mode: &invalidMode}, GrantModeExecution); err == nil {
+	if _, err := normalizeGrantPolicy(&rawGrantPolicy{Mode: &invalidMode}, GrantModeExecution, []Operation{OpRepoCreate}); err == nil {
 		t.Fatal("normalizeGrantPolicy accepted invalid mode")
 	}
 	if got, ok := int64Value(true); ok || got != 0 {

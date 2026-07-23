@@ -10,6 +10,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/authorization/budget"
 	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 )
 
 type coreView uint8
@@ -247,14 +248,18 @@ func coreGrantPolicyForView(value *GrantPolicy, operation Operation, view coreVi
 		return coreGrantPolicy(value)
 	}
 	mode := operations[operation].mode
-	maxUses := MaxGrantUses
+	maxMinutes, maxUses := DefaultGrantMinutes, 1
+	if descriptor, found := opcatalog.ByName(string(operation)); found {
+		maxMinutes = descriptor.ApprovalTTLSeconds / 60
+		maxUses = descriptor.MaxUses
+	}
 	if mode == GrantModeExecution {
 		maxUses = 1
 	}
 	return &corepolicy.GrantPolicy{
 		Mode:              string(mode),
-		DefaultMinutes:    DefaultGrantMinutes,
-		MaxMinutes:        MaxGrantMinutes,
+		DefaultMinutes:    min(DefaultGrantMinutes, maxMinutes),
+		MaxMinutes:        maxMinutes,
 		RequestTTLMinutes: DefaultRequestTTL,
 		DefaultMaxUses:    1,
 		MaxUses:           usebudget.Limit(maxUses),
@@ -311,6 +316,10 @@ func hfRegistry() corepolicy.Registry {
 		}
 		if spec.Grantable {
 			spec.GrantModes = []corepolicy.GrantMode{corepolicy.GrantModeWindow, corepolicy.GrantModeExecution}
+			if descriptor, found := opcatalog.ByName(string(operation)); found {
+				spec.MaxGrantMinutes = descriptor.ApprovalTTLSeconds / 60
+				spec.MaxGrantUses = usebudget.Limit(descriptor.MaxUses)
+			}
 		}
 		if info.mode == GrantModeExecution {
 			spec.GrantMode = corepolicy.GrantModeExecution

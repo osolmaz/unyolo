@@ -22,7 +22,8 @@ import (
 
 const (
 	DefaultGrantMinutes    = 5
-	MaxGrantMinutes        = 60
+	MaxGrantMinutes        = 7 * 24 * 60
+	MaxRequestTTLMinutes   = 60
 	DefaultGrantUses       = 1
 	MaxGrantUses           = 25
 	DefaultRequestTTL      = 5
@@ -1204,7 +1205,7 @@ func parseGrantPolicy(pathName string, effect Effect, ops []Operation, raw *rawG
 	if err := validateGrantableOperations(pathName, ops); err != nil {
 		return nil, err
 	}
-	policy, err := normalizeGrantPolicy(raw, defaultGrantMode(ops))
+	policy, err := normalizeGrantPolicy(raw, defaultGrantMode(ops), ops)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", pathName, err)
 	}
@@ -1241,14 +1242,14 @@ func defaultGrantMode(ops []Operation) GrantMode {
 	return mode
 }
 
-func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode) (GrantPolicy, error) {
-	policy := defaultGrantPolicy(defaultMode)
+func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode, operations []Operation) (GrantPolicy, error) {
+	policy := defaultGrantPolicy(defaultMode, operations)
 	if err := assignGrantMode(&policy, raw.Mode); err != nil {
 		return GrantPolicy{}, err
 	}
 	assignGrantPolicyInts(&policy, raw)
 	defaultGrantMaxUses(&policy, raw)
-	if err := validateGrantDurationPolicy(policy); err != nil {
+	if err := validateGrantDurationPolicy(policy, operations); err != nil {
 		return GrantPolicy{}, err
 	}
 	if policy.Mode == GrantModeExecution {
@@ -1257,11 +1258,11 @@ func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode) (GrantPoli
 	return policy, validateGrantUsePolicy(policy)
 }
 
-func defaultGrantPolicy(mode GrantMode) GrantPolicy {
+func defaultGrantPolicy(mode GrantMode, operations []Operation) GrantPolicy {
 	return GrantPolicy{
 		Mode:              mode,
 		DefaultMinutes:    DefaultGrantMinutes,
-		MaxMinutes:        MaxGrantMinutes,
+		MaxMinutes:        maxGrantMinutesForOperations(operations),
 		RequestTTLMinutes: DefaultRequestTTL,
 		DefaultMaxUses:    DefaultGrantUses,
 		MaxUses:           DefaultGrantUses,
@@ -1299,12 +1300,24 @@ func defaultGrantMaxUses(policy *GrantPolicy, raw *rawGrantPolicy) {
 	}
 }
 
-func validateGrantDurationPolicy(policy GrantPolicy) error {
+func validateGrantDurationPolicy(policy GrantPolicy, operations []Operation) error {
+	maxMinutes := maxGrantMinutesForOperations(operations)
 	return validateGrantPolicyBounds([]grantPolicyBound{
-		{value: policy.DefaultMinutes, min: 1, max: MaxGrantMinutes, message: "default_minutes must be between 1 and %d"},
-		{value: policy.MaxMinutes, min: policy.DefaultMinutes, max: MaxGrantMinutes, message: "max_minutes must be between default_minutes and %d"},
-		{value: policy.RequestTTLMinutes, min: 1, max: MaxGrantMinutes, message: "request_ttl_minutes must be between 1 and %d"},
+		{value: policy.DefaultMinutes, min: 1, max: maxMinutes, message: "default_minutes must be between 1 and %d"},
+		{value: policy.MaxMinutes, min: policy.DefaultMinutes, max: maxMinutes, message: "max_minutes must be between default_minutes and %d"},
+		{value: policy.RequestTTLMinutes, min: 1, max: MaxRequestTTLMinutes, message: "request_ttl_minutes must be between 1 and %d"},
 	})
+}
+
+func maxGrantMinutesForOperations(operations []Operation) int {
+	maximum := MaxGrantMinutes
+	for _, operation := range operations {
+		descriptor, found := opcatalog.ByName(string(operation))
+		if found {
+			maximum = min(maximum, descriptor.ApprovalTTLSeconds/60)
+		}
+	}
+	return maximum
 }
 
 func executionGrantPolicy(policy GrantPolicy) GrantPolicy {

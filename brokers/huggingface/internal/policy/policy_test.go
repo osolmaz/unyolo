@@ -1129,6 +1129,40 @@ func TestGrantPolicyDefaultsAndGrantability(t *testing.T) {
 	}
 }
 
+func TestNormalWritesMayUseWeekLongGrantBounds(t *testing.T) {
+	t.Parallel()
+	for _, fixture := range []struct {
+		name      string
+		operation string
+		target    string
+	}{
+		{name: "git append", operation: "git.push.append", target: `{"kind":"repo","type":"dataset","owner":"acme","name":"demo","refs":["refs/heads/main"]}`},
+		{name: "repo commit", operation: "repo.commit.create", target: `{"kind":"repo","type":"dataset","owner":"acme","name":"demo","refs":["refs/heads/main"],"paths":["runs/**"]}`},
+		{name: "bucket write", operation: "bucket.object.write", target: `{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/**"]}`},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"rules":[{
+				"id":"week","effect":"request","clients":["agent"],
+				"operations":[%q],"targets":[%s],
+				"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":10080,"default_max_uses":1,"max_uses":null}
+			}]}`, fixture.operation, fixture.target)
+			if _, err := Parse([]byte(body)); err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+		})
+	}
+
+	body := `{"rules":[{
+		"id":"delete-week","effect":"request","clients":["agent"],
+		"operations":["bucket.object.delete"],
+		"targets":[{"kind":"bucket","owner":"acme","name":"artifacts"}],
+		"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":10080}
+	}]}`
+	if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "max_minutes") {
+		t.Fatalf("Parse() error = %v, want operation duration bound", err)
+	}
+}
+
 func TestProtocolWindowAllowsExplicitUnlimitedUseBudget(t *testing.T) {
 	t.Parallel()
 	pol := mustParse(t, `{"rules":[{

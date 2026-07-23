@@ -4,6 +4,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/osolmaz/brokerkit/authorization/budget"
 	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
@@ -54,6 +55,8 @@ func catalogOperationSpec(descriptor opcatalog.Descriptor) corepolicy.OperationS
 	spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
 	if spec.Grantable {
 		spec.GrantMode = map[bool]corepolicy.GrantMode{true: corepolicy.GrantModeExecution, false: corepolicy.GrantModeWindow}[descriptor.AuthorizationMode == opcatalog.ModeExecution]
+		spec.MaxGrantMinutes = descriptor.ApprovalTTLSeconds / 60
+		spec.MaxGrantUses = usebudget.Limit(descriptor.MaxUses)
 	}
 	return spec
 }

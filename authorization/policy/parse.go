@@ -16,11 +16,13 @@ import (
 )
 
 const (
-	defaultGrantMinutes    = 5
-	defaultMaxGrantMinutes = 60
-	defaultRequestTTL      = 5
-	defaultGrantUses       = 1
-	defaultMaxGrantUses    = 25
+	defaultGrantMinutes     = 5
+	defaultMaxGrantMinutes  = 60
+	absoluteMaxGrantMinutes = 7 * 24 * 60
+	defaultRequestTTL       = 5
+	defaultGrantUses        = 1
+	defaultMaxGrantUses     = 25
+	absoluteMaxGrantUses    = 1_000_000
 )
 
 type rawPolicy struct {
@@ -296,8 +298,11 @@ func normalizeGrantPolicy(effect Effect, raw *rawGrantPolicy, operations []strin
 	if err := normalizeGrantPolicyMode(&grantPolicy, operations, registry); err != nil {
 		return nil, err
 	}
-	defaultGrantPolicy(&grantPolicy, raw.DefaultMaxUses.Specified, raw.MaxUses.Specified)
+	defaultGrantPolicy(&grantPolicy, raw.DefaultMaxUses.Specified, raw.MaxUses.Specified, operations, registry)
 	if err := validateGrantPolicyValues(grantPolicy); err != nil {
+		return nil, err
+	}
+	if err := validateGrantPolicyOperationBounds(grantPolicy, operations, registry); err != nil {
 		return nil, err
 	}
 	return &grantPolicy, nil
@@ -351,12 +356,12 @@ func validateGrantPolicyPresence(effect Effect, raw *rawGrantPolicy) error {
 	return nil
 }
 
-func defaultGrantPolicy(grantPolicy *GrantPolicy, defaultUsesSpecified, maxUsesSpecified bool) {
+func defaultGrantPolicy(grantPolicy *GrantPolicy, defaultUsesSpecified, maxUsesSpecified bool, operations []string, registry Registry) {
 	if grantPolicy.DefaultMinutes == 0 {
 		grantPolicy.DefaultMinutes = defaultGrantMinutes
 	}
 	if grantPolicy.MaxMinutes == 0 {
-		grantPolicy.MaxMinutes = defaultMaxGrantMinutes
+		grantPolicy.MaxMinutes = min(defaultMaxGrantMinutes, maximumGrantMinutes(operations, registry))
 	}
 	if grantPolicy.RequestTTLMinutes == 0 {
 		grantPolicy.RequestTTLMinutes = defaultRequestTTL
@@ -368,7 +373,7 @@ func defaultGrantPolicy(grantPolicy *GrantPolicy, defaultUsesSpecified, maxUsesS
 		if GrantMode(grantPolicy.Mode) == GrantModeExecution {
 			grantPolicy.MaxUses = defaultGrantUses
 		} else {
-			grantPolicy.MaxUses = defaultMaxGrantUses
+			grantPolicy.MaxUses = min(usebudget.Limit(defaultMaxGrantUses), maximumFiniteGrantUses(operations, registry))
 		}
 	}
 }
@@ -390,7 +395,7 @@ func validateGrantPolicyValues(grantPolicy GrantPolicy) error {
 }
 
 func validateGrantPolicyMinutes(grantPolicy GrantPolicy) error {
-	if err := validateDefaultWithinMax("default_minutes", grantPolicy.DefaultMinutes, "max_minutes", grantPolicy.MaxMinutes, defaultMaxGrantMinutes); err != nil {
+	if err := validateDefaultWithinMax("default_minutes", grantPolicy.DefaultMinutes, "max_minutes", grantPolicy.MaxMinutes, absoluteMaxGrantMinutes); err != nil {
 		return err
 	}
 	if grantPolicy.RequestTTLMinutes < 1 || grantPolicy.RequestTTLMinutes > defaultMaxGrantMinutes {
@@ -408,8 +413,60 @@ func validateGrantPolicyUses(grantPolicy GrantPolicy) error {
 	}
 	return validateDefaultWithinMax(
 		"default_max_uses", int(grantPolicy.DefaultMaxUses),
-		"max_uses", int(grantPolicy.MaxUses), defaultMaxGrantUses,
+		"max_uses", int(grantPolicy.MaxUses), absoluteMaxGrantUses,
 	)
+}
+
+func validateGrantPolicyOperationBounds(grantPolicy GrantPolicy, operations []string, registry Registry) error {
+	for _, operation := range operations {
+		spec := registry.Operations[operation]
+		if grantPolicy.MaxMinutes > effectiveMaxGrantMinutes(spec) {
+			return fmt.Errorf("max_minutes exceeds operation %q grant bound", operation)
+		}
+		if grantPolicy.MaxUses.IsUnlimited() {
+			if spec.DisallowUnlimitedGrantUses || defaultedGrantMode(spec.GrantMode) == GrantModeExecution {
+				return fmt.Errorf("max_uses exceeds operation %q grant bound", operation)
+			}
+			continue
+		}
+		if grantPolicy.MaxUses > effectiveMaxGrantUses(spec) {
+			return fmt.Errorf("max_uses exceeds operation %q grant bound", operation)
+		}
+	}
+	return nil
+}
+
+func maximumGrantMinutes(operations []string, registry Registry) int {
+	maximum := absoluteMaxGrantMinutes
+	for _, operation := range operations {
+		maximum = min(maximum, effectiveMaxGrantMinutes(registry.Operations[operation]))
+	}
+	return maximum
+}
+
+func maximumFiniteGrantUses(operations []string, registry Registry) usebudget.Limit {
+	maximum := usebudget.Limit(absoluteMaxGrantUses)
+	for _, operation := range operations {
+		maximum = min(maximum, effectiveMaxGrantUses(registry.Operations[operation]))
+	}
+	return maximum
+}
+
+func effectiveMaxGrantMinutes(spec OperationSpec) int {
+	if spec.MaxGrantMinutes > 0 {
+		return spec.MaxGrantMinutes
+	}
+	return defaultMaxGrantMinutes
+}
+
+func effectiveMaxGrantUses(spec OperationSpec) usebudget.Limit {
+	if defaultedGrantMode(spec.GrantMode) == GrantModeExecution {
+		return 1
+	}
+	if spec.MaxGrantUses > 0 {
+		return spec.MaxGrantUses
+	}
+	return defaultMaxGrantUses
 }
 
 func validateDefaultWithinMax(defaultName string, defaultValue int, maxName string, maxValue int, maxLimit int) error {

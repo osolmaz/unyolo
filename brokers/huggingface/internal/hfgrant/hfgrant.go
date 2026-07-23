@@ -21,7 +21,7 @@ import (
 const (
 	DefaultPendingTimeout     = 10 * time.Minute
 	DefaultDuration           = 5 * time.Minute
-	MaxDuration               = time.Hour
+	MaxDuration               = 7 * 24 * time.Hour
 	DefaultMaxUses            = 1
 	MaxUses                   = 25
 	DefaultReservationTimeout = 5 * time.Minute
