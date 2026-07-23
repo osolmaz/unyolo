@@ -300,6 +300,9 @@ func waitForMCPGrantInput(ctx context.Context, client *hfGrantClient, input mcpG
 	return waitForMCPGrant(ctx, client, input.GrantID, time.Duration(input.WaitSeconds)*time.Second)
 }
 
+// waitForMCPGrant returns the latest durable projection when its bounded wait
+// expires. Pending grants remain resumable by ID through hf_grant_wait instead
+// of holding an MCP call open indefinitely.
 func waitForMCPGrant(ctx context.Context, client *hfGrantClient, id string, timeout time.Duration) (hfClientGrant, error) {
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
