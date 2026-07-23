@@ -18,7 +18,6 @@ import (
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/mcp/grant"
 	"github.com/osolmaz/brokerkit/mcp/operation"
 	"github.com/osolmaz/brokerkit/protocol/contract"
@@ -330,8 +329,8 @@ func TestBucketObjectWriteCLIUploadsAndBindsLocalSource(t *testing.T) {
 				t.Fatalf("stream request = %q headers=%v", body, r.Header)
 			}
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(streamstore.Reference{ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "bucket.object.write",
-				RequestKey: "write-1", Digest: strings.Repeat("a", 64), Size: 8, MediaType: "application/octet-stream", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+			_ = json.NewEncoder(w).Encode(agentv1.StreamReference{ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "bucket.object.write",
+				TransferID: "write-1", Digest: strings.Repeat("a", 64), Size: 8, MediaType: "application/octet-stream", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 		case "/api/agent/v1/operations":
 			if err := json.NewDecoder(r.Body).Decode(&submitted); err != nil {
 				t.Fatal(err)

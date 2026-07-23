@@ -1,6 +1,10 @@
 package agentv1
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestStateTerminal(t *testing.T) {
 	for _, state := range []State{StateSucceeded, StateFailed, StateDenied, StateExpired, StateCanceled} {
@@ -25,6 +29,13 @@ func TestStateValid(t *testing.T) {
 		if state.Valid() {
 			t.Fatalf("%q should not be valid", state)
 		}
+	}
+}
+
+func TestStreamReferenceUsesTranscriptSafeTransferID(t *testing.T) {
+	encoded, err := json.Marshal(StreamReference{TransferID: "request-1"})
+	if err != nil || !strings.Contains(string(encoded), `"transfer_id":"request-1"`) || strings.Contains(string(encoded), "request_key") {
+		t.Fatalf("stream reference = %s, %v", encoded, err)
 	}
 }
 

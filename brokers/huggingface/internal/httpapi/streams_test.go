@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
+	"github.com/osolmaz/brokerkit/agent/v1"
 )
 
 func TestBucketObjectStreamsAreBoundedOwnedAndOneShot(t *testing.T) {
@@ -32,8 +32,8 @@ func TestBucketObjectStreamsAreBoundedOwnedAndOneShot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = response.Body.Close() }()
-	var reference streamstore.Reference
-	if err := json.NewDecoder(response.Body).Decode(&reference); err != nil || response.StatusCode != http.StatusCreated || reference.Owner != "agent" || reference.Size != 8 {
+	var reference agentv1.StreamReference
+	if err := json.NewDecoder(response.Body).Decode(&reference); err != nil || response.StatusCode != http.StatusCreated || reference.Owner != "agent" || reference.TransferID != "bucket-write-1" || reference.Size != 8 {
 		t.Fatalf("upload = %d %+v, %v", response.StatusCode, reference, err)
 	}
 

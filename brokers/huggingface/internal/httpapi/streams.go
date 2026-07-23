@@ -38,7 +38,10 @@ func (s *Server) uploadStream(c echo.Context) error {
 		writeJSendFail(c.Response(), http.StatusBadRequest, "stream_input_invalid", "The stream is empty or exceeds its limit")
 		return nil //nolint:nilerr // the HTTP failure response is complete
 	}
-	return c.JSON(http.StatusCreated, reference)
+	return c.JSON(http.StatusCreated, agentv1.StreamReference{
+		ID: reference.ID, Owner: reference.Owner, Purpose: reference.Purpose, TransferID: reference.RequestKey,
+		Digest: reference.Digest, Size: reference.Size, MediaType: reference.MediaType, ExpiresAt: reference.ExpiresAt,
+	})
 }
 
 func hfStreamUploadFromRequest(client string, request *http.Request, now time.Time) (streamUpload, error) {

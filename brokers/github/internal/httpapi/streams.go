@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/operation/payload"
@@ -39,7 +40,10 @@ func (s *Server) uploadStream(c echo.Context) error {
 	if err != nil {
 		return rejectStreamInput(c, "The stream is empty or exceeds its limit")
 	}
-	return c.JSON(http.StatusCreated, reference)
+	return c.JSON(http.StatusCreated, agentv1.StreamReference{
+		ID: reference.ID, Owner: reference.Owner, Purpose: reference.Purpose, TransferID: reference.RequestKey,
+		Digest: reference.Digest, Size: reference.Size, MediaType: reference.MediaType, ExpiresAt: reference.ExpiresAt,
+	})
 }
 
 func streamUploadFromRequest(client string, request *http.Request) (streamUpload, error) {

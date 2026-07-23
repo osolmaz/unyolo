@@ -21,7 +21,6 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/credential/store"
-	streamstore "github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operation/capability"
 )
@@ -313,14 +312,14 @@ func bucketObjectMediaType(path, configured string) string {
 	return "application/octet-stream"
 }
 
-func wrapBucketObjectWriteArguments(arguments json.RawMessage, reference streamstore.Reference) (json.RawMessage, error) {
+func wrapBucketObjectWriteArguments(arguments json.RawMessage, reference agentv1.StreamReference) (json.RawMessage, error) {
 	var public map[string]any
 	if strictjson.Decode(arguments, &public, true) != nil || public == nil {
 		return nil, errors.New("bucket object write arguments must be one JSON object")
 	}
 	wrapped, err := json.Marshal(map[string]any{"public": public, "stream_input": map[string]any{
 		"id": reference.ID, "owner": reference.Owner, "purpose": reference.Purpose,
-		"transfer_id": reference.RequestKey, "digest": reference.Digest, "size": reference.Size,
+		"transfer_id": reference.TransferID, "digest": reference.Digest, "size": reference.Size,
 		"media_type": reference.MediaType, "expires_at": reference.ExpiresAt,
 	}})
 	if err != nil {

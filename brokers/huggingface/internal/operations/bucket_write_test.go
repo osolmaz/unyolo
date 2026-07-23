@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xetuploader"
 	"github.com/osolmaz/brokerkit/internal/storage/stream"
@@ -63,7 +64,10 @@ func (f *xetUploadFake) Upload(_ context.Context, _ hubclient.BucketRef, file *o
 
 func TestBindBucketObjectStreamInput(t *testing.T) {
 	t.Parallel()
-	stream := json.RawMessage(`{"id":"stream_012345678901234567890123","owner":"agent","purpose":"bucket.object.write","transfer_id":"write-1","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":4,"media_type":"text/plain","expires_at":2000000000}`)
+	stream, _ := json.Marshal(agentv1.StreamReference{
+		ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "bucket.object.write", TransferID: "write-1",
+		Digest: strings.Repeat("a", 64), Size: 4, MediaType: "text/plain", ExpiresAt: 2000000000,
+	})
 	bound, err := BindBucketObjectStreamInput(json.RawMessage(`{"path":"runs/result.txt"}`), stream, "write-1")
 	if err != nil || !strings.Contains(string(bound), `"stream_input"`) || !strings.Contains(string(bound), `"public":{"path":"runs/result.txt"}`) {
 		t.Fatalf("BindBucketObjectStreamInput() = %s, %v", bound, err)
