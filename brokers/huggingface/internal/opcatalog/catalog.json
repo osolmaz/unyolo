@@ -90,7 +90,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "bucket",
     "max_uses": 25,
@@ -100,7 +100,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_list",
     "cli_command": "bucket list",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.metadata.read",
@@ -110,7 +111,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "bucket",
     "max_uses": 25,
@@ -120,7 +121,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_metadata_read",
     "cli_command": "bucket metadata read",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.move",
@@ -193,7 +195,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "bucket",
     "max_uses": 25,
@@ -203,7 +205,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_object_list",
     "cli_command": "bucket object list",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.object.read",
@@ -213,7 +216,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "protocol",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "bucket",
     "max_uses": 25,
@@ -223,7 +226,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_bucket_object_read",
     "cli_command": "bucket object read",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "bucket.object.write",

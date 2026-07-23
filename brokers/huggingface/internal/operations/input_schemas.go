@@ -43,6 +43,10 @@ var customInputSchemaExamples = map[string]inputSchemaExamples{
 	"repo.file.upload":        {repositoryContentTarget{}, fileUploadArguments{}, nil},
 	"space.hot_reload.apply":  {repositoryContentTarget{}, commitCreateArguments{}, nil},
 	"bucket.batch.apply":      {bucketTarget{}, bucketBatchArguments{}, nil},
+	"bucket.list":             {bucketTarget{}, bucketListArguments{}, nil},
+	"bucket.metadata.read":    {bucketTarget{}, emptyArguments{}, nil},
+	"bucket.object.list":      {bucketTarget{}, bucketObjectListArguments{}, nil},
+	"bucket.object.read":      {bucketTarget{}, bucketObjectReadArguments{}, nil},
 	"bucket.sync.apply":       {bucketTarget{}, bucketBatchArguments{}, nil},
 	"bucket.move":             {bucketTarget{}, bucketMoveArguments{}, nil},
 	"bucket.object.delete":    {bucketTarget{}, bucketDeleteArguments{}, nil},
@@ -73,7 +77,7 @@ func CustomInputSchemas(name string) (InputSchemas, bool) {
 		return InputSchemas{}, false
 	}
 	target := structuralSchema(examples.target)
-	if name == "repo.list" {
+	if name == "repo.list" || name == "bucket.list" {
 		properties := target["properties"].(map[string]any)
 		properties["name"] = map[string]any{"type": "string", "pattern": `^(?:\*|[A-Za-z0-9][A-Za-z0-9._-]{0,95})$`}
 	}

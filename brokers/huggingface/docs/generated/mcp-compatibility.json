@@ -2,8 +2,8 @@
   "api_version": "brokerkit.io/mcp-compatibility-manifest/v1",
   "provider": "huggingface",
   "host_profiles": ["openclaw@2026.7.1"],
-  "agent_facing_operations": 144,
-  "operation_tools": 144,
+  "agent_facing_operations": 148,
+  "operation_tools": 148,
   "utility_tools": 5,
   "projected_operations": [
     "repo.duplicate",
@@ -13,6 +13,6 @@
     "space.variable.set",
     "sql_embed.create"
   ],
-  "projected_window_operations": 5,
+  "projected_window_operations": 9,
   "unresolved_collisions": 0
 }

@@ -486,6 +486,7 @@ func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstor
 		func() ([]operations.Adapter, error) { return operations.NewRefsAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewSpaceAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewBoundAdapters(hub) },
+		func() ([]operations.Adapter, error) { return operations.NewBucketReadAdapters(hub, authorize) },
 		func() ([]operations.Adapter, error) { return operations.NewBucketAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryContentAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewSealedBoundAdapters(hub, sealed) },

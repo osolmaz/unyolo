@@ -53,7 +53,7 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 		"missing executor": func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "" },
 		"invalid executor": func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "shell" },
 		"executor without implementation": func(items []Descriptor) {
-			find(items, "bucket.list").ExecutorKind = "inline"
+			find(items, "auth.permission.check").ExecutorKind = "inline"
 		},
 		"inline credential executor": func(items []Descriptor) {
 			find(items, "service_account.token.create").ExecutorKind = "inline"
@@ -121,7 +121,7 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			t.Fatalf("%s executor = %q", value.Name, value.ExecutorKind)
 		}
 	}
-	if bound != 144 || native != 3 {
+	if bound != 148 || native != 3 {
 		t.Fatalf("agent bound = %d, native = %d", bound, native)
 	}
 }
