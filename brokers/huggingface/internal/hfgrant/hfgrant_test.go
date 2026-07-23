@@ -44,6 +44,20 @@ func TestCanonicalRequestPreservesExactProviderTarget(t *testing.T) {
 	}
 }
 
+func TestCanonicalRequestPreservesGrantPrefixTarget(t *testing.T) {
+	t.Parallel()
+	target := hfpolicy.Target{Kind: hfpolicy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/**"}}
+	request, err := CanonicalRequest(Input{Client: "bob", ClientRequestID: "bucket-prefix", Operation: "bucket.object.write",
+		PolicyTarget: &target, Reason: "publish results", RequestedDuration: MaxDuration, MaxUsesSpecified: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := PolicyTarget(grants.Grant{Operation: "bucket.object.write", Target: request.Target})
+	if err != nil || len(decoded.Keys) != 1 || decoded.Keys[0] != "runs/**" {
+		t.Fatalf("prefix target round trip = %#v, %v", decoded, err)
+	}
+}
+
 func TestCanonicalRequestRejectsInvalidBounds(t *testing.T) {
 	input := Input{Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Target: "model/owner/repo", Reason: "test", RequestedDuration: MaxDuration + time.Minute}
 	if _, err := CanonicalRequest(input); err == nil {

@@ -32,6 +32,7 @@ type bucketStreamStore interface {
 	Validate(streamstore.Reference) error
 	OpenStream(streamstore.Reference) (*os.File, error)
 	Retire(streamstore.Reference, time.Time) error
+	Delete(streamstore.Reference) error
 }
 
 type bucketObjectWriteAdapter struct {
@@ -134,7 +135,7 @@ func (a *bucketObjectWriteAdapter) ValidateClient(input Input, client, requestKe
 	return a.streams.Validate(reference)
 }
 
-func (a *bucketObjectWriteAdapter) Resolve(ctx context.Context, input Input) (Plan, error) {
+func (a *bucketObjectWriteAdapter) Resolve(ctx context.Context, input Input) (plan Plan, err error) {
 	target, err := decodeBucketTarget(input.Target)
 	if err != nil {
 		return Plan{}, err
@@ -143,6 +144,12 @@ func (a *bucketObjectWriteAdapter) Resolve(ctx context.Context, input Input) (Pl
 	if err != nil {
 		return Plan{}, err
 	}
+	reference := arguments.StreamInput.canonical()
+	defer func() {
+		if err != nil {
+			_ = a.streams.Delete(reference)
+		}
+	}()
 	identity, err := a.client.WhoAmI(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -152,7 +159,7 @@ func (a *bucketObjectWriteAdapter) Resolve(ctx context.Context, input Input) (Pl
 		return Plan{}, err
 	}
 	preconditions := bucketObjectWritePreconditions{
-		CredentialIdentity: identity.Name, BucketDigest: bucketInfoDigest(bucket), Stream: arguments.StreamInput.canonical(),
+		CredentialIdentity: identity.Name, BucketDigest: bucketInfoDigest(bucket), Stream: reference,
 	}
 	if err := a.resolveExistingPrecondition(ctx, target, public, &preconditions); err != nil {
 		return Plan{}, err
@@ -342,4 +349,12 @@ func checkAbsentBucketObject(err error) error {
 
 func (a *bucketObjectWriteAdapter) Reconcile(context.Context, Plan) (Outcome, error) {
 	return Outcome{Proven: false}, nil
+}
+
+func (a *bucketObjectWriteAdapter) Cleanup(plan Plan) error {
+	_, _, preconditions, err := a.decodePlan(plan)
+	if err != nil {
+		return err
+	}
+	return a.streams.Retire(preconditions.Stream, a.now().Add(15*time.Minute))
 }

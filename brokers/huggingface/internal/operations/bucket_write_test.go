@@ -110,6 +110,36 @@ func TestBucketObjectWriteBindsStreamAndVerifiesReadback(t *testing.T) {
 	if err := streams.Validate(reference); err == nil {
 		t.Fatal("successful stream was not retired")
 	}
+	if err := adapter.(interface{ Cleanup(Plan) error }).Cleanup(plan); err != nil {
+		t.Fatalf("Cleanup() after successful retirement = %v", err)
+	}
+}
+
+func TestBucketObjectWriteCleanupRetiresUnexecutedStream(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	streams, _ := streamstore.Open(t.TempDir())
+	reference, _ := streams.Put("agent", "bucket.object.write", "write-denied", "text/plain",
+		bytes.NewReader([]byte("data")), 16, now.Add(time.Hour))
+	client := &bucketWriteFake{identity: "operator", bucket: hubclient.BucketInfo{ID: "acme/artifacts", UpdatedAt: "now"}}
+	adapter, _ := NewBucketObjectWriteAdapter(client, &xetUploadFake{}, streams, func() time.Time { return now })
+	input, _ := adapter.Decode(json.RawMessage(`{"kind":"bucket","namespace":"acme","name":"artifacts"}`),
+		writeArgumentsForTest(reference, "result.txt", false))
+	plan, err := adapter.Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.(interface{ Cleanup(Plan) error }).Cleanup(plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := streams.Validate(reference); err == nil {
+		t.Fatal("unexecuted stream was not retired")
+	}
+	replayed, err := streams.Put("agent", "bucket.object.write", "write-denied", "text/plain",
+		bytes.NewReader([]byte("data")), 16, now.Add(time.Hour))
+	if err != nil || replayed != reference {
+		t.Fatalf("retirement replay = %+v, %v", replayed, err)
+	}
 }
 
 func TestBucketObjectWriteRequiresExplicitOverwriteAndStablePreconditions(t *testing.T) {
@@ -125,6 +155,10 @@ func TestBucketObjectWriteRequiresExplicitOverwriteAndStablePreconditions(t *tes
 	if _, err := adapter.Resolve(t.Context(), input); err == nil || !strings.Contains(err.Error(), "overwrite") {
 		t.Fatalf("Resolve() error = %v", err)
 	}
+	if err := streams.Validate(reference); err == nil {
+		t.Fatal("stream survived failed resolution")
+	}
+	reference, _ = streams.Put("agent", "bucket.object.write", "write-2-overwrite", "text/plain", bytes.NewReader([]byte("data")), 16, now.Add(time.Hour))
 	input, _ = adapter.Decode(json.RawMessage(`{"kind":"bucket","namespace":"acme","name":"artifacts"}`), writeArgumentsForTest(reference, "result.txt", true))
 	plan, err := adapter.Resolve(t.Context(), input)
 	if err != nil {

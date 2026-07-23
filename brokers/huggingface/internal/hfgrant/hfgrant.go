@@ -338,7 +338,7 @@ func PolicyTarget(grant grants.Grant) (hfpolicy.Target, error) {
 		Owner: bkpolicy.FirstValue(fields[targetOwner]), Name: bkpolicy.FirstValue(fields[targetName]),
 		Refs: append([]string(nil), fields[targetRefs]...), Paths: append([]string(nil), fields[targetPaths]...),
 		Keys: append([]string(nil), fields[targetKeys]...), Visibility: append([]string(nil), fields[targetVisibility]...)}
-	if err := hfpolicy.ValidateRequest(hfpolicy.Request{Operation: hfpolicy.Operation(grant.Operation), Target: target}); err != nil {
+	if err := hfpolicy.ValidateGrantRequest(hfpolicy.Request{Operation: hfpolicy.Operation(grant.Operation), Target: target}); err != nil {
 		return hfpolicy.Target{}, fmt.Errorf("stored grant target is invalid: %w", err)
 	}
 	return target, nil

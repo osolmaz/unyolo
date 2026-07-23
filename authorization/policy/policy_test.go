@@ -305,8 +305,34 @@ func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
 		}},
 		Attrs: map[string][]string{"paths": {"go.mod", "README.md"}},
 	}
-	if !grantMatches(Registry{}, grant, request) {
+	registry := Registry{Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"refs": {Match: MatchPathGlob}}}}}
+	if !grantMatches(registry, grant, request) {
 		t.Fatal("grantMatches() = false for equivalent reordered value sets")
+	}
+}
+
+func TestGrantTargetScopesMatchConcreteRequestFields(t *testing.T) {
+	registry := Registry{Targets: map[string]TargetSpec{"bucket": {Fields: map[string]FieldSpec{
+		"owner": {Required: true}, "name": {Required: true}, "keys": {Match: MatchRecursivePathGlob},
+	}}}}
+	grant := Grant{Client: "agent", Operation: "bucket.object.write", UsesLeft: 1,
+		Target: Target{Kind: "bucket", Fields: map[string][]string{
+			"owner": {"acme"}, "name": {"artifacts"}, "keys": {"runs/**"},
+		}}}
+	request := Request{Client: grant.Client, Operation: grant.Operation,
+		Target: Target{Kind: "bucket", Fields: map[string][]string{
+			"owner": {"acme"}, "name": {"artifacts"}, "keys": {"runs/live/result.json"},
+		}}}
+	if !grantMatches(registry, grant, request) {
+		t.Fatal("grantMatches() rejected a concrete key within the approved prefix")
+	}
+	request.Target.Fields["keys"] = []string{"private/result.json"}
+	if grantMatches(registry, grant, request) {
+		t.Fatal("grantMatches() accepted a key outside the approved prefix")
+	}
+	delete(grant.Target.Fields, "owner")
+	if grantMatches(registry, grant, request) {
+		t.Fatal("grantMatches() accepted a grant without a required target field")
 	}
 }
 
