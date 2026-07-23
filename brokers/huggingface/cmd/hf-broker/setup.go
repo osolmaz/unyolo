@@ -32,6 +32,7 @@ var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
 	HFTokenFile           string
+	XetPython             string
 	TelegramBotTokenFile  string
 	TelegramChatID        int64
 	Repo                  string
@@ -113,6 +114,7 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.SetOutput(&flagOutput)
 	bksetup.BindSystemdFlags(fs, &opts.SystemdOptions)
 	fs.StringVar(&opts.HFTokenFile, "hf-token-file", "", "file containing the upstream Hugging Face token")
+	fs.StringVar(&opts.XetPython, "xet-python", "python3", "broker-only Python interpreter containing the pinned hf-xet package")
 	fs.StringVar(&opts.Repo, "repo", "", "allowed Hub repo as owner/name")
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
 	fs.StringVar(&opts.PolicyPreset, "policy-preset", policypreset.RequestAllAgentOperations, "provider-owned policy preset")
@@ -174,6 +176,9 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 func validateSetupRequired(opts setupSystemdOptions) error {
 	if opts.HFTokenFile == "" {
 		return exitError{code: 64, message: "--hf-token-file is required"}
+	}
+	if opts.XetPython == "" || strings.ContainsAny(opts.XetPython, " \t\r\n\x00") {
+		return exitError{code: 64, message: "--xet-python must be one command name or path without whitespace"}
 	}
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}

@@ -54,6 +54,7 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	}
 	opts, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs(
 		"--hf-token-file", tokenFile,
+		"--xet-python", "/opt/hf-broker/xet/bin/python",
 		"--repo", "osolmaz/scraped-news",
 		"--repo-type", "dataset",
 	))
@@ -65,6 +66,9 @@ func TestParseSetupSystemdGeneratesSecret(t *testing.T) {
 	}
 	if len(opts.OperatorSecret) != 64 || opts.OperatorName != "operator-a" || opts.OperatorEndpoint != testOperatorEndpoint {
 		t.Fatalf("generated operator configuration = %+v", opts)
+	}
+	if opts.XetPython != "/opt/hf-broker/xet/bin/python" {
+		t.Fatalf("Xet interpreter = %q", opts.XetPython)
 	}
 }
 
@@ -78,6 +82,9 @@ func TestParseSetupSystemdDefaultsToRequestAllPreset(t *testing.T) {
 	}
 	if _, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/repo")); err == nil || !strings.Contains(err.Error(), "must be set together") {
 		t.Fatalf("incomplete repo selection error = %v", err)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--xet-python", "bad path")); err == nil || !strings.Contains(err.Error(), "--xet-python") {
+		t.Fatalf("invalid Xet interpreter error = %v", err)
 	}
 	protected, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--protect-bucket", "acme/mlclaw-state"))
 	if err != nil || len(protected.ProtectedBuckets) != 1 {
@@ -191,6 +198,7 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 			ClientName: "agent-a", Endpoint: testAgentEndpoint, AllowNonRoot: true,
 		},
 		HFTokenFile:  "/tmp/hf-token",
+		XetPython:    "/opt/hf-broker/xet/bin/python",
 		Repo:         "osolmaz/scraped-news",
 		RepoType:     "dataset",
 		SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
@@ -226,6 +234,7 @@ func TestRenderSystemdSetupFiles(t *testing.T) {
 		"HF_BROKER_SECRETS_FILE=/etc/hf-broker/secrets",
 		"HF_BROKER_SCOPE_FILE=/etc/hf-broker/scope.json",
 		"HF_BROKER_STATE_DIR=/var/lib/hf-broker",
+		"HF_BROKER_XET_PYTHON=/opt/hf-broker/xet/bin/python",
 		"HF_BROKER_OPERATOR_SECRETS_FILE=/etc/hf-broker/operator-secrets",
 		"HF_BROKER_AGENT_ENDPOINT=activation://agent",
 		"HF_BROKER_OPERATOR_ENDPOINT=activation://operator",

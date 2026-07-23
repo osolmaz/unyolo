@@ -424,6 +424,7 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"HF_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"HF_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
+		"HF_BROKER_XET_PYTHON=" + opts.XetPython + "\n" +
 		"HF_BROKER_AGENT_ENDPOINT=activation://agent\n"
 	if opts.GitEndpoint != "" {
 		body += "HF_BROKER_GIT_ENDPOINT=" + opts.GitEndpoint + "\n"

@@ -117,6 +117,7 @@ func hfLaunchdEnvironment(plan systemdPlan) map[string]string {
 	values := map[string]string{
 		"HF_BROKER_HF_TOKEN_FILE": plan.tokenPath, "HF_BROKER_SECRETS_FILE": plan.secretsPath,
 		"HF_BROKER_SCOPE_FILE": plan.scopePath, "HF_BROKER_STATE_DIR": plan.opts.StateDir,
+		"HF_BROKER_XET_PYTHON":            plan.opts.XetPython,
 		"HF_BROKER_AGENT_ENDPOINT":        "activation://agent",
 		"HF_BROKER_OPERATOR_SECRETS_FILE": plan.operatorSecretsPath,
 		"HF_BROKER_OPERATOR_ENDPOINT":     "activation://operator",

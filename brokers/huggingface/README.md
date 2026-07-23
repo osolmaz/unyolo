@@ -325,6 +325,7 @@ After installing the binary, create a token file and configure systemd:
 ```sh
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
+  --xet-python /opt/hf-broker/xet/bin/python \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
   --client agent-a \
@@ -346,7 +347,9 @@ operator listeners are separate Unix sockets:
 It prints the broker endpoint plus a secret-safe client setup command and
 never prints the generated broker client secret. The real Hugging Face and
 Telegram tokens stay readable only by the service, and the generated operator
-credential is separate from every agent credential. Omit both Telegram flags
+credential is separate from every agent credential. The setup command persists
+`--xet-python` in the systemd or launchd environment; an interactive export is
+not inherited by the managed service. Omit both Telegram flags
 to run without Telegram; pending requests remain available in the operator
 inbox. Use `--dry-run` to preview without writing files.
 
