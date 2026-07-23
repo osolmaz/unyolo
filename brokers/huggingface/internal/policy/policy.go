@@ -496,23 +496,7 @@ func IsOperation(value string) bool {
 // ValidateRequest checks one exact provider request against the closed
 // operation, target, and attribute vocabulary without making a policy decision.
 func ValidateRequest(req Request) error {
-	info, ok := operations[req.Operation]
-	if !ok {
-		return errors.New("invalid operation")
-	}
-	if req.Target.Kind != info.targetKind {
-		return fmt.Errorf("operation %s requires %s target", req.Operation, info.targetKind)
-	}
-	if err := validatePolicyRequestTarget(req); err != nil {
-		return err
-	}
-	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
-		return err
-	}
-	if err := validateExactTargetConstraints(req.Target); err != nil {
-		return err
-	}
-	return hfRegistry().ValidateRequest(AuthorizationRequest(req))
+	return validateScopedRequest(req, validateExactTargetConstraints)
 }
 
 func validatePolicyRequestTarget(req Request) error {
@@ -544,6 +528,10 @@ func validateExactTargetConstraints(target Target) error {
 // bucket keys may be exact values or one bounded trailing /** prefix scope;
 // executable operation requests remain exact-only through ValidateRequest.
 func ValidateGrantRequest(req Request) error {
+	return validateScopedRequest(req, validateGrantTargetConstraints)
+}
+
+func validateScopedRequest(req Request, validateConstraints func(Target) error) error {
 	info, ok := operations[req.Operation]
 	if !ok {
 		return errors.New("invalid operation")
@@ -557,7 +545,7 @@ func ValidateGrantRequest(req Request) error {
 	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
 		return err
 	}
-	if err := validateGrantTargetConstraints(req.Target); err != nil {
+	if err := validateConstraints(req.Target); err != nil {
 		return err
 	}
 	return hfRegistry().ValidateRequest(AuthorizationRequest(req))

@@ -208,6 +208,37 @@ func TestGrantRequestOptionValidation(t *testing.T) {
 	if err := validateGrantRequestOptions(bucket); err == nil {
 		t.Fatal("bucket grant accepted repository ref scope")
 	}
+	if err := validateGrantTargetOptions(opcatalog.Descriptor{TargetKind: string(policy.KindInference)}, grantRequestOptions{}); err == nil {
+		t.Fatal("grant target options accepted unsupported target kind")
+	}
+}
+
+func TestValidateGrantTargetOptions(t *testing.T) {
+	t.Parallel()
+	repo := opcatalog.Descriptor{TargetKind: string(policy.KindRepo)}
+	bucket := opcatalog.Descriptor{TargetKind: string(policy.KindBucket)}
+	tests := []struct {
+		name       string
+		descriptor opcatalog.Descriptor
+		options    grantRequestOptions
+		wantError  bool
+	}{
+		{name: "repository", descriptor: repo, options: grantRequestOptions{repoType: "dataset"}},
+		{name: "repository type", descriptor: repo, options: grantRequestOptions{repoType: "kernel"}, wantError: true},
+		{name: "repository key", descriptor: repo, options: grantRequestOptions{repoType: "dataset", keys: stringListFlag{"key"}}, wantError: true},
+		{name: "bucket", descriptor: bucket},
+		{name: "bucket ref", descriptor: bucket, options: grantRequestOptions{refs: stringListFlag{"main"}}, wantError: true},
+		{name: "unsupported", descriptor: opcatalog.Descriptor{TargetKind: string(policy.KindInference)}, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateGrantTargetOptions(test.descriptor, test.options)
+			if (err != nil) != test.wantError {
+				t.Fatalf("validateGrantTargetOptions() error = %v, wantError %v", err, test.wantError)
+			}
+		})
+	}
 }
 
 func TestDecodeMCPGrantRequestPreservesUnlimitedScopedWrite(t *testing.T) {

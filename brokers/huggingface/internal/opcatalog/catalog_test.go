@@ -106,6 +106,25 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 	}
 }
 
+func TestValidateExecutorBindingRejectsInvalidDispositions(t *testing.T) {
+	t.Parallel()
+	valid := *find(MustAll(), "bucket.object.write")
+	cases := []Descriptor{
+		{Name: "protocol", Implementation: StatusProtocol},
+		{Name: "blocked", Implementation: StatusBlockedUpstream, ExecutorKind: "inline"},
+		{Name: "bounded", Implementation: StatusImplemented, ExecutorKind: "bounded-stream", AuthorizationMode: ModeExecution},
+		{Name: "unknown", Implementation: StatusImplemented, ExecutorKind: "shell"},
+	}
+	for _, descriptor := range cases {
+		if err := validateExecutorBinding(descriptor); err == nil {
+			t.Fatalf("validateExecutorBinding(%+v) succeeded", descriptor)
+		}
+	}
+	if err := validateExecutorBinding(valid); err != nil {
+		t.Fatalf("validateExecutorBinding(valid) error = %v", err)
+	}
+}
+
 func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 	bound, native := 0, 0
 	for _, value := range MustAll() {

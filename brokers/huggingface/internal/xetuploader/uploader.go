@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xethash"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -120,17 +121,7 @@ func (w *limitedWriter) Write(value []byte) (int, error) {
 	return len(value), nil
 }
 
-func validHash(value string) bool {
-	if len(value) != 64 {
-		return false
-	}
-	for _, character := range value {
-		if !strings.ContainsRune("0123456789abcdef", character) {
-			return false
-		}
-	}
-	return true
-}
+func validHash(value string) bool { return xethash.Valid(value) }
 
 const helperScript = `
 import json, sys

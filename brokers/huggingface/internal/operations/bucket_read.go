@@ -68,21 +68,28 @@ func NewBucketReadAdapters(client bucketReadClient, authorize RepositoryAuthoriz
 	if now == nil {
 		now = time.Now
 	}
-	return adaptersForNames([]string{"bucket.list", "bucket.metadata.read", "bucket.object.list", "bucket.object.read"}, func(descriptor opcatalog.Descriptor) Adapter {
+	return adaptersForNames([]string{"bucket.list", "bucket.metadata.read", "bucket.object.list", "bucket.object.read"},
+		newBucketReadAdapterFactory(client, authorize, streams, now))
+}
+
+func newBucketReadAdapterFactory(client bucketReadClient, authorize RepositoryAuthorization, streams bucketReadStreamStore,
+	now func() time.Time) func(opcatalog.Descriptor) Adapter {
+	return func(descriptor opcatalog.Descriptor) Adapter {
 		return &bucketReadAdapter{descriptor: descriptor, client: client, authorize: authorize, streams: streams, now: now}
-	})
+	}
 }
 
 func (a *bucketReadAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }
 
 func (a *bucketReadAdapter) Decode(targetRaw, argumentsRaw json.RawMessage) (Input, error) {
-	decodeTarget := decodeBucketTarget
 	if a.descriptor.Name == "bucket.list" {
-		decodeTarget = decodeBucketListTarget
+		return decodeInput(targetRaw, argumentsRaw, decodeBucketListTarget, a.decodeInputArguments)
 	}
-	return decodeInput(targetRaw, argumentsRaw, decodeTarget, func(_ bucketTarget, raw json.RawMessage) (any, error) {
-		return a.decodeArguments(raw)
-	})
+	return decodeInput(targetRaw, argumentsRaw, decodeBucketTarget, a.decodeInputArguments)
+}
+
+func (a *bucketReadAdapter) decodeInputArguments(_ bucketTarget, raw json.RawMessage) (any, error) {
+	return a.decodeArguments(raw)
 }
 
 func decodeBucketListTarget(raw json.RawMessage) (bucketTarget, error) {
@@ -182,8 +189,7 @@ func (a *bucketReadAdapter) Present(plan Plan) agentv1.Presentation {
 }
 
 func (a *bucketReadAdapter) BindReservation(plan Plan, grant grants.Grant) (Plan, error) {
-	plan.ReservedGrant = &grant
-	return plan, nil
+	return bindReadReservation(plan, grant)
 }
 
 func (a *bucketReadAdapter) reconstruct(plan Plan) reconstructedPlan {

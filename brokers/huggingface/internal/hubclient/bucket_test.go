@@ -127,6 +127,26 @@ func TestBucketClientRejectsUnsafeOrAmbiguousBatches(t *testing.T) {
 	}
 }
 
+func TestValidBucketTreeEntryType(t *testing.T) {
+	t.Parallel()
+	hash := strings.Repeat("a", 64)
+	for name, entry := range map[string]BucketTreeEntry{
+		"file":              {Type: "file", XetHash: hash},
+		"directory":         {Type: "directory"},
+		"invalid file":      {Type: "file", XetHash: "invalid"},
+		"invalid directory": {Type: "directory", XetHash: hash},
+		"unknown":           {Type: "symlink"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			want := name == "file" || name == "directory"
+			if got := validBucketTreeEntryType(entry); got != want {
+				t.Fatalf("validBucketTreeEntryType(%+v) = %v, want %v", entry, got, want)
+			}
+		})
+	}
+}
+
 func TestBucketClientTreatsPartialBatchResultAsAmbiguous(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"success":false,"processed":1,"succeeded":1,"failed":[{"path":"second"}]}`)

@@ -145,6 +145,10 @@ func (a *repositoryReadAdapter) Present(plan Plan) agentv1.Presentation {
 }
 
 func (a *repositoryReadAdapter) BindReservation(plan Plan, grant grants.Grant) (Plan, error) {
+	return bindReadReservation(plan, grant)
+}
+
+func bindReadReservation(plan Plan, grant grants.Grant) (Plan, error) {
 	plan.ReservedGrant = &grant
 	return plan, nil
 }

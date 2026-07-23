@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xethash"
 )
 
 const (
@@ -378,17 +380,7 @@ func invalidObjectPathShape(value string) bool {
 		strings.ContainsRune(value, 0)
 }
 
-func validXetHash(value string) bool {
-	if len(value) != 64 {
-		return false
-	}
-	for _, char := range value {
-		if !strings.ContainsRune("0123456789abcdef", char) {
-			return false
-		}
-	}
-	return true
-}
+func validXetHash(value string) bool { return xethash.Valid(value) }
 
 func validSourceRepo(repoType, repoID string) bool {
 	if repoType != "model" && repoType != "dataset" && repoType != "space" && repoType != "bucket" {
