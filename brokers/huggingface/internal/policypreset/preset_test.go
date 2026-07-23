@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	shared "github.com/osolmaz/brokerkit/authorization/preset"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
@@ -28,6 +29,32 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.delete", "request")
 	assertRuleEffect(t, artifacts.PolicyJSON, "service_account.token.create", "deny")
 	assertRuleEffect(t, artifacts.PolicyJSON, "sandbox.port.proxy", "deny")
+}
+
+func TestRenderProtectedTargetsAsOverridingExactDenies(t *testing.T) {
+	profile := NewProfile([]string{"agent"}, nil)
+	profile.ProtectedTargets = []ProtectedTarget{{Kind: "bucket", Owner: "acme", Name: "mlclaw-state"}}
+	artifacts, err := Render(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := policy.Parse(artifacts.PolicyJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protected := policy.Request{Client: "agent", Operation: policy.OpBucketObjectWrite,
+		Target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "mlclaw-state", Keys: []string{"state.json"}}}
+	if decision := rendered.Decide(protected, nil, time.Now(), false); decision.Effect != policy.EffectDeny {
+		t.Fatalf("protected decision = %+v", decision)
+	}
+	other := protected
+	other.Target.Name = "artifacts"
+	if decision := rendered.Decide(other, nil, time.Now(), false); len(decision.MatchedRequestRuleIDs) != 1 || decision.Reason != "approval_required" {
+		t.Fatalf("ordinary decision = %+v", decision)
+	}
+	if !bytes.Contains(artifacts.ProfileJSON, []byte(`"protected_targets"`)) || Check(artifacts.ProfileJSON, artifacts.ManifestJSON, artifacts.PolicyJSON).Status != DriftCurrent {
+		t.Fatal("protected target did not remain bound to managed artifacts")
+	}
 }
 
 func TestRenderIsDeterministicAndNormalizesInputs(t *testing.T) {
@@ -80,6 +107,9 @@ func TestProfileRejectsInvalidAndAmbiguousInputs(t *testing.T) {
 		NewProfile([]string{" agent"}, nil),
 		NewProfile([]string{"agent"}, []string{"repo.unknown"}),
 		NewProfile([]string{"agent"}, []string{"repo.delete", "repo.delete"}),
+		{Version: 1, Preset: RequestAllAgentOperations, Clients: []string{"agent"}, ProtectedTargets: []ProtectedTarget{{Kind: "bucket", Owner: "acme", Name: "*"}}},
+		{Version: 1, Preset: RequestAllAgentOperations, Clients: []string{"agent"}, ProtectedTargets: []ProtectedTarget{{Kind: "repo", Owner: "acme", Name: "state"}}},
+		{Version: 1, Preset: RequestAllAgentOperations, Clients: []string{"agent"}, ProtectedTargets: []ProtectedTarget{{Kind: "inference", Owner: "acme", Name: "state"}}},
 	}
 	for _, profile := range tests {
 		if _, err := Render(profile); err == nil {

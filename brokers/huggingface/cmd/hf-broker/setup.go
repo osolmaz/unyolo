@@ -38,6 +38,8 @@ type setupSystemdOptions struct {
 	RepoType              string
 	PolicyPreset          string
 	DeniedOperations      stringListFlag
+	ProtectedBuckets      stringListFlag
+	ProtectedRepos        stringListFlag
 	ResetDeniedOperations bool
 	PolicyPresetExplicit  bool
 	ReplacePolicy         bool
@@ -115,6 +117,8 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
 	fs.StringVar(&opts.PolicyPreset, "policy-preset", policypreset.RequestAllAgentOperations, "provider-owned policy preset")
 	fs.Var(&opts.DeniedOperations, "deny-operation", "exact operation to deny in the preset; repeatable")
+	fs.Var(&opts.ProtectedBuckets, "protect-bucket", "exact OWNER/NAME bucket to deny; repeatable")
+	fs.Var(&opts.ProtectedRepos, "protect-repo", "exact TYPE:OWNER/NAME repository to deny; repeatable")
 	fs.BoolVar(&opts.ResetDeniedOperations, "reset-denied-operations", false, "discard installed deny overrides before applying --deny-operation flags")
 	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
@@ -233,9 +237,13 @@ func validateSetupPreset(opts setupSystemdOptions) error {
 	if opts.ResetDeniedOperations && !opts.ReplacePolicy {
 		return exitError{code: 64, message: "--reset-denied-operations requires --replace-policy"}
 	}
+	protectedTargets, err := (policyRenderCommand{protectedBuckets: opts.ProtectedBuckets, protectedRepos: opts.ProtectedRepos}).protectedTargets()
+	if err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
 	if _, err := policypreset.Render(policypreset.Profile{
 		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
-		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
+		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations, ProtectedTargets: protectedTargets,
 	}); err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
@@ -248,6 +256,9 @@ func validateSetupNarrowRepo(opts setupSystemdOptions) error {
 	}
 	if len(opts.DeniedOperations) > 0 {
 		return exitError{code: 64, message: "--deny-operation requires preset policy mode without --repo"}
+	}
+	if len(opts.ProtectedBuckets) > 0 || len(opts.ProtectedRepos) > 0 {
+		return exitError{code: 64, message: "protected targets require preset policy mode without --repo"}
 	}
 	if opts.ResetDeniedOperations {
 		return exitError{code: 64, message: "--reset-denied-operations requires preset policy mode without --repo"}

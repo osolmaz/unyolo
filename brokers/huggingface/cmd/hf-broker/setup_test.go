@@ -79,6 +79,13 @@ func TestParseSetupSystemdDefaultsToRequestAllPreset(t *testing.T) {
 	if _, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/repo")); err == nil || !strings.Contains(err.Error(), "must be set together") {
 		t.Fatalf("incomplete repo selection error = %v", err)
 	}
+	protected, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--protect-bucket", "acme/mlclaw-state"))
+	if err != nil || len(protected.ProtectedBuckets) != 1 {
+		t.Fatalf("protected bucket setup = %+v, %v", protected, err)
+	}
+	if _, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--protect-bucket", "*/state")); err == nil || !strings.Contains(err.Error(), "protected_targets") {
+		t.Fatalf("invalid protected bucket error = %v", err)
+	}
 	if _, err := parseSetupSystemd(ioDiscard{}, requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--deny-operation", "repo.unknown")); err == nil || !strings.Contains(err.Error(), "unknown operation") {
 		t.Fatalf("unknown deny override error = %v", err)
 	}
@@ -656,6 +663,15 @@ func TestRunSetupSystemdPreviewsPolicyDeltaBeforeReplacement(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Fatalf("replacement preview missing %q:\n%s", want, output)
 		}
+	}
+}
+
+func TestMergeProtectedTargetsPreservesInstalledExactDenies(t *testing.T) {
+	installed := []policypreset.ProtectedTarget{{Kind: "bucket", Owner: "acme", Name: "mlclaw-state"}}
+	requested := []policypreset.ProtectedTarget{{Kind: "repo", Type: "dataset", Owner: "acme", Name: "private"}, installed[0]}
+	merged := mergeProtectedTargets(installed, requested)
+	if len(merged) != 2 || merged[0] != installed[0] {
+		t.Fatalf("merged protected targets = %+v", merged)
 	}
 }
 

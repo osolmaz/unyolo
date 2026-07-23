@@ -13,11 +13,11 @@ catalog. It does not contain operation-family wildcards.
 
 The catalog stores an explicit `default_policy_effect` for each operation:
 
-- `allow`: safe reads, discovery, and inference run directly.
-- `request`: writes, administration, and destructive actions require operator
-  approval. Execution-scoped actions receive exact, one-use grants.
-- `deny`: internal, non-agent, and credential-output operations cannot be
-  requested by the agent.
+| Effect | Behavior |
+|---|---|
+| `allow` | Safe reads and discovery plus inference run directly. |
+| `request` | Writes and administration plus destructive actions require operator approval. Execution-scoped actions receive exact, one-use grants. |
+| `deny` | Internal and non-agent operations plus credential-output operations cannot be requested by the agent. |
 
 These effects are data in the reviewed provider catalog. The renderer never
 guesses from an operation name or risk label. Catalog validation also prevents
@@ -39,6 +39,22 @@ On later setup runs, installed deny overrides are preserved and new
 with the explicit pair `--replace-policy --reset-denied-operations`; any new
 `--deny-operation` values on that invocation become the replacement set.
 
+Use an exact protected target when a broker-managed resource must remain
+unreachable under every catalog operation. This rule overrides allow and
+request rules:
+
+```sh
+sudo hf-broker setup systemd \
+  --hf-token-file ./hf-token \
+  --client agent \
+  --protect-bucket acme/mlclaw-state \
+  --protect-repo dataset:acme/private-state
+```
+
+`--protect-bucket` accepts `OWNER/NAME`. `--protect-repo` accepts
+`TYPE:OWNER/NAME`. Wildcards are rejected. Setup preserves installed protected
+targets during replacement, including a deny-operation reset.
+
 ## Render without installing
 
 Render the profile, concrete policy, and manifest together:
@@ -48,6 +64,7 @@ hf-broker policy render \
   --preset request-all-agent-operations \
   --client agent \
   --deny-operation repo.delete \
+  --protect-bucket acme/mlclaw-state \
   --profile-out policy-profile.json \
   --output scope.json \
   --manifest-out policy-manifest.json
@@ -73,8 +90,8 @@ Default systemd setup installs these root-owned, non-secret files:
 /etc/hf-broker/policy-manifest.json
 ```
 
-The manifest binds the profile, policy, and embedded operation catalog by
-SHA-256 digest. It also records each operation's revision, catalog default
+The manifest binds the profile and policy together with the embedded operation
+catalog by SHA-256 digest. It also records each operation's revision, catalog default
 effect, final policy effect after operator overrides, risk,
 authorization mode, and grant lifecycle. Check the installed artifacts without
 changing them:
@@ -90,13 +107,13 @@ Status values are:
 
 | Status | Meaning | Exit code |
 |---|---|---:|
-| `current` | Profile, policy, manifest, and current catalog match. | 0 |
+| `current` | Profile and policy match the manifest and current catalog. | 0 |
 | `stale` | The embedded operation catalog changed after rendering. | 1 |
 | `modified` | A profile or policy no longer matches its manifest. | 1 |
 | `invalid` | An artifact cannot be parsed or validated. | 2 |
 
-Use `--json` for automation. Catalog drift reports added, removed, and changed
-operation names when available. Doctor never edits policy files or contacts a
+Use `--json` for automation. Catalog drift reports which operation names were
+added or removed and which ones changed. Doctor never edits policy files or contacts a
 live broker. Exact deny overrides for retired operations remain valid
 diagnostic input when they are present in the installed manifest, allowing
 Doctor to report the removal instead of treating the profile as malformed.
@@ -114,13 +131,13 @@ sudo hf-broker setup systemd \
   --replace-policy
 ```
 
-Replacement verifies the installed profile, manifest, and scope before
-carrying forward hard-denies. Inconsistent artifacts stop setup and require a
+Replacement verifies the installed profile and manifest against the scope
+before carrying forward hard-denies. Inconsistent artifacts stop setup and require a
 Doctor check or an explicit `--reset-denied-operations`.
 
 Before refusing an unconfirmed replacement, setup prints the current and
-candidate policy digests and the allow, request, deny, and total operation-count
-changes. `--dry-run` prints the same preview without writing files. Review that
+candidate policy digests and the allow and request counts plus deny and total
+operation-count changes. `--dry-run` prints the same preview without writing files. Review that
 output before rerunning with `--replace-policy`.
 
 For a deliberately narrow installation, supply `--repo` and `--repo-type`.
@@ -130,6 +147,8 @@ preset profile or manifest.
 ## Integration contract
 
 Wrappers such as ML Claw should invoke `hf-broker policy render` or the default
-setup command. They should not copy an operation list, infer effects, or create
-BrokerKit-owned profile and manifest formats themselves. BrokerKit owns catalog
-classification, deterministic rendering, and drift diagnostics.
+setup command. ML Claw passes its state bucket through `--protect-bucket` so the
+generated deny remains part of the managed profile. Wrappers should not copy an
+operation list, infer effects, or create BrokerKit-owned profile and manifest
+formats themselves. BrokerKit owns catalog classification, deterministic
+rendering, and drift diagnostics.

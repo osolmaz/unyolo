@@ -123,6 +123,7 @@ func TestLifecycleRejectsMalformedInputs(t *testing.T) {
 		{renderer, NewProfile(renderer, nil, nil)},
 		{renderer, NewProfile(renderer, []string{" agent-a"}, nil)},
 		{renderer, NewProfile(renderer, []string{"agent-a"}, []string{"unknown.operation"})},
+		{renderer, Profile{Version: 1, Preset: renderer.PresetName(), Clients: []string{"agent-a"}, ProtectedTargets: []ProtectedTarget{{Kind: "repo", Type: "dataset", Owner: "acme", Name: "state"}}}},
 		{badOperations, NewProfile(badOperations, []string{"agent-a"}, nil)},
 	} {
 		if _, err := Render(input.renderer, input.profile); err == nil {
