@@ -21,7 +21,6 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/credential/store"
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operation/capability"
 	"github.com/osolmaz/brokerkit/operation/payload"
@@ -239,7 +238,11 @@ func prepareCLIArguments(ctx context.Context, connection operationConnection, de
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(map[string]any{"public": arguments, "stream_input": reference})
+		return json.Marshal(map[string]any{"public": arguments, "stream_input": map[string]any{
+			"id": reference.ID, "owner": reference.Owner, "purpose": reference.Purpose,
+			"request_key": reference.TransferID, "digest": reference.Digest, "size": reference.Size,
+			"media_type": reference.MediaType, "expires_at": reference.ExpiresAt,
+		}})
 	case descriptor.CredentialOutputKind != nil:
 		return json.Marshal(map[string]any{"public": arguments, "credential_slot": credentialSlot})
 	case descriptor.Sealed:
@@ -508,15 +511,15 @@ func (connection operationConnection) uploadSealedPayload(ctx context.Context, o
 	return client.UploadSealedPayload(ctx, operation, requestKey, payload)
 }
 
-func (connection operationConnection) uploadStream(ctx context.Context, operation, requestKey, path, mediaType string) (streamstore.Reference, error) {
+func (connection operationConnection) uploadStream(ctx context.Context, operation, requestKey, path, mediaType string) (agentv1.StreamReference, error) {
 	file, size, limit, err := openStreamUploadFile(operation, path)
 	if err != nil {
-		return streamstore.Reference{}, err
+		return agentv1.StreamReference{}, err
 	}
 	defer func() { _ = file.Close() }()
 	client, err := connection.client()
 	if err != nil {
-		return streamstore.Reference{}, err
+		return agentv1.StreamReference{}, err
 	}
 	return client.UploadStream(ctx, operation, requestKey, mediaType, file, size, limit)
 }

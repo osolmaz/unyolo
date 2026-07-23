@@ -53,7 +53,7 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 		"missing executor": func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "" },
 		"invalid executor": func(items []Descriptor) { find(items, "repo.create").ExecutorKind = "shell" },
 		"executor without implementation": func(items []Descriptor) {
-			find(items, "bucket.list").ExecutorKind = "inline"
+			find(items, "auth.permission.check").ExecutorKind = "inline"
 		},
 		"inline credential executor": func(items []Descriptor) {
 			find(items, "service_account.token.create").ExecutorKind = "inline"
@@ -106,6 +106,25 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 	}
 }
 
+func TestValidateExecutorBindingRejectsInvalidDispositions(t *testing.T) {
+	t.Parallel()
+	valid := *find(MustAll(), "bucket.object.write")
+	cases := []Descriptor{
+		{Name: "protocol", Implementation: StatusProtocol},
+		{Name: "blocked", Implementation: StatusBlockedUpstream, ExecutorKind: "inline"},
+		{Name: "bounded", Implementation: StatusImplemented, ExecutorKind: "bounded-stream", AuthorizationMode: ModeExecution},
+		{Name: "unknown", Implementation: StatusImplemented, ExecutorKind: "shell"},
+	}
+	for _, descriptor := range cases {
+		if err := validateExecutorBinding(descriptor); err == nil {
+			t.Fatalf("validateExecutorBinding(%+v) succeeded", descriptor)
+		}
+	}
+	if err := validateExecutorBinding(valid); err != nil {
+		t.Fatalf("validateExecutorBinding(valid) error = %v", err)
+	}
+}
+
 func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 	bound, native := 0, 0
 	for _, value := range MustAll() {
@@ -113,7 +132,7 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			continue
 		}
 		switch value.ExecutorKind {
-		case "inline", "credential":
+		case "inline", "credential", "bounded-stream":
 			bound++
 		case "native-protocol":
 			native++
@@ -121,8 +140,33 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			t.Fatalf("%s executor = %q", value.Name, value.ExecutorKind)
 		}
 	}
-	if bound != 144 || native != 3 {
+	if bound != 149 || native != 3 {
 		t.Fatalf("agent bound = %d, native = %d", bound, native)
+	}
+}
+
+func TestCatalogHasNoUnresolvedProtocolPlaceholders(t *testing.T) {
+	bound, native, blocked := 0, 0, 0
+	for _, descriptor := range MustAll() {
+		if descriptor.Implementation == StatusProtocol {
+			t.Fatalf("%s retains an unresolved protocol placeholder", descriptor.Name)
+		}
+		if !descriptor.AgentFacing {
+			continue
+		}
+		switch {
+		case descriptor.Implementation == StatusBlockedUpstream && descriptor.ExecutorKind == "":
+			blocked++
+		case descriptor.Implementation == StatusImplemented && descriptor.ExecutorKind == "native-protocol":
+			native++
+		case descriptor.Implementation == StatusImplemented && descriptor.ExecutorKind != "":
+			bound++
+		default:
+			t.Fatalf("agent-facing operation %s has unresolved binding: %+v", descriptor.Name, descriptor)
+		}
+	}
+	if bound != 149 || native != 3 || blocked != 105 {
+		t.Fatalf("catalog bindings = bound:%d native:%d blocked:%d", bound, native, blocked)
 	}
 }
 

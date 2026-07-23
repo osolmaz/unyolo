@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
 )
 
 func TestBoundedTransferMethods(t *testing.T) {
@@ -30,8 +30,8 @@ func TestBoundedTransferMethods(t *testing.T) {
 				RequestKey: "request", Digest: strings.Repeat("a", 64), Size: 6, ExpiresAt: time.Now().Add(time.Hour).Unix()})
 		case "/api/agent/v1/streams":
 			writer.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(writer).Encode(streamstore.Reference{ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "asset.upload",
-				RequestKey: request.Header.Get("X-Broker-Idempotency-Key"), Digest: hex.EncodeToString(digest[:]), Size: int64(len(content)),
+			_ = json.NewEncoder(writer).Encode(agentv1.StreamReference{ID: "stream_012345678901234567890123", Owner: "agent", Purpose: "asset.upload",
+				TransferID: request.Header.Get("X-Broker-Idempotency-Key"), Digest: hex.EncodeToString(digest[:]), Size: int64(len(content)),
 				MediaType: request.Header.Get("Content-Type"), ExpiresAt: time.Now().Add(time.Hour).Unix()})
 		case "/api/agent/v1/streams/stream_012345678901234567890123":
 			writer.Header().Set("Content-Length", stringLength(content))

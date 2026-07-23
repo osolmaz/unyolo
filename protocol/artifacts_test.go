@@ -101,7 +101,7 @@ func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 
 func TestMCPV1ArtifactsAreClosedAndValid(t *testing.T) {
 	files, err := filepath.Glob("mcp-schema/*.schema.json")
-	if err != nil || len(files) != 3 {
+	if err != nil || len(files) != 4 {
 		t.Fatalf("MCP schemas = %v, %v", files, err)
 	}
 	for _, path := range files {

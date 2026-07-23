@@ -305,7 +305,7 @@ func grantMatches(registry Registry, grant Grant, request Request) bool {
 	if grant.Client != request.Client || grant.Operation != request.Operation {
 		return false
 	}
-	if !targetEqual(grant.Target, request.Target) {
+	if !grantTargetMatches(registry, grant.Target, request.Target) {
 		return false
 	}
 	if !grantAttrsMatch(registry, grant.Attrs, request.Attrs) {
@@ -346,10 +346,28 @@ func grantAttrConstraintMatches(spec AttrSpec, allowed, values []string) bool {
 	return allValuesMatch(spec.GrantMatch, allowed, values)
 }
 
-func targetEqual(left Target, right Target) bool {
-	return left.Kind == right.Kind && stringMapsEqual(left.Fields, right.Fields)
+func grantTargetMatches(registry Registry, constraint Target, target Target) bool {
+	if constraint.Kind != target.Kind {
+		return false
+	}
+	spec, known := registry.Targets[target.Kind]
+	if !known || !requiredGrantTargetFieldsPresent(spec, constraint.Fields) {
+		return false
+	}
+	for name, patterns := range constraint.Fields {
+		field, known := spec.Fields[name]
+		if !known || !allValuesMatch(field.Match, patterns, target.Fields[name]) {
+			return false
+		}
+	}
+	return true
 }
 
-func stringMapsEqual(left, right map[string][]string) bool {
-	return copyx.StringSliceMapsEqual(left, right)
+func requiredGrantTargetFieldsPresent(spec TargetSpec, fields map[string][]string) bool {
+	for name, field := range spec.Fields {
+		if field.Required && len(fields[name]) == 0 {
+			return false
+		}
+	}
+	return true
 }

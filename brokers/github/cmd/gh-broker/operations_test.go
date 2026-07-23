@@ -18,7 +18,6 @@ import (
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/operation/payload"
 )
 
@@ -220,7 +219,7 @@ func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
 				t.Errorf("upload body = %q headers = %v", body, request.Header)
 			}
 			writer.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(writer).Encode(streamstore.Reference{ID: streamID, Owner: "bob", Purpose: operation, RequestKey: "asset-request",
+			_ = json.NewEncoder(writer).Encode(agentv1.StreamReference{ID: streamID, Owner: "bob", Purpose: operation, TransferID: "asset-request",
 				Digest: hex.EncodeToString(digest[:]), Size: int64(len(content)), MediaType: "application/octet-stream", ExpiresAt: time.Now().Add(time.Hour).Unix()})
 		case request.Method == http.MethodPost && request.URL.Path == "/api/agent/v1/operations":
 			submitted, _ = io.ReadAll(request.Body)

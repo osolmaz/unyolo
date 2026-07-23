@@ -202,54 +202,51 @@ func policyAllowsRepositoryResult(client string, pol policy.Policy, target polic
 	if authority == nil {
 		return false
 	}
-	return reservedRepositoryGrantAllows(*authority, client, operation, target, validator, now)
+	return reservedResultGrantAllows(*authority, request, pol, validator, now)
 }
 
-func reservedRepositoryGrantAllows(grant grants.Grant, client string, operation policy.Operation, target policy.Target,
+func reservedResultGrantAllows(grant grants.Grant, request policy.Request, pol policy.Policy,
 	validator hfplan.Validator, now time.Time) bool {
-	if !validReservedRepositoryGrant(grant, client, operation, validator, now) {
+	if !validReservedResultGrant(grant, request.Client, request.Operation, validator, now) {
 		return false
 	}
 	authorized, err := hfgrant.PolicyTarget(grant)
 	if err != nil {
 		return false
 	}
-	return repositoryAuthorityContains(authorized, target, operation)
+	authorized = resultGrantTarget(authorized, request.Operation)
+	rule := policy.GeneratedGrantRule(grant.ID, grant.Client, request.Operation, authorized, grant.ExpiresAt, 1)
+	decision := pol.Decide(request, []policy.Rule{rule}, now, false)
+	return decision.GrantID == grant.ID
 }
 
-func validReservedRepositoryGrant(grant grants.Grant, client string, operation policy.Operation,
+func resultGrantTarget(target policy.Target, operation policy.Operation) policy.Target {
+	if operation == policy.OpRepoTreeList {
+		target.Paths = recursiveResultScopes(target.Paths)
+	}
+	if operation == policy.OpBucketObjectList {
+		target.Keys = recursiveResultScopes(target.Keys)
+	}
+	return target
+}
+
+func recursiveResultScopes(values []string) []string {
+	result := make([]string, len(values))
+	for index, value := range values {
+		if strings.HasSuffix(value, "/**") {
+			result[index] = value
+		} else {
+			result[index] = value + "/**"
+		}
+	}
+	return result
+}
+
+func validReservedResultGrant(grant grants.Grant, client string, operation policy.Operation,
 	validator hfplan.Validator, now time.Time) bool {
 	return grant.Status == grants.StatusActive && !grant.ReservationRetained && grant.ReservedCount > 0 &&
 		grant.Client == client && grant.Operation == string(operation) && runtimeWindowGrant(grant) &&
 		now.Before(grant.ExpiresAt) && validator.ValidateExecution(grant) == nil
-}
-
-func repositoryAuthorityContains(authorized, target policy.Target, operation policy.Operation) bool {
-	if !sameRepositoryAuthority(authorized, target) {
-		return false
-	}
-	if operation != policy.OpRepoTreeList || len(authorized.Paths) == 0 {
-		return true
-	}
-	return repositoryTreeAuthorityContains(authorized.Paths, target.Paths)
-}
-
-func sameRepositoryAuthority(authorized, target policy.Target) bool {
-	return authorized.Kind == target.Kind && authorized.Owner == target.Owner && authorized.Type == target.Type &&
-		(authorized.Name == "*" || authorized.Name == target.Name)
-}
-
-func repositoryTreeAuthorityContains(prefixes, paths []string) bool {
-	if len(paths) != 1 {
-		return false
-	}
-	for _, prefix := range prefixes {
-		prefix = strings.TrimSuffix(prefix, "/")
-		if paths[0] == prefix || strings.HasPrefix(paths[0], prefix+"/") {
-			return true
-		}
-	}
-	return false
 }
 
 func repoKey(repo apiRepoBody) string {

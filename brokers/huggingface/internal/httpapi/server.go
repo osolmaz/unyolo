@@ -34,12 +34,14 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xetuploader"
 	"github.com/osolmaz/brokerkit/credential/provider"
 	"github.com/osolmaz/brokerkit/credential/store"
 	"github.com/osolmaz/brokerkit/git/server"
 	"github.com/osolmaz/brokerkit/internal/slicex"
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
 	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/operation/payload"
 	"github.com/osolmaz/brokerkit/operator/api"
 	"github.com/osolmaz/brokerkit/telemetry/audit"
@@ -108,6 +110,7 @@ type Server struct {
 	operationRuntime    *operations.Runtime
 	hubClient           *hubclient.Client
 	sealedStore         *sealedstore.Store
+	streamStore         *streamstore.Store
 	sealedPayloads      *sealedpayload.Service
 	credentialStore     *credentialstore.Store
 	agentAPI            *agentapi.Handler
@@ -230,6 +233,7 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 		return nil, err
 	}
 	server.startGrantNotificationSweeper(lifecycleContext)
+	server.startStreamSweeper(lifecycleContext)
 	server.sealedPayloads.Start(lifecycleContext)
 	server.operationRuntime.Start(lifecycleContext)
 	go func() {
@@ -368,6 +372,7 @@ type serverResources struct {
 	inferenceTransport  *http.Transport
 	database            *state.Database
 	sealedPayloadStore  *sealedstore.Store
+	streamStore         *streamstore.Store
 	credentialSlots     *credentialstore.Store
 	grantStore          *grants.Store
 	plans               *hfplan.Store
@@ -418,6 +423,10 @@ func (r *serverResources) configureStores(opts Options) error {
 	if err != nil {
 		return err
 	}
+	r.streamStore, err = streamstore.Open(opts.Config.StateDir)
+	if err != nil {
+		return err
+	}
 	r.credentialSlots, err = credentialstore.Open(opts.Config.StateDir)
 	if err != nil {
 		return err
@@ -442,7 +451,11 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 	authorize := func(client string, operation policy.Operation, target policy.Target, authority *grants.Grant) bool {
 		return policyAllowsRepositoryResult(client, opts.Scope, target, operation, authority, r.planValidator, opts.Now())
 	}
-	r.operationRegistry, err = newOperationRegistry(r.hub, upstream.String(), r.sealedPayloadStore, r.credentialSlots, authorize)
+	uploader, err := xetuploader.New(opts.Config.XetPython, upstream.String(), opts.Config.HFToken, opts.Config.HFTimeout*10)
+	if err != nil {
+		return err
+	}
+	r.operationRegistry, err = newOperationRegistry(r.hub, upstream.String(), r.sealedPayloadStore, r.streamStore, r.credentialSlots, uploader, authorize)
 	if err != nil {
 		return err
 	}
@@ -463,8 +476,8 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 	return nil
 }
 
-func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store, authorize operations.RepositoryAuthorization) (*operations.Registry, error) {
-	providerAdapters, err := providerAdapters(hub, upstream, sealed, credentialSlots, authorize)
+func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, streams *streamstore.Store, credentialSlots *credentialstore.Store, uploader *xetuploader.Uploader, authorize operations.RepositoryAuthorization) (*operations.Registry, error) {
+	providerAdapters, err := providerAdapters(hub, upstream, sealed, streams, credentialSlots, uploader, authorize)
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +491,7 @@ func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealed
 	return registry, nil
 }
 
-func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, credentialSlots *credentialstore.Store, authorize operations.RepositoryAuthorization) ([]operations.Adapter, error) {
+func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, streams *streamstore.Store, credentialSlots *credentialstore.Store, uploader *xetuploader.Uploader, authorize operations.RepositoryAuthorization) ([]operations.Adapter, error) {
 	factories := []func() ([]operations.Adapter, error){
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryReadAdapters(hub, authorize) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryAdapters(hub, upstream) },
@@ -486,7 +499,14 @@ func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstor
 		func() ([]operations.Adapter, error) { return operations.NewRefsAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewSpaceAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewBoundAdapters(hub) },
+		func() ([]operations.Adapter, error) {
+			return operations.NewBucketReadAdapters(hub, authorize, streams, time.Now)
+		},
 		func() ([]operations.Adapter, error) { return operations.NewBucketAdapters(hub) },
+		func() ([]operations.Adapter, error) {
+			adapter, err := operations.NewBucketObjectWriteAdapter(hub, uploader, streams, time.Now)
+			return singleAdapter(adapter, err)
+		},
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryContentAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewSealedBoundAdapters(hub, sealed) },
 		func() ([]operations.Adapter, error) {
@@ -503,6 +523,13 @@ func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstor
 		adapters = append(adapters, next...)
 	}
 	return adapters, nil
+}
+
+func singleAdapter(adapter operations.Adapter, err error) ([]operations.Adapter, error) {
+	if err != nil {
+		return nil, err
+	}
+	return []operations.Adapter{adapter}, nil
 }
 
 func (r *serverResources) newServer(opts Options, upstream, routerUpstream *url.URL, auditLogger audit.Recorder) *Server {
@@ -530,6 +557,7 @@ func (r *serverResources) newServer(opts Options, upstream, routerUpstream *url.
 		operationRegistry:  r.operationRegistry,
 		hubClient:          r.hub,
 		sealedStore:        r.sealedPayloadStore,
+		streamStore:        r.streamStore,
 		credentialStore:    r.credentialSlots,
 		database:           r.database,
 		planValidator:      r.planValidator,
@@ -587,6 +615,8 @@ func newRouter(server *Server) *echo.Echo {
 	router.HidePort = true
 	server.agentAPI.Register(router)
 	router.POST("/api/agent/v1/sealed-payloads", server.uploadSealedPayload)
+	router.POST("/api/agent/v1/streams", server.uploadStream)
+	router.GET("/api/agent/v1/streams/:id", server.downloadStream)
 	router.GET("/healthz", func(c echo.Context) error {
 		c.Response().Header().Set("Content-Type", "application/json")
 		if server.credential != nil {

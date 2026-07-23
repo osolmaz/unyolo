@@ -6,8 +6,8 @@ import (
 )
 
 func TestCustomInputSchemasAreClosedAndComplete(t *testing.T) {
-	if len(customInputSchemaExamples) != 39 {
-		t.Fatalf("custom schema count = %d, want 39", len(customInputSchemaExamples))
+	if len(customInputSchemaExamples) != 44 {
+		t.Fatalf("custom schema count = %d, want 44", len(customInputSchemaExamples))
 	}
 	for operation := range customInputSchemaExamples {
 		schemas, found := CustomInputSchemas(operation)
@@ -17,6 +17,14 @@ func TestCustomInputSchemasAreClosedAndComplete(t *testing.T) {
 	}
 	if _, found := CustomInputSchemas("http.request"); found {
 		t.Fatal("unknown custom operation has schemas")
+	}
+	write, _ := CustomInputSchemas("bucket.object.write")
+	properties := write.Arguments["properties"].(map[string]any)
+	if properties["path"] == nil || properties["public"] != nil || properties["stream_input"] != nil {
+		t.Fatalf("bucket write public arguments = %#v", properties)
+	}
+	if BucketStreamInputSchema()["additionalProperties"] != false {
+		t.Fatal("bucket stream input schema is not closed")
 	}
 }
 

@@ -33,10 +33,20 @@ const (
 
 // Profile is the operator-editable input to a provider-owned policy renderer.
 type Profile struct {
-	Version          int      `json:"version"`
-	Preset           string   `json:"preset"`
-	Clients          []string `json:"clients"`
-	DeniedOperations []string `json:"denied_operations"`
+	Version          int               `json:"version"`
+	Preset           string            `json:"preset"`
+	Clients          []string          `json:"clients"`
+	DeniedOperations []string          `json:"denied_operations"`
+	ProtectedTargets []ProtectedTarget `json:"protected_targets,omitempty"`
+}
+
+// ProtectedTarget is one exact provider resource that a generated policy must
+// deny regardless of operation defaults.
+type ProtectedTarget struct {
+	Kind  string `json:"kind"`
+	Type  string `json:"type,omitempty"`
+	Owner string `json:"owner"`
+	Name  string `json:"name"`
 }
 
 // Operation is the provider-neutral authorization identity of one operation.
@@ -107,6 +117,11 @@ type Renderer interface {
 	Operations() ([]Operation, error)
 	RenderPolicy(Profile, []EffectiveOperation) ([]byte, error)
 	ValidatePolicy([]byte) error
+}
+
+// ProfileValidator opts a provider into protected-target profile fields.
+type ProfileValidator interface {
+	ValidateProfile(Profile) error
 }
 
 func NewProfile(renderer Renderer, clients, deniedOperations []string) Profile {
@@ -339,11 +354,8 @@ func invalidCatalogOperation(operation Operation, previous string) bool {
 }
 
 func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool, dropUnknown bool) (Profile, error) {
-	if profile.Version != ProfileVersion {
-		return Profile{}, fmt.Errorf("policy profile version must be %d", ProfileVersion)
-	}
-	if profile.Preset != renderer.PresetName() {
-		return Profile{}, fmt.Errorf("unknown %s policy preset %q", renderer.ProviderID(), profile.Preset)
+	if err := validateProfileIdentity(renderer, profile); err != nil {
+		return Profile{}, err
 	}
 	clients, err := normalizeExactValues("clients", profile.Clients, false)
 	if err != nil {
@@ -353,16 +365,38 @@ func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool,
 	if err != nil {
 		return Profile{}, err
 	}
+	profile, err = normalizeProtectedProfile(renderer, profile)
+	if err != nil {
+		return Profile{}, err
+	}
+	kept, err := filterKnownDeniedOperations(denied, known, dropUnknown)
+	if err != nil {
+		return Profile{}, err
+	}
+	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(kept)
+	return profile, nil
+}
+
+func validateProfileIdentity(renderer Renderer, profile Profile) error {
+	if profile.Version != ProfileVersion {
+		return fmt.Errorf("policy profile version must be %d", ProfileVersion)
+	}
+	if profile.Preset != renderer.PresetName() {
+		return fmt.Errorf("unknown %s policy preset %q", renderer.ProviderID(), profile.Preset)
+	}
+	return nil
+}
+
+func filterKnownDeniedOperations(denied []string, known map[string]bool, dropUnknown bool) ([]string, error) {
 	kept := denied[:0]
 	for _, operation := range denied {
 		if known[operation] {
 			kept = append(kept, operation)
 		} else if !dropUnknown {
-			return Profile{}, fmt.Errorf("denied_operations contains unknown operation %q", operation)
+			return nil, fmt.Errorf("denied_operations contains unknown operation %q", operation)
 		}
 	}
-	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(kept)
-	return profile, nil
+	return kept, nil
 }
 
 func normalizeInstalledForManifest(renderer Renderer, profile Profile, operations []Operation, manifest Manifest) (Profile, error) {
@@ -400,7 +434,63 @@ func normalizeProfileFields(renderer Renderer, profile Profile) (Profile, error)
 		return Profile{}, err
 	}
 	profile.Clients, profile.DeniedOperations = clients, slicex.NonNil(denied)
+	return normalizeProtectedProfile(renderer, profile)
+}
+
+func normalizeProtectedProfile(renderer Renderer, profile Profile) (Profile, error) {
+	protected, err := normalizeProtectedTargets(profile.ProtectedTargets)
+	if err != nil {
+		return Profile{}, err
+	}
+	profile.ProtectedTargets = protected
+	validator, supported := renderer.(ProfileValidator)
+	if !supported && len(protected) > 0 {
+		return Profile{}, fmt.Errorf("%s policy profiles do not support protected targets", renderer.ProviderID())
+	}
+	if supported {
+		if err := validator.ValidateProfile(profile); err != nil {
+			return Profile{}, err
+		}
+	}
 	return profile, nil
+}
+
+func normalizeProtectedTargets(values []ProtectedTarget) ([]ProtectedTarget, error) {
+	normalized := slices.Clone(values)
+	for _, target := range normalized {
+		if !validProtectedTarget(target) {
+			return nil, errors.New("protected_targets contains an invalid or non-exact target")
+		}
+	}
+	slices.SortFunc(normalized, func(left, right ProtectedTarget) int {
+		return strings.Compare(protectedTargetKey(left), protectedTargetKey(right))
+	})
+	if protectedTargetsContainDuplicate(normalized) {
+		return nil, errors.New("protected_targets contains duplicate targets")
+	}
+	return slicex.NonNil(normalized), nil
+}
+
+func validProtectedTarget(target ProtectedTarget) bool {
+	return validProtectedTargetValue(target.Kind) && (target.Type == "" || validProtectedTargetValue(target.Type)) &&
+		validProtectedTargetValue(target.Owner) && validProtectedTargetValue(target.Name)
+}
+
+func protectedTargetsContainDuplicate(values []ProtectedTarget) bool {
+	for index := 1; index < len(values); index++ {
+		if values[index] == values[index-1] {
+			return true
+		}
+	}
+	return false
+}
+
+func validProtectedTargetValue(value string) bool {
+	return value != "" && len(value) <= 128 && strings.TrimSpace(value) == value && !strings.ContainsAny(value, " \t\r\n/\x00*?")
+}
+
+func protectedTargetKey(target ProtectedTarget) string {
+	return target.Kind + "\x00" + target.Type + "\x00" + target.Owner + "\x00" + target.Name
 }
 
 func normalizeExactValues(field string, values []string, allowEmpty bool) ([]string, error) {

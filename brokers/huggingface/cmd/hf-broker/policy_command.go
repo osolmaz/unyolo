@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
@@ -38,9 +39,13 @@ func runPolicyRender(stdout, stderr io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
+	protectedTargets, err := command.protectedTargets()
+	if err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
 	artifacts, err := policypreset.Render(policypreset.Profile{
 		Version: policypreset.ProfileVersion, Preset: command.preset,
-		Clients: command.clients, DeniedOperations: command.deniedOperations,
+		Clients: command.clients, DeniedOperations: command.deniedOperations, ProtectedTargets: protectedTargets,
 	})
 	if err != nil {
 		return exitError{code: 64, message: err.Error()}
@@ -57,6 +62,8 @@ type policyRenderCommand struct {
 	preset           string
 	clients          stringListFlag
 	deniedOperations stringListFlag
+	protectedBuckets stringListFlag
+	protectedRepos   stringListFlag
 	policyOutput     string
 	profileOutput    string
 	manifestOutput   string
@@ -73,6 +80,8 @@ func parsePolicyRender(stderr io.Writer, args []string) (policyRenderCommand, er
 	fs.StringVar(&command.preset, "preset", policypreset.RequestAllAgentOperations, "Hugging Face policy preset")
 	fs.Var(&clients, "client", "client identity; repeatable")
 	fs.Var(&denied, "deny-operation", "exact operation to deny; repeatable")
+	fs.Var(&command.protectedBuckets, "protect-bucket", "exact OWNER/NAME bucket to deny; repeatable")
+	fs.Var(&command.protectedRepos, "protect-repo", "exact TYPE:OWNER/NAME repository to deny; repeatable")
 	fs.StringVar(&command.policyOutput, "output", "", "scope policy output path")
 	fs.StringVar(&command.profileOutput, "profile-out", "", "policy profile output path")
 	fs.StringVar(&command.manifestOutput, "manifest-out", "", "policy manifest output path")
@@ -86,6 +95,31 @@ func parsePolicyRender(stderr io.Writer, args []string) (policyRenderCommand, er
 	command.clients = defaultPolicyClients(clients)
 	command.deniedOperations = denied
 	return command, nil
+}
+
+func (command policyRenderCommand) protectedTargets() ([]policypreset.ProtectedTarget, error) {
+	targets := make([]policypreset.ProtectedTarget, 0, len(command.protectedBuckets)+len(command.protectedRepos))
+	for _, value := range command.protectedBuckets {
+		owner, name, ok := exactOwnerName(value)
+		if !ok {
+			return nil, errors.New("protect-bucket must be an exact OWNER/NAME")
+		}
+		targets = append(targets, policypreset.ProtectedTarget{Kind: string(policy.KindBucket), Owner: owner, Name: name})
+	}
+	for _, value := range command.protectedRepos {
+		repoType, identity, ok := strings.Cut(value, ":")
+		owner, name, validIdentity := exactOwnerName(identity)
+		if !ok || !validIdentity || !validGrantRepoType(repoType) {
+			return nil, errors.New("protect-repo must be an exact TYPE:OWNER/NAME")
+		}
+		targets = append(targets, policypreset.ProtectedTarget{Kind: string(policy.KindRepo), Type: repoType, Owner: owner, Name: name})
+	}
+	return targets, nil
+}
+
+func exactOwnerName(value string) (string, string, bool) {
+	owner, name, found := strings.Cut(value, "/")
+	return owner, name, found && owner != "" && name != "" && !strings.Contains(name, "/")
 }
 
 func validatePolicyRenderCommand(fs *flag.FlagSet, command policyRenderCommand) error {

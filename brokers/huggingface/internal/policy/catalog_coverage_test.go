@@ -137,6 +137,26 @@ func TestValidateRequestCoversClosedRequestBoundary(t *testing.T) {
 	}
 }
 
+func TestGrantRequestAllowsOnlyBoundedPathAndKeyPrefixes(t *testing.T) {
+	t.Parallel()
+	request := Request{
+		Operation: OpBucketObjectWrite,
+		Target:    Target{Kind: KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/**"}},
+	}
+	if err := ValidateGrantRequest(request); err != nil {
+		t.Fatalf("ValidateGrantRequest() error = %v", err)
+	}
+	if err := ValidateRequest(request); err == nil {
+		t.Fatal("executable request accepted a grant prefix constraint")
+	}
+	for _, key := range []string{"*", "runs/*/file", "runs/../?", strings.Repeat("x", MaxGlobBytes) + "/**"} {
+		request.Target.Keys = []string{key}
+		if err := ValidateGrantRequest(request); err == nil {
+			t.Fatalf("ValidateGrantRequest() accepted %q", key)
+		}
+	}
+}
+
 func TestExactTargetConstraintsRejectEveryUnsafeShape(t *testing.T) {
 	valid := Target{Refs: []string{"refs/heads/main"}, Paths: []string{"README.md"}, Keys: []string{"objects/item"}, Visibility: []string{"private"}}
 	if err := validateExactTargetConstraints(valid); err != nil {
@@ -253,7 +273,7 @@ func TestAttributeAndGrantPolicyBoundaryBranches(t *testing.T) {
 		t.Fatal("request rule accepted missing grant policy")
 	}
 	invalidMode := "invalid"
-	if _, err := normalizeGrantPolicy(&rawGrantPolicy{Mode: &invalidMode}, GrantModeExecution); err == nil {
+	if _, err := normalizeGrantPolicy(&rawGrantPolicy{Mode: &invalidMode}, GrantModeExecution, []Operation{OpRepoCreate}); err == nil {
 		t.Fatal("normalizeGrantPolicy accepted invalid mode")
 	}
 	if got, ok := int64Value(true); ok || got != 0 {

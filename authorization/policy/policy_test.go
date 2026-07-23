@@ -155,6 +155,38 @@ func TestRequestRuleMayAllowUnlimitedUseBudget(t *testing.T) {
 	}
 }
 
+func TestRequestRuleHonorsOperationGrantBounds(t *testing.T) {
+	t.Parallel()
+	registry := testRegistry()
+	registry.Operations["session.shell"] = OperationSpec{
+		TargetKinds:     []string{"user"},
+		Grantable:       true,
+		MaxGrantMinutes: 7 * 24 * 60,
+	}
+	policy, err := Parse([]byte(`{"rules":[{
+		"id":"week","effect":"request","clients":["bob"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"default_minutes":5,"max_minutes":10080,"default_max_uses":1,"max_uses":null}
+	}]}`), registry)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	request := Request{Client: "bob", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}
+	decision := policy.Decide(request, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.MaxMinutes != 10080 || !decision.GrantPolicy.MaxUses.IsUnlimited() {
+		t.Fatalf("decision = %+v", decision)
+	}
+
+	registry.Operations["session.shell"] = OperationSpec{TargetKinds: []string{"user"}, Grantable: true}
+	if _, err := Parse([]byte(`{"rules":[{
+		"id":"too-long","effect":"request","clients":["bob"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"default_minutes":5,"max_minutes":10080}
+	}]}`), registry); err == nil || !strings.Contains(err.Error(), "grant bound") {
+		t.Fatalf("Parse() error = %v, want operation bound", err)
+	}
+}
+
 func TestRequestRuleRejectsUnlimitedDefaultUseBudget(t *testing.T) {
 	t.Parallel()
 	_, err := Parse([]byte(`{"rules":[{
@@ -273,8 +305,34 @@ func TestGrantMatchesValueSetsWithoutOrder(t *testing.T) {
 		}},
 		Attrs: map[string][]string{"paths": {"go.mod", "README.md"}},
 	}
-	if !grantMatches(Registry{}, grant, request) {
+	registry := Registry{Targets: map[string]TargetSpec{"repo": {Fields: map[string]FieldSpec{"refs": {Match: MatchPathGlob}}}}}
+	if !grantMatches(registry, grant, request) {
 		t.Fatal("grantMatches() = false for equivalent reordered value sets")
+	}
+}
+
+func TestGrantTargetScopesMatchConcreteRequestFields(t *testing.T) {
+	registry := Registry{Targets: map[string]TargetSpec{"bucket": {Fields: map[string]FieldSpec{
+		"owner": {Required: true}, "name": {Required: true}, "keys": {Match: MatchRecursivePathGlob},
+	}}}}
+	grant := Grant{Client: "agent", Operation: "bucket.object.write", UsesLeft: 1,
+		Target: Target{Kind: "bucket", Fields: map[string][]string{
+			"owner": {"acme"}, "name": {"artifacts"}, "keys": {"runs/**"},
+		}}}
+	request := Request{Client: grant.Client, Operation: grant.Operation,
+		Target: Target{Kind: "bucket", Fields: map[string][]string{
+			"owner": {"acme"}, "name": {"artifacts"}, "keys": {"runs/live/result.json"},
+		}}}
+	if !grantMatches(registry, grant, request) {
+		t.Fatal("grantMatches() rejected a concrete key within the approved prefix")
+	}
+	request.Target.Fields["keys"] = []string{"private/result.json"}
+	if grantMatches(registry, grant, request) {
+		t.Fatal("grantMatches() accepted a key outside the approved prefix")
+	}
+	delete(grant.Target.Fields, "owner")
+	if grantMatches(registry, grant, request) {
+		t.Fatal("grantMatches() accepted a grant without a required target field")
 	}
 }
 

@@ -17,6 +17,7 @@ func TestPolicyRenderCheckAndDoctorEndToEnd(t *testing.T) {
 	manifestPath := filepath.Join(dir, "policy-manifest.json")
 	args := []string{
 		"policy", "render", "--client", "agent", "--deny-operation", "repo.delete",
+		"--protect-bucket", "acme/mlclaw-state", "--protect-repo", "dataset:acme/private-state",
 		"--profile-out", profilePath, "--output", policyPath, "--manifest-out", manifestPath,
 	}
 	var stdout bytes.Buffer
@@ -30,6 +31,11 @@ func TestPolicyRenderCheckAndDoctorEndToEnd(t *testing.T) {
 		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o644 {
 			t.Fatalf("rendered artifact %s: info=%v err=%v", path, info, err)
 		}
+	}
+	profileData, _ := os.ReadFile(profilePath)
+	policyData, _ := os.ReadFile(policyPath)
+	if !bytes.Contains(profileData, []byte(`"name": "mlclaw-state"`)) || !bytes.Contains(policyData, []byte(`"id": "protected-1-bucket-object-write"`)) || !bytes.Contains(policyData, []byte(`"name": "private-state"`)) {
+		t.Fatal("protected targets are missing from rendered artifacts")
 	}
 	stdout.Reset()
 	if err := runWithArgs(context.Background(), nil, &stdout, ioDiscard{}, []string{"policy", "check", "--file", policyPath}); err != nil {

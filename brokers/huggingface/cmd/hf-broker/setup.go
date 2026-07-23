@@ -32,12 +32,15 @@ var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 type setupSystemdOptions struct {
 	bksetup.SystemdOptions
 	HFTokenFile           string
+	XetPython             string
 	TelegramBotTokenFile  string
 	TelegramChatID        int64
 	Repo                  string
 	RepoType              string
 	PolicyPreset          string
 	DeniedOperations      stringListFlag
+	ProtectedBuckets      stringListFlag
+	ProtectedRepos        stringListFlag
 	ResetDeniedOperations bool
 	PolicyPresetExplicit  bool
 	ReplacePolicy         bool
@@ -111,10 +114,13 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.SetOutput(&flagOutput)
 	bksetup.BindSystemdFlags(fs, &opts.SystemdOptions)
 	fs.StringVar(&opts.HFTokenFile, "hf-token-file", "", "file containing the upstream Hugging Face token")
+	fs.StringVar(&opts.XetPython, "xet-python", "python3", "broker-only Python interpreter containing the pinned hf-xet package")
 	fs.StringVar(&opts.Repo, "repo", "", "allowed Hub repo as owner/name")
 	fs.StringVar(&opts.RepoType, "repo-type", "", "Hub repo type: model, dataset, or space")
 	fs.StringVar(&opts.PolicyPreset, "policy-preset", policypreset.RequestAllAgentOperations, "provider-owned policy preset")
 	fs.Var(&opts.DeniedOperations, "deny-operation", "exact operation to deny in the preset; repeatable")
+	fs.Var(&opts.ProtectedBuckets, "protect-bucket", "exact OWNER/NAME bucket to deny; repeatable")
+	fs.Var(&opts.ProtectedRepos, "protect-repo", "exact TYPE:OWNER/NAME repository to deny; repeatable")
 	fs.BoolVar(&opts.ResetDeniedOperations, "reset-denied-operations", false, "discard installed deny overrides before applying --deny-operation flags")
 	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
@@ -170,6 +176,9 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 func validateSetupRequired(opts setupSystemdOptions) error {
 	if opts.HFTokenFile == "" {
 		return exitError{code: 64, message: "--hf-token-file is required"}
+	}
+	if opts.XetPython == "" || strings.ContainsAny(opts.XetPython, " \t\r\n\x00") {
+		return exitError{code: 64, message: "--xet-python must be one command name or path without whitespace"}
 	}
 	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
 		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}
@@ -233,9 +242,13 @@ func validateSetupPreset(opts setupSystemdOptions) error {
 	if opts.ResetDeniedOperations && !opts.ReplacePolicy {
 		return exitError{code: 64, message: "--reset-denied-operations requires --replace-policy"}
 	}
+	protectedTargets, err := (policyRenderCommand{protectedBuckets: opts.ProtectedBuckets, protectedRepos: opts.ProtectedRepos}).protectedTargets()
+	if err != nil {
+		return exitError{code: 64, message: err.Error()}
+	}
 	if _, err := policypreset.Render(policypreset.Profile{
 		Version: policypreset.ProfileVersion, Preset: opts.PolicyPreset,
-		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations,
+		Clients: []string{opts.ClientName}, DeniedOperations: opts.DeniedOperations, ProtectedTargets: protectedTargets,
 	}); err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
@@ -243,20 +256,30 @@ func validateSetupPreset(opts setupSystemdOptions) error {
 }
 
 func validateSetupNarrowRepo(opts setupSystemdOptions) error {
-	if opts.PolicyPresetExplicit {
-		return exitError{code: 64, message: "--policy-preset cannot be combined with --repo and --repo-type"}
-	}
-	if len(opts.DeniedOperations) > 0 {
-		return exitError{code: 64, message: "--deny-operation requires preset policy mode without --repo"}
-	}
-	if opts.ResetDeniedOperations {
-		return exitError{code: 64, message: "--reset-denied-operations requires preset policy mode without --repo"}
+	if err := validateNarrowRepoPolicyOptions(opts); err != nil {
+		return err
 	}
 	if !validRepo(opts.Repo) {
 		return exitError{code: 64, message: "--repo must be owner/name"}
 	}
 	if !validRepoType(opts.RepoType) {
 		return exitError{code: 64, message: "--repo-type must be model, dataset, or space"}
+	}
+	return nil
+}
+
+func validateNarrowRepoPolicyOptions(opts setupSystemdOptions) error {
+	if opts.PolicyPresetExplicit {
+		return exitError{code: 64, message: "--policy-preset cannot be combined with --repo and --repo-type"}
+	}
+	if len(opts.DeniedOperations) > 0 {
+		return exitError{code: 64, message: "--deny-operation requires preset policy mode without --repo"}
+	}
+	if len(opts.ProtectedBuckets) > 0 || len(opts.ProtectedRepos) > 0 {
+		return exitError{code: 64, message: "protected targets require preset policy mode without --repo"}
+	}
+	if opts.ResetDeniedOperations {
+		return exitError{code: 64, message: "--reset-denied-operations requires preset policy mode without --repo"}
 	}
 	return nil
 }

@@ -85,6 +85,19 @@ type SubmitRequest struct {
 	Reason         string          `json:"reason"`
 }
 
+// StreamReference is the transcript-safe Agent V1 projection of one bounded
+// stream. TransferID binds the stream to the operation's idempotency key.
+type StreamReference struct {
+	ID         string `json:"id"`
+	Owner      string `json:"owner"`
+	Purpose    string `json:"purpose"`
+	TransferID string `json:"transfer_id"`
+	Digest     string `json:"digest"`
+	Size       int64  `json:"size"`
+	MediaType  string `json:"media_type"`
+	ExpiresAt  int64  `json:"expires_at"`
+}
+
 // ListOptions selects one bounded page of operations owned by a client.
 // Cursor values are opaque to callers and are validated by the store.
 type ListOptions struct {

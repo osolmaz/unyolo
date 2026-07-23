@@ -183,7 +183,7 @@ func NewRegistry(adapters ...Adapter) (*Registry, error) {
 // provider data plane and are not advertised as bounded MCP executions.
 func AgentRuntimeBound(descriptor opcatalog.Descriptor) bool {
 	return descriptor.Implementation == opcatalog.StatusImplemented &&
-		(descriptor.ExecutorKind == "inline" || descriptor.ExecutorKind == "credential")
+		(descriptor.ExecutorKind == "inline" || descriptor.ExecutorKind == "credential" || descriptor.ExecutorKind == "bounded-stream")
 }
 
 // ValidateCoverage ensures every catalog entry advertised as an implemented

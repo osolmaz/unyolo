@@ -62,6 +62,7 @@ type Config struct {
 	HFTimeout         time.Duration
 	UpstreamHubURL    string
 	UpstreamRouterURL string
+	XetPython         string
 	TelegramBotToken  string
 	TelegramChatID    int64
 	Admission         admission.Config
@@ -92,6 +93,7 @@ func loadBaseConfig(getenv func(string) string) (Config, error) {
 		StateDir:          brokerEnv(getenv, "STATE_DIR"),
 		UpstreamHubURL:    stringOr(brokerEnv(getenv, "UPSTREAM_HUB_URL"), DefaultUpstreamHubURL),
 		UpstreamRouterURL: stringOr(brokerEnv(getenv, "UPSTREAM_ROUTER_URL"), DefaultUpstreamRouterURL),
+		XetPython:         stringOr(brokerEnv(getenv, "XET_PYTHON"), "python3"),
 	}
 	if cfg.HFToken == "" {
 		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))

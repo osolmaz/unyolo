@@ -185,7 +185,7 @@ func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantReques
 }
 
 func validateGrantTargetForOperation(operation policy.Operation, target policy.Target) error {
-	if err := policy.ValidateRequest(policy.Request{Operation: operation, Target: target}); err != nil {
+	if err := policy.ValidateGrantRequest(policy.Request{Operation: operation, Target: target}); err != nil {
 		return err
 	}
 	return validateGrantTargetRefForOperation(operation, target)

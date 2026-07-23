@@ -16,7 +16,6 @@ import (
 
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/transport/http"
 )
@@ -47,19 +46,19 @@ func (c *Client) UploadSealedPayload(ctx context.Context, operation, requestKey 
 
 // UploadStream sends a caller-bounded stream and validates its operation and
 // retry binding. Providers remain responsible for choosing the byte limit.
-func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaType string, source io.Reader, size, limit int64) (streamstore.Reference, error) {
+func (c *Client) UploadStream(ctx context.Context, operation, requestKey, mediaType string, source io.Reader, size, limit int64) (agentv1.StreamReference, error) {
 	mediaType, ok := canonicalMediaType(mediaType)
 	if !ok || !validStreamUpload(operation, requestKey, mediaType, source, size, limit) {
-		return streamstore.Reference{}, errors.New("stream upload is invalid")
+		return agentv1.StreamReference{}, errors.New("stream upload is invalid")
 	}
 	response, err := c.upload(ctx, c.transfer, "/api/agent/v1/streams", operation, requestKey, io.LimitReader(source, limit+1), size, mediaType)
 	if err != nil {
-		return streamstore.Reference{}, err
+		return agentv1.StreamReference{}, err
 	}
 	defer func() { _ = response.Body.Close() }()
-	var reference streamstore.Reference
+	var reference agentv1.StreamReference
 	if err := decodeTransferReference(response, &reference); err != nil || !validStreamReference(reference, operation, requestKey, mediaType, size) {
-		return streamstore.Reference{}, errors.New("broker returned an invalid stream reference")
+		return agentv1.StreamReference{}, errors.New("broker returned an invalid stream reference")
 	}
 	return reference, nil
 }
@@ -143,8 +142,8 @@ func validStreamUpload(operation, requestKey, mediaType string, source io.Reader
 		strings.TrimSpace(mediaType) != "" && len(mediaType) <= 255
 }
 
-func validStreamReference(reference streamstore.Reference, operation, requestKey, mediaType string, size int64) bool {
-	return reference.ID != "" && reference.Owner != "" && reference.Purpose == operation && reference.RequestKey == requestKey &&
+func validStreamReference(reference agentv1.StreamReference, operation, requestKey, mediaType string, size int64) bool {
+	return reference.ID != "" && reference.Owner != "" && reference.Purpose == operation && reference.TransferID == requestKey &&
 		reference.Size == size && reference.MediaType == mediaType && reference.ExpiresAt > 0 && validSHA256(reference.Digest)
 }
 

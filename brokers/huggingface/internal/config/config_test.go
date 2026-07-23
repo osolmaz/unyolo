@@ -28,7 +28,7 @@ func TestLoadRequiresRuntimeAndAppliesTuningDefaults(t *testing.T) {
 	if cfg.MaxPackBytes != DefaultMaxPackBytes || cfg.HFTimeout != DefaultHFTimeout {
 		t.Fatalf("size/timeout defaults not applied: %+v", cfg)
 	}
-	if cfg.UpstreamHubURL != DefaultUpstreamHubURL || cfg.UpstreamRouterURL != DefaultUpstreamRouterURL {
+	if cfg.UpstreamHubURL != DefaultUpstreamHubURL || cfg.UpstreamRouterURL != DefaultUpstreamRouterURL || cfg.XetPython != "python3" {
 		t.Fatalf("upstream defaults not applied: %+v", cfg)
 	}
 	if len(cfg.Clients) != 1 || cfg.Clients[0].Name != "agent" {
@@ -209,6 +209,7 @@ func TestLoadOverrides(t *testing.T) {
 		"HF_BROKER_HF_TIMEOUT":          "5",
 		"HF_BROKER_UPSTREAM_HUB_URL":    "https://hub.example.test",
 		"HF_BROKER_UPSTREAM_ROUTER_URL": "https://router.example.test",
+		"HF_BROKER_XET_PYTHON":          "/opt/hf-broker/bin/python",
 		"HF_BROKER_TELEGRAM_BOT_TOKEN":  "telegram_token_value",
 		"HF_BROKER_TELEGRAM_CHAT_ID":    "12345",
 	}
@@ -222,7 +223,7 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.MaxPackBytes != 64 || cfg.HFTimeout != 5*time.Second {
 		t.Fatalf("numeric overrides not applied: %+v", cfg)
 	}
-	if cfg.UpstreamHubURL != "https://hub.example.test" || cfg.UpstreamRouterURL != "https://router.example.test" {
+	if cfg.UpstreamHubURL != "https://hub.example.test" || cfg.UpstreamRouterURL != "https://router.example.test" || cfg.XetPython != "/opt/hf-broker/bin/python" {
 		t.Fatalf("upstream overrides not applied: %+v", cfg)
 	}
 	if cfg.TelegramBotToken != "telegram_token_value" || cfg.TelegramChatID != 12345 {

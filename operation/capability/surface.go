@@ -20,6 +20,9 @@ type SurfaceProjection struct {
 
 type SurfaceProjections func(Descriptor) SurfaceProjection
 
+// StreamInputSchema supplies a provider-owned broker stream reference schema.
+type StreamInputSchema func(Descriptor) map[string]any
+
 // SurfaceOptions configures descriptor-driven CLI and MCP generation without
 // embedding provider vocabulary in the shared package.
 type SurfaceOptions struct {
@@ -31,6 +34,7 @@ type SurfaceOptions struct {
 	WindowSubmitsOperation bool
 	MCPToolPrefix          string
 	Projections            SurfaceProjections
+	StreamInputSchema      StreamInputSchema
 }
 
 // AgentFacing returns the descriptors exposed to authenticated agent clients.
@@ -116,6 +120,12 @@ func addExecutionToolProperties(
 ) []string {
 	properties["arguments"] = argumentsSchema
 	required = append(required, "arguments")
+	if options.StreamInputSchema != nil {
+		if streamSchema := options.StreamInputSchema(descriptor); streamSchema != nil {
+			properties["stream_input"] = streamSchema
+			required = append(required, "stream_input")
+		}
+	}
 	if !descriptor.Sealed {
 		return required
 	}

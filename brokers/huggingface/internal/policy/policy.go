@@ -22,7 +22,8 @@ import (
 
 const (
 	DefaultGrantMinutes    = 5
-	MaxGrantMinutes        = 60
+	MaxGrantMinutes        = 7 * 24 * 60
+	MaxRequestTTLMinutes   = 60
 	DefaultGrantUses       = 1
 	MaxGrantUses           = 25
 	DefaultRequestTTL      = 5
@@ -495,6 +496,60 @@ func IsOperation(value string) bool {
 // ValidateRequest checks one exact provider request against the closed
 // operation, target, and attribute vocabulary without making a policy decision.
 func ValidateRequest(req Request) error {
+	return validateScopedRequest(req, validateExactTargetConstraints)
+}
+
+func validatePolicyRequestTarget(req Request) error {
+	if isWildcardRepoList(req) {
+		return validateRepoListTarget(req.Target)
+	}
+	if isWildcardBucketList(req) {
+		return validateBucketListTarget(req.Target)
+	}
+	return validateRequestTarget(req.Target)
+}
+
+func validateRepoListTarget(target Target) error {
+	if !validConcreteRepoType(target.Type) || !validRequestSegment(target.Owner) {
+		return errors.New("invalid repo list target")
+	}
+	return nil
+}
+
+func validateBucketListTarget(target Target) error {
+	if !validRequestSegment(target.Owner) {
+		return errors.New("invalid bucket list target")
+	}
+	return nil
+}
+
+func isWildcardRepoList(req Request) bool {
+	return req.Operation == OpRepoList && req.Target.Kind == KindRepo && req.Target.Name == "*"
+}
+
+func isWildcardBucketList(req Request) bool {
+	return req.Operation == Operation("bucket.list") && req.Target.Kind == KindBucket && req.Target.Name == "*"
+}
+
+func validateExactTargetConstraints(target Target) error {
+	for _, values := range [][]string{target.Refs, target.Paths, target.Keys, target.Visibility} {
+		for _, value := range values {
+			if value == "" || len(value) > MaxGlobBytes || strings.ContainsAny(value, "\x00*?") {
+				return errors.New("target constraints must be exact bounded values")
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateGrantRequest checks a requested grant scope. Repository paths and
+// bucket keys may be exact values or one bounded trailing /** prefix scope;
+// executable operation requests remain exact-only through ValidateRequest.
+func ValidateGrantRequest(req Request) error {
+	return validateScopedRequest(req, validateGrantTargetConstraints)
+}
+
+func validateScopedRequest(req Request, validateConstraints func(Target) error) error {
 	info, ok := operations[req.Operation]
 	if !ok {
 		return errors.New("invalid operation")
@@ -508,35 +563,51 @@ func ValidateRequest(req Request) error {
 	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
 		return err
 	}
-	if err := validateExactTargetConstraints(req.Target); err != nil {
+	if err := validateConstraints(req.Target); err != nil {
 		return err
 	}
 	return hfRegistry().ValidateRequest(AuthorizationRequest(req))
 }
 
-func validatePolicyRequestTarget(req Request) error {
-	if isWildcardRepoList(req) {
-		if !validConcreteRepoType(req.Target.Type) || !validRequestSegment(req.Target.Owner) {
-			return errors.New("invalid repo list target")
-		}
-		return nil
+func validateGrantTargetConstraints(target Target) error {
+	if !validExactGrantConstraints(target.Refs, target.Visibility) {
+		return errors.New("grant refs and visibility constraints must be exact bounded values")
 	}
-	return validateRequestTarget(req.Target)
+	if !validGrantPathConstraints(target.Paths, target.Keys) {
+		return errors.New("grant path and key constraints must be exact values or bounded /** prefixes")
+	}
+	return nil
 }
 
-func isWildcardRepoList(req Request) bool {
-	return req.Operation == OpRepoList && req.Target.Kind == KindRepo && req.Target.Name == "*"
-}
-
-func validateExactTargetConstraints(target Target) error {
-	for _, values := range [][]string{target.Refs, target.Paths, target.Keys, target.Visibility} {
+func validExactGrantConstraints(groups ...[]string) bool {
+	for _, values := range groups {
 		for _, value := range values {
-			if value == "" || len(value) > MaxGlobBytes || strings.ContainsAny(value, "\x00*?") {
-				return errors.New("target constraints must be exact bounded values")
+			if !validExactGrantConstraint(value) {
+				return false
 			}
 		}
 	}
-	return nil
+	return true
+}
+
+func validGrantPathConstraints(groups ...[]string) bool {
+	for _, values := range groups {
+		for _, value := range values {
+			if !validExactGrantConstraint(value) && !validGrantPrefixConstraint(value) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validExactGrantConstraint(value string) bool {
+	return value != "" && len(value) <= MaxGlobBytes && !strings.ContainsAny(value, "\x00*?")
+}
+
+func validGrantPrefixConstraint(value string) bool {
+	prefix, found := strings.CutSuffix(value, "/**")
+	return found && prefix != "" && len(value) <= MaxGlobBytes && !strings.ContainsAny(prefix, "\x00*?")
 }
 
 // Operations returns the complete registered HF operation set.
@@ -1204,7 +1275,7 @@ func parseGrantPolicy(pathName string, effect Effect, ops []Operation, raw *rawG
 	if err := validateGrantableOperations(pathName, ops); err != nil {
 		return nil, err
 	}
-	policy, err := normalizeGrantPolicy(raw, defaultGrantMode(ops))
+	policy, err := normalizeGrantPolicy(raw, defaultGrantMode(ops), ops)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", pathName, err)
 	}
@@ -1241,14 +1312,14 @@ func defaultGrantMode(ops []Operation) GrantMode {
 	return mode
 }
 
-func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode) (GrantPolicy, error) {
-	policy := defaultGrantPolicy(defaultMode)
+func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode, operations []Operation) (GrantPolicy, error) {
+	policy := defaultGrantPolicy(defaultMode, operations)
 	if err := assignGrantMode(&policy, raw.Mode); err != nil {
 		return GrantPolicy{}, err
 	}
 	assignGrantPolicyInts(&policy, raw)
 	defaultGrantMaxUses(&policy, raw)
-	if err := validateGrantDurationPolicy(policy); err != nil {
+	if err := validateGrantDurationPolicy(policy, operations); err != nil {
 		return GrantPolicy{}, err
 	}
 	if policy.Mode == GrantModeExecution {
@@ -1257,11 +1328,11 @@ func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode) (GrantPoli
 	return policy, validateGrantUsePolicy(policy)
 }
 
-func defaultGrantPolicy(mode GrantMode) GrantPolicy {
+func defaultGrantPolicy(mode GrantMode, operations []Operation) GrantPolicy {
 	return GrantPolicy{
 		Mode:              mode,
 		DefaultMinutes:    DefaultGrantMinutes,
-		MaxMinutes:        MaxGrantMinutes,
+		MaxMinutes:        maxGrantMinutesForOperations(operations),
 		RequestTTLMinutes: DefaultRequestTTL,
 		DefaultMaxUses:    DefaultGrantUses,
 		MaxUses:           DefaultGrantUses,
@@ -1299,12 +1370,24 @@ func defaultGrantMaxUses(policy *GrantPolicy, raw *rawGrantPolicy) {
 	}
 }
 
-func validateGrantDurationPolicy(policy GrantPolicy) error {
+func validateGrantDurationPolicy(policy GrantPolicy, operations []Operation) error {
+	maxMinutes := maxGrantMinutesForOperations(operations)
 	return validateGrantPolicyBounds([]grantPolicyBound{
-		{value: policy.DefaultMinutes, min: 1, max: MaxGrantMinutes, message: "default_minutes must be between 1 and %d"},
-		{value: policy.MaxMinutes, min: policy.DefaultMinutes, max: MaxGrantMinutes, message: "max_minutes must be between default_minutes and %d"},
-		{value: policy.RequestTTLMinutes, min: 1, max: MaxGrantMinutes, message: "request_ttl_minutes must be between 1 and %d"},
+		{value: policy.DefaultMinutes, min: 1, max: maxMinutes, message: "default_minutes must be between 1 and %d"},
+		{value: policy.MaxMinutes, min: policy.DefaultMinutes, max: maxMinutes, message: "max_minutes must be between default_minutes and %d"},
+		{value: policy.RequestTTLMinutes, min: 1, max: MaxRequestTTLMinutes, message: "request_ttl_minutes must be between 1 and %d"},
 	})
+}
+
+func maxGrantMinutesForOperations(operations []Operation) int {
+	maximum := MaxGrantMinutes
+	for _, operation := range operations {
+		descriptor, found := opcatalog.ByName(string(operation))
+		if found {
+			maximum = min(maximum, descriptor.ApprovalTTLSeconds/60)
+		}
+	}
+	return maximum
 }
 
 func executionGrantPolicy(policy GrantPolicy) GrantPolicy {

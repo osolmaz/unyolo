@@ -3,6 +3,7 @@ package hubclient
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"regexp"
 	"strings"
@@ -152,9 +153,36 @@ func (b BucketRef) apiPath(suffix ...string) string {
 type BucketInfo struct {
 	ID         string  `json:"id"`
 	Private    *bool   `json:"private"`
-	UpdatedAt  string  `json:"updatedAt"`
+	CreatedAt  string  `json:"createdAt"`
+	UpdatedAt  string  `json:"updatedAt,omitempty"`
 	Size       float64 `json:"size"`
 	TotalFiles float64 `json:"totalFiles"`
+}
+
+// BucketTreeEntry is one bounded file or directory returned by the Hub bucket
+// tree API.
+type BucketTreeEntry struct {
+	Type       string `json:"type"`
+	Path       string `json:"path"`
+	Size       int64  `json:"size,omitempty"`
+	XetHash    string `json:"xetHash,omitempty"`
+	MTime      string `json:"mtime,omitempty"`
+	UploadedAt string `json:"uploadedAt,omitempty"`
+}
+
+// BucketObject is one bounded object read from the Hub content endpoint.
+type BucketObject struct {
+	Path        string
+	Content     []byte
+	ContentType string
+}
+
+// BucketObjectReader is a bounded authenticated object response. The caller
+// must close Body.
+type BucketObjectReader struct {
+	Body        io.ReadCloser
+	Size        int64
+	ContentType string
 }
 
 // BucketBatchOperation is one content-addressed bucket manifest mutation.

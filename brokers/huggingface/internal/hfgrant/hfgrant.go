@@ -21,7 +21,7 @@ import (
 const (
 	DefaultPendingTimeout     = 10 * time.Minute
 	DefaultDuration           = 5 * time.Minute
-	MaxDuration               = time.Hour
+	MaxDuration               = 7 * 24 * time.Hour
 	DefaultMaxUses            = 1
 	MaxUses                   = 25
 	DefaultReservationTimeout = 5 * time.Minute
@@ -173,7 +173,7 @@ func canonicalTargetFields(input Input) (map[string][]string, error) {
 		return fields, nil
 	}
 	target := *input.PolicyTarget
-	if err := hfpolicy.ValidateRequest(hfpolicy.Request{Operation: hfpolicy.Operation(input.Operation), Target: target, Attrs: input.Attrs}); err != nil {
+	if err := hfpolicy.ValidateGrantRequest(hfpolicy.Request{Operation: hfpolicy.Operation(input.Operation), Target: target, Attrs: input.Attrs}); err != nil {
 		return nil, err
 	}
 	fields := map[string][]string{targetKind: {string(target.Kind)}, targetOwner: {target.Owner}, targetName: {target.Name}}
@@ -338,7 +338,7 @@ func PolicyTarget(grant grants.Grant) (hfpolicy.Target, error) {
 		Owner: bkpolicy.FirstValue(fields[targetOwner]), Name: bkpolicy.FirstValue(fields[targetName]),
 		Refs: append([]string(nil), fields[targetRefs]...), Paths: append([]string(nil), fields[targetPaths]...),
 		Keys: append([]string(nil), fields[targetKeys]...), Visibility: append([]string(nil), fields[targetVisibility]...)}
-	if err := hfpolicy.ValidateRequest(hfpolicy.Request{Operation: hfpolicy.Operation(grant.Operation), Target: target}); err != nil {
+	if err := hfpolicy.ValidateGrantRequest(hfpolicy.Request{Operation: hfpolicy.Operation(grant.Operation), Target: target}); err != nil {
 		return hfpolicy.Target{}, fmt.Errorf("stored grant target is invalid: %w", err)
 	}
 	return target, nil

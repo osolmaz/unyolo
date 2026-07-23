@@ -463,6 +463,52 @@ func TestBucketWindowGrantPersistsExactKeyScope(t *testing.T) {
 	}
 }
 
+func TestReservedBucketListGrantFiltersObjectsOutsideKeyScope(t *testing.T) {
+	policyJSON, _ := json.Marshal(map[string]any{"rules": []any{map[string]any{
+		"id": "list-runs", "effect": "request", "clients": []string{"agent"}, "operations": []string{"bucket.object.list"},
+		"targets":      []any{map[string]any{"kind": "bucket", "owner": "acme", "name": "artifacts", "keys": []string{"runs/**"}}},
+		"grant_policy": map[string]any{"mode": "window", "default_minutes": 5, "max_minutes": 5, "request_ttl_minutes": 5, "default_max_uses": 1, "max_uses": 2},
+	}}})
+	scp, err := policy.Parse(policyJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notifier := &captureGrantNotifier{}
+	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	response, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(
+		`{"operation":"bucket.object.list","target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/**"]},"reason":"inspect run outputs","client_request_id":"bucket-list-runs"}`))
+	if response.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
+		t.Fatalf("grant request = %d %s; notifications=%d", response.StatusCode, body, len(notifier.messages))
+	}
+	created := decodeAPIGrantResponse(t, body)
+	decision := handler.handleTelegramDecision(t.Context(), telegramGrantDecision(notify.ActionApprove, notifier.messages[0]))
+	if decision.Answer != notify.AnswerApproved || decision.Retry {
+		t.Fatalf("approval = %+v", decision)
+	}
+	reserved, err := handler.grants.ReserveUse(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allows := func(key string) bool {
+		return policyAllowsRepositoryResult("agent", handler.policy, policy.Target{
+			Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{key},
+		}, policy.OpBucketObjectList, &reserved, handler.planValidator, handler.utcNow())
+	}
+	if !allows("runs/result.json") || allows("secret/token.txt") {
+		t.Fatal("reserved bucket list grant did not preserve its runs/** key scope")
+	}
+	if _, err := handler.grants.ReleaseUse(created.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAPIGrantsUseJSendAndClientScopedReads(t *testing.T) {
 	dir := t.TempDir()
 	notifier := &captureGrantNotifier{}

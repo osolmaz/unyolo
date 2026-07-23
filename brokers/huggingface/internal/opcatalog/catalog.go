@@ -100,6 +100,9 @@ func Validate(values []Descriptor) error {
 }
 
 func validateExecutorBinding(value Descriptor) error {
+	if value.Implementation == StatusProtocol {
+		return fmt.Errorf("HF operation %q has an unresolved protocol placeholder", value.Name)
+	}
 	if value.Implementation != StatusImplemented {
 		return validateUnimplementedExecutor(value)
 	}
@@ -110,6 +113,8 @@ func validateExecutorBinding(value Descriptor) error {
 		return validateCredentialExecutor(value)
 	case "native-protocol":
 		return validateNativeExecutor(value)
+	case "bounded-stream":
+		return validateBoundedStreamExecutor(value)
 	default:
 		return fmt.Errorf("HF operation %q has no valid executor binding", value.Name)
 	}
@@ -139,6 +144,13 @@ func validateCredentialExecutor(value Descriptor) error {
 func validateNativeExecutor(value Descriptor) error {
 	if value.AuthorizationMode != ModeWindow {
 		return fmt.Errorf("HF operation %q has an invalid native protocol executor", value.Name)
+	}
+	return nil
+}
+
+func validateBoundedStreamExecutor(value Descriptor) error {
+	if value.AuthorizationMode != ModeWindow || value.Sealed || value.CredentialOutputKind != nil {
+		return fmt.Errorf("HF operation %q has an invalid bounded stream executor", value.Name)
 	}
 	return nil
 }

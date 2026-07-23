@@ -184,9 +184,13 @@ func renderSetupPolicy(plan systemdPlan) (setupPolicyFiles, error) {
 	if err != nil {
 		return setupPolicyFiles{}, err
 	}
+	protectedTargets, err := setupProtectedTargets(plan)
+	if err != nil {
+		return setupPolicyFiles{}, err
+	}
 	artifacts, err := policypreset.Render(policypreset.Profile{
 		Version: policypreset.ProfileVersion, Preset: plan.opts.PolicyPreset,
-		Clients: []string{plan.opts.ClientName}, DeniedOperations: deniedOperations,
+		Clients: []string{plan.opts.ClientName}, DeniedOperations: deniedOperations, ProtectedTargets: protectedTargets,
 	})
 	if err != nil {
 		return setupPolicyFiles{}, err
@@ -219,6 +223,54 @@ func setupDeniedOperations(plan systemdPlan) ([]string, error) {
 		return nil, fmt.Errorf("parse installed policy profile: %w", err)
 	}
 	return mergeDeniedOperations(profile.DeniedOperations, plan.opts.DeniedOperations), nil
+}
+
+func setupProtectedTargets(plan systemdPlan) ([]policypreset.ProtectedTarget, error) {
+	requested, err := (policyRenderCommand{protectedBuckets: plan.opts.ProtectedBuckets, protectedRepos: plan.opts.ProtectedRepos}).protectedTargets()
+	if err != nil {
+		return nil, err
+	}
+	installed, err := installedPolicyArtifacts(plan)
+	if err != nil {
+		return nil, err
+	}
+	if installed == nil {
+		return requested, nil
+	}
+	return mergeInstalledProtectedTargets(plan.opts.ResetDeniedOperations, installed, requested)
+}
+
+func mergeInstalledProtectedTargets(reset bool, installed *installedSetupPolicy,
+	requested []policypreset.ProtectedTarget) ([]policypreset.ProtectedTarget, error) {
+	profile, err := policypreset.ParseInstalledProfile(installed.profile)
+	if err != nil {
+		return nil, fmt.Errorf("parse installed protected targets: %w", err)
+	}
+	if reset {
+		return mergeProtectedTargets(profile.ProtectedTargets, requested), nil
+	}
+	report := policypreset.Check(installed.profile, installed.manifest, installed.scope)
+	if report.Status != policypreset.DriftCurrent && report.Status != policypreset.DriftStale {
+		return nil, fmt.Errorf("installed policy artifacts are %s; protected targets cannot be changed until policy drift is resolved", report.Status)
+	}
+	return mergeProtectedTargets(profile.ProtectedTargets, requested), nil
+}
+
+func mergeProtectedTargets(installed, requested []policypreset.ProtectedTarget) []policypreset.ProtectedTarget {
+	unique := make(map[policypreset.ProtectedTarget]struct{}, len(installed)+len(requested))
+	for _, target := range append(slices.Clone(installed), requested...) {
+		unique[target] = struct{}{}
+	}
+	merged := make([]policypreset.ProtectedTarget, 0, len(unique))
+	for target := range unique {
+		merged = append(merged, target)
+	}
+	slices.SortFunc(merged, func(left, right policypreset.ProtectedTarget) int {
+		leftKey := left.Kind + "\x00" + left.Type + "\x00" + left.Owner + "\x00" + left.Name
+		rightKey := right.Kind + "\x00" + right.Type + "\x00" + right.Owner + "\x00" + right.Name
+		return strings.Compare(leftKey, rightKey)
+	})
+	return merged
 }
 
 type installedSetupPolicy struct {
@@ -372,6 +424,7 @@ func renderEnvFile(plan systemdPlan) string {
 		"HF_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"HF_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
 		"HF_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
+		"HF_BROKER_XET_PYTHON=" + opts.XetPython + "\n" +
 		"HF_BROKER_AGENT_ENDPOINT=activation://agent\n"
 	if opts.GitEndpoint != "" {
 		body += "HF_BROKER_GIT_ENDPOINT=" + opts.GitEndpoint + "\n"
