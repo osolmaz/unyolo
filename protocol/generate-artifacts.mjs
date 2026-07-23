@@ -50,6 +50,7 @@ const specs = [
     input: "protocol/openapi/mcp-v1.yaml",
     outputDir: "protocol/mcp-schema",
     schemas: {
+      Grant: "grant.schema.json",
       Operation: "operation.schema.json",
       OperationPage: "page.schema.json",
       RequestIDConflict: "request-id-conflict.schema.json",

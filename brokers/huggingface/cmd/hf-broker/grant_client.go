@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/authorization/budget"
 	"github.com/osolmaz/brokerkit/authorization/client"
 	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
@@ -52,6 +53,8 @@ type grantRequestOptions struct {
 	target         string
 	repoType       string
 	refs           stringListFlag
+	paths          stringListFlag
+	keys           stringListFlag
 	reason         string
 	idempotencyKey string
 	minutes        int
@@ -175,6 +178,8 @@ func parseGrantRequestOptions(args []string) (grantRequestOptions, error) {
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&options.repoType, "type", options.repoType, "model, dataset, or space")
 	flags.Var(&options.refs, "ref", "exact repository ref; repeatable")
+	flags.Var(&options.paths, "path", "repository path scope; repeatable")
+	flags.Var(&options.keys, "key", "bucket key scope; repeatable")
 	flags.StringVar(&options.reason, "reason", options.reason, "approval reason")
 	flags.StringVar(&options.idempotencyKey, "request-id", "", "stable retry key")
 	flags.IntVar(&options.minutes, "minutes", 0, "requested duration; omit for policy default")
@@ -189,11 +194,21 @@ func parseGrantRequestOptions(args []string) (grantRequestOptions, error) {
 }
 
 func validateGrantRequestOptions(options grantRequestOptions) error {
-	if !policy.IsOperation(options.operation) || options.target == "" {
+	descriptor, found := opcatalog.ByName(options.operation)
+	if !found || options.target == "" {
 		return errors.New("a registered operation and OWNER/NAME target are required")
 	}
-	if !validGrantRepoType(options.repoType) {
+	if descriptor.TargetKind != string(policy.KindRepo) && descriptor.TargetKind != string(policy.KindBucket) {
+		return errors.New("grant request CLI supports repository and bucket operations")
+	}
+	if descriptor.TargetKind == string(policy.KindRepo) && !validGrantRepoType(options.repoType) {
 		return errors.New("type must be model, dataset, or space")
+	}
+	if descriptor.TargetKind == string(policy.KindBucket) && (len(options.refs) > 0 || len(options.paths) > 0) {
+		return errors.New("bucket grant scopes accept keys, not refs or paths")
+	}
+	if descriptor.TargetKind == string(policy.KindRepo) && len(options.keys) > 0 {
+		return errors.New("repository grant scopes do not accept bucket keys")
 	}
 	if options.minutes < 0 || options.waitTimeout <= 0 || strings.TrimSpace(options.reason) == "" {
 		return errors.New("minutes, reason, or wait timeout is invalid")
@@ -232,9 +247,17 @@ func buildHFGrantTarget(options grantRequestOptions) (policy.Target, error) {
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return policy.Target{}, errors.New("target must be OWNER/NAME")
 	}
-	return policy.Target{
-		Kind: policy.KindRepo, Type: policy.RepoType(options.repoType), Owner: owner, Name: name, Refs: options.refs,
-	}, nil
+	descriptor, found := opcatalog.ByName(options.operation)
+	if !found {
+		return policy.Target{}, errors.New("operation is not registered")
+	}
+	target := policy.Target{Kind: policy.TargetKind(descriptor.TargetKind), Owner: owner, Name: name}
+	if target.Kind == policy.KindRepo {
+		target.Type, target.Refs, target.Paths = policy.RepoType(options.repoType), options.refs, options.paths
+	} else if target.Kind == policy.KindBucket {
+		target.Keys = options.keys
+	}
+	return target, nil
 }
 
 func runClientGrantLifecycle(ctx context.Context, client *hfGrantClient, stdout io.Writer, action string, args []string) error {

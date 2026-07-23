@@ -8,12 +8,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/mcp/grant"
 	"github.com/osolmaz/brokerkit/mcp/operation"
 	"github.com/osolmaz/brokerkit/protocol/contract"
 )
@@ -88,6 +90,7 @@ func TestRunAgentClientGrantLifecycle(t *testing.T) {
 			"data": map[string]any{"grant": map[string]any{
 				"id": "grant-1", "status": status, "operation": "git.push.force",
 				"target": map[string]any{"kind": "repo", "type": "dataset", "owner": "acme", "name": "repo"},
+				"attrs":  map[string]any{},
 				"mode":   "window", "minutes": 5, "max_uses": nil, "uses_remaining": 0, "used_count": 0,
 			}},
 		})
@@ -119,7 +122,7 @@ func TestRunAgentClientGrantLifecycle(t *testing.T) {
 		value, err := callMCPTool(t.Context(), mcpClient, mcpToolCall{
 			Name: name, Arguments: json.RawMessage(arguments),
 		})
-		if grant, ok := value.(hfClientGrant); err != nil || !ok || grant.ID != "grant-1" {
+		if grant, ok := value.(mcpgrant.Grant); err != nil || !ok || grant.ID != "grant-1" || grant.APIVersion != mcpgrant.APIVersion {
 			t.Fatalf("%s = %#v, %v", name, value, err)
 		}
 	}
@@ -186,6 +189,36 @@ func TestGrantRequestOptionValidation(t *testing.T) {
 	if err := finite.maxUses.Set("zero"); err == nil {
 		t.Fatal("invalid max uses succeeded")
 	}
+	bucket := grantRequestOptions{
+		operation: "bucket.object.write", target: "acme/artifacts", keys: stringListFlag{"runs/**"},
+		reason: "publish artifacts", waitTimeout: time.Minute, idempotencyKey: "bucket-write",
+	}
+	if err := validateGrantRequestOptions(bucket); err != nil {
+		t.Fatalf("bucket grant options rejected: %v", err)
+	}
+	request, err = buildHFGrantRequest(&bucket)
+	if err != nil || request.Target.Kind != "bucket" || !slices.Equal(request.Target.Keys, []string{"runs/**"}) {
+		t.Fatalf("bucket grant request = %+v, %v", request, err)
+	}
+	bucket.refs = stringListFlag{"refs/heads/main"}
+	if err := validateGrantRequestOptions(bucket); err == nil {
+		t.Fatal("bucket grant accepted repository ref scope")
+	}
+}
+
+func TestDecodeMCPGrantRequestPreservesUnlimitedScopedWrite(t *testing.T) {
+	t.Parallel()
+	input, err := decodeMCPGrantRequest(json.RawMessage(`{
+		"operation":"bucket.object.write",
+		"target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/**"]},
+		"minutes":10080,"max_uses":null,"reason":"publish artifacts","request_id":"bucket-week"
+	}`))
+	if err != nil {
+		t.Fatalf("decodeMCPGrantRequest() error = %v", err)
+	}
+	if !input.MaxUses.Specified || !input.MaxUses.Limit.IsUnlimited() || input.Minutes != 10080 || !slices.Equal(input.Target.Keys, []string{"runs/**"}) {
+		t.Fatalf("input = %+v", input)
+	}
 }
 
 func TestRunMCPListsAndCallsTools(t *testing.T) {
@@ -225,8 +258,8 @@ func TestRunMCPListsAndCallsTools(t *testing.T) {
 
 func TestMCPToolsDoNotTreatEmptyDiscoveryAsFullAccess(t *testing.T) {
 	tools := mcpTools([]string{})
-	if len(tools) != 4 {
-		t.Fatalf("empty discovery tools = %d, want only four grant utilities", len(tools))
+	if len(tools) != 5 {
+		t.Fatalf("empty discovery tools = %d, want only five grant utilities", len(tools))
 	}
 	for _, tool := range tools {
 		name, _ := tool["name"].(string)

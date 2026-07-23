@@ -11,9 +11,13 @@ import (
 
 	"github.com/osolmaz/brokerkit/agent/client"
 	"github.com/osolmaz/brokerkit/agent/mcp"
+	usebudget "github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/brokerkit/mcp/grant"
 	"github.com/osolmaz/brokerkit/mcp/operation"
 	"github.com/osolmaz/brokerkit/mcp/server"
 )
@@ -51,7 +55,11 @@ func newHFMCPBridge(client *agentClient) (*agentmcp.Bridge, error) {
 	if client == nil || client.operations == nil || client.grantClient == nil {
 		return nil, errors.New("HF MCP client is incomplete")
 	}
-	utilities := map[string]func(context.Context, json.RawMessage) (any, error){}
+	utilities := map[string]func(context.Context, json.RawMessage) (any, error){
+		"hf_grant_request": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			return callMCPGrantRequest(ctx, client.grantClient, raw)
+		},
+	}
 	for _, action := range []string{"get", "wait", "cancel", "revoke"} {
 		name := "hf_grant_" + action
 		utilities[name] = func(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -116,11 +124,39 @@ func mcpTools(operations []string) []map[string]any {
 	}
 	tools = filtered
 	return append(tools,
+		map[string]any{"name": "hf_grant_request", "description": "Request a scoped temporary HF Broker grant. This does not execute the operation.", "inputSchema": mcpGrantRequestSchema()},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait briefly for a temporary HF Broker grant decision, then call again if it remains pending.", "inputSchema": mcpIDSchema("grant_id", true)},
 		map[string]any{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_revoke", "description": "Revoke an active temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
 	)
+}
+
+func mcpGrantRequestSchema() map[string]any {
+	stringArray := map[string]any{"type": "array", "maxItems": 32, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 256}}
+	target := map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"kind", "name"},
+		"properties": map[string]any{
+			"kind":  map[string]any{"type": "string", "enum": []string{"repo", "bucket", "inference"}},
+			"type":  map[string]any{"type": "string", "enum": []string{"model", "dataset", "space"}},
+			"owner": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"name":  map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"refs":  stringArray, "paths": stringArray, "keys": stringArray, "visibility": stringArray,
+		},
+	}
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"operation", "target", "reason"},
+		"properties": map[string]any{
+			"operation":    map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"target":       target,
+			"attrs":        map[string]any{"type": "object", "maxProperties": 32},
+			"minutes":      map[string]any{"type": "integer", "minimum": 1, "maximum": 7 * 24 * 60},
+			"max_uses":     map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": 25},
+			"reason":       map[string]any{"type": "string", "minLength": 1, "maxLength": 2000},
+			"request_id":   map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": mcpoperation.MaxWaitSeconds},
+		},
+	}
 }
 
 func mcpIDSchema(idField string, wait bool) map[string]any {
@@ -131,19 +167,85 @@ func mcpIDSchema(idField string, wait bool) map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{idField}, "properties": properties}
 }
 
-func callMCPGrantLifecycle(ctx context.Context, client *hfGrantClient, name string, raw json.RawMessage) (hfClientGrant, error) {
+type mcpGrantRequestInput struct {
+	Operation   string             `json:"operation"`
+	Target      policy.Target      `json:"target"`
+	Attrs       map[string]any     `json:"attrs"`
+	Minutes     int                `json:"minutes"`
+	MaxUses     usebudget.Optional `json:"max_uses,omitempty"`
+	Reason      string             `json:"reason"`
+	RequestID   string             `json:"request_id"`
+	WaitSeconds int                `json:"wait_seconds"`
+}
+
+func callMCPGrantRequest(ctx context.Context, client *hfGrantClient, raw json.RawMessage) (mcpgrant.Grant, error) {
+	input, err := decodeMCPGrantRequest(raw)
+	if err != nil {
+		return mcpgrant.Grant{}, err
+	}
+	requestID, err := mcpoperation.ResolveRequestID(input.RequestID)
+	if err != nil {
+		return mcpgrant.Grant{}, err
+	}
+	request := hfGrantRequest{
+		Operation: policy.Operation(input.Operation), Target: input.Target, Attrs: input.Attrs,
+		Minutes: input.Minutes, Reason: input.Reason, ClientRequestID: requestID,
+	}
+	if input.MaxUses.Specified {
+		request.MaxUses = &input.MaxUses.Limit
+	}
+	grant, err := client.Request(ctx, request)
+	if err == nil && input.WaitSeconds > 0 && grant.Status == string(grants.StatusPending) {
+		grant, err = waitForMCPGrant(ctx, client, grant.ID, time.Duration(input.WaitSeconds)*time.Second)
+	}
+	if err != nil {
+		return mcpgrant.Grant{}, err
+	}
+	return projectHFMCPGrant(grant)
+}
+
+func decodeMCPGrantRequest(raw json.RawMessage) (mcpGrantRequestInput, error) {
+	var input mcpGrantRequestInput
+	if err := decodeMCPArguments(raw, &input); err != nil {
+		return input, err
+	}
+	input.Operation, input.Reason = strings.TrimSpace(input.Operation), strings.TrimSpace(input.Reason)
+	if !policy.IsOperation(input.Operation) || input.Reason == "" || input.Minutes < 0 || input.WaitSeconds < 0 || input.WaitSeconds > mcpoperation.MaxWaitSeconds {
+		return input, errors.New("grant request input is invalid")
+	}
+	if err := policy.ValidateGrantRequest(policy.Request{Operation: policy.Operation(input.Operation), Target: input.Target, Attrs: input.Attrs}); err != nil {
+		return input, err
+	}
+	return input, nil
+}
+
+func projectHFMCPGrant(grant hfClientGrant) (mcpgrant.Grant, error) {
+	return mcpgrant.Project(mcpgrant.Input{
+		ID: grant.ID, RequestID: grant.ClientRequestID, Status: grant.Status, Operation: grant.Operation,
+		Target: grant.Target, Attrs: grant.Attrs, Mode: string(grant.Mode), Minutes: grant.Minutes,
+		MaxUses: grant.MaxUses, UsesRemaining: grant.UsesRemaining, UsedCount: grant.UsedCount,
+		PendingUntil: grant.PendingUntil, ExpiresAt: grant.ExpiresAt,
+	})
+}
+
+func callMCPGrantLifecycle(ctx context.Context, client *hfGrantClient, name string, raw json.RawMessage) (mcpgrant.Grant, error) {
 	input, err := decodeMCPGrantLifecycle(raw)
 	if err != nil {
-		return hfClientGrant{}, err
+		return mcpgrant.Grant{}, err
 	}
 	action := strings.TrimPrefix(name, "hf_grant_")
+	var grant hfClientGrant
 	if action == "wait" {
-		return waitForMCPGrantInput(ctx, client, input)
+		grant, err = waitForMCPGrantInput(ctx, client, input)
+	} else if input.WaitSeconds != 0 {
+		return mcpgrant.Grant{}, errors.New("wait_seconds is valid only for hf_grant_wait")
+	} else {
+		grant, err = performGrantAction(ctx, client, action, input.GrantID, 0)
 	}
-	if input.WaitSeconds != 0 {
-		return hfClientGrant{}, errors.New("wait_seconds is valid only for hf_grant_wait")
+	if err != nil {
+		return mcpgrant.Grant{}, err
 	}
-	return performGrantAction(ctx, client, action, input.GrantID, 0)
+	return projectHFMCPGrant(grant)
 }
 
 type mcpGrantLifecycleInput struct {

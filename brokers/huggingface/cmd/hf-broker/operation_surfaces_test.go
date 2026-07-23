@@ -144,7 +144,7 @@ func TestMCPCompatibilityManifestMatchesCatalog(t *testing.T) {
 	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "huggingface" ||
 		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1"}) ||
 		manifest.AgentFacingOperations != len(agentFacingDescriptors()) || manifest.OperationTools != len(agentFacingDescriptors()) ||
-		manifest.UtilityTools != 4 || !slices.Equal(manifest.ProjectedOperations, projected) ||
+		manifest.UtilityTools != 5 || !slices.Equal(manifest.ProjectedOperations, projected) ||
 		manifest.ProjectedWindowOperations != windows || manifest.UnresolvedCollisions != 0 {
 		t.Fatalf("compatibility manifest drifted: %+v", manifest)
 	}

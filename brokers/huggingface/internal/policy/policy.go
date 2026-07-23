@@ -540,6 +540,56 @@ func validateExactTargetConstraints(target Target) error {
 	return nil
 }
 
+// ValidateGrantRequest checks a requested grant scope. Repository paths and
+// bucket keys may be exact values or one bounded trailing /** prefix scope;
+// executable operation requests remain exact-only through ValidateRequest.
+func ValidateGrantRequest(req Request) error {
+	info, ok := operations[req.Operation]
+	if !ok {
+		return errors.New("invalid operation")
+	}
+	if req.Target.Kind != info.targetKind {
+		return fmt.Errorf("operation %s requires %s target", req.Operation, info.targetKind)
+	}
+	if err := validatePolicyRequestTarget(req); err != nil {
+		return err
+	}
+	if _, err := AttrConstraintsFromValues(req.Attrs); err != nil {
+		return err
+	}
+	if err := validateGrantTargetConstraints(req.Target); err != nil {
+		return err
+	}
+	return hfRegistry().ValidateRequest(AuthorizationRequest(req))
+}
+
+func validateGrantTargetConstraints(target Target) error {
+	for _, values := range [][]string{target.Refs, target.Visibility} {
+		for _, value := range values {
+			if !validExactGrantConstraint(value) {
+				return errors.New("grant refs and visibility constraints must be exact bounded values")
+			}
+		}
+	}
+	for _, values := range [][]string{target.Paths, target.Keys} {
+		for _, value := range values {
+			if !validExactGrantConstraint(value) && !validGrantPrefixConstraint(value) {
+				return errors.New("grant path and key constraints must be exact values or bounded /** prefixes")
+			}
+		}
+	}
+	return nil
+}
+
+func validExactGrantConstraint(value string) bool {
+	return value != "" && len(value) <= MaxGlobBytes && !strings.ContainsAny(value, "\x00*?")
+}
+
+func validGrantPrefixConstraint(value string) bool {
+	prefix, found := strings.CutSuffix(value, "/**")
+	return found && prefix != "" && len(value) <= MaxGlobBytes && !strings.ContainsAny(prefix, "\x00*?")
+}
+
 // Operations returns the complete registered HF operation set.
 func Operations() []Operation {
 	return sortedMapKeys(operations)

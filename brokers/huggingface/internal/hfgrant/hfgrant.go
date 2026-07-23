@@ -173,7 +173,7 @@ func canonicalTargetFields(input Input) (map[string][]string, error) {
 		return fields, nil
 	}
 	target := *input.PolicyTarget
-	if err := hfpolicy.ValidateRequest(hfpolicy.Request{Operation: hfpolicy.Operation(input.Operation), Target: target, Attrs: input.Attrs}); err != nil {
+	if err := hfpolicy.ValidateGrantRequest(hfpolicy.Request{Operation: hfpolicy.Operation(input.Operation), Target: target, Attrs: input.Attrs}); err != nil {
 		return nil, err
 	}
 	fields := map[string][]string{targetKind: {string(target.Kind)}, targetOwner: {target.Owner}, targetName: {target.Name}}
