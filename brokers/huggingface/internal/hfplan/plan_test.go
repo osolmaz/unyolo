@@ -305,7 +305,7 @@ func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
 	}
 	plan := validTestPlan(now)
 	plan.Operation = "repo.contents.read"
-	plan.Target = json.RawMessage(`{"owner":"alice","name":"private"}`)
+	plan.Target = json.RawMessage(`{"kind":"repo","owner":"alice","name":"private"}`)
 	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
 	requirement := func(string) (providercredential.Requirement, bool) {
 		return providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{
@@ -337,9 +337,98 @@ func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
 		t.Fatal("malformed target was accepted")
 	}
 	outside := plan
-	outside.Target = json.RawMessage(`{"owner":"alice","name":"other"}`)
+	outside.Target = json.RawMessage(`{"kind":"repo","owner":"alice","name":"other"}`)
 	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(outside); err == nil {
 		t.Fatal("target outside credential authority was accepted")
+	}
+}
+
+func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
+	now := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
+	snapshot, err := providercredential.Normalize(providercredential.Snapshot{
+		Provider: "huggingface", CredentialKind: "fine_grained_user_token", Subject: "alice",
+		FingerprintSHA256: strings.Repeat("b", 64), Generation: 3, VerifiedAt: now,
+		VerificationState: providercredential.VerificationValid,
+		Capabilities: []providercredential.Capability{
+			{Domain: "bucket", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+				Resource: providercredential.ResourceSelector{Kind: "bucket", Name: "alice/artifacts"}},
+			{Domain: "repo", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+				Resource: providercredential.ResourceSelector{Kind: "repo", Name: "alice/private"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := providercredential.NewService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := FromRequest(grants.Request{
+		Client: "agent", ClientRequestID: "bucket-week", Operation: "bucket.object.write",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
+			"kind": {"bucket"}, "owner": {"alice"}, "name": {"artifacts"}, "keys": {"validation/**"},
+		}},
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: 7 * 24 * time.Hour, MaxUses: 25,
+	}, now)
+	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
+	requirement := func(string) (providercredential.Requirement, bool) {
+		return providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{
+			Permission: "repo.write", MinimumAccessLevel: providercredential.AccessWrite, TargetBinding: "resource",
+		}}}}}, true
+	}
+	validator := Validator{Credential: credential, Requirement: requirement}
+	if err := validator.ValidateCredential(plan); err != nil {
+		t.Fatalf("scoped grant credential = %v", err)
+	}
+	boundRepository := plan
+	boundRepository.Operation = "discussion.comment.create"
+	boundRepository.Target = json.RawMessage(`{"namespace":"alice","repo":"private","repoType":"dataset","num":1}`)
+	boundRepository.Authorization.Target.Fields = map[string][]string{
+		"kind": {"repo"}, "type": {"dataset"}, "owner": {"alice"}, "name": {"private"},
+	}
+	if err := validator.ValidateCredential(boundRepository); err != nil {
+		t.Fatalf("bound repository credential = %v", err)
+	}
+	wrongKind := snapshot
+	wrongKind.Generation++
+	wrongKind.Capabilities = []providercredential.Capability{{
+		Domain: "repo", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+		Resource: providercredential.ResourceSelector{Kind: "repo", Name: "alice/artifacts"},
+	}}
+	wrongKind, err = providercredential.Normalize(wrongKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongCredential, err := providercredential.NewService(wrongKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongPlan := plan
+	wrongPlan.CredentialSelector.Binding = providercredential.Bind(wrongKind)
+	if err := (Validator{Credential: wrongCredential, Requirement: requirement}).ValidateCredential(wrongPlan); err == nil {
+		t.Fatal("repository-scoped credential authorized a bucket grant")
+	}
+	outside := plan
+	outside.Authorization.Target.Fields = cloneValues(plan.Authorization.Target.Fields)
+	outside.Authorization.Target.Fields["owner"] = []string{"bob"}
+	if err := validator.ValidateCredential(outside); err == nil {
+		t.Fatal("grant target outside credential authority was accepted")
+	}
+
+	repository := FromRequest(grants.Request{
+		Client: "agent", ClientRequestID: "force-main", Operation: "git.push.force",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
+			"name": {"dataset/alice/private"}, "refs": {"refs/heads/main"},
+		}},
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: 5 * time.Minute, MaxUses: 1,
+	}, now)
+	repository.CredentialSelector.Binding = providercredential.Bind(snapshot)
+	if err := validator.ValidateCredential(repository); err != nil {
+		t.Fatalf("scoped Git grant credential = %v", err)
+	}
+	repository.Authorization.Target.Fields["name"] = []string{"dataset/bob/private"}
+	if err := validator.ValidateCredential(repository); err == nil {
+		t.Fatal("Git grant target outside credential authority was accepted")
 	}
 }
 

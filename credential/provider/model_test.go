@@ -68,13 +68,22 @@ func TestEvaluationUsesExactTargetsAndCallerTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	requirement := Requirement{AllOf: []AnyOf{{Alternatives: []Need{{Domain: "repo", Permission: "contents", MinimumAccessLevel: AccessRead, TargetBinding: "resource"}}}}}
-	if !CanSatisfy(snapshot, requirement, now) || !EvaluateAt(snapshot, requirement, Target{"resource": "acme/private"}, now).Allowed {
+	covered := Target{"resource": "acme/private", "resource_kind": "repo"}
+	if !CanSatisfy(snapshot, requirement, now) || !EvaluateAt(snapshot, requirement, covered, now).Allowed {
 		t.Fatal("scoped capability should be discoverable and match its exact target")
 	}
-	if EvaluateAt(snapshot, requirement, Target{"resource": "acme/other"}, now).Allowed {
+	if EvaluateAt(snapshot, requirement, Target{"resource": "acme/other", "resource_kind": "repo"}, now).Allowed {
 		t.Fatal("scoped capability matched another target")
 	}
-	if EvaluateAt(snapshot, requirement, Target{"resource": "acme/private"}, expires).Allowed {
+	if EvaluateAt(snapshot, requirement, Target{"resource": "acme/private", "resource_kind": "bucket"}, now).Allowed {
+		t.Fatal("scoped capability matched another resource kind")
+	}
+	untyped := snapshot
+	untyped.Capabilities[0].Resource.Kind = ""
+	if !EvaluateAt(untyped, requirement, Target{"resource": "acme/private"}, now).Allowed {
+		t.Fatal("wildcard resource kind did not match its exact named target")
+	}
+	if EvaluateAt(snapshot, requirement, covered, expires).Allowed {
 		t.Fatal("expired credential was accepted")
 	}
 }
@@ -91,12 +100,12 @@ func TestSecretClears(t *testing.T) {
 }
 
 func TestTargetFromJSON(t *testing.T) {
-	target, err := TargetFromJSON([]byte(`{"owner":"acme","name":"repo","count":2,"empty":""}`))
-	if err != nil || target["resource"] != "acme/repo" || target["count"] != "" {
+	target, err := TargetFromJSON([]byte(`{"kind":"repo","owner":"acme","name":"repo","count":2,"empty":""}`))
+	if err != nil || target["resource"] != "acme/repo" || target["resource_kind"] != "repo" || target["count"] != "" {
 		t.Fatalf("target = %#v, %v", target, err)
 	}
-	target, err = TargetFromJSON([]byte(`{"namespace":"team","repo":"project"}`))
-	if err != nil || target["resource"] != "team/project" {
+	target, err = TargetFromJSON([]byte(`{"kind":"bucket","namespace":"team","repo":"project"}`))
+	if err != nil || target["resource"] != "team/project" || target["resource_kind"] != "bucket" {
 		t.Fatalf("namespace target = %#v, %v", target, err)
 	}
 	for _, invalid := range [][]byte{nil, []byte(`[]`), []byte(`{"owner":"a"} {}`), make([]byte, 64*1024+1)} {

@@ -295,11 +295,85 @@ func (v Validator) ValidateCredential(plan Plan) error {
 		return errors.New("HF credential requirement map is unavailable")
 	}
 	requirement, found := v.Requirement(plan.Operation)
-	target, targetErr := providercredential.TargetFromJSON(plan.Target)
+	target, targetErr := credentialTarget(plan)
 	if !found || targetErr != nil || !v.Credential.Evaluate(requirement, target).Allowed {
 		return errors.New("HF credential does not cover the operation target")
 	}
 	return nil
+}
+
+func credentialTarget(plan Plan) (providercredential.Target, error) {
+	target, err := providercredential.TargetFromJSON(plan.Target)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range []string{"owner", "namespace", "name", "repo"} {
+		addCredentialTargetField(target, plan.Authorization.Target.Fields, name)
+	}
+	addCredentialResource(target, plan.Authorization.Target.Fields)
+	return target, nil
+}
+
+func addCredentialTargetField(target providercredential.Target, fields map[string][]string, name string) {
+	if value := credentialTargetField(fields, name); target[name] == "" && value != "" {
+		target[name] = value
+	}
+}
+
+func credentialTargetField(fields map[string][]string, name string) string {
+	if values := fields[name]; len(values) == 1 {
+		return values[0]
+	}
+	return ""
+}
+
+func addCredentialResource(target providercredential.Target, fields map[string][]string) {
+	owner, name, resourceKind := credentialResourceParts(target, fields)
+	if owner == "" || name == "" || resourceKind == "" {
+		return
+	}
+	resource := owner + "/" + name
+	if target["resource"] == "" {
+		target["resource"] = resource
+	}
+	if target["resource"] == resource && target["resource_kind"] == "" {
+		target["resource_kind"] = resourceKind
+	}
+}
+
+func credentialResourceParts(target providercredential.Target, fields map[string][]string) (string, string, string) {
+	owner := firstCredentialTargetValue(target, "owner", "namespace")
+	name := firstCredentialTargetValue(target, "name", "repo")
+	resourceKind := credentialTargetField(fields, "kind")
+	if resourceKind == "" {
+		resourceKind = target["kind"]
+	}
+	if owner != "" {
+		return owner, name, resourceKind
+	}
+	return credentialRepositoryResource(name)
+}
+
+func firstCredentialTargetValue(target providercredential.Target, names ...string) string {
+	for _, name := range names {
+		if target[name] != "" {
+			return target[name]
+		}
+	}
+	return ""
+}
+
+func credentialRepositoryResource(value string) (string, string, string) {
+	parts := strings.Split(value, "/")
+	if len(parts) != 3 || parts[1] == "" || parts[2] == "" {
+		return "", value, ""
+	}
+	switch hfpolicy.RepoType(parts[0]) {
+	case hfpolicy.TypeModel, hfpolicy.TypeDataset, hfpolicy.TypeSpace, hfpolicy.TypeKernel:
+		return parts[1], parts[2], string(hfpolicy.KindRepo)
+	default:
+		return "", value, ""
+	}
 }
 
 func useConstraintExceeds(constraints grants.ApprovalConstraints, requested usebudget.Limit) bool {
