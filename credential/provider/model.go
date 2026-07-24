@@ -337,7 +337,8 @@ func capabilityMatchesTarget(capability Capability, need Need, target Target) bo
 	if need.TargetBinding == "" || !strings.EqualFold(capability.Resource.Name, target[need.TargetBinding]) {
 		return false
 	}
-	return need.TargetBinding != "resource" || target["resource_kind"] != "" && strings.EqualFold(capability.Resource.Kind, target["resource_kind"])
+	return need.TargetBinding != "resource" || capability.Resource.Kind == "" ||
+		target["resource_kind"] != "" && strings.EqualFold(capability.Resource.Kind, target["resource_kind"])
 }
 
 func capabilityMeetsNeed(capability Capability, need Need) bool {

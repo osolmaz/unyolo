@@ -78,6 +78,11 @@ func TestEvaluationUsesExactTargetsAndCallerTime(t *testing.T) {
 	if EvaluateAt(snapshot, requirement, Target{"resource": "acme/private", "resource_kind": "bucket"}, now).Allowed {
 		t.Fatal("scoped capability matched another resource kind")
 	}
+	untyped := snapshot
+	untyped.Capabilities[0].Resource.Kind = ""
+	if !EvaluateAt(untyped, requirement, Target{"resource": "acme/private"}, now).Allowed {
+		t.Fatal("wildcard resource kind did not match its exact named target")
+	}
 	if EvaluateAt(snapshot, requirement, covered, expires).Allowed {
 		t.Fatal("expired credential was accepted")
 	}
