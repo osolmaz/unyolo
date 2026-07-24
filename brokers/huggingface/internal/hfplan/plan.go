@@ -307,11 +307,21 @@ func credentialTarget(plan Plan) (providercredential.Target, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, values := range plan.Authorization.Target.Fields {
-		if target[name] == "" && len(values) == 1 {
-			target[name] = values[0]
-		}
+	for _, name := range []string{"owner", "namespace", "name", "repo"} {
+		addCredentialTargetField(target, plan.Authorization.Target.Fields, name)
 	}
+	addCredentialResource(target)
+	return target, nil
+}
+
+func addCredentialTargetField(target providercredential.Target, fields map[string][]string, name string) {
+	values := fields[name]
+	if target[name] == "" && len(values) == 1 {
+		target[name] = values[0]
+	}
+}
+
+func addCredentialResource(target providercredential.Target) {
 	owner := target["owner"]
 	if owner == "" {
 		owner = target["namespace"]
@@ -323,7 +333,6 @@ func credentialTarget(plan Plan) (providercredential.Target, error) {
 	if target["resource"] == "" && owner != "" && name != "" {
 		target["resource"] = owner + "/" + name
 	}
-	return target, nil
 }
 
 func useConstraintExceeds(constraints grants.ApprovalConstraints, requested usebudget.Limit) bool {
