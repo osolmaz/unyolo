@@ -349,8 +349,12 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 		Provider: "huggingface", CredentialKind: "fine_grained_user_token", Subject: "alice",
 		FingerprintSHA256: strings.Repeat("b", 64), Generation: 3, VerifiedAt: now,
 		VerificationState: providercredential.VerificationValid,
-		Capabilities: []providercredential.Capability{{Domain: "bucket", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
-			Resource: providercredential.ResourceSelector{Kind: "bucket", Name: "alice/artifacts"}}},
+		Capabilities: []providercredential.Capability{
+			{Domain: "bucket", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+				Resource: providercredential.ResourceSelector{Kind: "bucket", Name: "alice/artifacts"}},
+			{Domain: "repo", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+				Resource: providercredential.ResourceSelector{Kind: "repo", Name: "alice/private"}},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -381,6 +385,22 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 	outside.Authorization.Target.Fields["owner"] = []string{"bob"}
 	if err := validator.ValidateCredential(outside); err == nil {
 		t.Fatal("grant target outside credential authority was accepted")
+	}
+
+	repository := FromRequest(grants.Request{
+		Client: "agent", ClientRequestID: "force-main", Operation: "git.push.force",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
+			"name": {"dataset/alice/private"}, "refs": {"refs/heads/main"},
+		}},
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: 5 * time.Minute, MaxUses: 1,
+	}, now)
+	repository.CredentialSelector.Binding = providercredential.Bind(snapshot)
+	if err := validator.ValidateCredential(repository); err != nil {
+		t.Fatalf("scoped Git grant credential = %v", err)
+	}
+	repository.Authorization.Target.Fields["name"] = []string{"dataset/bob/private"}
+	if err := validator.ValidateCredential(repository); err == nil {
+		t.Fatal("Git grant target outside credential authority was accepted")
 	}
 }
 

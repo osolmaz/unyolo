@@ -330,8 +330,24 @@ func addCredentialResource(target providercredential.Target) {
 	if name == "" {
 		name = target["repo"]
 	}
+	if owner == "" {
+		owner, name = credentialRepositoryResource(name)
+	}
 	if target["resource"] == "" && owner != "" && name != "" {
 		target["resource"] = owner + "/" + name
+	}
+}
+
+func credentialRepositoryResource(value string) (string, string) {
+	parts := strings.Split(value, "/")
+	if len(parts) != 3 || parts[1] == "" || parts[2] == "" {
+		return "", value
+	}
+	switch hfpolicy.RepoType(parts[0]) {
+	case hfpolicy.TypeModel, hfpolicy.TypeDataset, hfpolicy.TypeSpace, hfpolicy.TypeKernel:
+		return parts[1], parts[2]
+	default:
+		return "", value
 	}
 }
 
