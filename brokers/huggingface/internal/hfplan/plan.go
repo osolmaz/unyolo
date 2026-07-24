@@ -295,11 +295,35 @@ func (v Validator) ValidateCredential(plan Plan) error {
 		return errors.New("HF credential requirement map is unavailable")
 	}
 	requirement, found := v.Requirement(plan.Operation)
-	target, targetErr := providercredential.TargetFromJSON(plan.Target)
+	target, targetErr := credentialTarget(plan)
 	if !found || targetErr != nil || !v.Credential.Evaluate(requirement, target).Allowed {
 		return errors.New("HF credential does not cover the operation target")
 	}
 	return nil
+}
+
+func credentialTarget(plan Plan) (providercredential.Target, error) {
+	target, err := providercredential.TargetFromJSON(plan.Target)
+	if err != nil {
+		return nil, err
+	}
+	for name, values := range plan.Authorization.Target.Fields {
+		if target[name] == "" && len(values) == 1 {
+			target[name] = values[0]
+		}
+	}
+	owner := target["owner"]
+	if owner == "" {
+		owner = target["namespace"]
+	}
+	name := target["name"]
+	if name == "" {
+		name = target["repo"]
+	}
+	if target["resource"] == "" && owner != "" && name != "" {
+		target["resource"] = owner + "/" + name
+	}
+	return target, nil
 }
 
 func useConstraintExceeds(constraints grants.ApprovalConstraints, requested usebudget.Limit) bool {

@@ -11,9 +11,14 @@ import (
 
 	"github.com/osolmaz/brokerkit/agent/api"
 	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/brokerkit/authorization/grants"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
+	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
+	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/brokerkit/operator/v1"
 )
 
 func TestCredentialCeilingRejectsBeforeOperationSubmission(t *testing.T) {
@@ -32,6 +37,43 @@ func TestCredentialCeilingRejectsBeforeOperationSubmission(t *testing.T) {
 	}
 	if _, err := server.operations.List("agent", agentv1.ListOptions{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestScopedCredentialAllowsReusableGrantActivation(t *testing.T) {
+	server := newTestHandler(t, t.TempDir(), "http://127.0.0.1:1", &strings.Builder{}, `{"rules":[]}`)
+	t.Cleanup(func() { _ = server.Close() })
+	snapshot, err := providercredential.Normalize(providercredential.Snapshot{
+		Provider: "huggingface", CredentialKind: "fine_grained_user_token", Subject: "alice",
+		FingerprintSHA256: strings.Repeat("e", 64), Generation: 1, VerifiedAt: time.Now().UTC(),
+		VerificationState: providercredential.VerificationValid,
+		Capabilities: []providercredential.Capability{{Domain: "bucket", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+			Resource: providercredential.ResourceSelector{Kind: "bucket", Name: "alice/artifacts"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := providercredential.NewService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.credential = credential
+	server.plans.SetCredentialService(credential)
+	server.planValidator = hfplan.Validator{Store: server.plans, Credential: credential, Requirement: (credentialauth.Adapter{}).Requirement}
+	requested, _, err := hfgrant.Request(server.grants, server.plans, hfgrant.Input{
+		Client: "agent", ClientRequestID: "bucket-week", Operation: "bucket.object.write", Mode: hfgrant.ModeWindow,
+		PolicyTarget: &hfpolicy.Target{Kind: hfpolicy.KindBucket, Owner: "alice", Name: "artifacts", Keys: []string{"validation/**"}},
+		Reason:       "publish artifacts", RequestedDuration: 7 * 24 * time.Hour, MaxUses: 25, MaxUsesSpecified: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := server.control.Decisions.Decide(t.Context(), requested.Grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+		ExpectedRevision: requested.Grant.Revision, IdempotencyKey: "approve-bucket-week",
+		Constraints: &operatorv1.Constraints{DurationSeconds: int64((7 * 24 * time.Hour) / time.Second), MaxUses: usebudget.Finite(25)},
+	})
+	if err != nil || approved.Grant.Status != grants.StatusActive {
+		t.Fatalf("approval = %+v, %v", approved, err)
 	}
 }
 

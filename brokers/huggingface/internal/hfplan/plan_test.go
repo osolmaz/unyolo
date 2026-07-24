@@ -343,6 +343,47 @@ func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
 	}
 }
 
+func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
+	now := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
+	snapshot, err := providercredential.Normalize(providercredential.Snapshot{
+		Provider: "huggingface", CredentialKind: "fine_grained_user_token", Subject: "alice",
+		FingerprintSHA256: strings.Repeat("b", 64), Generation: 3, VerifiedAt: now,
+		VerificationState: providercredential.VerificationValid,
+		Capabilities: []providercredential.Capability{{Domain: "bucket", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+			Resource: providercredential.ResourceSelector{Kind: "bucket", Name: "alice/artifacts"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := providercredential.NewService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := FromRequest(grants.Request{
+		Client: "agent", ClientRequestID: "bucket-week", Operation: "bucket.object.write",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
+			"kind": {"bucket"}, "owner": {"alice"}, "name": {"artifacts"}, "keys": {"validation/**"},
+		}},
+		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: 7 * 24 * time.Hour, MaxUses: 25,
+	}, now)
+	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
+	requirement := func(string) (providercredential.Requirement, bool) {
+		return providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{
+			Permission: "repo.write", MinimumAccessLevel: providercredential.AccessWrite, TargetBinding: "resource",
+		}}}}}, true
+	}
+	validator := Validator{Credential: credential, Requirement: requirement}
+	if err := validator.ValidateCredential(plan); err != nil {
+		t.Fatalf("scoped grant credential = %v", err)
+	}
+	outside := plan
+	outside.Authorization.Target.Fields = cloneValues(plan.Authorization.Target.Fields)
+	outside.Authorization.Target.Fields["owner"] = []string{"bob"}
+	if err := validator.ValidateCredential(outside); err == nil {
+		t.Fatal("grant target outside credential authority was accepted")
+	}
+}
+
 func validTestRequest() grants.Request {
 	return grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: "repo.delete",
