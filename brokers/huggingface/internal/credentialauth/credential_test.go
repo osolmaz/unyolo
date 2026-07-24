@@ -75,7 +75,7 @@ func TestAdapterProjectsScopedCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	requirement, _ := (Adapter{}).Requirement("repo.contents.read")
-	if result := providercredential.Evaluate(snapshot, requirement, providercredential.Target{"owner": "alice", "resource": "alice/private"}); !result.Allowed {
+	if result := providercredential.Evaluate(snapshot, requirement, providercredential.Target{"owner": "alice", "resource": "alice/private", "resource_kind": "repo"}); !result.Allowed {
 		t.Fatalf("scoped repository capability did not match: %+v", result)
 	}
 }

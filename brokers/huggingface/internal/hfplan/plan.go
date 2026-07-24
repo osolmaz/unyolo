@@ -310,44 +310,63 @@ func credentialTarget(plan Plan) (providercredential.Target, error) {
 	for _, name := range []string{"owner", "namespace", "name", "repo"} {
 		addCredentialTargetField(target, plan.Authorization.Target.Fields, name)
 	}
-	addCredentialResource(target)
+	addCredentialResource(target, plan.Authorization.Target.Fields)
 	return target, nil
 }
 
 func addCredentialTargetField(target providercredential.Target, fields map[string][]string, name string) {
-	values := fields[name]
-	if target[name] == "" && len(values) == 1 {
-		target[name] = values[0]
+	if value := credentialTargetField(fields, name); target[name] == "" && value != "" {
+		target[name] = value
 	}
 }
 
-func addCredentialResource(target providercredential.Target) {
-	owner := target["owner"]
-	if owner == "" {
-		owner = target["namespace"]
+func credentialTargetField(fields map[string][]string, name string) string {
+	if values := fields[name]; len(values) == 1 {
+		return values[0]
 	}
-	name := target["name"]
-	if name == "" {
-		name = target["repo"]
-	}
-	if owner == "" {
-		owner, name = credentialRepositoryResource(name)
-	}
-	if target["resource"] == "" && owner != "" && name != "" {
+	return ""
+}
+
+func addCredentialResource(target providercredential.Target, fields map[string][]string) {
+	owner, name, resourceKind := credentialResourceParts(target, fields)
+	if target["resource"] == "" && owner != "" && name != "" && resourceKind != "" {
 		target["resource"] = owner + "/" + name
+		target["resource_kind"] = resourceKind
 	}
 }
 
-func credentialRepositoryResource(value string) (string, string) {
+func credentialResourceParts(target providercredential.Target, fields map[string][]string) (string, string, string) {
+	owner := firstCredentialTargetValue(target, "owner", "namespace")
+	name := firstCredentialTargetValue(target, "name", "repo")
+	resourceKind := credentialTargetField(fields, "kind")
+	if resourceKind == "" {
+		resourceKind = target["kind"]
+	}
+	if owner != "" {
+		return owner, name, resourceKind
+	}
+	return credentialRepositoryResource(name)
+}
+
+func firstCredentialTargetValue(target providercredential.Target, names ...string) string {
+	for _, name := range names {
+		if target[name] != "" {
+			return target[name]
+		}
+	}
+	return ""
+}
+
+func credentialRepositoryResource(value string) (string, string, string) {
 	parts := strings.Split(value, "/")
 	if len(parts) != 3 || parts[1] == "" || parts[2] == "" {
-		return "", value
+		return "", value, ""
 	}
 	switch hfpolicy.RepoType(parts[0]) {
 	case hfpolicy.TypeModel, hfpolicy.TypeDataset, hfpolicy.TypeSpace, hfpolicy.TypeKernel:
-		return parts[1], parts[2]
+		return parts[1], parts[2], string(hfpolicy.KindRepo)
 	default:
-		return "", value
+		return "", value, ""
 	}
 }
 

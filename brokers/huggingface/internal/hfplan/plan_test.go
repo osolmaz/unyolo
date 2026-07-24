@@ -305,7 +305,7 @@ func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
 	}
 	plan := validTestPlan(now)
 	plan.Operation = "repo.contents.read"
-	plan.Target = json.RawMessage(`{"owner":"alice","name":"private"}`)
+	plan.Target = json.RawMessage(`{"kind":"repo","owner":"alice","name":"private"}`)
 	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
 	requirement := func(string) (providercredential.Requirement, bool) {
 		return providercredential.Requirement{AllOf: []providercredential.AnyOf{{Alternatives: []providercredential.Need{{
@@ -337,7 +337,7 @@ func TestValidatorChecksCredentialBindingAndTargetAuthority(t *testing.T) {
 		t.Fatal("malformed target was accepted")
 	}
 	outside := plan
-	outside.Target = json.RawMessage(`{"owner":"alice","name":"other"}`)
+	outside.Target = json.RawMessage(`{"kind":"repo","owner":"alice","name":"other"}`)
 	if err := (Validator{Credential: credential, Requirement: requirement}).ValidateCredential(outside); err == nil {
 		t.Fatal("target outside credential authority was accepted")
 	}
@@ -379,6 +379,25 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 	validator := Validator{Credential: credential, Requirement: requirement}
 	if err := validator.ValidateCredential(plan); err != nil {
 		t.Fatalf("scoped grant credential = %v", err)
+	}
+	wrongKind := snapshot
+	wrongKind.Generation++
+	wrongKind.Capabilities = []providercredential.Capability{{
+		Domain: "repo", Permission: "repo.write", AccessLevel: providercredential.AccessWrite,
+		Resource: providercredential.ResourceSelector{Kind: "repo", Name: "alice/artifacts"},
+	}}
+	wrongKind, err = providercredential.Normalize(wrongKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongCredential, err := providercredential.NewService(wrongKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongPlan := plan
+	wrongPlan.CredentialSelector.Binding = providercredential.Bind(wrongKind)
+	if err := (Validator{Credential: wrongCredential, Requirement: requirement}).ValidateCredential(wrongPlan); err == nil {
+		t.Fatal("repository-scoped credential authorized a bucket grant")
 	}
 	outside := plan
 	outside.Authorization.Target.Fields = cloneValues(plan.Authorization.Target.Fields)

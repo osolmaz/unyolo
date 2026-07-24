@@ -141,6 +141,7 @@ func addConventionalResource(target Target) {
 	}
 	if owner != "" && name != "" {
 		target["resource"] = owner + "/" + name
+		target["resource_kind"] = target["kind"]
 	}
 }
 
@@ -330,7 +331,13 @@ func validNeed(need Need) bool {
 }
 
 func capabilityMatchesTarget(capability Capability, need Need, target Target) bool {
-	return capability.Resource.Name == "" || need.TargetBinding != "" && strings.EqualFold(capability.Resource.Name, target[need.TargetBinding])
+	if capability.Resource.Name == "" {
+		return true
+	}
+	if need.TargetBinding == "" || !strings.EqualFold(capability.Resource.Name, target[need.TargetBinding]) {
+		return false
+	}
+	return need.TargetBinding != "resource" || target["resource_kind"] != "" && strings.EqualFold(capability.Resource.Kind, target["resource_kind"])
 }
 
 func capabilityMeetsNeed(capability Capability, need Need) bool {
