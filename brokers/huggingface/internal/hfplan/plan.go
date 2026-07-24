@@ -329,8 +329,14 @@ func credentialTargetField(fields map[string][]string, name string) string {
 
 func addCredentialResource(target providercredential.Target, fields map[string][]string) {
 	owner, name, resourceKind := credentialResourceParts(target, fields)
-	if target["resource"] == "" && owner != "" && name != "" && resourceKind != "" {
-		target["resource"] = owner + "/" + name
+	if owner == "" || name == "" || resourceKind == "" {
+		return
+	}
+	resource := owner + "/" + name
+	if target["resource"] == "" {
+		target["resource"] = resource
+	}
+	if target["resource"] == resource && target["resource_kind"] == "" {
 		target["resource_kind"] = resourceKind
 	}
 }

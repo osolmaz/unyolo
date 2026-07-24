@@ -305,7 +305,7 @@ func (s *Server) agentLifecycleContext(fallback context.Context) context.Context
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {
 	if s.credential != nil {
 		requirement, found := (credentialauth.Adapter{}).Requirement(request.Operation)
-		target, err := providercredential.TargetFromJSON(request.Target)
+		target, err := operationCredentialTarget(request.Operation, request.Target)
 		if !found || err != nil {
 			return agentv1.Operation{}, false, operationAPIError(http.StatusBadRequest, "operation_input_invalid", "Operation credential requirement is unavailable")
 		}
@@ -314,6 +314,21 @@ func (s *Server) submitAgentOperation(ctx context.Context, client string, reques
 		}
 	}
 	return s.operationRuntime.Submit(s.agentLifecycleContext(ctx), client, request)
+}
+
+func operationCredentialTarget(operation string, raw json.RawMessage) (providercredential.Target, error) {
+	target, err := providercredential.TargetFromJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	descriptor, found := opcatalog.ByName(operation)
+	if !found {
+		return nil, errors.New("operation credential target kind is unavailable")
+	}
+	if target["resource"] != "" {
+		target["resource_kind"] = descriptor.TargetKind
+	}
+	return target, nil
 }
 
 func (s *Server) discoverAgent(_ string) agentv1.Descriptor {

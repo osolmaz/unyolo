@@ -380,6 +380,15 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 	if err := validator.ValidateCredential(plan); err != nil {
 		t.Fatalf("scoped grant credential = %v", err)
 	}
+	boundRepository := plan
+	boundRepository.Operation = "discussion.comment.create"
+	boundRepository.Target = json.RawMessage(`{"namespace":"alice","repo":"private","repoType":"dataset","num":1}`)
+	boundRepository.Authorization.Target.Fields = map[string][]string{
+		"kind": {"repo"}, "type": {"dataset"}, "owner": {"alice"}, "name": {"private"},
+	}
+	if err := validator.ValidateCredential(boundRepository); err != nil {
+		t.Fatalf("bound repository credential = %v", err)
+	}
 	wrongKind := snapshot
 	wrongKind.Generation++
 	wrongKind.Capabilities = []providercredential.Capability{{

@@ -40,6 +40,16 @@ func TestCredentialCeilingRejectsBeforeOperationSubmission(t *testing.T) {
 	}
 }
 
+func TestOperationCredentialTargetUsesCatalogResourceKind(t *testing.T) {
+	target, err := operationCredentialTarget("discussion.comment.create", json.RawMessage(`{"namespace":"alice","repo":"private"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target["resource"] != "alice/private" || target["resource_kind"] != "repo" {
+		t.Fatalf("credential target = %#v", target)
+	}
+}
+
 func TestScopedCredentialAllowsReusableGrantActivation(t *testing.T) {
 	server := newTestHandler(t, t.TempDir(), "http://127.0.0.1:1", &strings.Builder{}, `{"rules":[]}`)
 	t.Cleanup(func() { _ = server.Close() })
