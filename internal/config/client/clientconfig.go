@@ -4,6 +4,7 @@ package clientconfig
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,18 +19,30 @@ import (
 )
 
 const (
-	clientEnvFileMode     os.FileMode = 0o600
+	clientFileMode        os.FileMode = 0o600
 	maxClientSecretsBytes             = 1024 * 1024
 )
 
-// Config describes one broker client environment file.
+// APIVersion is the private broker client document contract.
+const APIVersion = "brokerkit.io/client/v1"
+
+// Config describes one broker client document.
 type Config struct {
 	BrokerName  string
 	EnvPrefix   string
+	ClientID    string
 	Endpoint    string
 	GitEndpoint string
 	Secret      string
 	HomeDir     string
+}
+
+type document struct {
+	APIVersion    string `json:"api_version"`
+	ClientID      string `json:"client_id"`
+	AgentEndpoint string `json:"agent_endpoint"`
+	GitEndpoint   string `json:"git_endpoint,omitempty"`
+	SharedSecret  string `json:"shared_secret"`
 }
 
 // SecretFromFile reads path and returns the configured secret for client.
@@ -90,7 +103,7 @@ func SecretsFromData(data []byte) (map[string]string, error) {
 	return secretfile.ParseBytes(data)
 }
 
-// Path returns the default client.env path for cfg.
+// Path returns the default client.json path for cfg.
 func Path(homeDir string, brokerName string) (string, error) {
 	if err := validateBrokerName(brokerName); err != nil {
 		return "", err
@@ -101,24 +114,22 @@ func Path(homeDir string, brokerName string) (string, error) {
 	if !filepath.IsAbs(homeDir) {
 		return "", errors.New("home directory must be absolute")
 	}
-	return filepath.Join(homeDir, ".config", brokerName, "client.env"), nil
+	return filepath.Join(homeDir, ".config", brokerName, "client.json"), nil
 }
 
-// Render returns shell-compatible environment assignments for cfg.
+// Render returns the closed client V1 JSON document for cfg.
 func Render(cfg Config) ([]byte, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	prefix := normalizeEnvPrefix(cfg.EnvPrefix)
-	body := "export " + prefix + "_AGENT_ENDPOINT=" + shellQuote(cfg.Endpoint) + "\n" +
-		"export " + prefix + "_SHARED_SECRET=" + shellQuote(cfg.Secret) + "\n"
-	if cfg.GitEndpoint != "" {
-		body += "export " + prefix + "_GIT_ENDPOINT=" + shellQuote(cfg.GitEndpoint) + "\n"
-	}
-	return []byte(body), nil
+	data, err := json.MarshalIndent(document{
+		APIVersion: APIVersion, ClientID: cfg.ClientID, AgentEndpoint: cfg.Endpoint,
+		GitEndpoint: cfg.GitEndpoint, SharedSecret: cfg.Secret,
+	}, "", "  ")
+	return append(data, '\n'), err
 }
 
-// Write writes cfg to ~/.config/<broker>/client.env and returns the path.
+// Write writes cfg to ~/.config/<broker>/client.json and returns the path.
 func Write(cfg Config) (string, error) {
 	path, err := Path(cfg.HomeDir, cfg.BrokerName)
 	if err != nil {
@@ -128,7 +139,7 @@ func Write(cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := store.WriteFileAtomic(path, body, clientEnvFileMode); err != nil {
+	if err := store.WriteFileAtomic(path, body, clientFileMode); err != nil {
 		return "", err
 	}
 	return path, nil
@@ -207,7 +218,7 @@ func writeClientConfigInRoot(root *os.Root, brokerName string, body []byte) erro
 	if err := ensureClientDirectory(root, brokerDir, uid, gid); err != nil {
 		return err
 	}
-	return writeClientFile(root, filepath.Join(brokerDir, "client.env"), body, uid, gid)
+	return writeClientFile(root, filepath.Join(brokerDir, "client.json"), body, uid, gid)
 }
 
 func (cfg Config) validate() error {
@@ -216,6 +227,9 @@ func (cfg Config) validate() error {
 	}
 	if err := validateEnvPrefix(cfg.EnvPrefix); err != nil {
 		return err
+	}
+	if err := ValidateClientName(cfg.ClientID); err != nil {
+		return fmt.Errorf("client ID: %w", err)
 	}
 	if err := ValidateEndpoint(cfg.Endpoint); err != nil {
 		return err
@@ -300,10 +314,6 @@ func ValidateClientName(value string) error {
 		return errors.New("client name is not safe for a client secret file")
 	}
 	return nil
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func rootOwner(root *os.Root) (int, int, error) {
@@ -393,7 +403,7 @@ func writeClientFile(root *os.Root, name string, data []byte, uid int, gid int) 
 }
 
 func writeClientTemporary(root *os.Root, name string, data []byte, uid int, gid int) error {
-	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, clientEnvFileMode)
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, clientFileMode)
 	if err != nil {
 		return fmt.Errorf("create client config file: %w", err)
 	}

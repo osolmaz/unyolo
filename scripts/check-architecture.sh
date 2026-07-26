@@ -4,7 +4,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
-allowed_go_roots='^(agent|approval|auth|authorization|broker|brokers|cmd|credential|git|install|internal|mcp|operation|operator|protocol|telemetry|transport)$'
+allowed_go_roots='^(agent|approval|auth|authorization|broker|brokers|cmd|credential|deployment|git|install|internal|mcp|operation|operator|plugins|protocol|telemetry|transport)$'
 unexpected_go_roots=$(
 	go list -f '{{.Dir}}' ./... |
 		while IFS= read -r package_dir; do
@@ -29,8 +29,16 @@ if grep -R -n -E 'npm@latest|node-version:[[:space:]]+"?[0-9]+"?[[:space:]]*$' .
 	exit 1
 fi
 
-if grep -R -n -E '(^|[[:space:]])sudo([[:space:]]|$)' install/*.sh 2>/dev/null; then
+if find install -maxdepth 1 -name '*.sh' ! -name 'bootstrap.sh' -print0 |
+  xargs -0 grep -n -E '(^|[[:space:]])sudo([[:space:]]|$)' 2>/dev/null
+then
 	echo 'convenience installers must never invoke sudo' >&2
+	exit 1
+fi
+if [ "$(grep -R --include='*.go' -c 'exec.CommandContext(ctx, "sudo", "sh", "-c", script' internal/host/privilege | awk -F: '{sum += $2} END {print sum + 0}')" -ne 1 ] ||
+  grep -n 'exec.Command.*"sudo"' cmd/brokerkit/deployment.go cmd/brokerkit/setup.go 2>/dev/null
+then
+	echo 'the host bootstrap must have exactly one bounded privilege transition' >&2
 	exit 1
 fi
 

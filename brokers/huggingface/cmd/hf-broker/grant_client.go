@@ -326,12 +326,11 @@ func printHFClientGrant(stdout io.Writer, grant hfClientGrant, jsonOutput bool) 
 }
 
 func loadHFGrantClient(getenv func(string) string) (*hfGrantClient, error) {
-	endpointURI := firstEnvironment(getenv, "HF_BROKER_AGENT_ENDPOINT")
-	secret, err := loadAgentSecret(getenv)
+	configured, err := loadHFClientConfig(getenv)
 	if err != nil {
 		return nil, err
 	}
-	return newHFGrantClient(endpointURI, secret)
+	return newHFGrantClient(configured.AgentEndpoint, configured.SharedSecret)
 }
 
 func newHFGrantClient(endpointURI, secret string) (*hfGrantClient, error) {

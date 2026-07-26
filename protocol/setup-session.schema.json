@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/setup-session/v1/session.schema.json",
+  "title": "BrokerKit nonsecret setup session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "id", "build_id", "deployment", "completed_step_ids", "answers", "secret_slots", "generated_file_digests", "phase", "created_at", "updated_at"],
+  "properties": {
+    "api_version": { "const": "brokerkit.io/setup-session/v1" },
+    "id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "build_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "deployment": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "completed_step_ids": { "type": "array", "maxItems": 256, "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
+    "answers": { "type": "object", "maxProperties": 256, "additionalProperties": { "type": "array", "maxItems": 512, "items": { "type": "string", "maxLength": 16384 } } },
+    "secret_slots": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/slot" } },
+    "generated_file_digests": { "type": "object", "maxProperties": 256, "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+    "phase": { "enum": ["started", "enrolling", "profile_ready", "planned", "applying", "complete", "cancelled"] },
+    "last_safe_error": { "type": "string", "maxLength": 4096 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "slot": {
+      "type": "object", "additionalProperties": false, "required": ["id", "supplied"],
+      "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "supplied": { "type": "boolean" } }
+    }
+  }
+}

@@ -36,7 +36,7 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 	}
 	home := t.TempDir()
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		GitEndpoint: "tcp://" + parsed.Host, Secret: secret, HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 	if credential.String() != "username=brokerkit\npassword="+secret+"\n" {
 		t.Fatalf("credential response = %q", credential.String())
 	}
-	if err := os.Remove(filepath.Join(home, ".config", "gh-broker", "client.env")); err != nil {
+	if err := os.Remove(filepath.Join(home, ".config", "gh-broker", "client.json")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Uninstall(context.Background(), provider, Options{HomeDir: home}); err != nil {
@@ -94,7 +94,7 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 func TestCredentialRefusesAnotherOrigin(t *testing.T) {
 	home := t.TempDir()
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		GitEndpoint: "tcp://127.0.0.1:32191", Secret: strings.Repeat("s", 32), HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestRunCommandLifecycle(t *testing.T) {
 	}
 	home := t.TempDir()
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		GitEndpoint: "tcp://" + parsed.Host, Secret: secret, HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestCredentialHandlesUnavailableAndIncompleteConfiguration(t *testing.T) {
 	}
 	home := t.TempDir()
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		Secret: strings.Repeat("s", 32), HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -263,7 +263,7 @@ func TestInstallReplacementAndDoctorFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		GitEndpoint: "tcp://" + parsedReplacement.Host, Secret: strings.Repeat("s", 32), HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -479,7 +479,7 @@ func TestInstallFailsClosedAfterCrossOriginWriteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		GitEndpoint: "tcp://" + parsed.Host, Secret: strings.Repeat("s", 32), HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -707,7 +707,7 @@ func writeGitClientFixture(t *testing.T, provider Provider, identity string) (st
 	}
 	home := t.TempDir()
 	if _, err := clientconfig.Write(clientconfig.Config{
-		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, Endpoint: "unix:///tmp/agent.sock",
+		BrokerName: provider.BrokerName, EnvPrefix: provider.EnvPrefix, ClientID: "test", Endpoint: "unix:///tmp/agent.sock",
 		GitEndpoint: "tcp://" + parsed.Host, Secret: secret, HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)

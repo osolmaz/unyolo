@@ -20,8 +20,9 @@ UI plugin, and the shared protocol they speak:
   another Unix user through a root helper.
 - [openclaw-brokerkit](plugins/openclaw/README.md) adds a provider-neutral
   approvals tab and `/brokerkit` commands to OpenClaw.
-- `brokerkit` activates signed, immutable runtime bundles and verifies that
-  every managed service runs the expected build and protocol contract.
+- [`brokerkit`](docs/HOST_DEPLOYMENT.md) guides a trusted operator through a
+  locked host deployment, activates signed immutable runtime bundles, and
+  verifies the real agent path.
 - [protocol](protocol/README.md) holds the canonical Operator V1 and
   Agent V1 wire artifacts and MCP operation documents shared by all of the
   above.

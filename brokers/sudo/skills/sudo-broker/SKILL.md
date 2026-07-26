@@ -16,13 +16,10 @@ privilege escalation as a fallback.
 
 ## Authenticate to BrokerKit
 
-The runtime normally provides `SUDO_BROKER_AGENT_ENDPOINT` and
-`SUDO_BROKER_SHARED_SECRET`. If either is missing and the client file is
-readable, load it before running broker commands:
-
-```sh
-. "$HOME/.config/sudo-broker/client.env"
-```
+`sudo-broker` loads its private client V1 document directly from
+`~/.config/sudo-broker/client.json`. Do not source it or copy its credential
+into the environment. Environment configuration is only for isolated
+development.
 
 The BrokerKit secret authenticates the enrolled client; it is not a Unix
 password. Never print or persist it elsewhere.

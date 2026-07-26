@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/client/v1/client.schema.json",
+  "title": "BrokerKit private client configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "client_id", "agent_endpoint", "shared_secret"],
+  "properties": {
+    "api_version": { "const": "brokerkit.io/client/v1" },
+    "client_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "agent_endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "git_endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "shared_secret": { "type": "string", "minLength": 1, "maxLength": 65536 }
+  }
+}

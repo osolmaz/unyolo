@@ -63,13 +63,13 @@ func TestSetupClientUsesSharedClientFormat(t *testing.T) {
 	if err := runSetup(context.Background(), []string{"client", "--client", "bob", "--endpoint", "unix:///run/sudo-broker/agent.sock", "--secret-file", secretPath, "--home-dir", home}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".config", "sudo-broker", "client.env"))
+	data, err := os.ReadFile(filepath.Join(home, ".config", "sudo-broker", "client.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "SUDO_BROKER_AGENT_ENDPOINT='unix:///run/sudo-broker/agent.sock'") ||
-		!strings.Contains(string(data), "SUDO_BROKER_SHARED_SECRET='") ||
-		strings.Contains(string(data), "SUDO_BROKER_ENDPOINT=") || strings.Contains(stdout.String(), secret) {
+	if !strings.Contains(string(data), `"agent_endpoint": "unix:///run/sudo-broker/agent.sock"`) ||
+		!strings.Contains(string(data), `"client_id": "bob"`) ||
+		!strings.Contains(string(data), `"shared_secret": "`+secret+`"`) || strings.Contains(stdout.String(), secret) {
 		t.Fatalf("client config/output invalid: %q / %q", data, stdout.String())
 	}
 }

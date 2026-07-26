@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/githubsurface"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/brokerkit/deployment/component"
 	"github.com/osolmaz/brokerkit/internal/storage/command"
 	"github.com/osolmaz/brokerkit/transport/endpoint"
 	"github.com/osolmaz/brokerkit/transport/http/server"
@@ -84,6 +85,24 @@ func namedCommands() map[string]cliCommand {
 		},
 		"mcp": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
 			return runMCP(ctx, os.Getenv, os.Stdin, stdout, args)
+		},
+		"setup-component-probe": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+			if err := component.Probe(ctx, args); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(stdout, "ok")
+			return err
+		},
+		"setup-component": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+			if len(args) != 0 {
+				return errors.New("setup-component does not accept arguments")
+			}
+			return component.Serve(ctx, os.Stdin, stdout, component.Config{
+				ComponentID: "github", ProfileAPI: "brokerkit.io/github-deployment/v1",
+				AllowedPaths:    []string{"/etc/gh-broker", "/var/lib/gh-broker", "/etc/systemd/system/gh-broker.service"},
+				AllowedServices: []string{"gh-broker.service"}, AllowedAccounts: []string{"gh-broker"},
+				AllowedGroups: []string{"gh-broker", "gh-broker-agent", "gh-broker-operator"}, BackupDirectory: "/var/lib/gh-broker/deployment-backups",
+			})
 		},
 		"state": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 			return statecmd.Run(ctx, args, stdout, stderr)

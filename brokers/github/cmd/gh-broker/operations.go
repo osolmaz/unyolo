@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/brokerkit/credential/store"
+	"github.com/osolmaz/brokerkit/internal/config/client"
 	"github.com/osolmaz/brokerkit/internal/storage/sealed"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/operation/capability"
@@ -375,25 +376,22 @@ type operationConnection struct {
 }
 
 func loadOperationConnection(getenv func(string) string) (operationConnection, error) {
-	endpointURI := strings.TrimSpace(getenv("GH_BROKER_AGENT_ENDPOINT"))
-	secret := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET"))
-	if secret == "" {
-		path := strings.TrimSpace(getenv("GH_BROKER_SHARED_SECRET_FILE"))
-		if path != "" {
-			data, err := os.ReadFile(path) // #nosec G304 -- the client credential path is explicit operator configuration.
-			if err != nil {
-				return operationConnection{}, errors.New("GH Broker client credential could not be read")
-			}
-			secret = strings.TrimSpace(string(data))
+	home := strings.TrimSpace(getenv("HOME"))
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return operationConnection{}, errors.New("GH Broker client home is unavailable")
 		}
 	}
-	if endpointURI == "" || secret == "" {
-		return operationConnection{}, errors.New("GH Broker client endpoint and credential are not configured")
-	}
-	if _, err := agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret}); err != nil {
+	configured, err := clientconfig.Resolve(home, "gh-broker", "GH_BROKER", getenv)
+	if err != nil {
 		return operationConnection{}, err
 	}
-	return operationConnection{endpoint: endpointURI, secret: secret}, nil
+	if _, err := agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret}); err != nil {
+		return operationConnection{}, err
+	}
+	return operationConnection{endpoint: configured.AgentEndpoint, secret: configured.SharedSecret}, nil
 }
 
 func (connection operationConnection) client() (*agentclient.Client, error) {

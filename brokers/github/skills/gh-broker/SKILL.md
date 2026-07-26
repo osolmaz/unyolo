@@ -13,13 +13,9 @@ GitHub host is authenticated.
 
 ## Authenticate to BrokerKit
 
-The runtime normally provides `GH_BROKER_AGENT_ENDPOINT` and
-`GH_BROKER_SHARED_SECRET`. If either is missing and the client file is
-readable, load it before running broker commands:
-
-```sh
-. "$HOME/.config/gh-broker/client.env"
-```
+`gh-broker` loads its private client V1 document directly from
+`~/.config/gh-broker/client.json`. Do not source it or copy its credential into
+the environment. Environment configuration is only for isolated development.
 
 Do not run `gh auth login`, request a personal access token, read protected
 service credentials, or set `GH_TOKEN` or `GITHUB_TOKEN`.

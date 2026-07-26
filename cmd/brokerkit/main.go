@@ -11,9 +11,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/osolmaz/brokerkit/internal/buildinfo"
 	"github.com/osolmaz/brokerkit/internal/host/bundle"
+	"github.com/osolmaz/brokerkit/internal/host/privilege"
 )
 
 var version = "dev"
@@ -33,17 +35,26 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		_, err := fmt.Fprintln(stdout, version)
 		return err
 	}
+	buildinfo.Version = version
+	if len(args) > 0 && args[0] == "setup" {
+		return runGuidedSetup(ctx, args[1:], stdout, stderr)
+	}
 	if len(args) < 2 || args[0] != "system" {
 		return systemUsageError()
 	}
-	buildinfo.Version = version
 	handlers := map[string]func() error{
-		"plan":     func() error { return runActivation(ctx, "plan", args[2:], stdout, stderr) },
-		"install":  func() error { return runActivation(ctx, "install", args[2:], stdout, stderr) },
-		"upgrade":  func() error { return runActivation(ctx, "upgrade", args[2:], stdout, stderr) },
-		"status":   func() error { return runStatus(ctx, "status", args[2:], stdout, stderr) },
-		"doctor":   func() error { return runStatus(ctx, "doctor", args[2:], stdout, stderr) },
-		"rollback": func() error { return runRollback(ctx, args[2:], stdout, stderr) },
+		"profile":      func() error { return runProfileCommand(args[2:], stdout, stderr) },
+		"validate":     func() error { return runDeploymentValidate(ctx, args[2:], stdout, stderr) },
+		"plan":         func() error { return runDeploymentPlan(ctx, args[2:], stdout, stderr) },
+		"apply":        func() error { return runDeploymentApply(ctx, args[2:], stdout, stderr) },
+		"verify":       func() error { return runDeploymentVerify(ctx, args[2:], stdout, stderr) },
+		"export":       func() error { return runDeploymentExport(ctx, args[2:], stdout, stderr) },
+		"setup-worker": func() error { return runSetupWorker(ctx, args[2:], stdout, stderr) },
+		"install":      func() error { return runActivation(ctx, "install", args[2:], stdout, stderr) },
+		"upgrade":      func() error { return runActivation(ctx, "upgrade", args[2:], stdout, stderr) },
+		"status":       func() error { return runStatus(ctx, "status", args[2:], stdout, stderr) },
+		"doctor":       func() error { return runStatus(ctx, "doctor", args[2:], stdout, stderr) },
+		"rollback":     func() error { return runRollback(ctx, args[2:], stdout, stderr) },
 	}
 	handler, ok := handlers[args[1]]
 	if !ok {
@@ -53,7 +64,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 func systemUsageError() error {
-	return errors.New("usage: brokerkit system <plan|install|upgrade|status|doctor|rollback>")
+	return errors.New("usage: brokerkit setup | brokerkit system <profile|validate|plan|apply|verify|export|install|upgrade|status|doctor|rollback>")
+}
+
+func runSetupWorker(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("brokerkit system setup-worker", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	protocolStdio := flags.Bool("protocol-stdio", false, "serve the bounded setup worker protocol")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || !*protocolStdio {
+		return errors.New("setup-worker requires --protocol-stdio")
+	}
+	engine, err := privilege.NewProductionEngine()
+	if err != nil {
+		return err
+	}
+	return privilege.Serve(ctx, os.Stdin, stdout, engine, 5*time.Minute)
 }
 
 type hostFlags struct {

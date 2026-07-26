@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/setup-component/v1/message.schema.json",
+  "title": "BrokerKit setup component message",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "file": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256", "data"],
+      "properties": { "path": { "type": "string", "minLength": 1, "maxLength": 2048 }, "sha256": { "$ref": "#/$defs/digest" }, "data": { "type": "string", "contentEncoding": "base64", "maxLength": 22369624 } }
+    },
+    "secret": {
+      "type": "object", "additionalProperties": false, "required": ["name", "fd"],
+      "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 128 }, "fd": { "type": "integer", "minimum": 3, "maximum": 1024 }, "rotate": { "type": "boolean" } }
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["api_version", "action", "deployment_digest", "component_id", "profile", "files"],
+      "properties": {
+        "api_version": { "const": "brokerkit.io/setup-component/v1" },
+        "action": { "enum": ["validate", "plan", "apply", "verify", "rollback", "finalize"] },
+        "deployment_digest": { "$ref": "#/$defs/digest" },
+        "plan_digest": { "$ref": "#/$defs/digest" },
+        "component_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profile": { "type": "object" },
+        "files": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/file" } },
+        "agents": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/agent" } },
+        "probe_executable": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "secrets": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/secret" } },
+        "rollback_handle": { "type": "string", "maxLength": 4096 }
+      }
+    },
+    "agent": {
+      "type": "object", "additionalProperties": false, "required": ["id", "client_id", "unix_user", "home"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "client_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "unix_user": { "type": "string", "minLength": 1, "maxLength": 32 }, "home": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    },
+    "resource": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+      "properties": { "kind": { "type": "string", "minLength": 1, "maxLength": 64 }, "id": { "type": "string", "minLength": 1, "maxLength": 256 }, "path": { "type": "string", "maxLength": 2048 } }
+    },
+    "action": {
+      "type": "object", "additionalProperties": false, "required": ["id", "type", "risk", "resource"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }, "type": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "risk": { "enum": ["low", "medium", "high", "critical"] }, "resource": { "$ref": "#/$defs/resource" },
+        "current_digest": { "$ref": "#/$defs/digest" }, "desired_digest": { "$ref": "#/$defs/digest" }, "restart": { "type": "boolean" },
+        "depends_on": { "type": "array", "maxItems": 1024, "uniqueItems": true, "items": { "type": "string", "maxLength": 256 } }
+      }
+    },
+    "credential": {
+      "type": "object", "additionalProperties": false, "required": ["slot", "action"],
+      "properties": { "slot": { "type": "string", "minLength": 1, "maxLength": 128 }, "action": { "enum": ["install", "retain", "rotate", "remove"] } }
+    },
+    "response": {
+      "type": "object", "additionalProperties": false, "required": ["api_version", "component_id", "status"],
+      "properties": {
+        "api_version": { "const": "brokerkit.io/setup-component/v1" }, "component_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "enum": ["valid", "planned", "applied", "verified", "rolled_back", "finalized", "blocked"] }, "plan_digest": { "$ref": "#/$defs/digest" },
+        "actions": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/action" } },
+        "credentials": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/credential" } },
+        "rollback_handle": { "type": "string", "maxLength": 4096 }, "verification": { "type": "array", "maxItems": 1024, "items": { "type": "string", "maxLength": 4096 } },
+        "provider_facts": { "type": "object" }, "blocked_reason": { "type": "string", "maxLength": 4096 }
+      }
+    }
+  }
+}

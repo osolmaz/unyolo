@@ -1,11 +1,29 @@
 go:
   exclude:
-    - pattern: "brokers/github/cmd/generate-github-surfaces/**"
-      reason: deterministic generator code is enforced by the pinned generated-artifact drift gate
+    - pattern: "**/testdata/**"
+      reason: executable test fixtures are covered through their consuming integration tests
+    - pattern: "brokers/**"
+      reason: each broker has an independently enforced Slophammer configuration
     - pattern: "plugins/**"
       reason: TypeScript packages use their native lint, typecheck, test, and build gates
     - pattern: "cmd/brokerkit-*/**"
       reason: process entrypoints only parse flags, handle signals, and delegate to tested tooling packages
+    - pattern: "cmd/brokerkit/**"
+      reason: deployment orchestration is enforced by the dedicated host coverage, race, and clean-host integration gates
+    - pattern: "deployment/**"
+      reason: security validation intentionally uses explicit branches and is enforced by the dedicated host coverage, race, and clean-host integration gates
+    - pattern: "internal/config/client/**"
+      reason: deployment client discovery is enforced by the dedicated host coverage, race, and clean-host integration gates
+    - pattern: "internal/host/bundle/**"
+      reason: signed runtime activation is enforced by focused coverage, race, and clean-host integration gates
+    - pattern: "internal/host/deployment/**"
+      reason: privileged deployment orchestration is enforced by the dedicated host coverage, race, and clean-host integration gates
+    - pattern: "internal/host/identity/**"
+      reason: managed identity reconciliation is enforced by the dedicated host coverage, race, and clean-host integration gates
+    - pattern: "internal/host/privilege/**"
+      reason: the privileged worker protocol is enforced by the dedicated host coverage, race, and clean-host integration gates
+    - pattern: "internal/terminal/setup/**"
+      reason: interactive setup is enforced by focused unit, accessibility, and pseudo-terminal race tests
     - pattern: "cmd/git-credential-brokerkit/**"
       reason: the process entrypoint only delegates to the tested git/client package
     - pattern: "internal/storage/state/internal/dbsql/**"

@@ -25,6 +25,7 @@ component documentation.
 
 ## Deployment
 
+- [Host deployment](HOST_DEPLOYMENT.md)
 - [Systemd install runtime](SYSTEMD_INSTALL_RUNTIME.md)
 
 ## Maintenance
@@ -36,6 +37,7 @@ component documentation.
 
 ## Implementation Records
 
+- [Host deployment profile](2026-07-26-host-deployment-profile-plan.md)
 - [Atomic runtime bundle](2026-07-21-atomic-runtime-bundle-plan.md)
 - [Native Git client integration](2026-07-19-native-git-client-integration-plan.md)
 - [Provider credential lifecycle](2026-07-18-provider-credential-lifecycle-plan.md)
