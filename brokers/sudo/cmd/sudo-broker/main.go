@@ -46,39 +46,46 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 }
 
 func runSubcommand(ctx context.Context, name string, args []string, stdout io.Writer, stderr io.Writer) error {
-	switch name {
-	case "doctor":
-		return runDoctor(ctx, args, stdout, stderr)
-	case "serve":
-		return runServe(ctx, args, stdout, stderr)
-	case "run":
-		return runCommand(ctx, args, stdout, stderr)
-	case "setup":
-		return runSetup(ctx, args, stdout, stderr)
-	case "state":
-		return statecmd.Run(ctx, args, stdout, stderr)
-	case "setup-component-probe":
-		if err := component.Probe(ctx, args); err != nil {
-			return err
-		}
-		_, err := fmt.Fprintln(stdout, "ok")
-		return err
-	case "setup-component":
-		if len(args) != 0 {
-			return errors.New("setup-component does not accept arguments")
-		}
-		return component.Serve(ctx, os.Stdin, stdout, component.Config{
-			ComponentID: "sudo", ProfileAPI: "brokerkit.io/sudo-deployment/v1",
-			AllowedPaths:    []string{"/etc/sudo-broker", "/var/lib/sudo-broker", "/etc/systemd/system/sudo-broker.service", "/etc/systemd/system/sudo-broker-exec.service"},
-			AllowedServices: []string{"sudo-broker.service", "sudo-broker-exec.service"}, AllowedAccounts: []string{"sudo-broker"},
-			AllowedGroups: []string{"sudo-broker", "sudo-broker-agent", "sudo-broker-operator"}, BackupDirectory: "/var/lib/sudo-broker/deployment-backups",
-		})
-	case "version", "--version":
-		_, err := fmt.Fprintln(stdout, version)
-		return err
-	default:
+	command := map[string]func(context.Context, []string, io.Writer, io.Writer) error{
+		"doctor":                runDoctor,
+		"serve":                 runServe,
+		"run":                   runCommand,
+		"setup":                 runSetup,
+		"state":                 statecmd.Run,
+		"setup-component-probe": runSetupComponentProbe,
+		"setup-component":       runSetupComponent,
+		"version":               printVersion,
+		"--version":             printVersion,
+	}[name]
+	if command == nil {
 		return fmt.Errorf("unknown command %q", name)
 	}
+	return command(ctx, args, stdout, stderr)
+}
+
+func runSetupComponentProbe(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+	if err := component.Probe(ctx, args); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(stdout, "ok")
+	return err
+}
+
+func runSetupComponent(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+	if len(args) != 0 {
+		return errors.New("setup-component does not accept arguments")
+	}
+	return component.Serve(ctx, os.Stdin, stdout, component.Config{
+		ComponentID: "sudo", ProfileAPI: "brokerkit.io/sudo-deployment/v1",
+		AllowedPaths:    []string{"/etc/sudo-broker", "/var/lib/sudo-broker", "/etc/systemd/system/sudo-broker.service", "/etc/systemd/system/sudo-broker-exec.service"},
+		AllowedServices: []string{"sudo-broker.service", "sudo-broker-exec.service"}, AllowedAccounts: []string{"sudo-broker"},
+		AllowedGroups: []string{"sudo-broker", "sudo-broker-agent", "sudo-broker-operator"}, BackupDirectory: "/var/lib/sudo-broker/deployment-backups",
+	})
+}
+
+func printVersion(_ context.Context, _ []string, stdout io.Writer, _ io.Writer) error {
+	_, err := fmt.Fprintln(stdout, version)
+	return err
 }
 
 type exitError struct {
