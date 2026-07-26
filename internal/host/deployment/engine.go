@@ -213,18 +213,31 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 		return Verification{}, err
 	}
 	defer func() { _ = lock.close() }()
-	planned, err := engine.Plan(ctx, profileRoot)
+	snapshot, err := profile.Load(profileRoot)
 	if err != nil {
 		return Verification{}, err
 	}
+	if err := engine.verifySnapshotTrust(snapshot); err != nil {
+		return Verification{}, err
+	}
 	coordinator := transaction.Coordinator{StateDirectory: engine.options.Paths.StateDir}
-	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(planned)); err != nil {
+	pending, found, err := coordinator.Pending()
+	if err != nil {
 		return Verification{}, err
 	}
-	if err := coordinator.Recover(ctx, engine.recoveryHandlers(planned)); err != nil {
+	recovery := Planned{Snapshot: snapshot}
+	if found {
+		if pending.DeploymentDigest != snapshot.Digest {
+			return Verification{}, errors.New("unfinished transaction requires its original locked deployment pack")
+		}
+	}
+	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(recovery)); err != nil {
 		return Verification{}, err
 	}
-	planned, err = engine.Plan(ctx, profileRoot)
+	if err := coordinator.Recover(ctx, engine.recoveryHandlers(recovery)); err != nil {
+		return Verification{}, err
+	}
+	planned, err := engine.Plan(ctx, profileRoot)
 	if err != nil {
 		return Verification{}, err
 	}
@@ -676,7 +689,7 @@ func (engine *Engine) finalizationHandlers(planned Planned) map[string]func(cont
 	for _, agent := range planned.Snapshot.Deployment.Agents {
 		handlers["identity:"+agent.ID] = func(context.Context, string) error { return nil }
 	}
-	for _, service := range restartServices(planned) {
+	for _, service := range recoveryServices(planned) {
 		handlers["service:"+service] = func(context.Context, string) error { return nil }
 	}
 	return handlers
@@ -694,8 +707,12 @@ func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.
 	for _, component := range deploymentComponents(planned.Snapshot) {
 		component := component
 		response := responseByID[component.ID]
+		planDigest := response.PlanDigest
+		if planDigest == "" {
+			planDigest = digestText("recovery:" + component.ID)
+		}
 		handlers["component:"+component.ID] = func(ctx context.Context, handle string) error {
-			return engine.rollbackComponent(ctx, planned.Snapshot, component.ID, response.PlanDigest, handle)
+			return engine.rollbackComponent(ctx, planned.Snapshot, component.ID, planDigest, handle)
 		}
 	}
 	for _, agent := range planned.Snapshot.Deployment.Agents {
@@ -704,11 +721,26 @@ func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.
 			return deleteManagedAgent(ctx, agent, handle)
 		}
 	}
-	for _, service := range restartServices(planned) {
+	for _, service := range recoveryServices(planned) {
 		service := service
 		handlers["service:"+service] = func(ctx context.Context, _ string) error { return engine.options.Manager.Start(ctx, service) }
 	}
 	return handlers
+}
+
+func recoveryServices(planned Planned) []string {
+	wanted := map[string]bool{}
+	for _, component := range planned.Snapshot.Manifest.Components {
+		for _, service := range component.Services {
+			wanted[service] = true
+		}
+	}
+	result := make([]string, 0, len(wanted))
+	for service := range wanted {
+		result = append(result, service)
+	}
+	slices.Sort(result)
+	return result
 }
 
 func restartServices(planned Planned) []string {

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/deployment/api"
 	"github.com/osolmaz/brokerkit/deployment/profile"
 	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
+	"github.com/osolmaz/brokerkit/deployment/transaction"
 	"github.com/osolmaz/brokerkit/internal/host/bundle"
 	"github.com/osolmaz/brokerkit/internal/host/identity"
 	"github.com/osolmaz/brokerkit/protocol/contract"
@@ -122,6 +124,49 @@ func TestProductionEngineRequiresPinnedProfileTrust(t *testing.T) {
 	}
 	if err := engine.verifySnapshotTrust(snapshot); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestApplyRecoversBeforeReplanning(t *testing.T) {
+	pack := engineTestPack(t)
+	if err := os.WriteFile(filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"fake/v1","test_plan_status":"valid"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := profile.Lock(pack, false); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := profile.Load(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal := transaction.Journal{
+		APIVersion: transaction.APIVersion, ID: "recovery", DeploymentDigest: snapshot.Digest,
+		PlanDigest: engineDigest("host-plan"), CandidateBundle: snapshot.Manifest.BundleID, Phase: "applying",
+		Steps: []transaction.StepRecord{{ID: "component.fake", Kind: "component:fake", State: "complete", RollbackHandle: "rollback-id"}},
+	}
+	data, err := json.Marshal(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionPath := filepath.Join(state, "deployment-transaction.json")
+	if err := os.WriteFile(transactionPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Options{
+		Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}, Manager: fakeManager{}, Development: true, Identity: engineTestIdentity(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Apply(t.Context(), pack, engineDigest("expected"), nil); err == nil || !strings.Contains(err.Error(), "during planning") {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if _, err := os.Stat(transactionPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("transaction was not recovered before planning: %v", err)
 	}
 }
 

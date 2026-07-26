@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/deployment/api"
 	"github.com/osolmaz/brokerkit/internal/config/client"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"golang.org/x/sys/unix"
 )
 
 type backup struct {
@@ -138,7 +139,7 @@ func createBackup(ctx context.Context, config Config, paths []string, profile Pr
 		}
 		record.Entries = append(record.Entries, entry)
 	}
-	if err := os.MkdirAll(config.BackupDirectory, 0o700); err != nil {
+	if err := ensureDirectoryNoFollow(config.BackupDirectory, 0o700, -1, -1); err != nil {
 		return backup{}, err
 	}
 	data, err := json.Marshal(record)
@@ -322,17 +323,11 @@ func memberInGroup(name, groupName string) bool {
 
 func applyDirectories(values []Directory) error {
 	for _, value := range values {
-		if err := os.MkdirAll(value.Destination, os.FileMode(value.Mode)); err != nil {
-			return err
-		}
 		uid, gid, err := resolveOwner(value.Owner, value.Group)
 		if err != nil {
 			return err
 		}
-		if err := os.Chown(value.Destination, uid, gid); err != nil {
-			return err
-		}
-		if err := os.Chmod(value.Destination, os.FileMode(value.Mode)); err != nil {
+		if err := ensureDirectoryNoFollow(value.Destination, os.FileMode(value.Mode), uid, gid); err != nil {
 			return err
 		}
 	}
@@ -353,7 +348,6 @@ func applyFiles(values []ManagedFile, files map[string]api.File) error {
 	return nil
 }
 
-//nolint:cyclop // Credential install, rotation, retention, and metadata repair share secret-clearing error paths.
 func applyCredentials(values []Credential, actions []api.CredentialAction, supplied map[string][]byte) (map[string][]byte, error) {
 	result := map[string][]byte{}
 	for _, value := range values {
@@ -391,12 +385,7 @@ func applyCredentials(values []Credential, actions []api.CredentialAction, suppl
 				clearSecrets(result)
 				return nil, ownerErr
 			}
-			if err := os.Chown(value.Destination, uid, gid); err != nil {
-				clear(raw)
-				clearSecrets(result)
-				return nil, err
-			}
-			if err := os.Chmod(value.Destination, os.FileMode(value.Mode)); err != nil {
+			if err := setFileMetadataNoFollow(value.Destination, os.FileMode(value.Mode), uid, gid); err != nil {
 				clear(raw)
 				clearSecrets(result)
 				return nil, err
@@ -574,16 +563,10 @@ func finalizeBackup(config Config, handle string) error {
 
 func restoreBackupEntry(entry backupEntry) error {
 	if !entry.Existed {
-		return os.RemoveAll(entry.Path)
+		return removeAllNoFollow(entry.Path)
 	}
 	if entry.Directory {
-		if err := os.MkdirAll(entry.Path, os.FileMode(entry.Mode)); err != nil {
-			return err
-		}
-		if err := os.Chown(entry.Path, entry.UID, entry.GID); err != nil {
-			return err
-		}
-		return os.Chmod(entry.Path, os.FileMode(entry.Mode))
+		return ensureDirectoryNoFollow(entry.Path, os.FileMode(entry.Mode), entry.UID, entry.GID)
 	}
 	return writeAtomic(entry.Path, entry.Data, os.FileMode(entry.Mode), entry.UID, entry.GID)
 }
@@ -676,16 +659,28 @@ func isAgentClientPath(path string) bool {
 	return strings.Contains(path, string(filepath.Separator)+".config"+string(filepath.Separator)) && strings.HasSuffix(path, "client.json")
 }
 
+//nolint:cyclop // Descriptor-relative creation keeps every write, ownership, sync, and rename failure explicit.
 func writeAtomic(path string, data []byte, mode os.FileMode, uid, gid int) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".component-*")
+	parent, err := openDirectoryNoFollow(filepath.Dir(path), true, 0o700)
 	if err != nil {
 		return err
 	}
-	temporary := file.Name()
-	defer func() { _ = os.Remove(temporary) }()
+	defer func() { _ = unix.Close(parent) }()
+	temporary, err := randomID()
+	if err != nil {
+		return err
+	}
+	temporary = ".component-" + temporary
+	fd, err := unix.Openat(parent, temporary, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, uint32(mode.Perm()))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unix.Unlinkat(parent, temporary, 0) }()
+	file := os.NewFile(uintptr(fd), temporary)
+	if file == nil {
+		_ = unix.Close(fd)
+		return errors.New("create component temporary file")
+	}
 	if err := file.Chmod(mode); err != nil {
 		_ = file.Close()
 		return err
@@ -707,7 +702,120 @@ func writeAtomic(path string, data []byte, mode os.FileMode, uid, gid int) error
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporary, path)
+	return unix.Renameat(parent, temporary, parent, filepath.Base(path))
+}
+
+func removeAllNoFollow(path string) error {
+	parent, err := openDirectoryNoFollow(filepath.Dir(path), false, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unix.Close(parent) }()
+	return removeAtNoFollow(parent, filepath.Base(path))
+}
+
+//nolint:cyclop // Descriptor-relative recursive removal handles missing, file, directory, read, close, and unlink states.
+func removeAtNoFollow(parent int, name string) error {
+	var stat unix.Stat_t
+	if err := unix.Fstatat(parent, name, &stat, unix.AT_SYMLINK_NOFOLLOW); errors.Is(err, syscall.ENOENT) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return unix.Unlinkat(parent, name, 0)
+	}
+	fd, err := unix.Openat(parent, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	directory := os.NewFile(uintptr(fd), name)
+	if directory == nil {
+		_ = unix.Close(fd)
+		return errors.New("open component rollback directory")
+	}
+	entries, readErr := directory.ReadDir(-1)
+	if readErr == nil {
+		for _, entry := range entries {
+			if err := removeAtNoFollow(fd, entry.Name()); err != nil {
+				readErr = err
+				break
+			}
+		}
+	}
+	closeErr := directory.Close()
+	if readErr != nil || closeErr != nil {
+		return errors.Join(readErr, closeErr)
+	}
+	return unix.Unlinkat(parent, name, unix.AT_REMOVEDIR)
+}
+
+func setFileMetadataNoFollow(path string, mode os.FileMode, uid, gid int) error {
+	parent, err := openDirectoryNoFollow(filepath.Dir(path), false, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unix.Close(parent) }()
+	fd, err := unix.Openat(parent, filepath.Base(path), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unix.Close(fd) }()
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG {
+		return errors.New("component credential path is not a regular file")
+	}
+	if err := unix.Fchown(fd, uid, gid); err != nil {
+		return err
+	}
+	return unix.Fchmod(fd, uint32(mode.Perm()))
+}
+
+func ensureDirectoryNoFollow(path string, mode os.FileMode, uid, gid int) error {
+	fd, err := openDirectoryNoFollow(path, true, mode)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unix.Close(fd) }()
+	if uid >= 0 && gid >= 0 {
+		if err := unix.Fchown(fd, uid, gid); err != nil {
+			return err
+		}
+	}
+	return unix.Fchmod(fd, uint32(mode.Perm()))
+}
+
+//nolint:cyclop // Each path component is opened with O_NOFOLLOW and optionally created before traversal continues.
+func openDirectoryNoFollow(path string, create bool, mode os.FileMode) (int, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return -1, errors.New("component directory path is invalid")
+	}
+	fd, err := unix.Open(string(filepath.Separator), unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return -1, err
+	}
+	for _, part := range strings.Split(strings.TrimPrefix(path, string(filepath.Separator)), string(filepath.Separator)) {
+		if part == "" {
+			continue
+		}
+		next, openErr := unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		if errors.Is(openErr, syscall.ENOENT) && create {
+			if mkdirErr := unix.Mkdirat(fd, part, uint32(mode.Perm())); mkdirErr != nil && !errors.Is(mkdirErr, syscall.EEXIST) {
+				_ = unix.Close(fd)
+				return -1, mkdirErr
+			}
+			next, openErr = unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		}
+		_ = unix.Close(fd)
+		if openErr != nil {
+			return -1, openErr
+		}
+		fd = next
+	}
+	return fd, nil
 }
 
 func randomID() (string, error) {

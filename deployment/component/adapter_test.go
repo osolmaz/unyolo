@@ -303,7 +303,12 @@ func TestCredentialIOHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = writer.Close()
-	values, err := readSecrets([]api.SecretDescriptor{{Name: "token", FD: int(reader.Fd())}})
+	readerFD, err := syscall.Dup(int(reader.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := readSecrets([]api.SecretDescriptor{{Name: "token", FD: readerFD}})
+	_ = reader.Close()
 	if err != nil || string(values["token"]) != "descriptor-secret" {
 		t.Fatalf("descriptor secrets = %#v, %v", values, err)
 	}
@@ -472,6 +477,17 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	outside := Config{AllowedPaths: []string{root}, BackupDirectory: "/outside"}
 	if _, err := createBackup(t.Context(), outside, nil, Profile{}); err == nil {
 		t.Fatal("outside backup directory was accepted")
+	}
+	outsideRoot := t.TempDir()
+	linkedParent := filepath.Join(root, "linked")
+	if err := os.Symlink(outsideRoot, linkedParent); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtomic(filepath.Join(linkedParent, "escaped"), []byte("value"), 0o600, -1, -1); err == nil {
+		t.Fatal("descriptor-relative write followed a symlinked parent")
+	}
+	if _, err := os.Stat(filepath.Join(outsideRoot, "escaped")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("write escaped ownership: %v", err)
 	}
 }
 

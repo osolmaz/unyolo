@@ -116,6 +116,9 @@ func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDi
 	return coordinator.write(journal)
 }
 
+// Pending returns the durable transaction, when present, for recovery binding.
+func (coordinator Coordinator) Pending() (Journal, bool, error) { return coordinator.read() }
+
 // Finalize cleans committed step rollback artifacts before clearing the journal.
 func (coordinator Coordinator) Finalize(ctx context.Context, handlers map[string]func(context.Context, string) error) error {
 	journal, found, err := coordinator.read()
