@@ -228,6 +228,13 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 	}
 }
 
+func TestDeleteManagedAgentRejectsUnknownHandle(t *testing.T) {
+	agent := profile.Agent{UnixUser: "missing-brokerkit-agent", Home: "/home/missing-brokerkit-agent", Shell: "/usr/sbin/nologin"}
+	if err := deleteManagedAgent(t.Context(), agent, "retained"); err == nil {
+		t.Fatal("unknown managed-agent rollback handle was accepted")
+	}
+}
+
 func TestEngineAdapterHelper(t *testing.T) {
 	if len(os.Args) < 2 || os.Args[len(os.Args)-1] != "engine-adapter" {
 		return

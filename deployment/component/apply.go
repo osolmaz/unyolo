@@ -23,9 +23,22 @@ import (
 )
 
 type backup struct {
-	APIVersion string        `json:"api_version"`
-	ID         string        `json:"id"`
-	Entries    []backupEntry `json:"entries"`
+	APIVersion string          `json:"api_version"`
+	ID         string          `json:"id"`
+	Entries    []backupEntry   `json:"entries"`
+	Accounts   []accountBackup `json:"accounts,omitempty"`
+	Groups     []groupBackup   `json:"groups,omitempty"`
+}
+
+type accountBackup struct {
+	Name    string `json:"name"`
+	Existed bool   `json:"existed"`
+}
+
+type groupBackup struct {
+	Name    string   `json:"name"`
+	Existed bool     `json:"existed"`
+	Members []string `json:"members,omitempty"`
 }
 
 type backupEntry struct {
@@ -41,13 +54,13 @@ type backupEntry struct {
 //nolint:cyclop // Ordered account, file, credential, and client phases share one rollback boundary.
 func apply(ctx context.Context, request api.Request, profile Profile, config Config, state inspected) (handle string, returnErr error) {
 	paths := changedPaths(profile, state)
-	record, err := createBackup(config, paths)
+	record, err := createBackup(ctx, config, paths, profile)
 	if err != nil {
 		return "", err
 	}
 	defer func() {
 		if returnErr != nil {
-			returnErr = errors.Join(returnErr, rollback(config, record.ID))
+			returnErr = errors.Join(returnErr, rollback(ctx, config, record.ID))
 		}
 	}()
 	secrets, err := readSecrets(request.Secrets)
@@ -96,7 +109,7 @@ func changedPaths(profile Profile, state inspected) []string {
 	return result
 }
 
-func createBackup(config Config, paths []string) (backup, error) {
+func createBackup(ctx context.Context, config Config, paths []string, profile Profile) (backup, error) {
 	if config.BackupDirectory == "" || !ownedPath(config.BackupDirectory, config.AllowedPaths) {
 		return backup{}, errors.New("component backup directory is outside ownership")
 	}
@@ -108,6 +121,10 @@ func createBackup(config Config, paths []string) (backup, error) {
 		return backup{}, err
 	}
 	record := backup{APIVersion: "brokerkit.io/component-backup/v1", ID: id}
+	record.Accounts, record.Groups, err = snapshotIdentityBackups(ctx, profile)
+	if err != nil {
+		return backup{}, err
+	}
 	for _, path := range paths {
 		entry, entryErr := snapshotPath(path)
 		if entryErr != nil {
@@ -123,6 +140,33 @@ func createBackup(config Config, paths []string) (backup, error) {
 		return backup{}, err
 	}
 	return record, nil
+}
+
+func snapshotIdentityBackups(ctx context.Context, profile Profile) ([]accountBackup, []groupBackup, error) {
+	accounts := make([]accountBackup, 0, len(profile.Accounts))
+	for _, account := range profile.Accounts {
+		_, err := user.Lookup(account.Name)
+		if err != nil && !isUnknownUser(err) {
+			return nil, nil, errors.New("inspect component account for rollback")
+		}
+		accounts = append(accounts, accountBackup{Name: account.Name, Existed: err == nil})
+	}
+	groups := make([]groupBackup, 0, len(profile.Groups))
+	for _, group := range profile.Groups {
+		_, err := user.LookupGroup(group.Name)
+		if err != nil && !isUnknownGroup(err) {
+			return nil, nil, errors.New("inspect component group for rollback")
+		}
+		entry := groupBackup{Name: group.Name, Existed: err == nil}
+		if entry.Existed {
+			entry.Members, err = groupMemberNames(ctx, group.Name)
+			if err != nil {
+				return nil, nil, errors.New("inspect component group members for rollback")
+			}
+		}
+		groups = append(groups, entry)
+	}
+	return accounts, groups, nil
 }
 
 func snapshotPath(path string) (backupEntry, error) {
@@ -467,8 +511,8 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 	return evidence, nil
 }
 
-//nolint:cyclop // Rollback restores every bounded backup record in reverse mutation order.
-func rollback(config Config, handle string) error {
+//nolint:cyclop // Rollback restores every bounded backup record and identity change in reverse mutation order.
+func rollback(ctx context.Context, config Config, handle string) error {
 	if len(handle) != 32 {
 		return errors.New("component rollback handle is invalid")
 	}
@@ -480,6 +524,9 @@ func rollback(config Config, handle string) error {
 	var record backup
 	if err := strictjson.Decode(data, &record, true); err != nil || record.ID != handle || record.APIVersion != "brokerkit.io/component-backup/v1" {
 		return errors.New("component rollback backup is invalid")
+	}
+	if err := rollbackIdentities(ctx, config, record); err != nil {
+		return err
 	}
 	for index := len(record.Entries) - 1; index >= 0; index-- {
 		entry := record.Entries[index]
@@ -506,6 +553,90 @@ func rollback(config Config, handle string) error {
 		}
 	}
 	return os.Remove(path)
+}
+
+func rollbackIdentities(ctx context.Context, config Config, record backup) error {
+	if err := rollbackAccounts(ctx, config, record.Accounts); err != nil {
+		return err
+	}
+	return rollbackGroups(ctx, config, record.Groups)
+}
+
+func rollbackAccounts(ctx context.Context, config Config, accounts []accountBackup) error {
+	for index := len(accounts) - 1; index >= 0; index-- {
+		entry := accounts[index]
+		if entry.Existed {
+			continue
+		}
+		if !slices.Contains(config.AllowedAccounts, entry.Name) {
+			return errors.New("component rollback account exceeds ownership")
+		}
+		if _, err := user.Lookup(entry.Name); isUnknownUser(err) {
+			continue
+		} else if err != nil {
+			return errors.New("inspect component rollback account")
+		}
+		if output, err := exec.CommandContext(ctx, "userdel", entry.Name).CombinedOutput(); err != nil { // #nosec G204 -- signed ownership and the backup bind this validated account name.
+			return fmt.Errorf("remove component account: %w: %s", err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
+}
+
+func rollbackGroups(ctx context.Context, config Config, groups []groupBackup) error {
+	for index := len(groups) - 1; index >= 0; index-- {
+		entry := groups[index]
+		if !slices.Contains(config.AllowedGroups, entry.Name) {
+			return errors.New("component rollback group exceeds ownership")
+		}
+		if !entry.Existed {
+			if _, err := user.LookupGroup(entry.Name); isUnknownGroup(err) {
+				continue
+			} else if err != nil {
+				return errors.New("inspect component rollback group")
+			}
+			if output, err := exec.CommandContext(ctx, "groupdel", entry.Name).CombinedOutput(); err != nil { // #nosec G204 -- signed ownership and the backup bind this validated group name.
+				return fmt.Errorf("remove component group: %w: %s", err, strings.TrimSpace(string(output)))
+			}
+			continue
+		}
+		if err := restoreGroupMembers(ctx, entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func restoreGroupMembers(ctx context.Context, entry groupBackup) error {
+	current, err := groupMemberNames(ctx, entry.Name)
+	if err != nil {
+		return err
+	}
+	for _, member := range entry.Members {
+		if !slices.Contains(current, member) {
+			if err := editGroupMember(ctx, entry.Name, member, true); err != nil {
+				return err
+			}
+		}
+	}
+	for _, member := range current {
+		if !slices.Contains(entry.Members, member) {
+			if err := editGroupMember(ctx, entry.Name, member, false); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func isUnknownUser(err error) bool {
+	var unknown user.UnknownUserError
+	return errors.As(err, &unknown)
+}
+
+func isUnknownGroup(err error) bool {
+	var unknown user.UnknownGroupError
+	return errors.As(err, &unknown)
 }
 
 func isAgentClientPath(path string) bool {

@@ -66,7 +66,6 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = secret.Close() }()
 	base.Action, base.PlanDigest = api.ActionApply, planned.PlanDigest
 	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: int(secret.Fd())}}
 	applied := runAdapter(t, base, config)
@@ -101,7 +100,6 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = rotatedSecret.Close() }()
 	base.Action, base.PlanDigest = api.ActionApply, rotation.PlanDigest
 	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: int(rotatedSecret.Fd()), Rotate: true}}
 	rotated := runAdapter(t, base, config)
@@ -371,6 +369,10 @@ func TestHostInspectionHelpers(t *testing.T) {
 	if err := applyGroupMembers(t.Context(), []Group{groupProfile}); err != nil {
 		t.Fatal(err)
 	}
+	accounts, groups, err := snapshotIdentityBackups(t.Context(), Profile{Accounts: []Account{account}, Groups: []Group{groupProfile}})
+	if err != nil || len(accounts) != 1 || !accounts[0].Existed || len(groups) != 1 || !groups[0].Existed {
+		t.Fatalf("identity backup = %#v, %#v, %v", accounts, groups, err)
+	}
 	root := t.TempDir()
 	file := filepath.Join(root, "file")
 	if pathFingerprint(filepath.Join(root, "missing")) != "missing" {
@@ -413,7 +415,7 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := Config{AllowedPaths: []string{root}, BackupDirectory: filepath.Join(root, "backups")}
-	record, err := createBackup(config, []string{file, created})
+	record, err := createBackup(t.Context(), config, []string{file, created}, Profile{})
 	if err != nil || len(record.Entries) != 2 {
 		t.Fatalf("backup = %#v, %v", record, err)
 	}
@@ -423,7 +425,7 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	if err := os.WriteFile(created, []byte("created"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := rollback(config, record.ID); err != nil {
+	if err := rollback(t.Context(), config, record.ID); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(file)
@@ -433,11 +435,11 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	if _, err := os.Stat(created); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("created file remains: %v", err)
 	}
-	if err := rollback(config, "missing"); err == nil {
+	if err := rollback(t.Context(), config, "missing"); err == nil {
 		t.Fatal("missing rollback handle was accepted")
 	}
 	outside := Config{AllowedPaths: []string{root}, BackupDirectory: "/outside"}
-	if _, err := createBackup(outside, nil); err == nil {
+	if _, err := createBackup(t.Context(), outside, nil, Profile{}); err == nil {
 		t.Fatal("outside backup directory was accepted")
 	}
 }

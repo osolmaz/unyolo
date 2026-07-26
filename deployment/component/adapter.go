@@ -301,7 +301,7 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 		}
 		return api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "verified", Verification: evidence}, nil
 	case api.ActionRollback:
-		if err := rollback(config, request.RollbackHandle); err != nil {
+		if err := rollback(ctx, config, request.RollbackHandle); err != nil {
 			return api.Response{}, err
 		}
 		return api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "rolled_back", PlanDigest: request.PlanDigest}, nil

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -586,19 +587,59 @@ func (engine *Engine) identitySteps(planned Planned) ([]transaction.Step, error)
 		if err != nil {
 			return nil, err
 		}
+		if _, err := os.Lstat(agent.Home); err == nil {
+			return nil, fmt.Errorf("managed agent %q home already exists", agent.ID)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("inspect managed agent %q home: %w", agent.ID, err)
+		}
 		steps = append(steps, transaction.Step{
 			ID: "identity." + agent.ID, Kind: "identity:" + agent.ID,
 			Apply: func(ctx context.Context) (string, error) {
+				if _, err := os.Lstat(agent.Home); !errors.Is(err, os.ErrNotExist) {
+					return "", fmt.Errorf("managed agent %q home appeared before creation", agent.ID)
+				}
 				process := exec.CommandContext(ctx, command[0], command[1:]...) // #nosec G204 -- fixed account command with validated profile fields.
 				if err := process.Run(); err != nil {
 					return "", fmt.Errorf("create managed agent %q: %w", agent.ID, err)
 				}
-				return "retained", nil
+				return "created", nil
 			},
-			Rollback: func(context.Context, string) error { return nil },
+			Rollback: func(ctx context.Context, handle string) error {
+				return deleteManagedAgent(ctx, agent, handle)
+			},
 		})
 	}
 	return steps, nil
+}
+
+//nolint:cyclop // Managed identity rollback fails closed across handle, account, passwd, deletion, and home checks.
+func deleteManagedAgent(ctx context.Context, agent profile.Agent, handle string) error {
+	if handle != "created" {
+		return errors.New("managed agent rollback handle is invalid")
+	}
+	account, err := user.Lookup(agent.UnixUser)
+	if err != nil {
+		var unknown user.UnknownUserError
+		if errors.As(err, &unknown) {
+			return nil
+		}
+		return fmt.Errorf("inspect managed agent for rollback: %w", err)
+	}
+	if filepath.Clean(account.HomeDir) != agent.Home {
+		return errors.New("managed agent changed before rollback")
+	}
+	output, err := exec.CommandContext(ctx, "getent", "passwd", agent.UnixUser).Output() // #nosec G204 -- managed account names are validated before planning.
+	fields := strings.Split(strings.TrimSpace(string(output)), ":")
+	if err != nil || len(fields) != 7 || filepath.Clean(fields[5]) != agent.Home || filepath.Clean(fields[6]) != agent.Shell {
+		return errors.New("managed agent identity changed before rollback")
+	}
+	if output, err := exec.CommandContext(ctx, "userdel", "--remove", agent.UnixUser).CombinedOutput(); err != nil { // #nosec G204 -- validated managed account name.
+		return fmt.Errorf("remove managed agent: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.RemoveAll(agent.Home); err != nil {
+		return fmt.Errorf("remove managed agent home: %w", err)
+	}
+	return nil
 }
 
 func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.Context, string) error {
@@ -618,7 +659,10 @@ func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.
 		}
 	}
 	for _, agent := range planned.Snapshot.Deployment.Agents {
-		handlers["identity:"+agent.ID] = func(context.Context, string) error { return nil }
+		agent := agent
+		handlers["identity:"+agent.ID] = func(ctx context.Context, handle string) error {
+			return deleteManagedAgent(ctx, agent, handle)
+		}
 	}
 	for _, service := range restartServices(planned) {
 		service := service
