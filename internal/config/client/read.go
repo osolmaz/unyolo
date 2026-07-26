@@ -8,39 +8,104 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
-const maxClientEnvBytes = 64 * 1024
+const maxClientConfigBytes = 64 * 1024
 
-// Client is the non-shell representation of one generated client.env file.
+// Client is one loaded private client V1 document.
 type Client struct {
+	ClientID      string
 	AgentEndpoint string
 	GitEndpoint   string
 	SharedSecret  string
 }
 
-// Read loads a generated client.env without evaluating it as shell code.
-func Read(homeDir, brokerName, envPrefix string) (Client, error) {
+// Read loads the default generated client.json without shell evaluation.
+func Read(homeDir, brokerName, _ string) (Client, error) {
 	path, err := Path(homeDir, brokerName)
 	if err != nil {
 		return Client{}, err
 	}
+	return ReadPath(path, homeDir)
+}
+
+// ReadPath loads one explicit private client V1 document.
+func ReadPath(path, homeDir string) (Client, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return Client{}, errors.New("broker client configuration path must be absolute and clean")
+	}
 	if err := validateClientFile(path, homeDir); err != nil {
 		return Client{}, err
 	}
-	file, err := os.Open(path) // #nosec G304 -- path is constrained beneath the selected home.
+	file, err := os.Open(path) // #nosec G304 -- explicit path is validated and owner checked.
 	if err != nil {
 		return Client{}, fmt.Errorf("open broker client configuration: %w", err)
 	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxClientEnvBytes+1))
+	data, readErr := io.ReadAll(io.LimitReader(file, maxClientConfigBytes+1))
 	closeErr := file.Close()
 	if readErr != nil || closeErr != nil {
 		return Client{}, errors.New("read broker client configuration")
 	}
-	if len(data) > maxClientEnvBytes {
+	if len(data) > maxClientConfigBytes {
 		return Client{}, errors.New("broker client configuration is too large")
 	}
-	return parseClientEnv(data, normalizeEnvPrefix(envPrefix))
+	var value document
+	if err := strictjson.Decode(data, &value, true); err != nil {
+		return Client{}, errors.New("broker client configuration is invalid")
+	}
+	return validateDocument(value)
+}
+
+// Resolve chooses exactly one configuration source. The private client file is
+// the production default; complete environment configuration remains available
+// for isolated development and tests.
+func Resolve(homeDir, brokerName, envPrefix string, getenv func(string) string) (Client, error) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	path, err := Path(homeDir, brokerName)
+	if err != nil {
+		return Client{}, err
+	}
+	_, statErr := os.Lstat(path)
+	fileExists := statErr == nil
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return Client{}, fmt.Errorf("inspect broker client configuration: %w", statErr)
+	}
+	prefix := normalizeEnvPrefix(envPrefix)
+	environment := Client{
+		ClientID:      strings.TrimSpace(getenv(prefix + "_CLIENT_ID")),
+		AgentEndpoint: strings.TrimSpace(getenv(prefix + "_AGENT_ENDPOINT")),
+		GitEndpoint:   strings.TrimSpace(getenv(prefix + "_GIT_ENDPOINT")),
+		SharedSecret:  strings.TrimSpace(getenv(prefix + "_SHARED_SECRET")),
+	}
+	secretFile := strings.TrimSpace(getenv(prefix + "_SHARED_SECRET_FILE"))
+	if secretFile != "" {
+		if environment.SharedSecret != "" {
+			return Client{}, errors.New("broker client environment has conflicting credential sources")
+		}
+		data, readErr := os.ReadFile(secretFile) // #nosec G304 -- explicit development credential source.
+		if readErr != nil || len(data) > maxClientConfigBytes {
+			return Client{}, errors.New("broker client environment credential could not be read")
+		}
+		environment.SharedSecret = strings.TrimSpace(string(data))
+	}
+	hasEnvironment := environment.ClientID != "" || environment.AgentEndpoint != "" || environment.GitEndpoint != "" || environment.SharedSecret != "" || secretFile != ""
+	if fileExists && hasEnvironment {
+		return Client{}, errors.New("broker client file and environment configuration conflict")
+	}
+	if fileExists {
+		return ReadPath(path, homeDir)
+	}
+	if !hasEnvironment {
+		return Client{}, errors.New("broker client configuration is unavailable; run setup client")
+	}
+	if environment.ClientID == "" {
+		environment.ClientID = "development"
+	}
+	return validateClient(environment)
 }
 
 func validateClientFile(path, homeDir string) error {
@@ -48,7 +113,7 @@ func validateClientFile(path, homeDir string) error {
 	if err != nil {
 		return fmt.Errorf("inspect broker client configuration: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != clientEnvFileMode {
+	if !info.Mode().IsRegular() || info.Mode().Perm() != clientFileMode {
 		return errors.New("broker client configuration must be a regular owner-only file")
 	}
 	homeInfo, err := os.Stat(filepath.Clean(homeDir))
@@ -63,40 +128,22 @@ func validateClientFile(path, homeDir string) error {
 	return nil
 }
 
-func parseClientEnv(data []byte, prefix string) (Client, error) {
-	wanted := map[string]*string{}
-	var client Client
-	wanted[prefix+"_AGENT_ENDPOINT"] = &client.AgentEndpoint
-	wanted[prefix+"_GIT_ENDPOINT"] = &client.GitEndpoint
-	wanted[prefix+"_SHARED_SECRET"] = &client.SharedSecret
-	seen := map[string]bool{}
-	for _, raw := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
-		if err := parseClientAssignment(raw, wanted, seen); err != nil {
-			return Client{}, err
-		}
+func validateDocument(value document) (Client, error) {
+	if value.APIVersion != APIVersion {
+		return Client{}, errors.New("broker client configuration has an unsupported API")
 	}
-	return validateParsedClient(client)
+	return validateClient(Client{
+		ClientID: value.ClientID, AgentEndpoint: value.AgentEndpoint,
+		GitEndpoint: value.GitEndpoint, SharedSecret: value.SharedSecret,
+	})
 }
 
-func parseClientAssignment(raw string, wanted map[string]*string, seen map[string]bool) error {
-	name, value, ok := strings.Cut(raw, "=")
-	name = strings.TrimPrefix(name, "export ")
-	destination, expected := wanted[name]
-	if !ok || !expected || seen[name] {
-		return errors.New("broker client configuration has an unsupported assignment")
+func validateClient(client Client) (Client, error) {
+	if err := ValidateClientName(client.ClientID); err != nil {
+		return Client{}, errors.New("broker client configuration has an invalid client ID")
 	}
-	decoded, err := decodeShellQuoted(value)
-	if err != nil {
-		return errors.New("broker client configuration has an invalid quoted value")
-	}
-	*destination = decoded
-	seen[name] = true
-	return nil
-}
-
-func validateParsedClient(client Client) (Client, error) {
 	if client.AgentEndpoint == "" || client.SharedSecret == "" {
-		return Client{}, errors.New("broker client configuration is incomplete")
+		return Client{}, errors.New("broker client endpoint or credential is incomplete")
 	}
 	if err := ValidateEndpoint(client.AgentEndpoint); err != nil {
 		return Client{}, errors.New("broker client configuration has an invalid agent endpoint")
@@ -107,17 +154,4 @@ func validateParsedClient(client Client) (Client, error) {
 		}
 	}
 	return client, nil
-}
-
-func decodeShellQuoted(value string) (string, error) {
-	if len(value) < 2 || value[0] != '\'' || value[len(value)-1] != '\'' {
-		return "", errors.New("value is not single quoted")
-	}
-	inner := value[1 : len(value)-1]
-	const escapedQuote = `'\''`
-	inner = strings.ReplaceAll(inner, escapedQuote, "\x00")
-	if strings.Contains(inner, "'") || strings.ContainsRune(inner, '\x00') && strings.Contains(value, "\x00") {
-		return "", errors.New("value contains invalid quoting")
-	}
-	return strings.ReplaceAll(inner, "\x00", "'"), nil
 }

@@ -13,13 +13,9 @@ printed, copied, or exported to the agent.
 
 ## Authenticate to BrokerKit
 
-The runtime normally provides `HF_BROKER_AGENT_ENDPOINT` and
-`HF_BROKER_SHARED_SECRET`. If either is missing and the client file is
-readable, load it before running broker commands:
-
-```sh
-. "$HOME/.config/hf-broker/client.env"
-```
+`hf-broker` loads its private client V1 document directly from
+`~/.config/hf-broker/client.json`. Do not source it or copy its credential into
+the environment. Environment configuration is only for isolated development.
 
 Do not run an interactive Hugging Face login or read the system broker token.
 

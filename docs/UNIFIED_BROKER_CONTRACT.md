@@ -241,23 +241,27 @@ Every broker should expose the same client setup concept:
 That command should write a client-owned config file under:
 
 ```text
-~/.config/<broker>/client.env
+~/.config/<broker>/client.json
 ```
 
-The file should contain only:
+The owner-only file uses the closed `brokerkit.io/client/v1` schema:
 
-```text
-export <PREFIX>_AGENT_ENDPOINT=<endpoint-uri>
-export <PREFIX>_SHARED_SECRET=<client-secret>
-export <PREFIX>_GIT_ENDPOINT=<explicit-loopback-tcp-uri>
+```json
+{
+  "api_version": "brokerkit.io/client/v1",
+  "client_id": "agent-a",
+  "agent_endpoint": "unix:///run/brokerkit/provider/agent/broker.sock",
+  "git_endpoint": "tcp://127.0.0.1:38471",
+  "shared_secret": "broker-client-secret"
+}
 ```
 
 For Git-speaking brokers, `<broker> git install` owns the user-level URL
 rewrites and exact-origin credential-helper configuration. `setup client`
 does not edit Git configuration. Neither command writes upstream provider
 credentials.
-The client can source this protected file directly; both values must be
-exported to broker client processes.
+Broker CLIs, MCP adapters, and Git helpers load this protected file directly.
+Production clients do not depend on shell startup files or inherited secrets.
 
 Requestable native Git pushes remain attached to the original HTTP request.
 One durable approval covers the complete ordered receive-pack transaction;

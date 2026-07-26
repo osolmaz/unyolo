@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/brokerkit/agent/client"
 	"github.com/osolmaz/brokerkit/agent/v1"
 	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/brokerkit/internal/config/client"
 )
 
 type commandFlags struct {
@@ -130,12 +131,15 @@ func writeCommandResult(stdout, stderr io.Writer, raw json.RawMessage) error {
 }
 
 func loadAgentClient() (*agentclient.Client, error) {
-	endpointURI := strings.TrimSpace(os.Getenv("SUDO_BROKER_AGENT_ENDPOINT"))
-	secret := strings.TrimSpace(os.Getenv("SUDO_BROKER_SHARED_SECRET"))
-	if endpointURI == "" || secret == "" {
-		return nil, errors.New("SUDO_BROKER_AGENT_ENDPOINT and SUDO_BROKER_SHARED_SECRET must identify a local broker")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, errors.New("sudo-broker client home is unavailable")
 	}
-	return agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret})
+	configured, err := clientconfig.Resolve(home, "sudo-broker", "SUDO_BROKER", os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	return agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret})
 }
 
 func addCommandFlags(flags *flag.FlagSet, values *commandFlags) {

@@ -1,34 +1,30 @@
 package clientconfig
 
 import (
+	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestRenderClientEnv(t *testing.T) {
+func TestRenderClientJSON(t *testing.T) {
 	body, err := Render(Config{
-		BrokerName: "gh-broker",
-		EnvPrefix:  "GH_BROKER_",
-		Endpoint:   "unix:///run/brokerkit/github/agent.sock",
-		Secret:     "secret-with-'quote'",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "bob",
+		Endpoint: "unix:///run/brokerkit/github/agent.sock", Secret: "secret-with-'quote'",
 	})
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	want := "export GH_BROKER_AGENT_ENDPOINT='unix:///run/brokerkit/github/agent.sock'\nexport GH_BROKER_SHARED_SECRET='secret-with-'\\''quote'\\'''\n"
-	if string(body) != want {
-		t.Fatalf("Render() = %q, want %q", body, want)
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("Render() invalid JSON: %v", err)
 	}
-	path := filepath.Join(t.TempDir(), "client.env")
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		t.Fatal(err)
+	if decoded["api_version"] != APIVersion || decoded["client_id"] != "bob" || decoded["shared_secret"] != "secret-with-'quote'" {
+		t.Fatalf("Render() = %s", body)
 	}
-	command := exec.Command("sh", "-c", `. "$1" && test "$GH_BROKER_AGENT_ENDPOINT" = 'unix:///run/brokerkit/github/agent.sock' && test "$GH_BROKER_SHARED_SECRET" = "secret-with-'quote'" && env | grep -q '^GH_BROKER_AGENT_ENDPOINT=' && ! env | grep -q '^GH_BROKER_ENDPOINT=' && env | grep -q '^GH_BROKER_SHARED_SECRET='`, "sh", path) // #nosec G204 -- fixed test command and generated temp path.
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("source rendered client env: %v: %s", err, output)
+	if strings.Contains(string(body), "export ") {
+		t.Fatalf("Render() returned shell content: %s", body)
 	}
 }
 
@@ -37,6 +33,7 @@ func TestWriteClientEnv(t *testing.T) {
 	path, err := Write(Config{
 		BrokerName: "hf-broker",
 		EnvPrefix:  "HF_BROKER",
+		ClientID:   "agent-a",
 		Endpoint:   "unix:///run/brokerkit/huggingface/agent.sock",
 		Secret:     "client-secret",
 		HomeDir:    home,
@@ -44,7 +41,7 @@ func TestWriteClientEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}
-	wantPath := filepath.Join(home, ".config", "hf-broker", "client.env")
+	wantPath := filepath.Join(home, ".config", "hf-broker", "client.json")
 	if path != wantPath {
 		t.Fatalf("Write() path = %q, want %q", path, wantPath)
 	}
@@ -60,14 +57,9 @@ func TestWriteClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "export HF_BROKER_AGENT_ENDPOINT='unix:///run/brokerkit/huggingface/agent.sock'\n") {
-		t.Fatalf("client env missing endpoint: %q", text)
-	}
-	if strings.Contains(text, "export HF_BROKER_ENDPOINT=") {
-		t.Fatalf("client env contains legacy endpoint: %q", text)
-	}
-	if !strings.Contains(text, "export HF_BROKER_SHARED_SECRET='client-secret'\n") {
-		t.Fatalf("client env missing secret: %q", text)
+	if !strings.Contains(text, `"agent_endpoint": "unix:///run/brokerkit/huggingface/agent.sock"`) ||
+		!strings.Contains(text, `"shared_secret": "client-secret"`) {
+		t.Fatalf("client JSON is incomplete: %q", text)
 	}
 }
 
@@ -76,6 +68,7 @@ func TestWriteForHomeOwnerWritesClientEnv(t *testing.T) {
 	path, err := WriteForHomeOwner(Config{
 		BrokerName: "gh-broker",
 		EnvPrefix:  "GH_BROKER",
+		ClientID:   "agent-a",
 		Endpoint:   "unix:///run/brokerkit/github/agent.sock",
 		Secret:     "client-secret",
 		HomeDir:    home,
@@ -83,7 +76,7 @@ func TestWriteForHomeOwnerWritesClientEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteForHomeOwner() error = %v", err)
 	}
-	if path != filepath.Join(home, ".config", "gh-broker", "client.env") {
+	if path != filepath.Join(home, ".config", "gh-broker", "client.json") {
 		t.Fatalf("WriteForHomeOwner() path = %q", path)
 	}
 }
@@ -103,13 +96,13 @@ func TestWriteForHomeOwnerRejectsSymlinkedConfigPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := WriteForHomeOwner(Config{
-			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock",
+			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/brokerkit/github/agent.sock",
 			Secret: "client-secret", HomeDir: home,
 		})
 		if err == nil {
 			t.Fatal("WriteForHomeOwner(symlink) error = nil")
 		}
-		if _, statErr := os.Stat(filepath.Join(outside, "client.env")); !os.IsNotExist(statErr) {
+		if _, statErr := os.Stat(filepath.Join(outside, "client.json")); !os.IsNotExist(statErr) {
 			t.Fatalf("outside client config stat error = %v", statErr)
 		}
 	}
@@ -123,7 +116,7 @@ func TestWriteForHomeOwnerRejectsSymlinkedHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := WriteForHomeOwner(Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/brokerkit/github/agent.sock",
 		Secret: "client-secret", HomeDir: linkedHome,
 	})
 	if err == nil {
@@ -141,11 +134,11 @@ func TestWriteForHomeOwnerReplacesClientFileSymlinkInsideHome(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(dir, "client.env")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(dir, "client.json")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := WriteForHomeOwner(Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/brokerkit/github/agent.sock",
 		Secret: "client-secret", HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)

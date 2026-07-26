@@ -15,6 +15,7 @@ import (
 
 	"github.com/osolmaz/brokerkit/agent/client"
 	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/brokerkit/internal/config/client"
 )
 
 const defaultClientWait = 15 * time.Minute
@@ -94,20 +95,37 @@ func clientOperationInitialState(ctx context.Context, client *agentClient, actio
 }
 
 func loadAgentClient(getenv func(string) string) (*agentClient, error) {
-	endpointURI := firstEnvironment(getenv, "HF_BROKER_AGENT_ENDPOINT")
-	secret, err := loadAgentSecret(getenv)
+	configured, err := loadHFClientConfig(getenv)
 	if err != nil {
 		return nil, err
 	}
-	operations, err := agentclient.New(agentclient.Options{Endpoint: endpointURI, Credential: secret})
+	operations, err := agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret})
 	if err != nil {
 		return nil, err
 	}
-	grantClient, err := newHFGrantClient(endpointURI, secret)
+	grantClient, err := newHFGrantClient(configured.AgentEndpoint, configured.SharedSecret)
 	if err != nil {
 		return nil, err
 	}
 	return &agentClient{operations: operations, grantClient: grantClient}, nil
+}
+
+func loadHFClientConfig(getenv func(string) string) (clientconfig.Client, error) {
+	home := strings.TrimSpace(getenv("HOME"))
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return clientconfig.Client{}, errors.New("HF Broker client home is unavailable")
+		}
+	}
+	wrapped := func(name string) string {
+		if name == "HF_BROKER_SHARED_SECRET_FILE" && strings.TrimSpace(getenv(name)) == "" {
+			return getenv("MLCLAW_HF_BROKER_AGENT_SECRET_FILE")
+		}
+		return getenv(name)
+	}
+	return clientconfig.Resolve(home, "hf-broker", "HF_BROKER", wrapped)
 }
 
 func loadAgentSecret(getenv func(string) string) (string, error) {
