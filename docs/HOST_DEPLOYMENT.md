@@ -128,23 +128,28 @@ Lock after editing any referenced file:
 ```sh
 brokerkit system profile lock --profile "$PWD/deployment"
 brokerkit system profile lock --check --profile "$PWD/deployment"
-brokerkit system validate --profile "$PWD/deployment"
 ```
 
-Protected planning and apply use the exact same engine as guided setup:
+Protected validation, planning, and apply use the exact same engine as guided
+setup. Invoke the root-owned worker installed by the verified bootstrap; never
+run a user-local binary with `sudo`:
 
 ```sh
-sudo brokerkit system plan \
+worker=/opt/brokerkit/bootstrap/v<reviewed-version>/brokerkit
+
+sudo "$worker" system validate --profile "$PWD/deployment"
+
+sudo "$worker" system plan \
   --profile "$PWD/deployment" \
   --output /tmp/brokerkit-plan.json
 
-sudo brokerkit system apply \
+sudo "$worker" system apply \
   --profile "$PWD/deployment" \
   --expect-plan sha256:<reviewed-plan-digest> \
   --secret-file github-client-secret=/run/brokerkit-secrets/github-client-secret
 
-sudo brokerkit system verify --profile "$PWD/deployment"
-sudo brokerkit system export --profile "$PWD/deployment" --json
+sudo "$worker" system verify --profile "$PWD/deployment"
+sudo "$worker" system export --profile "$PWD/deployment" --json
 ```
 
 Apply replans under the host lock. Changed files, account state, group state,

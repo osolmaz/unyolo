@@ -11,6 +11,25 @@ import (
 	"github.com/osolmaz/brokerkit/internal/host/layout"
 )
 
+// VerifyRootOwnedExecutable rejects a running binary or ancestor that a
+// non-root user can replace. Privileged host deployment commands call this
+// before inspecting or mutating protected state.
+func VerifyRootOwnedExecutable() error {
+	path, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable path: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("resolve executable identity: %w", err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("privileged executable must be a regular executable file")
+	}
+	return validateTrustedExecutable(resolved)
+}
+
 // ManagedRoot is the root-controlled release directory used by service setup.
 func ManagedRoot() string {
 	return layout.Root()

@@ -22,6 +22,7 @@ import (
 	"github.com/osolmaz/brokerkit/deployment/transaction"
 	"github.com/osolmaz/brokerkit/internal/host/bundle"
 	"github.com/osolmaz/brokerkit/internal/host/identity"
+	hostsetup "github.com/osolmaz/brokerkit/internal/host/setup"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -318,8 +319,14 @@ func (engine *Engine) verifySnapshotTrust(snapshot profile.Snapshot) error {
 }
 
 func (engine *Engine) requirePrivileged() error {
-	if !engine.options.Development && os.Geteuid() != 0 {
+	if engine.options.Development {
+		return nil
+	}
+	if os.Geteuid() != 0 {
 		return errors.New("production host deployment requires root")
+	}
+	if err := hostsetup.VerifyRootOwnedExecutable(); err != nil {
+		return fmt.Errorf("production host deployment executable is unsafe: %w", err)
 	}
 	return nil
 }

@@ -396,18 +396,19 @@ The normal workflow is:
 
 ```sh
 brokerkit system profile lock --profile ./isengard
-brokerkit system validate --profile ./isengard
-sudo brokerkit system plan \
+worker=/opt/brokerkit/bootstrap/v<reviewed-version>/brokerkit
+sudo "$worker" system validate --profile ./isengard
+sudo "$worker" system plan \
   --profile ./isengard \
   --output /tmp/isengard-plan.json
-sudo brokerkit system apply \
+sudo "$worker" system apply \
   --profile ./isengard \
   --expect-plan sha256:<reviewed-plan-digest> \
   --secret-file github-app-key=/run/brokerkit-secrets/github-app-key.pem \
   --secret-file github-webhook-secret=/run/brokerkit-secrets/github-webhook-secret \
   --secret-file huggingface-token=/run/brokerkit-secrets/huggingface-token \
   --secret-file telegram-token=/run/brokerkit-secrets/telegram-token
-sudo brokerkit system verify --profile ./isengard
+sudo "$worker" system verify --profile ./isengard
 ```
 
 `profile lock` updates referenced-file digests after an operator edits the
@@ -1256,7 +1257,7 @@ and pins the deployment public key.
 The user binary installer remains nonprivileged and creates no accounts or
 services. The root bootstrap installs only the short-lived worker executable;
 it does not configure or start a service. The guided privileged worker and
-direct `sudo brokerkit system apply` use the same host setup engine.
+direct root-owned worker invocations use the same host setup engine.
 
 ## Test strategy
 

@@ -128,6 +128,14 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, config Config
 	if err := strictjson.Decode(request.Profile, &profile, true); err != nil {
 		return errors.New("component deployment profile is invalid")
 	}
+	if request.Action == api.ActionValidate {
+		if err := validateProfile(profile, config, request.Agents); err != nil {
+			return err
+		}
+		return deploymentruntime.WriteFrame(output, api.Response{
+			APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "valid",
+		})
+	}
 	state, err := inspect(ctx, request, profile, config)
 	if err != nil {
 		return err

@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+func TestVerifyRootOwnedExecutableRejectsTestBinary(t *testing.T) {
+	if err := VerifyRootOwnedExecutable(); err == nil {
+		t.Fatal("user-owned test executable was accepted for privileged deployment")
+	}
+}
+
 func TestParseAndConfigureClient(t *testing.T) {
 	home := t.TempDir()
 	secretFile := filepath.Join(t.TempDir(), "secrets")
