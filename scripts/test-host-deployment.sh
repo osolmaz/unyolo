@@ -9,7 +9,7 @@ docker run --rm \
   --workdir /src \
   "$image" \
   sh -ceu '
-    export GOWORK=off
+    export GOWORK=off GOFLAGS=-buildvcs=false
     useradd --create-home --shell /bin/bash --gid operator operator
     cat >/usr/local/bin/systemctl <<"EOF"
 #!/bin/sh
