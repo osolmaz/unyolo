@@ -251,6 +251,12 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 			return inspected{}, errors.New("inspect installed component credential")
 		} else if credential.Action == "rotate" {
 			action = "rotate"
+		} else {
+			installed, readErr := readInstalledCredential(credential)
+			if readErr != nil || len(installed) == 0 {
+				action = "install"
+			}
+			clear(installed)
 		}
 		state.credentials = append(state.credentials, api.CredentialAction{Slot: credential.Slot, Action: action})
 		if action != "retain" || !matchesMetadata(credential.Destination, credential.Mode, credential.Owner, credential.Group) {
@@ -440,7 +446,7 @@ func planDigest(actions []api.PlannedAction, credentials []api.CredentialAction,
 func digest(data []byte) string { return fmt.Sprintf("sha256:%x", sha256.Sum256(data)) }
 
 func fileDigest(path string) string {
-	data, err := os.ReadFile(path) // #nosec G304 -- provider-owned validated destination.
+	data, err := readBoundedNoFollow(path, api.MaxMessageBytes)
 	if err != nil {
 		return ""
 	}
@@ -470,9 +476,9 @@ func pathFingerprint(path string) string {
 		if openErr != nil {
 			return "unavailable"
 		}
-		_, copyErr := io.Copy(hash, io.LimitReader(file, maxSecretBytes*16+1))
+		written, copyErr := io.Copy(hash, io.LimitReader(file, maxSecretBytes*16+1))
 		closeErr := file.Close()
-		if copyErr != nil || closeErr != nil {
+		if copyErr != nil || closeErr != nil || written > maxSecretBytes*16 {
 			return "unavailable"
 		}
 	}

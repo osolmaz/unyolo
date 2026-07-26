@@ -193,6 +193,13 @@ func TestPlanDigestBindsCredentialState(t *testing.T) {
 	if before.PlanDigest == after.PlanDigest {
 		t.Fatal("credential replacement did not invalidate the component plan")
 	}
+	if err := os.WriteFile(destination, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	empty := runAdapter(t, request, config)
+	if empty.Credentials[0].Action != "install" {
+		t.Fatalf("empty credential action = %#v", empty.Credentials)
+	}
 }
 
 func TestProfileRejectsDuplicateGroupMembers(t *testing.T) {
@@ -357,6 +364,21 @@ func TestFilesystemApplyHelpers(t *testing.T) {
 	}
 	if _, _, err := resolveOwner("missing-brokerkit-test-user", group.Name); err == nil {
 		t.Fatal("missing owner was accepted")
+	}
+	large := filepath.Join(root, "large")
+	file, err := os.Create(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(api.MaxMessageBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if fileDigest(large) != "" {
+		t.Fatal("oversized managed file was hashed")
 	}
 }
 

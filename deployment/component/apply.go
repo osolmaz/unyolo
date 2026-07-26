@@ -431,8 +431,8 @@ func encodeCredential(value Credential, raw []byte) []byte {
 }
 
 func readInstalledCredential(value Credential) ([]byte, error) {
-	data, err := os.ReadFile(value.Destination) // #nosec G304 -- provider-owned credential path.
-	if err != nil || len(data) > maxSecretBytes {
+	data, err := readBoundedNoFollow(value.Destination, maxSecretBytes)
+	if err != nil || len(data) == 0 {
 		return nil, errors.New("installed component credential is unavailable")
 	}
 	if value.Encoding == "client_secret_file" {
