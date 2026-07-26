@@ -40,6 +40,36 @@ func TestLockAndLoadDeploymentPack(t *testing.T) {
 	}
 }
 
+func TestMaterializeVerifiedDeployment(t *testing.T) {
+	source := testPack(t)
+	if err := Lock(source, false); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := Load(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "deployments", "host")
+	materialized, err := Materialize(snapshot, destination)
+	if err != nil || materialized != destination {
+		t.Fatalf("Materialize() = %q, %v", materialized, err)
+	}
+	copied, err := Load(destination)
+	if err != nil || copied.Digest != snapshot.Digest {
+		t.Fatalf("copied snapshot = %#v, %v", copied.Deployment, err)
+	}
+	artifact, err := os.Stat(filepath.Join(destination, "artifacts", "fake"))
+	if err != nil || artifact.Mode().Perm() != 0o700 {
+		t.Fatalf("artifact = %#v, %v", artifact, err)
+	}
+	if repeated, err := Materialize(snapshot, destination); err != nil || repeated != destination {
+		t.Fatalf("repeated Materialize() = %q, %v", repeated, err)
+	}
+	if _, err := Materialize(snapshot, "relative"); err == nil {
+		t.Fatal("relative materialization destination was accepted")
+	}
+}
+
 func TestLoadUnlockedAndVerifyArtifact(t *testing.T) {
 	root := testPack(t)
 	if err := Lock(root, false); err != nil {

@@ -19,9 +19,13 @@ The bootstrap verifies the archive checksum and GitHub build attestation. It
 installs only the user CLI below `~/.local/bin`. The CLI refuses interactive
 root execution.
 
-The guide explains the operator and agent boundary, opens a locked deployment
-pack, validates every signed component adapter, and shows the complete plan.
-Only then does it start the matching root-owned worker. Credential values move
+The guide explains the operator and agent boundary and opens a locked deployment
+kit. Recommended and Custom setup materialize only its verified profile graph
+and signed runtime artifacts below
+`~/.config/brokerkit/deployments/<deployment-name>/`; Existing deployment mode
+reviews the selected pack in place. Setup validates every signed component
+adapter and shows the complete plan. Only then does it start the matching
+root-owned worker. Credential values move
 through one-use anonymous pipes and are not written to the setup session or
 pack.
 

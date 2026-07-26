@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,17 @@ func TestSetupSessionStatusAndCancellation(t *testing.T) {
 	}
 	if err := runSetupCancel(nil, &stdout, &stderr); err == nil {
 		t.Fatal("cancel accepted no session ID")
+	}
+}
+
+func TestSetupDeploymentDirectory(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := setupDeploymentDirectory("test-host")
+	if err != nil || !strings.HasSuffix(path, filepath.Join("brokerkit", "deployments", "test-host")) {
+		t.Fatalf("setupDeploymentDirectory() = %q, %v", path, err)
+	}
+	if _, err := setupDeploymentDirectory("bad name"); err == nil {
+		t.Fatal("invalid deployment name was accepted")
 	}
 }
 

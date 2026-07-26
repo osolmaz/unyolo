@@ -125,6 +125,32 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return err
 	}
 	progress.Stop("Deployment pack is valid")
+	if setupSession.Answers["mode"][0] != "existing" {
+		if snapshot.Deployment.Name != setupSession.Deployment {
+			return fmt.Errorf("deployment kit name %q does not match setup name %q", snapshot.Deployment.Name, setupSession.Deployment)
+		}
+		destination, pathErr := setupDeploymentDirectory(snapshot.Deployment.Name)
+		if pathErr != nil {
+			return pathErr
+		}
+		materializeProgress := prompter.Progress("Materializing the operator-owned deployment pack")
+		profilePath, err = profile.Materialize(snapshot, destination)
+		if err != nil {
+			materializeProgress.Fail("Deployment pack materialization failed")
+			return err
+		}
+		snapshot, err = profile.Load(profilePath)
+		if err != nil {
+			materializeProgress.Fail("Materialized deployment pack validation failed")
+			return err
+		}
+		materializeProgress.Stop("Operator-owned deployment pack is ready")
+		setupSession.Answers["profile"] = []string{profilePath}
+		setupSession.Generated[profile.EntryFilename] = snapshot.Digest
+		if err := store.Save(setupSession); err != nil {
+			return err
+		}
+	}
 	if err := showSetupReview(ctx, prompter, snapshot); err != nil {
 		return err
 	}
@@ -353,6 +379,20 @@ func runSetupCancel(args []string, stdout, stderr io.Writer) error {
 	}
 	_, err = fmt.Fprintln(stdout, "Cancelled local setup session")
 	return err
+}
+
+func setupDeploymentDirectory(name string) (string, error) {
+	if !deploymentNamePattern.MatchString(name) {
+		return "", errors.New("deployment name is invalid")
+	}
+	root, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(root) {
+		return "", errors.New("user configuration directory is not absolute")
+	}
+	return filepath.Join(root, "brokerkit", "deployments", name), nil
 }
 
 func setupSessionStore() (session.Store, error) {

@@ -85,6 +85,8 @@ type Export struct {
 }
 
 // New creates an engine. Production callers must use fixed root-owned paths.
+//
+//nolint:cyclop // Construction rejects every production/development path overlap before retaining options.
 func New(options Options) (*Engine, error) {
 	if options.Paths.Root == "" || options.Paths.StateDir == "" {
 		options.Paths = bundle.DefaultPaths()
