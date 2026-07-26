@@ -88,6 +88,7 @@ type Credential struct {
 	Group       string `json:"group"`
 	Encoding    string `json:"encoding"`
 	ClientID    string `json:"client_id,omitempty"`
+	Action      string `json:"action,omitempty"`
 }
 
 // Client declares one generated private client V1 document.
@@ -218,12 +219,26 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 	for _, credential := range profile.Credentials {
 		state.fingerprints = append(state.fingerprints, "credential:"+credential.Slot+":"+pathFingerprint(credential.Destination))
 		action := "retain"
-		if _, err := os.Lstat(credential.Destination); errors.Is(err, os.ErrNotExist) {
+		_, err := os.Lstat(credential.Destination)
+		if errors.Is(err, os.ErrNotExist) {
 			action = "install"
 		} else if err != nil {
 			return inspected{}, errors.New("inspect installed component credential")
+		} else if credential.Action == "rotate" {
+			action = "rotate"
 		}
 		state.credentials = append(state.credentials, api.CredentialAction{Slot: credential.Slot, Action: action})
+		if action != "retain" || !matchesMetadata(credential.Destination, credential.Mode, credential.Owner, credential.Group) {
+			actionType := action
+			if actionType == "retain" {
+				actionType = "reconcile"
+			}
+			state.actions = append(state.actions, api.PlannedAction{
+				ID: "credential-" + credential.Slot, Type: actionType, Risk: "high",
+				Resource:      api.Resource{Kind: "credential", ID: credential.Slot, Path: credential.Destination},
+				DesiredDigest: metadataDigest(credential.Mode, credential.Owner, credential.Group),
+			})
+		}
 	}
 	for _, client := range profile.Clients {
 		agent := state.agents[client.AgentID]
@@ -237,6 +252,9 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 			expected, _ = readInstalledCredential(credential)
 		}
 		current := clientCurrent(path, agent.Home, client, expected)
+		if credentialAction(state.credentials, client.SecretSlot) != "retain" {
+			current = false
+		}
 		clear(expected)
 		if current {
 			continue
@@ -338,7 +356,8 @@ func validateProfile(profile Profile, config Config, agents []api.AgentBinding) 
 	}
 	for _, credential := range profile.Credentials {
 		if !validResource("credential-"+credential.Slot, credential.Destination, credential.Mode, credential.Owner, credential.Group, config.AllowedPaths, seenIDs, seenPaths) ||
-			credential.Slot == "" || seenSlots[credential.Slot] || !slices.Contains([]string{"raw", "client_secret_file"}, credential.Encoding) ||
+			credential.Slot == "" || seenSlots[credential.Slot] || !slices.Contains([]string{"", "retain", "rotate"}, credential.Action) ||
+			!slices.Contains([]string{"raw", "client_secret_file"}, credential.Encoding) ||
 			(credential.Encoding == "client_secret_file" && credential.ClientID == "") {
 			return errors.New("component credential is invalid or duplicated")
 		}

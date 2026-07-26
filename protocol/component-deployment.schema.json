@@ -51,7 +51,7 @@
         "slot": { "type": "string", "minLength": 1, "maxLength": 128 }, "destination": { "type": "string", "minLength": 1, "maxLength": 2048 },
         "mode": { "type": "integer", "minimum": 0, "maximum": 511 }, "owner": { "type": "string", "minLength": 1, "maxLength": 32 },
         "group": { "type": "string", "minLength": 1, "maxLength": 32 }, "encoding": { "enum": ["raw", "client_secret_file"] },
-        "client_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+        "client_id": { "type": "string", "minLength": 1, "maxLength": 128 }, "action": { "enum": ["retain", "rotate"] }
       }
     },
     "client": {

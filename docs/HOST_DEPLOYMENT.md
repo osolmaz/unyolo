@@ -157,5 +157,10 @@ credentials, clients, or services make the reviewed digest stale before any
 mutation. An unchanged deployment performs no writes or restarts and still runs
 runtime checks plus authenticated discovery from the real agent identity.
 
+Credentials are retained by default. Set a credential declaration's `action`
+to `rotate`, review the resulting credential and client-file actions, apply it
+with the matching `--secret-file`, then return the declaration to `retain` and
+lock the pack again.
+
 Client commands load `~/.config/<broker>/client.json` directly. Production does
 not rely on shell startup files or exported broker credentials.

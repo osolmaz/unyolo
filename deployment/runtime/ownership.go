@@ -43,8 +43,8 @@ func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) 
 			return errors.New("group is not owned")
 		}
 	case "credential":
-		if strings.TrimSpace(resource.ID) == "" {
-			return errors.New("credential identity is empty")
+		if strings.TrimSpace(resource.ID) == "" || resource.Path == "" || !ownedPath(resource.Path, envelope.Paths) {
+			return errors.New("credential identity or path is not owned")
 		}
 	default:
 		return errors.New("resource kind is unsupported")

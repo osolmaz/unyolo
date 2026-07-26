@@ -84,4 +84,26 @@ func TestRecoverUsesDurableHandles(t *testing.T) {
 	}
 }
 
+func TestRecoverPreservesUncertainRunningStep(t *testing.T) {
+	coordinator := Coordinator{StateDirectory: filepath.Join(t.TempDir(), "state")}
+	if err := ensureTestDirectory(coordinator.StateDirectory); err != nil {
+		t.Fatal(err)
+	}
+	journal := Journal{
+		APIVersion: APIVersion, ID: "id", DeploymentDigest: "deployment", PlanDigest: "plan",
+		CandidateBundle: "candidate", Phase: "applying",
+		Steps: []StepRecord{{ID: "one", Kind: "component:one", State: "running"}},
+	}
+	if err := coordinator.write(journal); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Recover(context.Background(), nil); err == nil {
+		t.Fatal("uncertain running step was cleared")
+	}
+	current, found, err := coordinator.read()
+	if err != nil || !found || current.Phase != "recovery_required" || current.Steps[0].State != "running" {
+		t.Fatalf("journal = %#v, found=%v, err=%v", current, found, err)
+	}
+}
+
 func ensureTestDirectory(path string) error { return os.MkdirAll(path, 0o700) }

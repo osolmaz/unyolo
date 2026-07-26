@@ -106,6 +106,8 @@ func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDi
 }
 
 // Recover rolls back a noncommitted journal with matching step handlers.
+//
+//nolint:cyclop // Recovery handles committed, uncertain, missing-handler, failed, and durable rollback states.
 func (coordinator Coordinator) Recover(ctx context.Context, handlers map[string]func(context.Context, string) error) error {
 	journal, found, err := coordinator.read()
 	if err != nil || !found {
@@ -116,6 +118,13 @@ func (coordinator Coordinator) Recover(ctx context.Context, handlers map[string]
 	}
 	for index := len(journal.Steps) - 1; index >= 0; index-- {
 		record := journal.Steps[index]
+		if record.State == "running" {
+			journal.Phase = "recovery_required"
+			if err := coordinator.write(journal); err != nil {
+				return err
+			}
+			return fmt.Errorf("transaction step %q has an uncertain apply outcome; manual recovery is required", record.ID)
+		}
 		if record.State != "complete" {
 			continue
 		}

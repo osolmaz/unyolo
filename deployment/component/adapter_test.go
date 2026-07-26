@@ -55,7 +55,7 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 
 	base.Action = api.ActionPlan
 	planned := runAdapter(t, base, config)
-	if planned.Status != "planned" || len(planned.Actions) != 3 || planned.Credentials[0].Action != "install" {
+	if planned.Status != "planned" || len(planned.Actions) != 4 || planned.Credentials[0].Action != "install" {
 		t.Fatalf("plan = %#v", planned)
 	}
 	secretPath := filepath.Join(t.TempDir(), "secret")
@@ -81,6 +81,47 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	loaded, err := clientconfig.Read(agentHome, "test-broker", "TEST_BROKER")
 	if err != nil || loaded.ClientID != "agent" || loaded.SharedSecret != strings.Repeat("s", 32) {
 		t.Fatalf("client = %#v, %v", loaded, err)
+	}
+
+	profile.Credentials[0].Action = "rotate"
+	base.Profile, err = json.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.Action = api.ActionPlan
+	rotation := runAdapter(t, base, config)
+	if rotation.Credentials[0].Action != "rotate" || len(rotation.Actions) != 2 {
+		t.Fatalf("rotation plan = %#v", rotation)
+	}
+	rotatedSecretPath := filepath.Join(t.TempDir(), "rotated-secret")
+	if err := os.WriteFile(rotatedSecretPath, []byte(strings.Repeat("r", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rotatedSecret, err := os.Open(rotatedSecretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rotatedSecret.Close() }()
+	base.Action, base.PlanDigest = api.ActionApply, rotation.PlanDigest
+	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: int(rotatedSecret.Fd()), Rotate: true}}
+	rotated := runAdapter(t, base, config)
+	loaded, err = clientconfig.Read(agentHome, "test-broker", "TEST_BROKER")
+	if err != nil || loaded.SharedSecret != strings.Repeat("r", 32) {
+		t.Fatalf("rotated client = %#v, %v", loaded, err)
+	}
+	base.Action, base.Secrets, base.PlanDigest, base.RollbackHandle = api.ActionRollback, nil, rotated.PlanDigest, rotated.RollbackHandle
+	if response := runAdapter(t, base, config); response.Status != "rolled_back" {
+		t.Fatalf("rotation rollback = %#v", response)
+	}
+	loaded, err = clientconfig.Read(agentHome, "test-broker", "TEST_BROKER")
+	if err != nil || loaded.SharedSecret != strings.Repeat("s", 32) {
+		t.Fatalf("restored client = %#v, %v", loaded, err)
+	}
+
+	profile.Credentials[0].Action = ""
+	base.Profile, err = json.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
 	}
 	base.Action, base.PlanDigest, base.RollbackHandle = api.ActionRollback, applied.PlanDigest, applied.RollbackHandle
 	rolledBack := runAdapter(t, base, config)
@@ -186,6 +227,7 @@ func TestValidateProfileRejectsUnsafeResources(t *testing.T) {
 		{"file source", func(value *Profile) { value.Files[0].Source.Path = "" }},
 		{"credential slot", func(value *Profile) { value.Credentials[0].Slot = "" }},
 		{"credential encoding", func(value *Profile) { value.Credentials[0].Encoding = "env" }},
+		{"credential action", func(value *Profile) { value.Credentials[0].Action = "replace" }},
 		{"client agent", func(value *Profile) { value.Clients[0].AgentID = "missing" }},
 		{"client slot", func(value *Profile) { value.Clients[0].SecretSlot = "missing" }},
 		{"service", func(value *Profile) { value.Services[0] = "other.service" }},

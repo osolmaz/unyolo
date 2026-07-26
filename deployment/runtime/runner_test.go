@@ -49,7 +49,7 @@ func TestOwnershipEnvelopeCoversEveryResourceKind(t *testing.T) {
 		Actions: []api.PlannedAction{
 			{ID: "directory", Type: "create", Risk: "high", Resource: api.Resource{Kind: "directory", ID: "config", Path: "/etc/test"}},
 			{ID: "file", Type: "write", Risk: "high", Resource: api.Resource{Kind: "file", ID: "config", Path: "/etc/test/config"}},
-			{ID: "credential", Type: "write", Risk: "critical", Resource: api.Resource{Kind: "credential", ID: "/etc/test/secret"}},
+			{ID: "credential", Type: "write", Risk: "critical", Resource: api.Resource{Kind: "credential", ID: "secret", Path: "/etc/test/secret"}},
 			{ID: "client", Type: "write", Risk: "critical", Resource: api.Resource{Kind: "client", ID: "client", Path: "/etc/test/client"}},
 			{ID: "service", Type: "restart", Risk: "medium", Resource: api.Resource{Kind: "service", ID: "test.service"}},
 			{ID: "account", Type: "create", Risk: "high", Resource: api.Resource{Kind: "account", ID: "test"}},
@@ -61,7 +61,8 @@ func TestOwnershipEnvelopeCoversEveryResourceKind(t *testing.T) {
 	}
 	for _, invalid := range []api.Resource{
 		{Kind: "file", ID: "/outside"}, {Kind: "service", ID: "other.service"},
-		{Kind: "account", ID: "other"}, {Kind: "group", ID: "other"}, {Kind: "unknown", ID: "test"},
+		{Kind: "credential", ID: "secret", Path: "/outside"}, {Kind: "account", ID: "other"},
+		{Kind: "group", ID: "other"}, {Kind: "unknown", ID: "test"},
 	} {
 		value := response
 		value.Actions = []api.PlannedAction{{ID: "invalid", Type: "write", Risk: "high", Resource: invalid}}

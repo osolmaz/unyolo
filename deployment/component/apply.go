@@ -88,13 +88,6 @@ func changedPaths(profile Profile, state inspected) []string {
 			changed[action.Resource.Path] = true
 		}
 	}
-	for _, credential := range profile.Credentials {
-		for _, action := range state.credentials {
-			if credential.Slot == action.Slot && action.Action == "install" {
-				changed[credential.Destination] = true
-			}
-		}
-	}
 	result := make([]string, 0, len(changed))
 	for path := range changed {
 		result = append(result, path)
@@ -307,12 +300,13 @@ func applyFiles(values []ManagedFile, files map[string]api.File) error {
 	return nil
 }
 
+//nolint:cyclop // Credential install, rotation, retention, and metadata repair share secret-clearing error paths.
 func applyCredentials(values []Credential, actions []api.CredentialAction, supplied map[string][]byte) (map[string][]byte, error) {
 	result := map[string][]byte{}
 	for _, value := range values {
 		action := credentialAction(actions, value.Slot)
 		var raw []byte
-		if action == "install" {
+		if action == "install" || action == "rotate" {
 			raw = supplied[value.Slot]
 			if len(raw) == 0 {
 				clearSecrets(result)
@@ -335,6 +329,22 @@ func applyCredentials(values []Credential, actions []api.CredentialAction, suppl
 			var err error
 			raw, err = readInstalledCredential(value)
 			if err != nil {
+				clearSecrets(result)
+				return nil, err
+			}
+			uid, gid, ownerErr := resolveOwner(value.Owner, value.Group)
+			if ownerErr != nil {
+				clear(raw)
+				clearSecrets(result)
+				return nil, ownerErr
+			}
+			if err := os.Chown(value.Destination, uid, gid); err != nil {
+				clear(raw)
+				clearSecrets(result)
+				return nil, err
+			}
+			if err := os.Chmod(value.Destination, os.FileMode(value.Mode)); err != nil {
+				clear(raw)
 				clearSecrets(result)
 				return nil, err
 			}
@@ -370,7 +380,14 @@ func readInstalledCredential(value Credential) ([]byte, error) {
 func applyClients(values []Client, agents map[string]api.AgentBinding, secrets map[string][]byte) error {
 	for _, value := range values {
 		agent := agents[value.AgentID]
-		_, err := clientconfig.WriteForHomeOwner(clientconfig.Config{
+		path, err := clientconfig.Path(agent.Home, value.BrokerName)
+		if err != nil {
+			return err
+		}
+		if clientCurrent(path, agent.Home, value, secrets[value.SecretSlot]) {
+			continue
+		}
+		_, err = clientconfig.WriteForHomeOwner(clientconfig.Config{
 			BrokerName: value.BrokerName, EnvPrefix: value.EnvPrefix, ClientID: agent.ClientID,
 			Endpoint: value.Endpoint, GitEndpoint: value.GitEndpoint,
 			Secret: strings.TrimSpace(string(secrets[value.SecretSlot])), HomeDir: agent.Home,
@@ -419,8 +436,8 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 		evidence = append(evidence, "file "+managed.ID+" matches")
 	}
 	for _, credential := range profile.Credentials {
-		if _, err := os.Stat(credential.Destination); err != nil {
-			return nil, fmt.Errorf("credential slot %q is unavailable", credential.Slot)
+		if !matchesMetadata(credential.Destination, credential.Mode, credential.Owner, credential.Group) {
+			return nil, fmt.Errorf("credential slot %q is unavailable or has unsafe metadata", credential.Slot)
 		}
 		evidence = append(evidence, "credential "+credential.Slot+" is installed")
 	}
