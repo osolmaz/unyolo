@@ -125,6 +125,9 @@ func TestDeploymentValidationRejectsUnsafeIdentities(t *testing.T) {
 		{"integration", func(value *Deployment) {
 			value.Integrations = []Integration{{ID: "one", Kind: "two", AgentID: "agent", Profile: base.Components[0].Profile}}
 		}},
+		{"integration collision", func(value *Deployment) {
+			value.Integrations = []Integration{{ID: "github", Kind: "github", AgentID: "agent", Profile: base.Components[0].Profile}}
+		}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

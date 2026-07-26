@@ -282,6 +282,9 @@ func validateBindings(d Deployment) error {
 		}
 	}
 	for _, integration := range d.Integrations {
+		if componentIDs[integration.Kind] {
+			return fmt.Errorf("integration %q collides with component %q", integration.ID, integration.Kind)
+		}
 		if !agentIDs[integration.AgentID] {
 			return fmt.Errorf("integration %q references unknown agent %q", integration.ID, integration.AgentID)
 		}
