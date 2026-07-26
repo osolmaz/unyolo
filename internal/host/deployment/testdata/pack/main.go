@@ -43,7 +43,7 @@ func main() {
 			Setup: &bundle.SetupAdapter{
 				Protocol: "brokerkit.io/setup-component/v1", Arguments: []string{"setup-component"},
 				Ownership: bundle.OwnershipEnvelope{
-					Paths: []string{"/etc/brokerkit-e2e", "/var/lib/brokerkit-e2e", "/proc/brokerkit-e2e"}, Services: []string{},
+					Paths: []string{"/etc/brokerkit-e2e", "/var/lib/brokerkit-e2e", "/proc/brokerkit-e2e", "/var/lib/brokerkit-agent/.config/fake-broker/client.json"}, Services: []string{},
 					Accounts: []string{"brokerkit-e2e"}, Groups: []string{"brokerkit-e2e", "brokerkit-e2e-agent"},
 				},
 			},
@@ -71,6 +71,10 @@ func main() {
 		Credentials: []component.Credential{{
 			Slot: "e2e-token", Destination: "/etc/brokerkit-e2e/token", Mode: 0o640,
 			Owner: "root", Group: "brokerkit-e2e", Encoding: "raw",
+		}},
+		Clients: []component.Client{{
+			AgentID: "agent", BrokerName: "fake-broker", EnvPrefix: "FAKE_BROKER",
+			SecretSlot: "e2e-token", Endpoint: "unix:///tmp/fake-broker.sock",
 		}},
 		Services: []string{},
 	}

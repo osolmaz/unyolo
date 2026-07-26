@@ -464,6 +464,7 @@ func (engine *Engine) runComponent(ctx context.Context, snapshot profile.Snapsho
 		APIVersion: api.APIVersion, Action: action, DeploymentDigest: snapshot.Digest,
 		PlanDigest: planDigest, ComponentID: id, Profile: snapshot.Files[desired.Profile.Path].Data,
 		Files: files, Agents: agentBindings(snapshot, id),
+		ProbeExecutable: filepath.Join(engine.options.Paths.Root, "current", runtimeComponent.Destination),
 	}
 	response, err := (adapterruntime.Runner{Timeout: engine.options.AdapterTimeout}).Run(ctx, command, request, secrets)
 	if err != nil {

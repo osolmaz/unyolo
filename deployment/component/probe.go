@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -38,7 +37,8 @@ func Probe(ctx context.Context, args []string) error {
 	return err
 }
 
-func runClientProbe(ctx context.Context, agent api.AgentBinding, spec Client) error {
+//nolint:cyclop // Identity lookup, numeric bounds, supplementary groups, and the privilege drop form one probe boundary.
+func runClientProbe(ctx context.Context, agent api.AgentBinding, spec Client, executable string) error {
 	resolved, err := user.Lookup(agent.UnixUser)
 	if err != nil {
 		return err
@@ -63,9 +63,8 @@ func runClientProbe(ctx context.Context, agent api.AgentBinding, spec Client) er
 		}
 		groups = append(groups, uint32(parsed))
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		return err
+	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable {
+		return errors.New("real-agent probe executable is invalid")
 	}
 	command := exec.CommandContext(ctx, executable, "setup-component-probe", agent.Home, spec.BrokerName, spec.EnvPrefix) // #nosec G204 -- fixed self-exec with validated profile fields.
 	command.Env = []string{"HOME=" + agent.Home, "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}

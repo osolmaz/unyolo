@@ -36,7 +36,7 @@ type Config struct {
 	AllowedAccounts []string
 	AllowedGroups   []string
 	BackupDirectory string
-	ClientProbe     func(context.Context, api.AgentBinding, Client) error
+	ClientProbe     func(context.Context, api.AgentBinding, Client, string) error
 }
 
 // Account declares one provider-owned service identity.
@@ -325,7 +325,7 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 		base.Status, base.RollbackHandle = "applied", handle
 		return base, nil
 	case api.ActionVerify:
-		evidence, err := verify(ctx, profile, config, state)
+		evidence, err := verify(ctx, profile, config, state, request.ProbeExecutable)
 		if err != nil {
 			return api.Response{}, err
 		}

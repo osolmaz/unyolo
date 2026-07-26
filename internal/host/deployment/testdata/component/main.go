@@ -7,11 +7,19 @@ import (
 
 	"github.com/osolmaz/brokerkit/deployment/component"
 	"github.com/osolmaz/brokerkit/internal/buildinfo"
+	clientconfig "github.com/osolmaz/brokerkit/internal/config/client"
 )
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "version" {
 		_, _ = fmt.Fprintln(os.Stdout, buildinfo.Version)
+		return
+	}
+	if len(os.Args) == 5 && os.Args[1] == "setup-component-probe" {
+		if _, err := clientconfig.Read(os.Args[2], os.Args[3], os.Args[4]); err != nil {
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintln(os.Stdout, "ok")
 		return
 	}
 	if len(os.Args) != 2 || os.Args[1] != "setup-component" {

@@ -28,6 +28,7 @@
         "profile": { "type": "object" },
         "files": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/file" } },
         "agents": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/agent" } },
+        "probe_executable": { "type": "string", "minLength": 1, "maxLength": 4096 },
         "secrets": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/secret" } },
         "rollback_handle": { "type": "string", "maxLength": 4096 }
       }

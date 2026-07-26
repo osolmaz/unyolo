@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -65,6 +66,7 @@ type Request struct {
 	Profile          json.RawMessage    `json:"profile"`
 	Files            []File             `json:"files"`
 	Agents           []AgentBinding     `json:"agents,omitempty"`
+	ProbeExecutable  string             `json:"probe_executable,omitempty"`
 	Secrets          []SecretDescriptor `json:"secrets,omitempty"`
 	RollbackHandle   string             `json:"rollback_handle,omitempty"`
 }
@@ -126,6 +128,9 @@ func (request Request) Validate() error {
 	}
 	if slices.Contains([]Action{ActionRollback, ActionFinalize}, request.Action) && !validHandle(request.RollbackHandle) {
 		return errors.New("setup-component rollback requires a valid handle")
+	}
+	if request.ProbeExecutable != "" && (!filepath.IsAbs(request.ProbeExecutable) || filepath.Clean(request.ProbeExecutable) != request.ProbeExecutable || len(request.ProbeExecutable) > 4096) {
+		return errors.New("setup-component probe executable is invalid")
 	}
 	if request.Action != ActionApply && len(request.Secrets) != 0 {
 		return errors.New("setup-component secrets are accepted only during apply")

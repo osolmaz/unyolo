@@ -462,7 +462,7 @@ func credentialAction(values []api.CredentialAction, slot string) string {
 }
 
 //nolint:cyclop // Verification checks every declared resource kind and returns bounded evidence.
-func verify(ctx context.Context, profile Profile, config Config, state inspected) ([]string, error) {
+func verify(ctx context.Context, profile Profile, config Config, state inspected, probeExecutable string) ([]string, error) {
 	var evidence []string
 	for _, group := range profile.Groups {
 		if !groupMatches(ctx, group) {
@@ -511,7 +511,7 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 		if probe == nil {
 			probe = runClientProbe
 		}
-		if err := probe(ctx, agent, value); err != nil {
+		if err := probe(ctx, agent, value, probeExecutable); err != nil {
 			return nil, err
 		}
 		evidence = append(evidence, "client "+value.AgentID+" completed authenticated real-agent discovery")

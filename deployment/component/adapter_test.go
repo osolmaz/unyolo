@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/osolmaz/brokerkit/deployment/api"
@@ -44,7 +45,7 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	}
 	config := Config{
 		ComponentID: "test", ProfileAPI: profile.APIVersion, AllowedPaths: []string{root}, BackupDirectory: filepath.Join(root, "backups"),
-		ClientProbe: func(context.Context, api.AgentBinding, Client) error { return nil },
+		ClientProbe: func(context.Context, api.AgentBinding, Client, string) error { return nil },
 	}
 	base := api.Request{
 		APIVersion: api.APIVersion, DeploymentDigest: strings.Repeat("a", 71), ComponentID: "test", Profile: profileData,
@@ -66,9 +67,14 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	secretFD, err := syscall.Dup(int(secret.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
 	base.Action, base.PlanDigest = api.ActionApply, planned.PlanDigest
-	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: int(secret.Fd())}}
+	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: secretFD}}
 	applied := runAdapter(t, base, config)
+	_ = secret.Close()
 	if applied.Status != "applied" || len(applied.RollbackHandle) != 32 {
 		t.Fatalf("apply = %#v", applied)
 	}
@@ -100,9 +106,14 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rotatedFD, err := syscall.Dup(int(rotatedSecret.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
 	base.Action, base.PlanDigest = api.ActionApply, rotation.PlanDigest
-	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: int(rotatedSecret.Fd()), Rotate: true}}
+	base.Secrets = []api.SecretDescriptor{{Name: "client-secret", FD: rotatedFD, Rotate: true}}
 	rotated := runAdapter(t, base, config)
+	_ = rotatedSecret.Close()
 	loaded, err = clientconfig.Read(agentHome, "test-broker", "TEST_BROKER")
 	if err != nil || loaded.SharedSecret != strings.Repeat("r", 32) {
 		t.Fatalf("rotated client = %#v, %v", loaded, err)
@@ -397,7 +408,7 @@ func TestHostInspectionHelpers(t *testing.T) {
 }
 
 func TestProbeFailures(t *testing.T) {
-	if err := runClientProbe(t.Context(), api.AgentBinding{UnixUser: "missing-brokerkit-test-user"}, Client{}); err == nil {
+	if err := runClientProbe(t.Context(), api.AgentBinding{UnixUser: "missing-brokerkit-test-user"}, Client{}, "/bin/false"); err == nil {
 		t.Fatal("missing probe user was accepted")
 	}
 	for _, args := range [][]string{nil, {"relative", "broker", "PREFIX"}, {t.TempDir(), "missing", "PREFIX"}} {
