@@ -21,14 +21,18 @@ func TestInteractiveSelectRestoresTerminalAtSupportedWidths(t *testing.T) {
 	for _, width := range []int{60, 80, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			master, slave := openPTY(t)
-			defer func() { _ = master.Close(); _ = slave.Close() }()
+			input, sendInput, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = input.Close(); _ = sendInput.Close(); _ = master.Close(); _ = slave.Close() }()
 			var captured bytes.Buffer
 			drainDone := make(chan struct{})
 			go func() {
 				_, _ = io.Copy(&captured, master)
 				close(drainDone)
 			}()
-			prompter := New(Options{Input: slave, Output: slave, Width: width})
+			prompter := New(Options{Input: input, Output: slave, Width: width})
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			result := make(chan error, 1)
@@ -43,7 +47,10 @@ func TestInteractiveSelectRestoresTerminalAtSupportedWidths(t *testing.T) {
 				result <- err
 			}()
 			time.Sleep(100 * time.Millisecond)
-			if _, err := master.Write([]byte("\r")); err != nil {
+			if _, err := sendInput.Write([]byte("\r")); err != nil {
+				t.Fatal(err)
+			}
+			if err := sendInput.Close(); err != nil {
 				t.Fatal(err)
 			}
 			if err := <-result; err != nil {
@@ -53,8 +60,12 @@ func TestInteractiveSelectRestoresTerminalAtSupportedWidths(t *testing.T) {
 				t.Fatal(err)
 			}
 			_ = slave.Close()
-			_ = master.Close()
-			<-drainDone
+			select {
+			case <-drainDone:
+			case <-time.After(time.Second):
+				_ = master.Close()
+				<-drainDone
+			}
 			if !bytes.Contains(captured.Bytes(), []byte("\x1b[?25h")) {
 				t.Fatalf("terminal output did not restore the cursor: %q", captured.Bytes())
 			}
