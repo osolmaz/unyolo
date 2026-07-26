@@ -1,8 +1,10 @@
 # Host deployment
 
-BrokerKit can install or reconcile a complete agent host from one locked,
+BrokerKit can install or reconcile a complete Linux agent host from one locked,
 nonsecret deployment pack. The same pack drives guided setup and unattended
-commands.
+commands. Darwin binaries remain available for existing-account and client
+workflows, but guided host provisioning fails closed until native launchd and
+account provisioning are implemented and tested.
 
 ## Start guided setup
 

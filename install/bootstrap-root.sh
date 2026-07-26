@@ -13,7 +13,7 @@ printf '%s\n' "$release" | grep -Eq '^brokerkit/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Z
 
 command -v curl >/dev/null 2>&1 || exit 1
 command -v gh >/dev/null 2>&1 || exit 1
-case "$(uname -s)" in Linux) os=linux ;; Darwin) os=darwin ;; *) exit 1 ;; esac
+case "$(uname -s)" in Linux) os=linux ;; Darwin) printf '%s\n' 'bootstrap-root: guided host provisioning currently requires Linux' >&2; exit 1 ;; *) exit 1 ;; esac
 case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) exit 1 ;; esac
 asset="brokerkit_${os}_${arch}.tar.gz"
 base="https://github.com/osolmaz/brokerkit/releases/download/${release}"

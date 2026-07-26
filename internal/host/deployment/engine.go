@@ -196,7 +196,11 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 
 // Apply replans, binds the exact digest, and executes one durable transaction.
 func (engine *Engine) Apply(ctx context.Context, profileRoot, expectedPlan string, sources []SecretSource) (Verification, error) {
-	secretFiles, err := openSecretSources(sources)
+	owner, err := engine.secretSourceOwner()
+	if err != nil {
+		return Verification{}, err
+	}
+	secretFiles, err := openSecretSources(sources, owner)
 	if err != nil {
 		return Verification{}, err
 	}
@@ -836,20 +840,14 @@ func secretsForComponent(response api.Response, files map[string]*os.File) ([]ad
 	return result, nil
 }
 
-//nolint:cyclop // One-use secret sources are opened, permission-checked, and unwound as one operation.
-func openSecretSources(sources []SecretSource) (map[string]*os.File, error) {
+func openSecretSources(sources []SecretSource, owner uint32) (map[string]*os.File, error) {
 	result := map[string]*os.File{}
 	for _, source := range sources {
-		if source.Name == "" || result[source.Name] != nil || !filepath.IsAbs(source.Path) || filepath.Clean(source.Path) != source.Path {
+		if source.Name == "" || result[source.Name] != nil || !filepath.IsAbs(source.Path) || filepath.Clean(source.Path) != source.Path || source.Path == string(filepath.Separator) {
 			closeSecretSources(result)
 			return nil, errors.New("secret source is invalid or duplicated")
 		}
-		info, err := os.Lstat(source.Path)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			closeSecretSources(result)
-			return nil, fmt.Errorf("secret source %q must be a real owner-only regular file", source.Name)
-		}
-		file, err := os.Open(source.Path) // #nosec G304 -- operator path is validated before opening.
+		file, err := openSecretSourceNoFollow(source.Path, owner)
 		if err != nil {
 			closeSecretSources(result)
 			return nil, errors.New("open secret source")

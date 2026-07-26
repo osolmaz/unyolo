@@ -34,7 +34,7 @@ command -v tar >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: tar is required' >
 
 case "$(uname -s)" in
   Linux) os=linux ;;
-  Darwin) os=darwin ;;
+  Darwin) printf '%s\n' 'bootstrap: guided host provisioning currently requires Linux' >&2; exit 1 ;;
   *) printf '%s\n' 'bootstrap: unsupported operating system' >&2; exit 1 ;;
 esac
 case "$(uname -m)" in

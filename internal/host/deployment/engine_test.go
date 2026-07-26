@@ -228,7 +228,7 @@ func TestSecretSourcesAndEngineOptions(t *testing.T) {
 	if err := os.WriteFile(secretPath, []byte("secret-value"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	files, err := openSecretSources([]SecretSource{{Name: "token", Path: secretPath}})
+	files, err := openSecretSources([]SecretSource{{Name: "token", Path: secretPath}}, uint32(os.Geteuid()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,9 +242,19 @@ func TestSecretSourcesAndEngineOptions(t *testing.T) {
 		{{Name: "token", Path: "relative"}},
 		{{Name: "token", Path: secretPath}, {Name: "token", Path: secretPath}},
 	} {
-		if _, err := openSecretSources(sources); err == nil {
+		if _, err := openSecretSources(sources, uint32(os.Geteuid())); err == nil {
 			t.Fatalf("unsafe secret sources were accepted: %#v", sources)
 		}
+	}
+	linked := filepath.Join(root, "linked-secret")
+	if err := os.Symlink(secretPath, linked); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openSecretSources([]SecretSource{{Name: "token", Path: linked}}, uint32(os.Geteuid())); err == nil {
+		t.Fatal("symlinked secret source was accepted")
+	}
+	if _, err := openSecretSources([]SecretSource{{Name: "token", Path: secretPath}}, uint32(os.Geteuid()+1)); err == nil {
+		t.Fatal("secret source owned by another user was accepted")
 	}
 	if _, err := New(Options{Paths: bundle.DefaultPaths(), Development: true}); err == nil {
 		t.Fatal("development engine accepted production paths")
