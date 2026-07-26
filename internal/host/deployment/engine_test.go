@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -59,12 +60,19 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	validated, err := engine.Validate(t.Context(), pack)
+	if err != nil || validated.Deployment.Name != "engine-host" {
+		t.Fatalf("Validate() = %#v, %v", validated.Deployment, err)
+	}
 	planned, err := engine.Plan(t.Context(), pack)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if planned.Plan.Kind != "install" || planned.Plan.Digest == "" {
 		t.Fatalf("plan = %#v", planned.Plan)
+	}
+	if err := engine.rollbackComponent(t.Context(), planned.Snapshot, "fake", planned.Responses[0].PlanDigest, "rollback-id"); err != nil {
+		t.Fatalf("rollbackComponent() = %v", err)
 	}
 	report, err := engine.Apply(t.Context(), pack, planned.Plan.Digest, nil)
 	if err != nil {
@@ -73,6 +81,10 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	if !report.Healthy || report.RuntimeBundleID != "engine-test" {
 		t.Fatalf("report = %#v", report)
 	}
+	exported, err := engine.ExportObserved(t.Context(), pack)
+	if err != nil || exported.DeploymentName != "engine-host" || len(exported.Components) != 1 {
+		t.Fatalf("ExportObserved() = %#v, %v", exported, err)
+	}
 	unchanged, err := engine.Plan(t.Context(), pack)
 	if err != nil {
 		t.Fatal(err)
@@ -80,8 +92,99 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	if unchanged.Plan.Kind != "noop" || len(unchanged.Plan.Actions) != 0 {
 		t.Fatalf("unchanged plan = %#v", unchanged.Plan)
 	}
+	if verified, err := engine.verifyPlanned(t.Context(), unchanged); err != nil || !verified.Healthy {
+		t.Fatalf("verifyPlanned() = %#v, %v", verified, err)
+	}
+	inactive := unchanged
+	inactive.ActiveBundleID = "other"
+	if verified, err := engine.verifyPlanned(t.Context(), inactive); err == nil || verified.Healthy {
+		t.Fatalf("inactive runtime verification = %#v, %v", verified, err)
+	}
 	if _, err := engine.Apply(t.Context(), pack, planned.Plan.Digest, nil); err == nil || !strings.Contains(err.Error(), "plan_stale") {
 		t.Fatalf("stale apply error = %v", err)
+	}
+}
+
+func TestSecretSourcesAndEngineOptions(t *testing.T) {
+	root := t.TempDir()
+	secretPath := filepath.Join(root, "secret")
+	if err := os.WriteFile(secretPath, []byte("secret-value"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files, err := openSecretSources([]SecretSource{{Name: "token", Path: secretPath}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(files["token"])
+	if err != nil || string(data) != "secret-value" {
+		t.Fatalf("secret descriptor = %q, %v", data, err)
+	}
+	closeSecretSources(files)
+	for _, sources := range [][]SecretSource{
+		{{Name: "", Path: secretPath}},
+		{{Name: "token", Path: "relative"}},
+		{{Name: "token", Path: secretPath}, {Name: "token", Path: secretPath}},
+	} {
+		if _, err := openSecretSources(sources); err == nil {
+			t.Fatalf("unsafe secret sources were accepted: %#v", sources)
+		}
+	}
+	if _, err := New(Options{Paths: bundle.DefaultPaths(), Development: true}); err == nil {
+		t.Fatal("development engine accepted production paths")
+	}
+	if _, err := New(Options{Paths: bundle.Paths{Root: root, StateDir: root}, Development: true}); err == nil {
+		t.Fatal("engine accepted overlapping root and state paths")
+	}
+}
+
+func TestPlanAssemblyHelpers(t *testing.T) {
+	planned := Planned{
+		Snapshot: profile.Snapshot{
+			Deployment: profile.Deployment{
+				Agents:     []profile.Agent{{ID: "agent", UnixUser: "brokerkit-agent", AccountMode: "managed", Home: "/var/lib/brokerkit-agent", Shell: "/usr/sbin/nologin"}},
+				Components: []profile.Component{{ID: "github"}},
+			},
+			Manifest: bundle.Manifest{Components: []bundle.Component{{Name: "github", Services: []string{"gh-broker.service"}}}},
+		},
+		Accounts: map[string]identity.Account{"agent:agent": {Missing: true}},
+		Responses: []api.Response{{
+			ComponentID: "github", PlanDigest: engineDigest("github"),
+			Actions:     []api.PlannedAction{{ID: "service", Restart: true, Resource: api.Resource{Kind: "service", ID: "gh-broker.service"}}},
+			Credentials: []api.CredentialAction{{Slot: "token", Action: "install"}},
+		}},
+	}
+	engine := &Engine{}
+	steps, err := engine.identitySteps(planned)
+	if runtime.GOOS == "linux" && (err != nil || len(steps) != 1) {
+		t.Fatalf("identitySteps() = %d, %v", len(steps), err)
+	}
+	if services := restartServices(planned); len(services) != 1 || services[0] != "gh-broker.service" {
+		t.Fatalf("services = %v", services)
+	}
+	secretPath := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secretPath, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	files := map[string]*os.File{"token": file}
+	secrets, err := secretsForComponent(planned.Responses[0], files)
+	if err != nil || len(secrets) != 1 || secrets[0].Name != "token" {
+		t.Fatalf("secrets = %#v, %v", secrets, err)
+	}
+	if _, err := secretsForComponent(planned.Responses[0], nil); err == nil {
+		t.Fatal("missing component secret was accepted")
+	}
+	if err := validateCredentialOwnership(planned.Responses); err != nil {
+		t.Fatal(err)
+	}
+	duplicate := append([]api.Response(nil), planned.Responses...)
+	duplicate = append(duplicate, api.Response{ComponentID: "sudo", Credentials: []api.CredentialAction{{Slot: "token", Action: "install"}}})
+	if err := validateCredentialOwnership(duplicate); err == nil {
+		t.Fatal("duplicate credential ownership was accepted")
 	}
 }
 
@@ -187,7 +290,7 @@ func engineTestIdentity() identity.Inspector {
 		LookupUser:     func(name string) (*user.User, error) { return users[name], nil },
 		LookupGroupIDs: func(value *user.User) ([]string, error) { return []string{value.Gid}, nil },
 		LookupGroupID:  func(id string) (*user.Group, error) { return &user.Group{Name: "group-" + id, Gid: id}, nil },
-		LookupShell:    func(string) (string, error) { return "/bin/false", nil },
+		LookupShell:    func(context.Context, string) (string, error) { return "/bin/false", nil },
 	}
 }
 

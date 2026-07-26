@@ -43,11 +43,11 @@ func runClientProbe(ctx context.Context, agent api.AgentBinding, spec Client) er
 	if err != nil {
 		return err
 	}
-	uid, err := strconv.Atoi(resolved.Uid)
+	uid, err := strconv.ParseUint(resolved.Uid, 10, 32)
 	if err != nil {
 		return err
 	}
-	gid, err := strconv.Atoi(resolved.Gid)
+	gid, err := strconv.ParseUint(resolved.Gid, 10, 32)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,9 @@ func runClientProbe(ctx context.Context, agent api.AgentBinding, spec Client) er
 	}
 	command := exec.CommandContext(ctx, executable, "setup-component-probe", agent.Home, spec.BrokerName, spec.EnvPrefix) // #nosec G204 -- fixed self-exec with validated profile fields.
 	command.Env = []string{"HOME=" + agent.Home, "PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"}
-	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), Groups: groups}}
+	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{ // #nosec G115 -- ParseUint bounds both values to 32 bits.
+		Uid: uint32(uid), Gid: uint32(gid), Groups: groups,
+	}}
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("real-agent client probe failed: %w", err)

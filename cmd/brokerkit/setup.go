@@ -24,6 +24,7 @@ import (
 
 var deploymentNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
 
+//nolint:cyclop // Setup dispatch keeps cancellation and terminal cleanup in one lifecycle boundary.
 func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "status" {
 		return runSetupStatus(args[1:], stdout, stderr)
@@ -52,7 +53,7 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 		return errors.New("setup requires an interactive TTY; use declarative system commands for automation")
 	}
 	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
-	defer prompter.Close()
+	defer func() { _ = prompter.Close() }()
 	return runSetupFlow(ctx, prompter, setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly})
 }
 
@@ -63,6 +64,7 @@ type setupOptions struct {
 	PlanOnly bool
 }
 
+//nolint:cyclop // The ordered guide deliberately keeps persisted checkpoints adjacent to each operator decision.
 func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setupOptions) error {
 	if err := prompter.Intro(ctx, "BrokerKit host setup"); err != nil {
 		return err
@@ -144,7 +146,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		workerProgress.Fail("Could not start the verified setup worker")
 		return err
 	}
-	defer worker.Close()
+	defer func() { _ = worker.Close() }()
 	workerProgress.Update("Inspecting protected host state")
 	planned, err := worker.Plan(profilePath)
 	if err != nil {
@@ -206,6 +208,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	return prompter.Outro(ctx, fmt.Sprintf("Verified deployment %s. Run brokerkit system verify --profile %s", snapshot.Deployment.Name, profilePath))
 }
 
+//nolint:cyclop // New, explicit, and latest-session choices are one closed resume policy.
 func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store session.Store, options setupOptions) (session.Session, error) {
 	build := buildinfo.Version
 	if build == "" {

@@ -41,6 +41,8 @@ type Runner struct {
 }
 
 // Run sends one request and validates the closed redacted response.
+//
+//nolint:cyclop // Process launch, framed exchange, limits, cancellation, and exit validation form one trust boundary.
 func (runner Runner) Run(ctx context.Context, command Command, request api.Request, secrets []Secret) (api.Response, error) {
 	if err := validateCommand(command); err != nil {
 		return api.Response{}, err

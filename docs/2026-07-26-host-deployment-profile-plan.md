@@ -214,10 +214,12 @@ tokenized search, multiselect, horizontal step navigation, fixed secret
 submission text, dynamic width-aware progress, cancellation, and accessible
 mode. If a requirement cannot be implemented through Huh's public API, use a
 small BrokerKit-owned Bubble Tea component behind `SetupPrompter`; never import
-Huh internals or maintain a fork. The currently reviewed Huh V2 source requires Go 1.25.8, while
-BrokerKit declares Go 1.25.7 and builds with Go 1.26.5. The implementation must
-align the declared Go patch level or select a maintained compatible Huh release
-explicitly.
+Huh internals or maintain a fork. The implementation pins
+`charm.land/huh/v2` 2.0.3 and `charm.land/lipgloss/v2` 2.0.5. Both use the MIT
+license, pass Linux and macOS builds, and require Go 1.25.8, so BrokerKit now
+declares Go 1.25.8 while retaining the Go 1.26.5 toolchain. A trimmed BrokerKit
+binary grew from 15,329,372 to 18,557,449 bytes, an increase of 3,228,077 bytes
+or 21.1%, for the complete setup implementation and renderer graph.
 
 The review screen groups the plan under Identity, Providers, Access, Services,
 and Verification. It shows safe summaries and the exact plan digest instead of

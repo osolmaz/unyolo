@@ -117,6 +117,7 @@ func LoadUnlocked(root string) (Snapshot, error) {
 	return load(root, false)
 }
 
+//nolint:cyclop // Loading is one fail-closed chain from pack permissions through nested digest verification.
 func load(root string, verifyDigests bool) (Snapshot, error) {
 	absolute, err := filepath.Abs(root)
 	if err != nil {
@@ -136,7 +137,7 @@ func load(root string, verifyDigests bool) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("open deployment pack: %w", err)
 	}
-	defer packRoot.Close()
+	defer func() { _ = packRoot.Close() }()
 
 	entry, err := readFile(packRoot, EntryFilename, MaxEntryBytes)
 	if err != nil {
@@ -205,6 +206,8 @@ func load(root string, verifyDigests bool) (Snapshot, error) {
 }
 
 // Validate checks deployment-local invariants.
+//
+//nolint:cyclop // The closed deployment document is validated field by field.
 func (d Deployment) Validate() error {
 	if d.APIVersion != APIVersion {
 		return fmt.Errorf("unsupported deployment API %q", d.APIVersion)
@@ -227,6 +230,7 @@ func (d Deployment) Validate() error {
 	return validateBindings(d)
 }
 
+//nolint:cyclop // Identity uniqueness and separation constraints are checked together to avoid partial validation.
 func validateIdentities(d Deployment) error {
 	agents, operators, components, integrations := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, agent := range d.Agents {
@@ -238,6 +242,10 @@ func validateIdentities(d Deployment) error {
 		}
 		if !cleanAbsolute(agent.Home) || !cleanAbsolute(agent.Shell) || len(agent.ComponentIDs) == 0 || len(agent.ComponentIDs) > MaxComponents {
 			return fmt.Errorf("agent %q has invalid host paths or component bindings", agent.ID)
+		}
+		if agent.AccountMode == "managed" && (agent.Home == "/" || agent.Home == "/root" ||
+			!slices.Contains([]string{"nologin", "false"}, filepath.Base(agent.Shell))) {
+			return fmt.Errorf("managed agent %q must use a noninteractive account", agent.ID)
 		}
 	}
 	for _, operator := range d.Operators {
@@ -329,6 +337,7 @@ func isComponentProfile(deployment Deployment, path string) bool {
 	return false
 }
 
+//nolint:cyclop // Each supported component profile resource contributes explicit nested references.
 func nestedReferences(data []byte) ([]Reference, error) {
 	if err := strictjson.RejectDuplicateKeys(data); err != nil {
 		return nil, err
@@ -413,6 +422,7 @@ func inspectAbsolutePath(path string) error {
 	return nil
 }
 
+//nolint:cyclop // Relative pack paths reject every platform escape form explicitly.
 func validateRelative(path string) error {
 	if path == "" || filepath.IsAbs(path) || strings.Contains(path, `\`) || strings.ContainsRune(path, 0) {
 		return errors.New("path must be a nonempty portable relative path")

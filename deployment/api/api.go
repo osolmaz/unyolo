@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -107,6 +108,8 @@ type Response struct {
 }
 
 // Validate checks request bounds and protocol invariants.
+//
+//nolint:cyclop // The closed wire request is validated field by field at its trust boundary.
 func (request Request) Validate() error {
 	if request.APIVersion != APIVersion || !identifierPattern.MatchString(request.ComponentID) {
 		return errors.New("setup-component request identity is invalid")
@@ -120,6 +123,9 @@ func (request Request) Validate() error {
 	if slices.Contains([]Action{ActionApply, ActionRollback}, request.Action) && request.PlanDigest == "" {
 		return errors.New("setup-component mutation requires a plan digest")
 	}
+	if request.Action == ActionRollback && !validHandle(request.RollbackHandle) {
+		return errors.New("setup-component rollback requires a valid handle")
+	}
 	if request.Action != ActionApply && len(request.Secrets) != 0 {
 		return errors.New("setup-component secrets are accepted only during apply")
 	}
@@ -128,7 +134,7 @@ func (request Request) Validate() error {
 	}
 	seenFiles, seenSlots, seenFDs, seenAgents := map[string]bool{}, map[string]bool{}, map[int]bool{}, map[string]bool{}
 	for _, file := range request.Files {
-		if strings.TrimSpace(file.Path) == "" || !validDigest(file.SHA256) || len(file.Data) > MaxMessageBytes || seenFiles[file.Path] {
+		if strings.TrimSpace(file.Path) == "" || !validDigest(file.SHA256) || file.SHA256 != digest(file.Data) || len(file.Data) > MaxMessageBytes || seenFiles[file.Path] {
 			return errors.New("setup-component file is invalid or duplicated")
 		}
 		seenFiles[file.Path] = true
@@ -150,6 +156,8 @@ func (request Request) Validate() error {
 }
 
 // Validate checks response bounds and redacted structure.
+//
+//nolint:cyclop // The closed wire response is validated field by field at its trust boundary.
 func (response Response) Validate() error {
 	if response.APIVersion != APIVersion || !identifierPattern.MatchString(response.ComponentID) {
 		return errors.New("setup-component response identity is invalid")
@@ -170,10 +178,22 @@ func (response Response) Validate() error {
 	seen := map[string]bool{}
 	for _, action := range response.Actions {
 		if !identifierPattern.MatchString(action.ID) || seen[action.ID] || !validRisk(action.Risk) || strings.TrimSpace(action.Type) == "" ||
-			strings.TrimSpace(action.Resource.Kind) == "" || strings.TrimSpace(action.Resource.ID) == "" {
+			strings.TrimSpace(action.Resource.Kind) == "" || strings.TrimSpace(action.Resource.ID) == "" ||
+			!validOptionalDigest(action.CurrentDigest) || !validOptionalDigest(action.DesiredDigest) {
 			return errors.New("setup-component planned action is invalid or duplicated")
 		}
 		seen[action.ID] = true
+	}
+	if response.RollbackHandle != "" && !validHandle(response.RollbackHandle) {
+		return errors.New("setup-component rollback handle is invalid")
+	}
+	for _, evidence := range response.Verification {
+		if strings.TrimSpace(evidence) == "" || len(evidence) > 4096 {
+			return errors.New("setup-component verification evidence is invalid")
+		}
+	}
+	if len(response.ProviderFacts) != 0 && !json.Valid(response.ProviderFacts) {
+		return errors.New("setup-component provider facts are invalid")
 	}
 	for _, credential := range response.Credentials {
 		if !identifierPattern.MatchString(credential.Slot) || !slices.Contains([]string{"install", "retain", "rotate", "remove"}, credential.Action) {
@@ -181,6 +201,18 @@ func (response Response) Validate() error {
 		}
 	}
 	return nil
+}
+
+func digest(value []byte) string {
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(value))
+}
+
+func validOptionalDigest(value string) bool {
+	return value == "" || validDigest(value)
+}
+
+func validHandle(value string) bool {
+	return identifierPattern.MatchString(value) && len(value) <= 128
 }
 
 func validRisk(value string) bool {
@@ -193,7 +225,7 @@ func validDigest(value string) bool {
 
 func isLowerHex(value string) bool {
 	for _, char := range value {
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
 			return false
 		}
 	}

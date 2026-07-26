@@ -38,7 +38,8 @@ type backupEntry struct {
 	Directory bool   `json:"directory,omitempty"`
 }
 
-func apply(_ context.Context, request api.Request, profile Profile, config Config, state inspected) (handle string, returnErr error) {
+//nolint:cyclop // Ordered account, file, credential, and client phases share one rollback boundary.
+func apply(ctx context.Context, request api.Request, profile Profile, config Config, state inspected) (handle string, returnErr error) {
 	paths := changedPaths(profile, state)
 	record, err := createBackup(config, paths)
 	if err != nil {
@@ -54,13 +55,13 @@ func apply(_ context.Context, request api.Request, profile Profile, config Confi
 		return "", err
 	}
 	defer clearSecrets(secrets)
-	if err := applyGroups(profile.Groups); err != nil {
+	if err := applyGroups(ctx, profile.Groups); err != nil {
 		return "", err
 	}
-	if err := applyAccounts(profile.Accounts); err != nil {
+	if err := applyAccounts(ctx, profile.Accounts); err != nil {
 		return "", err
 	}
-	if err := applyGroupMembers(profile.Groups); err != nil {
+	if err := applyGroupMembers(ctx, profile.Groups); err != nil {
 		return "", err
 	}
 	if err := applyDirectories(profile.Directories); err != nil {
@@ -174,7 +175,7 @@ func readSecrets(descriptors []api.SecretDescriptor) (map[string][]byte, error) 
 	return result, nil
 }
 
-func applyGroups(values []Group) error {
+func applyGroups(ctx context.Context, values []Group) error {
 	for _, value := range values {
 		if _, err := user.LookupGroup(value.Name); err == nil {
 			continue
@@ -182,17 +183,17 @@ func applyGroups(values []Group) error {
 		if runtime.GOOS != "linux" {
 			return errors.New("automatic service group creation is supported only on Linux")
 		}
-		if output, err := exec.Command("groupadd", "--system", value.Name).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned name is one fixed command argument.
+		if output, err := exec.CommandContext(ctx, "groupadd", "--system", value.Name).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned name is one fixed command argument.
 			return fmt.Errorf("create service group: %w: %s", err, strings.TrimSpace(string(output)))
 		}
 	}
 	return nil
 }
 
-func applyAccounts(values []Account) error {
+func applyAccounts(ctx context.Context, values []Account) error {
 	for _, value := range values {
 		if _, err := user.Lookup(value.Name); err == nil {
-			if !accountMatches(value) {
+			if !accountMatches(ctx, value) {
 				return fmt.Errorf("service account %q does not match the profile", value.Name)
 			}
 			continue
@@ -201,14 +202,14 @@ func applyAccounts(values []Account) error {
 			return errors.New("automatic service account creation is supported only on Linux")
 		}
 		arguments := []string{"--system", "--home-dir", value.Home, "--shell", value.Shell, "--gid", value.Group, value.Name}
-		if output, err := exec.Command("useradd", arguments...).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned fields are arguments to a fixed command.
+		if output, err := exec.CommandContext(ctx, "useradd", arguments...).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned fields are arguments to a fixed command.
 			return fmt.Errorf("create service account: %w: %s", err, strings.TrimSpace(string(output)))
 		}
 	}
 	return nil
 }
 
-func applyGroupMembers(values []Group) error {
+func applyGroupMembers(ctx context.Context, values []Group) error {
 	if runtime.GOOS != "linux" {
 		for _, value := range values {
 			if !groupMatches(value) {
@@ -222,7 +223,7 @@ func applyGroupMembers(values []Group) error {
 			if memberInGroup(member, value.Name) {
 				continue
 			}
-			if output, err := exec.Command("usermod", "--append", "--groups", value.Name, member).CombinedOutput(); err != nil { // #nosec G204 -- validated exact group and user arguments.
+			if output, err := exec.CommandContext(ctx, "usermod", "--append", "--groups", value.Name, member).CombinedOutput(); err != nil { // #nosec G204 -- validated exact group and user arguments.
 				return fmt.Errorf("add component group member: %w: %s", err, strings.TrimSpace(string(output)))
 			}
 		}
@@ -360,6 +361,7 @@ func credentialAction(values []api.CredentialAction, slot string) string {
 	return ""
 }
 
+//nolint:cyclop // Verification checks every declared resource kind and returns bounded evidence.
 func verify(ctx context.Context, profile Profile, config Config, state inspected) ([]string, error) {
 	var evidence []string
 	for _, group := range profile.Groups {
@@ -369,7 +371,7 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 		evidence = append(evidence, "group "+group.Name+" matches")
 	}
 	for _, account := range profile.Accounts {
-		if !accountMatches(account) {
+		if !accountMatches(ctx, account) {
 			return nil, fmt.Errorf("account %q does not match", account.Name)
 		}
 		evidence = append(evidence, "account "+account.Name+" matches")
@@ -418,6 +420,7 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 	return evidence, nil
 }
 
+//nolint:cyclop // Rollback restores every bounded backup record in reverse mutation order.
 func rollback(config Config, handle string) error {
 	if len(handle) != 32 {
 		return errors.New("component rollback handle is invalid")
@@ -471,7 +474,7 @@ func writeAtomic(path string, data []byte, mode os.FileMode, uid, gid int) error
 		return err
 	}
 	temporary := file.Name()
-	defer os.Remove(temporary)
+	defer func() { _ = os.Remove(temporary) }()
 	if err := file.Chmod(mode); err != nil {
 		_ = file.Close()
 		return err

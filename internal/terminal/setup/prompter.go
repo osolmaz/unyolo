@@ -165,6 +165,8 @@ func (p *Prompter) Text(ctx context.Context, prompt flow.Prompt) (string, error)
 }
 
 // Secret reads a secret without echoing content or preserving its length.
+//
+//nolint:cyclop // Secret entry keeps accessible, interactive, cancellation, and fixed-mask paths together.
 func (p *Prompter) Secret(ctx context.Context, prompt flow.Prompt) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, flow.CancelledError{Cause: err}

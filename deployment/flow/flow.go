@@ -192,6 +192,7 @@ func validStepType(value StepType) bool {
 	}, value)
 }
 
+//nolint:cyclop // Option constraints differ by the closed setup step kind.
 func validateOptions(step Step) error {
 	hasOptions := step.Type == StepSelect || step.Type == StepMultiSelect
 	if !hasOptions && (len(step.Options) > 0 || len(step.DefaultValues) > 0 || step.Searchable) {
@@ -231,6 +232,7 @@ func validateInputConstraints(step Step) error {
 	return nil
 }
 
+//nolint:cyclop // Secret-bearing fields are rejected explicitly for every persisted step kind.
 func validateTransientFields(step Step) error {
 	switch step.Type {
 	case StepOpenURL:

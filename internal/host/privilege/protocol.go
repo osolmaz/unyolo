@@ -59,8 +59,15 @@ type Result struct {
 	Message    string `json:"message"`
 }
 
+type deploymentEngine interface {
+	Plan(context.Context, string) (hostdeployment.Planned, error)
+	ApplyDescriptors(context.Context, string, string, map[string]*os.File) (hostdeployment.Verification, error)
+}
+
 // Serve runs one plan-review-apply exchange and exits.
-func Serve(ctx context.Context, input io.Reader, output io.Writer, engine *hostdeployment.Engine, reviewDeadline time.Duration) error {
+//
+//nolint:cyclop // The privileged worker keeps identity, plan review, secret transfer, and apply in one framed session.
+func Serve(ctx context.Context, input io.Reader, output io.Writer, engine deploymentEngine, reviewDeadline time.Duration) error {
 	if err := verifyIdentity(); err != nil {
 		return err
 	}
@@ -151,6 +158,7 @@ func RequiredSecretSlots(value deploymentplan.Plan) []string {
 	return result
 }
 
+//nolint:cyclop // Secret frames are validated, piped, and unwound as one bounded transfer.
 func readSecretFrames(input io.Reader, slots []string) (map[string]*os.File, func() error, error) {
 	files := map[string]*os.File{}
 	type writeResult struct{ err error }
@@ -199,6 +207,7 @@ func closeFiles(files map[string]*os.File) {
 	}
 }
 
+//nolint:cyclop // Root-worker identity checks reject every unsafe invocation context explicitly.
 func verifyWorkerIdentity() error {
 	if os.Geteuid() != 0 {
 		return errors.New("setup worker must run as root")

@@ -24,6 +24,7 @@ func main() {
 	}
 }
 
+//nolint:cyclop // The small CLI keeps its closed command dispatch and usage errors together.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 1 && (args[0] == "version" || args[0] == "--version") {
 		_, err := fmt.Fprintln(stdout, version)

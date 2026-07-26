@@ -15,7 +15,7 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "--version") {
-		fmt.Fprintln(os.Stdout, version)
+		_, _ = fmt.Fprintln(os.Stdout, version)
 		return
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -25,7 +25,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		fmt.Fprintln(os.Stdout, "ok")
+		_, _ = fmt.Fprintln(os.Stdout, "ok")
 		return
 	}
 	if len(os.Args) != 1 {

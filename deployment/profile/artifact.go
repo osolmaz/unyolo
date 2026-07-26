@@ -15,6 +15,8 @@ const MaxArtifactBytes = 256 * 1024 * 1024
 // returns its absolute source path. Callers must not execute this user-owned
 // path with elevated privilege; copy it into a verified root-owned staging
 // directory first.
+//
+//nolint:cyclop // Artifact verification keeps every path and digest rejection in one trust-boundary function.
 func (snapshot Snapshot) VerifyArtifact(source, expected string) (string, error) {
 	if err := validateRelative(source); err != nil {
 		return "", err
@@ -23,7 +25,7 @@ func (snapshot Snapshot) VerifyArtifact(source, expected string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := inspectPath(root, source); err != nil {
 		return "", err
 	}

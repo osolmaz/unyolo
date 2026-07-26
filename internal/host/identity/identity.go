@@ -2,11 +2,13 @@
 package identity
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -15,7 +17,10 @@ import (
 	"github.com/osolmaz/brokerkit/deployment/profile"
 )
 
-var rootEquivalentGroups = []string{"sudo", "wheel", "docker", "lxd", "incus"}
+var (
+	rootEquivalentGroups = []string{"sudo", "wheel", "docker", "lxd", "incus"}
+	managedNamePattern   = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+)
 
 // Account is the resolved nonsecret Unix identity state.
 type Account struct {
@@ -33,11 +38,13 @@ type Inspector struct {
 	LookupUser     func(string) (*user.User, error)
 	LookupGroupID  func(string) (*user.Group, error)
 	LookupGroupIDs func(*user.User) ([]string, error)
-	LookupShell    func(string) (string, error)
+	LookupShell    func(context.Context, string) (string, error)
 }
 
 // InspectDeployment resolves every agent and operator and enforces separation.
-func (inspector Inspector) InspectDeployment(deployment profile.Deployment) (map[string]Account, error) {
+//
+//nolint:cyclop // Agent and operator uniqueness and root-equivalence checks require the complete identity set.
+func (inspector Inspector) InspectDeployment(ctx context.Context, deployment profile.Deployment) (map[string]Account, error) {
 	if inspector.LookupUser == nil {
 		inspector.LookupUser = user.Lookup
 	}
@@ -53,7 +60,7 @@ func (inspector Inspector) InspectDeployment(deployment profile.Deployment) (map
 	result := map[string]Account{}
 	usedUIDs := map[int]string{}
 	for _, agent := range deployment.Agents {
-		account, err := inspector.inspect(agent.UnixUser)
+		account, err := inspector.inspect(ctx, agent.UnixUser)
 		if err != nil {
 			var unknown user.UnknownUserError
 			if agent.AccountMode == "managed" && errors.As(err, &unknown) {
@@ -72,7 +79,7 @@ func (inspector Inspector) InspectDeployment(deployment profile.Deployment) (map
 		result["agent:"+agent.ID] = account
 	}
 	for _, operator := range deployment.Operators {
-		account, err := inspector.inspect(operator.UnixUser)
+		account, err := inspector.inspect(ctx, operator.UnixUser)
 		if err != nil {
 			return nil, fmt.Errorf("inspect operator %q: %w", operator.ID, err)
 		}
@@ -88,20 +95,20 @@ func (inspector Inspector) InspectDeployment(deployment profile.Deployment) (map
 	return result, nil
 }
 
-func (inspector Inspector) inspect(name string) (Account, error) {
+func (inspector Inspector) inspect(ctx context.Context, name string) (Account, error) {
 	resolved, err := inspector.LookupUser(name)
 	if err != nil {
 		return Account{}, err
 	}
 	uid, err := strconv.Atoi(resolved.Uid)
 	if err != nil {
-		return Account{}, errors.New("Unix UID is invalid")
+		return Account{}, errors.New("unix UID is invalid")
 	}
 	gid, err := strconv.Atoi(resolved.Gid)
 	if err != nil {
-		return Account{}, errors.New("Unix GID is invalid")
+		return Account{}, errors.New("unix GID is invalid")
 	}
-	shell, err := inspector.LookupShell(name)
+	shell, err := inspector.LookupShell(ctx, name)
 	if err != nil {
 		return Account{}, fmt.Errorf("resolve login shell: %w", err)
 	}
@@ -121,9 +128,9 @@ func (inspector Inspector) inspect(name string) (Account, error) {
 	return Account{Name: name, UID: uid, GID: gid, Home: resolved.HomeDir, Shell: shell, Groups: groups}, nil
 }
 
-func lookupShell(name string) (string, error) {
+func lookupShell(ctx context.Context, name string) (string, error) {
 	if runtime.GOOS == "darwin" {
-		output, err := exec.Command("dscl", ".", "-read", "/Users/"+name, "UserShell").Output() // #nosec G204 -- validated profile user is one argument to a fixed command.
+		output, err := exec.CommandContext(ctx, "dscl", ".", "-read", "/Users/"+name, "UserShell").Output() // #nosec G204 -- validated profile user is one argument to a fixed command.
 		if err != nil {
 			return "", err
 		}
@@ -133,7 +140,7 @@ func lookupShell(name string) (string, error) {
 		}
 		return strings.TrimSpace(shell), nil
 	}
-	output, err := exec.Command("getent", "passwd", name).Output() // #nosec G204 -- validated profile user is one argument to a fixed command.
+	output, err := exec.CommandContext(ctx, "getent", "passwd", name).Output() // #nosec G204 -- validated profile user is one argument to a fixed command.
 	if err != nil {
 		return "", err
 	}
@@ -167,7 +174,9 @@ func SafeManagedCommand(agent profile.Agent) ([]string, error) {
 	if agent.AccountMode != "managed" {
 		return nil, errors.New("account is not managed")
 	}
-	if !filepath.IsAbs(agent.Home) || !filepath.IsAbs(agent.Shell) || strings.ContainsAny(agent.UnixUser, "\x00\r\n") {
+	if !managedNamePattern.MatchString(agent.UnixUser) || !filepath.IsAbs(agent.Home) || filepath.Clean(agent.Home) != agent.Home ||
+		agent.Home == "/" || agent.Home == "/root" || !filepath.IsAbs(agent.Shell) ||
+		!slices.Contains([]string{"nologin", "false"}, filepath.Base(agent.Shell)) {
 		return nil, errors.New("managed account fields are unsafe")
 	}
 	return []string{"useradd", "--system", "--create-home", "--home-dir", agent.Home, "--shell", agent.Shell, agent.UnixUser}, nil

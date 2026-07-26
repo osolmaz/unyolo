@@ -23,6 +23,7 @@ func ValidateOwnership(response api.Response, component bundle.Component) error 
 	return nil
 }
 
+//nolint:cyclop // Signed ownership is an exhaustive closed resource-kind switch.
 func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) error {
 	switch resource.Kind {
 	case "file", "directory", "socket", "client", "git_config":

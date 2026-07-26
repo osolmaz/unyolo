@@ -17,6 +17,8 @@ var ErrLockOutOfDate = errors.New("deployment profile lock is out of date")
 
 // Lock recalculates referenced-file digests and canonicalizes the entry file.
 // In check mode it performs no writes.
+//
+//nolint:cyclop // Locking traverses and updates every bounded reference in one atomic profile operation.
 func Lock(root string, check bool) error {
 	absolute, err := filepath.Abs(root)
 	if err != nil {
@@ -29,7 +31,7 @@ func Lock(root string, check bool) error {
 	if err != nil {
 		return fmt.Errorf("open deployment pack: %w", err)
 	}
-	defer packRoot.Close()
+	defer func() { _ = packRoot.Close() }()
 	entry, err := readFile(packRoot, EntryFilename, MaxEntryBytes)
 	if err != nil {
 		return err
@@ -130,6 +132,7 @@ func lockNestedReferences(root *os.Root, path string, check bool) (bool, error) 
 	return true, writeAtomic(root.Name(), path, updated, 0o600)
 }
 
+//nolint:cyclop // Recursive JSON traversal handles the closed object and array shapes explicitly.
 func lockValue(root *os.Root, value any) (bool, error) {
 	switch typed := value.(type) {
 	case []any:
@@ -211,7 +214,7 @@ func writeAtomic(root, relative string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	temporary := file.Name()
-	defer os.Remove(temporary)
+	defer func() { _ = os.Remove(temporary) }()
 	if err := file.Chmod(mode); err != nil {
 		_ = file.Close()
 		return err
@@ -230,7 +233,7 @@ func writeAtomic(root, relative string, data []byte, mode os.FileMode) error {
 	if err := os.Rename(temporary, path); err != nil {
 		return err
 	}
-	dir, err := os.Open(directory)
+	dir, err := os.Open(directory) // #nosec G304 -- directory is the validated deployment pack root.
 	if err != nil {
 		return err
 	}

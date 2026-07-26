@@ -24,7 +24,7 @@ func WriteFrame(writer io.Writer, value any) error {
 		return errors.New("setup-component frame exceeds size limit")
 	}
 	var header [4]byte
-	binary.BigEndian.PutUint32(header[:], uint32(len(data)))
+	binary.BigEndian.PutUint32(header[:], uint32(len(data))) // #nosec G115 -- maxFrameBytes is smaller than uint32.
 	if _, err := writer.Write(header[:]); err != nil {
 		return err
 	}

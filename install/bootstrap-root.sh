@@ -2,7 +2,10 @@
 set -eu
 
 [ "$(id -u)" -eq 0 ] || { printf '%s\n' 'bootstrap-root: root is required' >&2; exit 1; }
-[ -n "${SUDO_UID:-}" ] && [ "$SUDO_UID" -ne 0 ] || { printf '%s\n' 'bootstrap-root: a distinct sudo invoking user is required' >&2; exit 1; }
+if [ -z "${SUDO_UID:-}" ] || [ "$SUDO_UID" -eq 0 ]; then
+  printf '%s\n' 'bootstrap-root: a distinct invoking user is required' >&2
+  exit 1
+fi
 [ "$#" -eq 1 ] || { printf '%s\n' 'usage: bootstrap-root.sh brokerkit/vX.Y.Z' >&2; exit 64; }
 release=$1
 case "$release" in brokerkit/v[0-9]*) ;; *) exit 64 ;; esac
@@ -21,7 +24,11 @@ expected=$(awk -v name="$asset" '$2 == name { print $1 }' "$temporary/checksums.
 [ -n "$expected" ] || exit 1
 actual=$(sha256sum "$temporary/$asset" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$temporary/$asset" | awk '{print $1}')
 [ "$actual" = "$expected" ] || { printf '%s\n' 'bootstrap-root: release checksum mismatch' >&2; exit 1; }
-gh attestation verify "$temporary/$asset" --repo osolmaz/brokerkit >/dev/null
+gh attestation verify "$temporary/$asset" \
+  --repo osolmaz/brokerkit \
+  --signer-workflow osolmaz/brokerkit/.github/workflows/release.yml \
+  --source-ref "refs/tags/$release" \
+  --deny-self-hosted-runners >/dev/null
 tar -xzf "$temporary/$asset" -C "$temporary" brokerkit
 build=${release#brokerkit/}
 destination="/opt/brokerkit/bootstrap/$build"

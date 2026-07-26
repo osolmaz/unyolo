@@ -56,7 +56,11 @@ curl -fL --proto '=https' --tlsv1.2 "$base/checksums.txt" -o "$temporary/checksu
   actual=$(sha256sum "$asset" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$asset" | awk '{print $1}')
   [ "$actual" = "$expected" ] || { printf '%s\n' 'bootstrap: release checksum mismatch' >&2; exit 1; }
 )
-gh attestation verify "$temporary/$asset" --repo osolmaz/brokerkit >/dev/null
+gh attestation verify "$temporary/$asset" \
+  --repo osolmaz/brokerkit \
+  --signer-workflow osolmaz/brokerkit/.github/workflows/release.yml \
+  --source-ref "refs/tags/$tag" \
+  --deny-self-hosted-runners >/dev/null
 
 tar -xzf "$temporary/$asset" -C "$temporary" brokerkit
 [ -f "$temporary/brokerkit" ] && [ ! -L "$temporary/brokerkit" ] || { printf '%s\n' 'bootstrap: release archive is invalid' >&2; exit 1; }

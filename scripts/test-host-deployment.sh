@@ -1,0 +1,54 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+image=${BROKERKIT_E2E_IMAGE:-golang:1.26.5-bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651}
+
+docker run --rm \
+  --volume "$root:/src:ro" \
+  --workdir /src \
+  "$image" \
+  sh -ceu '
+    export GOWORK=off
+    useradd --create-home --shell /bin/bash --gid operator operator
+    cat >/usr/local/bin/systemctl <<"EOF"
+#!/bin/sh
+exit 0
+EOF
+    chmod 0755 /usr/local/bin/systemctl
+    go build -o /tmp/brokerkit ./cmd/brokerkit
+    go build -ldflags "-X github.com/osolmaz/brokerkit/internal/buildinfo.Version=e2e" -o /tmp/fake-adapter ./internal/host/deployment/testdata/component
+    go run ./internal/host/deployment/testdata/pack /tmp/deployment /tmp/fake-adapter
+    /tmp/brokerkit system profile lock --check --profile /tmp/deployment
+    /tmp/brokerkit system validate \
+      --development --profile /tmp/deployment \
+      --root /tmp/runtime --state-dir /tmp/state
+    /tmp/brokerkit system plan \
+      --development --profile /tmp/deployment \
+      --root /tmp/runtime --state-dir /tmp/state --json >/tmp/plan.json
+    plan=$(awk -F\" '\''/"digest":/ {print $4; exit}'\'' /tmp/plan.json)
+    test -n "$plan"
+    printf "%s" "clean-host-secret-canary" >/tmp/secret
+    chmod 0600 /tmp/secret
+    /tmp/brokerkit system apply \
+      --development --profile /tmp/deployment \
+      --root /tmp/runtime --state-dir /tmp/state \
+      --expect-plan "$plan" --secret-file e2e-token=/tmp/secret
+    test "$(cat /etc/brokerkit-e2e/config.json)" = "{\"enabled\":true}"
+    test "$(cat /etc/brokerkit-e2e/token)" = "clean-host-secret-canary"
+    test "$(stat -c %a /etc/brokerkit-e2e/token)" = 640
+    getent passwd brokerkit-agent >/dev/null
+    getent passwd brokerkit-e2e >/dev/null
+    id -nG brokerkit-agent | grep -qw brokerkit-e2e-agent
+    /tmp/brokerkit system verify \
+      --development --profile /tmp/deployment \
+      --root /tmp/runtime --state-dir /tmp/state
+    /tmp/brokerkit system export \
+      --development --profile /tmp/deployment \
+      --root /tmp/runtime --state-dir /tmp/state --json >/tmp/export.json
+    ! grep -q clean-host-secret-canary /tmp/export.json
+    /tmp/brokerkit system plan \
+      --development --profile /tmp/deployment \
+      --root /tmp/runtime --state-dir /tmp/state --json >/tmp/noop.json
+    grep -q '\''"kind": "noop"'\'' /tmp/noop.json
+  '

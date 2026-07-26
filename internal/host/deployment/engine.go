@@ -92,6 +92,18 @@ func New(options Options) (*Engine, error) {
 	if !filepath.IsAbs(options.Paths.Root) || !filepath.IsAbs(options.Paths.StateDir) {
 		return nil, errors.New("host deployment paths must be absolute")
 	}
+	production := bundle.DefaultPaths()
+	if options.Development {
+		if options.Paths.Root == production.Root || options.Paths.StateDir == production.StateDir {
+			return nil, errors.New("development host deployment requires isolated paths")
+		}
+	} else if options.Paths != production {
+		return nil, errors.New("production host deployment uses fixed paths")
+	}
+	root, state := filepath.Clean(options.Paths.Root), filepath.Clean(options.Paths.StateDir)
+	if root == state || strings.HasPrefix(root, state+string(filepath.Separator)) || strings.HasPrefix(state, root+string(filepath.Separator)) {
+		return nil, errors.New("host deployment root and state paths must not overlap")
+	}
 	if options.Manager == nil {
 		options.Manager = bundle.NewNativeManager()
 	}
@@ -117,6 +129,8 @@ func (engine *Engine) Validate(ctx context.Context, profileRoot string) (profile
 }
 
 // Plan computes one canonical host plan and stages root-owned adapter copies.
+//
+//nolint:cyclop // Host planning binds profile, identity, runtime, component, and observed-state checks together.
 func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, error) {
 	if err := engine.requirePrivileged(); err != nil {
 		return Planned{}, err
@@ -125,7 +139,7 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 	if err != nil {
 		return Planned{}, err
 	}
-	accounts, err := engine.options.Identity.InspectDeployment(snapshot.Deployment)
+	accounts, err := engine.options.Identity.InspectDeployment(ctx, snapshot.Deployment)
 	if err != nil {
 		return Planned{}, err
 	}
@@ -178,12 +192,14 @@ func (engine *Engine) Apply(ctx context.Context, profileRoot, expectedPlan strin
 }
 
 // ApplyDescriptors applies with already-open one-use read-only secret descriptors.
+//
+//nolint:cyclop // Apply rechecks every plan binding before entering the transaction.
 func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expectedPlan string, secretFiles map[string]*os.File) (Verification, error) {
 	lock, err := acquireHostLock(engine.options.Paths.StateDir)
 	if err != nil {
 		return Verification{}, err
 	}
-	defer lock.close()
+	defer func() { _ = lock.close() }()
 	planned, err := engine.Plan(ctx, profileRoot)
 	if err != nil {
 		return Verification{}, err
@@ -643,6 +659,7 @@ func secretsForComponent(response api.Response, files map[string]*os.File) ([]ad
 	return result, nil
 }
 
+//nolint:cyclop // One-use secret sources are opened, permission-checked, and unwound as one operation.
 func openSecretSources(sources []SecretSource) (map[string]*os.File, error) {
 	result := map[string]*os.File{}
 	for _, source := range sources {

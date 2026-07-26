@@ -48,6 +48,55 @@ func TestReadRejectsUnknownAndDuplicateJSONFields(t *testing.T) {
 	}
 }
 
+func TestResolveDevelopmentEnvironment(t *testing.T) {
+	home := t.TempDir()
+	values := map[string]string{
+		"TEST_AGENT_ENDPOINT": "unix:///tmp/test.sock",
+		"TEST_SHARED_SECRET":  strings.Repeat("s", 32),
+	}
+	getenv := func(key string) string { return values[key] }
+	resolved, err := Resolve(home, "test-broker", "TEST", getenv)
+	if err != nil || resolved.ClientID != "development" || resolved.AgentEndpoint != values["TEST_AGENT_ENDPOINT"] {
+		t.Fatalf("Resolve() = %#v, %v", resolved, err)
+	}
+	secretFile := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secretFile, []byte(strings.Repeat("f", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	delete(values, "TEST_SHARED_SECRET")
+	values["TEST_SHARED_SECRET_FILE"] = secretFile
+	resolved, err = Resolve(home, "test-broker", "TEST", getenv)
+	if err != nil || resolved.SharedSecret != strings.Repeat("f", 32) {
+		t.Fatalf("file Resolve() = %#v, %v", resolved, err)
+	}
+	values["TEST_SHARED_SECRET"] = strings.Repeat("s", 32)
+	if _, err := Resolve(home, "test-broker", "TEST", getenv); err == nil {
+		t.Fatal("conflicting environment credentials were accepted")
+	}
+	if _, err := Resolve(home, "test-broker", "EMPTY", getenv); err == nil {
+		t.Fatal("missing configuration was accepted")
+	}
+}
+
+func TestResolveRejectsFileEnvironmentConflict(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Write(Config{BrokerName: "test-broker", EnvPrefix: "TEST", ClientID: "agent", Endpoint: "unix:///tmp/test.sock", Secret: strings.Repeat("s", 32), HomeDir: home}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(home, "test-broker", "TEST", func(key string) string {
+		if key == "TEST_AGENT_ENDPOINT" {
+			return "unix:///tmp/other.sock"
+		}
+		return ""
+	}); err == nil {
+		t.Fatal("file and environment conflict was accepted")
+	}
+	resolved, err := Resolve(home, "test-broker", "TEST", func(string) string { return "" })
+	if err != nil || resolved.ClientID != "agent" {
+		t.Fatalf("file Resolve() = %#v, %v", resolved, err)
+	}
+}
+
 func TestValidateClientFileRejectsUnsafePaths(t *testing.T) {
 	home := t.TempDir()
 	missing := filepath.Join(home, "missing")

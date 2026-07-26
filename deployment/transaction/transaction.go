@@ -54,6 +54,8 @@ type Coordinator struct {
 }
 
 // Run applies steps in order and rolls completed steps back on failure.
+//
+//nolint:cyclop // Journaled apply and reverse rollback share one ordered transaction state machine.
 func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDigest, candidate, previous string, steps []Step) error {
 	if err := validateSteps(steps); err != nil {
 		return err
@@ -187,7 +189,7 @@ func (coordinator Coordinator) write(journal Journal) error {
 		return err
 	}
 	temporary := file.Name()
-	defer os.Remove(temporary)
+	defer func() { _ = os.Remove(temporary) }()
 	if err := file.Chmod(0o600); err != nil {
 		_ = file.Close()
 		return err

@@ -61,6 +61,8 @@ func ReadPath(path, homeDir string) (Client, error) {
 // Resolve chooses exactly one configuration source. The private client file is
 // the production default; complete environment configuration remains available
 // for isolated development and tests.
+//
+//nolint:cyclop // Direct file configuration and development-only environment configuration are validated in one precedence path.
 func Resolve(homeDir, brokerName, envPrefix string, getenv func(string) string) (Client, error) {
 	if getenv == nil {
 		getenv = os.Getenv

@@ -126,7 +126,7 @@ func runDeploymentPlan(ctx context.Context, args []string, stdout, stderr io.Wri
 		if !filepath.IsAbs(output) {
 			return errors.New("--output must be absolute")
 		}
-		if err := os.WriteFile(output, data, 0o600); err != nil {
+		if err := os.WriteFile(output, data, 0o600); err != nil { // #nosec G703 -- explicit operator-selected plan output.
 			return err
 		}
 	}

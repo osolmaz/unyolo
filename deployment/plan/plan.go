@@ -62,6 +62,8 @@ type Plan struct {
 }
 
 // Build combines component plans into one dependency-ordered canonical plan.
+//
+//nolint:cyclop // Canonical planning combines all bounded host and component action classes in one ordering pass.
 func Build(snapshot profile.Snapshot, observedFingerprint string, responses []api.Response, activeBundleID string) (Plan, error) {
 	if !validDigest(observedFingerprint) {
 		return Plan{}, errors.New("observed-state fingerprint is invalid")
@@ -129,6 +131,8 @@ func Build(snapshot profile.Snapshot, observedFingerprint string, responses []ap
 }
 
 // Validate checks a decoded plan and its canonical digest.
+//
+//nolint:cyclop // The complete plan artifact is validated field by field before apply.
 func (value Plan) Validate() error {
 	if value.APIVersion != APIVersion || value.DeploymentName == "" || !validDigest(value.DeploymentDigest) ||
 		!validDigest(value.ObservedFingerprint) || value.RuntimeBundleID == "" || !validDigest(value.Digest) {
@@ -186,6 +190,7 @@ func qualifyDependencies(componentID string, dependencies []string) []string {
 	return result
 }
 
+//nolint:cyclop // Stable topological ordering handles each dependency edge and failure explicitly.
 func orderActions(actions []Action) ([]Action, error) {
 	byID := make(map[string]Action, len(actions))
 	for _, action := range actions {
@@ -240,7 +245,7 @@ func validDigest(value string) bool {
 		return false
 	}
 	for _, char := range value[7:] {
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
 			return false
 		}
 	}

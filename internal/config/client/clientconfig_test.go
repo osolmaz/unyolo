@@ -8,6 +8,24 @@ import (
 	"testing"
 )
 
+func TestSecretFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secrets")
+	if err := os.WriteFile(path, []byte("agent = "+strings.Repeat("s", 32)+"\nother = "+strings.Repeat("o", 32)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := SecretFromFile(path, "agent")
+	if err != nil || secret != strings.Repeat("s", 32) {
+		t.Fatalf("SecretFromFile() = %q, %v", secret, err)
+	}
+	secrets, err := SecretsFromFile(path)
+	if err != nil || len(secrets) != 2 {
+		t.Fatalf("SecretsFromFile() = %#v, %v", secrets, err)
+	}
+	if _, err := SecretFromFile(filepath.Join(t.TempDir(), "missing"), "agent"); err == nil {
+		t.Fatal("missing secret file was accepted")
+	}
+}
+
 func TestRenderClientJSON(t *testing.T) {
 	body, err := Render(Config{
 		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "bob",

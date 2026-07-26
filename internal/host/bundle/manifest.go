@@ -275,6 +275,7 @@ func (c Component) validateProcess(manifest Manifest) error {
 	return nil
 }
 
+//nolint:cyclop // Signed adapter descriptors and ownership envelopes are checked exhaustively at load time.
 func (c Component) validateSetup() error {
 	if c.Setup == nil {
 		return nil

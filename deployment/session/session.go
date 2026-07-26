@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -19,6 +20,11 @@ import (
 const (
 	APIVersion      = "brokerkit.io/setup-session/v1"
 	MaxSessionBytes = 1024 * 1024
+)
+
+var (
+	fieldIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	digestPattern  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
 // Phase identifies the last committed nonsecret setup boundary.
@@ -198,6 +204,8 @@ func (store Store) Cancel(id string) error {
 }
 
 // Validate rejects malformed or secret-like setup state structure.
+//
+//nolint:cyclop // Resumable state is checked exhaustively to keep secret-bearing fields out of persistence.
 func (value Session) Validate() error {
 	if value.APIVersion != APIVersion || !validID(value.ID) || strings.TrimSpace(value.BuildID) == "" || strings.TrimSpace(value.Deployment) == "" {
 		return errors.New("setup session identity is invalid")
@@ -211,9 +219,35 @@ func (value Session) Validate() error {
 	if len(value.CompletedStep) > 256 || len(value.Answers) > 256 || len(value.SecretSlots) > 64 || len(value.Generated) > 256 || len(value.LastSafeError) > 4096 {
 		return errors.New("setup session exceeds collection limits")
 	}
+	seenSteps := map[string]bool{}
+	for _, step := range value.CompletedStep {
+		if !fieldIDPattern.MatchString(step) || seenSteps[step] {
+			return errors.New("setup completed step is invalid or duplicated")
+		}
+		seenSteps[step] = true
+	}
+	for key, answers := range value.Answers {
+		lower := strings.ToLower(key)
+		if !fieldIDPattern.MatchString(key) || strings.Contains(lower, "secret") || strings.Contains(lower, "token") ||
+			strings.Contains(lower, "password") || strings.Contains(lower, "credential") || len(answers) > 64 {
+			return errors.New("setup answer key is invalid or secret-like")
+		}
+		for _, answer := range answers {
+			if len(answer) > 4096 || strings.ContainsAny(answer, "\x00\r\n") {
+				return errors.New("setup answer is invalid")
+			}
+		}
+	}
+	seenSlots := map[string]bool{}
 	for _, slot := range value.SecretSlots {
-		if strings.TrimSpace(slot.ID) == "" {
-			return errors.New("setup secret slot ID is invalid")
+		if !fieldIDPattern.MatchString(slot.ID) || seenSlots[slot.ID] {
+			return errors.New("setup secret slot ID is invalid or duplicated")
+		}
+		seenSlots[slot.ID] = true
+	}
+	for path, digest := range value.Generated {
+		if strings.TrimSpace(path) == "" || !digestPattern.MatchString(digest) {
+			return errors.New("setup generated file digest is invalid")
 		}
 	}
 	return nil
@@ -262,7 +296,7 @@ func writeAtomic(directory, name string, data []byte) error {
 		return err
 	}
 	temporary := file.Name()
-	defer os.Remove(temporary)
+	defer func() { _ = os.Remove(temporary) }()
 	if err := file.Chmod(0o600); err != nil {
 		_ = file.Close()
 		return err

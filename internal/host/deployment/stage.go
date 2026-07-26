@@ -13,6 +13,7 @@ import (
 	"github.com/osolmaz/brokerkit/internal/host/bundle"
 )
 
+//nolint:cyclop // Staging verifies source and destination metadata around one atomic copy.
 func (engine *Engine) stageAdapter(snapshot profile.Snapshot, component bundle.Component, source string) (string, error) {
 	directory := filepath.Join(engine.options.Paths.StateDir, "setup-adapters", snapshot.Digest[7:])
 	if err := ensureStageDirectory(directory, engine.options.Paths.StateDir, engine.options.Development); err != nil {
@@ -28,13 +29,13 @@ func (engine *Engine) stageAdapter(snapshot profile.Snapshot, component bundle.C
 	if err != nil {
 		return "", err
 	}
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 	output, err := os.CreateTemp(directory, ".adapter-*")
 	if err != nil {
 		return "", err
 	}
 	temporary := output.Name()
-	defer os.Remove(temporary)
+	defer func() { _ = os.Remove(temporary) }()
 	if err := output.Chmod(0o700); err != nil {
 		_ = output.Close()
 		return "", err
@@ -66,6 +67,7 @@ func (engine *Engine) stageAdapter(snapshot profile.Snapshot, component bundle.C
 	return destination, nil
 }
 
+//nolint:cyclop // Every parent ownership and permission constraint is checked before root execution.
 func ensureStageDirectory(path, trustedRoot string, development bool) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return err
@@ -97,6 +99,7 @@ func ensureStageDirectory(path, trustedRoot string, development bool) error {
 	return nil
 }
 
+//nolint:cyclop // Reuse requires matching type, ownership, mode, and digest.
 func stagedMatches(path, expected string, development bool) (bool, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {

@@ -39,12 +39,70 @@ func TestRunnerAndOwnership(t *testing.T) {
 	}
 }
 
+func TestOwnershipEnvelopeCoversEveryResourceKind(t *testing.T) {
+	component := bundle.Component{Setup: &bundle.SetupAdapter{Ownership: bundle.OwnershipEnvelope{
+		Paths: []string{"/etc/test"}, Services: []string{"test.service"},
+		Accounts: []string{"test"}, Groups: []string{"test-agent"},
+	}}}
+	response := api.Response{
+		APIVersion: api.APIVersion, ComponentID: "test", Status: "planned", PlanDigest: digestForTest("plan"),
+		Actions: []api.PlannedAction{
+			{ID: "directory", Type: "create", Risk: "high", Resource: api.Resource{Kind: "directory", ID: "config", Path: "/etc/test"}},
+			{ID: "file", Type: "write", Risk: "high", Resource: api.Resource{Kind: "file", ID: "config", Path: "/etc/test/config"}},
+			{ID: "credential", Type: "write", Risk: "critical", Resource: api.Resource{Kind: "credential", ID: "/etc/test/secret"}},
+			{ID: "client", Type: "write", Risk: "critical", Resource: api.Resource{Kind: "client", ID: "client", Path: "/etc/test/client"}},
+			{ID: "service", Type: "restart", Risk: "medium", Resource: api.Resource{Kind: "service", ID: "test.service"}},
+			{ID: "account", Type: "create", Risk: "high", Resource: api.Resource{Kind: "account", ID: "test"}},
+			{ID: "group", Type: "create", Risk: "high", Resource: api.Resource{Kind: "group", ID: "test-agent"}},
+		},
+	}
+	if err := ValidateOwnership(response, component); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []api.Resource{
+		{Kind: "file", ID: "/outside"}, {Kind: "service", ID: "other.service"},
+		{Kind: "account", ID: "other"}, {Kind: "group", ID: "other"}, {Kind: "unknown", ID: "test"},
+	} {
+		value := response
+		value.Actions = []api.PlannedAction{{ID: "invalid", Type: "write", Risk: "high", Resource: invalid}}
+		if err := ValidateOwnership(value, component); err == nil {
+			t.Fatalf("resource was accepted: %#v", invalid)
+		}
+	}
+	if err := ValidateOwnership(response, bundle.Component{}); err == nil {
+		t.Fatal("component without setup ownership was accepted")
+	}
+}
+
+func TestRunnerRejectsInvalidCommandsAndResponses(t *testing.T) {
+	request := api.Request{
+		APIVersion: api.APIVersion, Action: api.ActionPlan,
+		DeploymentDigest: digestForTest("deployment"), ComponentID: "fake",
+		Profile: json.RawMessage(`{"api_version":"fake/v1"}`),
+	}
+	if _, err := (Runner{}).Run(context.Background(), Command{}, request, nil); err == nil {
+		t.Fatal("empty command was accepted")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Runner{}).Run(context.Background(), Command{Executable: executable, Arguments: []string{"-test.run=TestAdapterHelper", "--", "bad"}}, request, nil); err == nil {
+		t.Fatal("invalid adapter response was accepted")
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := (Runner{}).Run(cancelled, Command{Executable: executable}, request, nil); err == nil {
+		t.Fatal("cancelled launch was accepted")
+	}
+}
+
 func TestRunnerRejectsWritableSecretDescriptor(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

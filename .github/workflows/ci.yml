@@ -68,6 +68,13 @@ jobs:
       - name: Slophammer complete gates
         run: slophammer-go check .
 
+  host-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Verify a disposable clean host
+        run: ./scripts/test-host-deployment.sh
+
   openclaw-plugin:
     runs-on: ubuntu-latest
     steps:

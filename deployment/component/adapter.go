@@ -128,7 +128,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, config Config
 	if err := strictjson.Decode(request.Profile, &profile, true); err != nil {
 		return errors.New("component deployment profile is invalid")
 	}
-	state, err := inspect(request, profile, config)
+	state, err := inspect(ctx, request, profile, config)
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,8 @@ type inspected struct {
 	agents       map[string]api.AgentBinding
 }
 
-func inspect(request api.Request, profile Profile, config Config) (inspected, error) {
+//nolint:cyclop // Inspection projects each bounded resource kind into one canonical component plan.
+func inspect(ctx context.Context, request api.Request, profile Profile, config Config) (inspected, error) {
 	if err := validateProfile(profile, config, request.Agents); err != nil {
 		return inspected{}, err
 	}
@@ -170,8 +171,8 @@ func inspect(request api.Request, profile Profile, config Config) (inspected, er
 		}
 	}
 	for _, account := range profile.Accounts {
-		state.fingerprints = append(state.fingerprints, "account:"+account.Name+":"+accountFingerprint(account))
-		if !accountMatches(account) {
+		state.fingerprints = append(state.fingerprints, "account:"+account.Name+":"+accountFingerprint(ctx, account))
+		if !accountMatches(ctx, account) {
 			state.actions = append(state.actions, api.PlannedAction{
 				ID: "account-" + account.Name, Type: "reconcile", Risk: "high",
 				Resource:      api.Resource{Kind: "account", ID: account.Name},
@@ -245,6 +246,7 @@ func inspect(request api.Request, profile Profile, config Config) (inspected, er
 	return state, nil
 }
 
+//nolint:cyclop // Adapter dispatch is an exhaustive closed operation switch.
 func dispatch(ctx context.Context, request api.Request, profile Profile, config Config, state inspected) (api.Response, error) {
 	base := api.Response{
 		APIVersion: api.APIVersion, ComponentID: config.ComponentID,
@@ -282,6 +284,7 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 	}
 }
 
+//nolint:cyclop // Provider-owned profiles are checked exhaustively before any host inspection or mutation.
 func validateProfile(profile Profile, config Config, agents []api.AgentBinding) error {
 	if profile.APIVersion != config.ProfileAPI {
 		return errors.New("component deployment profile API is invalid")
@@ -430,12 +433,12 @@ func groupFingerprint(value Group) string {
 	return digest([]byte(strings.Join(parts, "\x00")))
 }
 
-func accountFingerprint(value Account) string {
+func accountFingerprint(ctx context.Context, value Account) string {
 	account, err := user.Lookup(value.Name)
 	if err != nil {
 		return "missing"
 	}
-	shell, _ := accountShell(value.Name)
+	shell, _ := accountShell(ctx, value.Name)
 	return digest([]byte(account.Uid + "\x00" + account.Gid + "\x00" + account.HomeDir + "\x00" + shell))
 }
 
@@ -457,7 +460,7 @@ func groupMatches(value Group) bool {
 	return true
 }
 
-func accountMatches(value Account) bool {
+func accountMatches(ctx context.Context, value Account) bool {
 	account, err := user.Lookup(value.Name)
 	if err != nil || filepath.Clean(account.HomeDir) != value.Home {
 		return false
@@ -466,13 +469,13 @@ func accountMatches(value Account) bool {
 	if err != nil || account.Gid != group.Gid {
 		return false
 	}
-	shell, err := accountShell(value.Name)
+	shell, err := accountShell(ctx, value.Name)
 	return err == nil && shell == value.Shell
 }
 
-func accountShell(name string) (string, error) {
+func accountShell(ctx context.Context, name string) (string, error) {
 	if runtime.GOOS == "darwin" {
-		output, err := exec.Command("dscl", ".", "-read", "/Users/"+name, "UserShell").Output() // #nosec G204 -- validated account is one fixed command argument.
+		output, err := exec.CommandContext(ctx, "dscl", ".", "-read", "/Users/"+name, "UserShell").Output() // #nosec G204 -- validated account is one fixed command argument.
 		if err != nil {
 			return "", err
 		}
@@ -482,7 +485,7 @@ func accountShell(name string) (string, error) {
 		}
 		return strings.TrimSpace(shell), nil
 	}
-	output, err := exec.Command("getent", "passwd", name).Output() // #nosec G204 -- validated account is one fixed command argument.
+	output, err := exec.CommandContext(ctx, "getent", "passwd", name).Output() // #nosec G204 -- validated account is one fixed command argument.
 	if err != nil {
 		return "", err
 	}
