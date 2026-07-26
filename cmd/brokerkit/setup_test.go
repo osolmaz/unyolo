@@ -58,6 +58,9 @@ func TestSetupDeploymentDirectory(t *testing.T) {
 }
 
 func TestSetupHelpersAndNoninteractiveRefusal(t *testing.T) {
+	if privilegedReleaseVersion("1.2.3") != "v1.2.3" || privilegedReleaseVersion("v1.2.3") != "v1.2.3" {
+		t.Fatal("privileged worker release version is incorrect")
+	}
 	if initialSetupMode("") != "recommended" || initialSetupMode("/tmp/profile") != "existing" {
 		t.Fatal("initial setup mode is incorrect")
 	}

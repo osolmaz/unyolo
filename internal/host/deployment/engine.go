@@ -535,7 +535,11 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 	if err != nil {
 		return nil, err
 	}
-	for _, component := range deploymentComponents(planned.Snapshot) {
+	components, err := orderedDeploymentComponents(planned)
+	if err != nil {
+		return nil, err
+	}
+	for _, component := range components {
 		component := component
 		response := responseByID[component.ID]
 		secrets, err := secretsForComponent(response, secretFiles)

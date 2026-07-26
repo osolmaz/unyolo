@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/brokerkit/deployment/api"
+	"github.com/osolmaz/brokerkit/deployment/plan"
 	"github.com/osolmaz/brokerkit/deployment/profile"
 	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
 	"github.com/osolmaz/brokerkit/deployment/transaction"
@@ -124,6 +125,37 @@ func TestProductionEngineRequiresPinnedProfileTrust(t *testing.T) {
 	}
 	if err := engine.verifySnapshotTrust(snapshot); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOrderedDeploymentComponentsHonorsCrossComponentDependencies(t *testing.T) {
+	planned := Planned{
+		Snapshot: profile.Snapshot{Deployment: profile.Deployment{Components: []profile.Component{{ID: "alpha"}, {ID: "beta"}, {ID: "gamma"}}}},
+		Plan: plan.Plan{Actions: []plan.Action{
+			{ID: "alpha.configure", ComponentID: "alpha", DependsOn: []string{"beta.prepare"}},
+			{ID: "beta.prepare", ComponentID: "beta"},
+		}},
+	}
+	components, err := orderedDeploymentComponents(planned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, len(components))
+	for index, component := range components {
+		ids[index] = component.ID
+	}
+	if got := strings.Join(ids, ","); got != "beta,alpha,gamma" {
+		t.Fatalf("component order = %q", got)
+	}
+
+	planned.Plan.Actions = []plan.Action{
+		{ID: "alpha.late", ComponentID: "alpha", DependsOn: []string{"beta.early"}},
+		{ID: "alpha.early", ComponentID: "alpha"},
+		{ID: "beta.late", ComponentID: "beta", DependsOn: []string{"alpha.early"}},
+		{ID: "beta.early", ComponentID: "beta"},
+	}
+	if _, err := orderedDeploymentComponents(planned); err == nil || !strings.Contains(err.Error(), "interleaved") {
+		t.Fatalf("interleaved dependency error = %v", err)
 	}
 }
 

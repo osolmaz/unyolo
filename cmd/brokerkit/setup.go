@@ -167,7 +167,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return flow.CancelledError{}
 	}
 	workerProgress := prompter.Progress("Starting the verified root-owned setup worker")
-	worker, err := privilege.Start(ctx, buildinfo.Version, os.Stderr)
+	worker, err := privilege.Start(ctx, privilegedReleaseVersion(buildinfo.Version), os.Stderr)
 	if err != nil {
 		workerProgress.Fail("Could not start the verified setup worker")
 		return err
@@ -276,6 +276,13 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 		return session.Session{}, err
 	}
 	return created, nil
+}
+
+func privilegedReleaseVersion(version string) string {
+	if strings.HasPrefix(version, "v") {
+		return version
+	}
+	return "v" + version
 }
 
 func initialSetupMode(profilePath string) string {
