@@ -27,7 +27,7 @@ func ValidateOwnership(response api.Response, component bundle.Component) error 
 func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) error {
 	switch resource.Kind {
 	case "file", "directory", "socket", "client", "git_config":
-		if resource.Path == "" || !ownedPath(resource.Path, envelope.Paths) {
+		if resource.Path == "" || !OwnedPath(resource.Path, envelope.Paths) {
 			return errors.New("path is not owned")
 		}
 	case "service":
@@ -43,7 +43,7 @@ func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) 
 			return errors.New("group is not owned")
 		}
 	case "credential":
-		if strings.TrimSpace(resource.ID) == "" || resource.Path == "" || !ownedPath(resource.Path, envelope.Paths) {
+		if strings.TrimSpace(resource.ID) == "" || resource.Path == "" || !OwnedPath(resource.Path, envelope.Paths) {
 			return errors.New("credential identity or path is not owned")
 		}
 	default:
@@ -52,7 +52,8 @@ func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) 
 	return nil
 }
 
-func ownedPath(path string, prefixes []string) bool {
+// OwnedPath reports whether a clean absolute path belongs to an allowed prefix.
+func OwnedPath(path string, prefixes []string) bool {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return false
 	}

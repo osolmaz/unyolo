@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/brokerkit/internal/securefile"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -291,28 +292,7 @@ var jsonMarshalIndent = func(value any) ([]byte, error) {
 }
 
 func writeAtomic(directory, name string, data []byte) error {
-	file, err := os.CreateTemp(directory, ".session-*")
-	if err != nil {
-		return err
-	}
-	temporary := file.Name()
-	defer func() { _ = os.Remove(temporary) }()
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporary, filepath.Join(directory, name))
+	return securefile.AtomicWrite(filepath.Join(directory, name), data, 0o600, "setup session")
 }
 
 func validID(value string) bool {

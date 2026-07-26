@@ -13,6 +13,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/osolmaz/brokerkit/internal/securefile"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 )
 
@@ -234,29 +235,7 @@ func (coordinator Coordinator) write(journal Journal) error {
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	file, err := os.CreateTemp(coordinator.StateDirectory, ".transaction-*")
-	if err != nil {
-		return err
-	}
-	temporary := file.Name()
-	defer func() { _ = os.Remove(temporary) }()
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporary, coordinator.path())
+	return securefile.AtomicWrite(coordinator.path(), append(data, '\n'), 0o600, "host deployment transaction")
 }
 
 func (coordinator Coordinator) clear() error {

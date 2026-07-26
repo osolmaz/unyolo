@@ -672,15 +672,9 @@ func restoreGroupMembers(ctx context.Context, entry groupBackup) error {
 	return nil
 }
 
-func isUnknownUser(err error) bool {
-	var unknown user.UnknownUserError
-	return errors.As(err, &unknown)
-}
+func isUnknownUser(err error) bool { return errors.As(err, new(user.UnknownUserError)) }
 
-func isUnknownGroup(err error) bool {
-	var unknown user.UnknownGroupError
-	return errors.As(err, &unknown)
-}
+func isUnknownGroup(err error) bool { return errors.As(err, new(user.UnknownGroupError)) }
 
 func isAgentClientPath(path string) bool {
 	return strings.Contains(path, string(filepath.Separator)+".config"+string(filepath.Separator)) && strings.HasSuffix(path, "client.json")
@@ -846,11 +840,11 @@ func openDirectoryNoFollow(path string, create bool, mode os.FileMode) (int, err
 }
 
 func randomID() (string, error) {
-	var value [16]byte
-	if _, err := rand.Read(value[:]); err != nil {
+	value := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, value); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(value[:]), nil
+	return hex.EncodeToString(value), nil
 }
 
 func clearSecrets(values map[string][]byte) {

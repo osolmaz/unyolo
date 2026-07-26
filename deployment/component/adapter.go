@@ -423,15 +423,7 @@ func validResource(id, path string, mode uint32, owner, group string, allowed []
 }
 
 func ownedPath(path string, prefixes []string) bool {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return false
-	}
-	for _, prefix := range prefixes {
-		if path == prefix || strings.HasPrefix(path, prefix+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return deploymentruntime.OwnedPath(path, prefixes)
 }
 
 func planDigest(actions []api.PlannedAction, credentials []api.CredentialAction, fingerprints []string) string {
@@ -632,10 +624,9 @@ func clientCurrent(path, home string, spec Client, expectedSecret []byte) bool {
 }
 
 func credentialBySlot(values []Credential, slot string) (Credential, bool) {
-	for _, value := range values {
-		if value.Slot == slot {
-			return value, true
-		}
+	index := slices.IndexFunc(values, func(value Credential) bool { return value.Slot == slot })
+	if index < 0 {
+		return Credential{}, false
 	}
-	return Credential{}, false
+	return values[index], true
 }

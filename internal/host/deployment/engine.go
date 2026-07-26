@@ -858,7 +858,7 @@ func openSecretSources(sources []SecretSource, owner uint32) (map[string]*os.Fil
 }
 
 func closeSecretSources(files map[string]*os.File) {
-	for _, file := range files {
-		_ = file.Close()
+	for name := range files {
+		_ = files[name].Close()
 	}
 }

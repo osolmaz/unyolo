@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/brokerkit/internal/pathutil"
 	"github.com/osolmaz/brokerkit/internal/validatex"
 )
 
@@ -147,18 +148,13 @@ func validateLaunchdInstallPaths(plan LaunchdInstallPlan) error {
 }
 
 func launchdRootsOverlap(plan LaunchdInstallPlan) bool {
-	return pathOverlaps(plan.ConfigDir, plan.StateDir) ||
-		pathOverlaps(plan.ConfigDir, plan.LaunchdDir) ||
-		pathOverlaps(plan.StateDir, plan.LaunchdDir)
+	return pathutil.Overlap(plan.ConfigDir, plan.StateDir) ||
+		pathutil.Overlap(plan.ConfigDir, plan.LaunchdDir) ||
+		pathutil.Overlap(plan.StateDir, plan.LaunchdDir)
 }
 
 func validLaunchdPlistName(name, label string) bool {
 	return filepath.Base(name) == name && strings.HasSuffix(name, ".plist") && name == label+".plist"
-}
-
-func pathOverlaps(left, right string) bool {
-	left, right = filepath.Clean(left), filepath.Clean(right)
-	return left == right || strings.HasPrefix(left, right+string(filepath.Separator)) || strings.HasPrefix(right, left+string(filepath.Separator))
 }
 
 func validateLaunchdManagedFiles(plan LaunchdInstallPlan) error {

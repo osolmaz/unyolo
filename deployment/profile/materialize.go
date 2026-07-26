@@ -7,7 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
+
+	"github.com/osolmaz/brokerkit/internal/pathutil"
 )
 
 // Materialize copies one verified deployment kit into an operator-owned pack.
@@ -16,7 +17,7 @@ import (
 //nolint:cyclop // Validation, idempotent reuse, staged copy, and atomic publication share one materialization boundary.
 func Materialize(snapshot Snapshot, destination string) (string, error) {
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination ||
-		pathsOverlap(destination, snapshot.Root) {
+		pathutil.Overlap(destination, snapshot.Root) {
 		return "", errors.New("deployment materialization destination is invalid")
 	}
 	if _, statErr := os.Lstat(destination); statErr == nil {
@@ -80,12 +81,6 @@ func syncMaterializationDirectory(path string) error {
 	}
 	syncErr := directory.Sync()
 	return errors.Join(syncErr, directory.Close())
-}
-
-func pathsOverlap(first, second string) bool {
-	first, second = filepath.Clean(first), filepath.Clean(second)
-	return first == second || strings.HasPrefix(first, second+string(filepath.Separator)) ||
-		strings.HasPrefix(second, first+string(filepath.Separator))
 }
 
 func materializationPaths(snapshot Snapshot) ([]string, error) {
