@@ -45,7 +45,7 @@ normal user account:
 ```sh
 curl -fsSL \
   "https://raw.githubusercontent.com/osolmaz/brokerkit/<verified-commit>/install/bootstrap.sh" \
-  | sh -s -- setup
+  | sh -s -- --release brokerkit/v<reviewed-version> setup
 ```
 
 The URL pins an immutable reviewed commit. The bootstrap script downloads the

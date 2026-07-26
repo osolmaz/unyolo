@@ -25,6 +25,7 @@ component documentation.
 
 ## Deployment
 
+- [Host deployment](HOST_DEPLOYMENT.md)
 - [Systemd install runtime](SYSTEMD_INSTALL_RUNTIME.md)
 
 ## Maintenance

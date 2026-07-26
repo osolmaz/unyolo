@@ -63,13 +63,9 @@ sudo sudo-broker setup client \
   --home-dir /home/agent-a
 ```
 
-This writes `/home/agent-a/.config/sudo-broker/client.env` with only
-`SUDO_BROKER_AGENT_ENDPOINT` and `SUDO_BROKER_SHARED_SECRET`. The agent loads
-it with:
-
-```sh
-. "$HOME/.config/sudo-broker/client.env"
-```
+This writes `/home/agent-a/.config/sudo-broker/client.json` using the closed
+client V1 schema. The CLI loads this owner-only file directly, without shell
+startup edits or inherited credentials.
 
 Verify host isolation and helper readiness:
 

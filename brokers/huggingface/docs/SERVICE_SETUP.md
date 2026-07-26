@@ -158,11 +158,9 @@ sudo hf-broker setup client \
   --home-dir /home/agent-a
 ```
 
-Source that file before running the BrokerKit CLI or MCP adapter:
-
-```sh
-. "$HOME/.config/hf-broker/client.env"
-```
+The BrokerKit CLI, MCP adapter, and Git helper load the owner-only
+`~/.config/hf-broker/client.json` file directly. Do not source it or copy its
+credential into shell startup files.
 
 Ordinary Git HTTP clients cannot connect directly to a Unix socket. When Git
 proxying is required, configure an explicit TCP listener or HTTPS reverse proxy

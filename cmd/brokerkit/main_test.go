@@ -25,7 +25,7 @@ func (testManager) Status(context.Context, string) (bundle.ServiceStatus, error)
 	return bundle.ServiceStatus{Active: true}, nil
 }
 
-func TestRunVersionUsageAndPlan(t *testing.T) {
+func TestRunVersionUsageAndBundlePlan(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if err := run(t.Context(), []string{"version"}, &stdout, &stderr); err != nil || strings.TrimSpace(stdout.String()) != version {
 		t.Fatalf("version output=%q err=%v", stdout.String(), err)
@@ -37,8 +37,8 @@ func TestRunVersionUsageAndPlan(t *testing.T) {
 	}
 	manifestPath, _, _, _ := testBundle(t, "bundle-plan", "plan")
 	stdout.Reset()
-	args := []string{"system", "plan", "--development", "--manifest", manifestPath, "--json"}
-	if err := run(t.Context(), args, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), `"bundle_id":"bundle-plan"`) {
+	args := []string{"--development", "--manifest", manifestPath, "--json"}
+	if err := runActivation(t.Context(), "plan", args, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), `"bundle_id":"bundle-plan"`) {
 		t.Fatalf("plan output=%q err=%v", stdout.String(), err)
 	}
 }

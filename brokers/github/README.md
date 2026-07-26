@@ -94,13 +94,9 @@ sudo gh-broker setup client \
   --home-dir /home/agent-a
 ```
 
-The generated `~/.config/gh-broker/client.env` contains the broker endpoints
-and broker client secret; it does not contain GitHub credentials. The agent
-loads it with:
-
-```sh
-. "$HOME/.config/gh-broker/client.env"
-```
+The generated `~/.config/gh-broker/client.json` contains the client identity,
+broker endpoints, and broker client secret; it does not contain GitHub
+credentials. Broker clients load this owner-only file directly.
 
 Then configure standard Git once for that user:
 
@@ -208,14 +204,10 @@ gh-broker git install
 git ls-remote https://github.com/osolmaz/brokerkit.git
 ```
 
-Discrete GitHub operations use the typed Agent V1 CLI. It reads
-`GH_BROKER_AGENT_ENDPOINT` plus `GH_BROKER_SHARED_SECRET` or
-`GH_BROKER_SHARED_SECRET_FILE` from the environment; source the generated
-client config as shown above:
+Discrete GitHub operations use the typed Agent V1 CLI. It loads the generated
+private client V1 file automatically:
 
 ```sh
-. "$HOME/.config/gh-broker/client.env"
-
 gh-broker operation submit repo.contents.read \
   --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
   --arguments-json '{"path":"README.md","ref":"main"}' \
