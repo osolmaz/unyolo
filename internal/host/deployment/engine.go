@@ -103,7 +103,7 @@ func New(options Options) (*Engine, error) {
 		return nil, errors.New("production host deployment uses fixed paths")
 	}
 	root, state := filepath.Clean(options.Paths.Root), filepath.Clean(options.Paths.StateDir)
-	if root == state || strings.HasPrefix(root, state+string(filepath.Separator)) || strings.HasPrefix(state, root+string(filepath.Separator)) {
+	if options.Development && (root == state || strings.HasPrefix(root, state+string(filepath.Separator)) || strings.HasPrefix(state, root+string(filepath.Separator))) {
 		return nil, errors.New("host deployment root and state paths must not overlap")
 	}
 	if options.Manager == nil {
@@ -116,6 +116,9 @@ func New(options Options) (*Engine, error) {
 func (engine *Engine) Validate(ctx context.Context, profileRoot string) (profile.Snapshot, error) {
 	snapshot, err := profile.Load(profileRoot)
 	if err != nil {
+		return profile.Snapshot{}, err
+	}
+	if err := engine.verifySnapshotTrust(snapshot); err != nil {
 		return profile.Snapshot{}, err
 	}
 	for _, component := range deploymentComponents(snapshot) {
@@ -141,6 +144,9 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 	if err != nil {
 		return Planned{}, err
 	}
+	if err := engine.verifySnapshotTrust(snapshot); err != nil {
+		return Planned{}, err
+	}
 	accounts, err := engine.options.Identity.InspectDeployment(ctx, snapshot.Deployment)
 	if err != nil {
 		return Planned{}, err
@@ -156,6 +162,9 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 		response, runErr := engine.runComponent(ctx, snapshot, component.ID, api.ActionPlan, "", nil, true)
 		if runErr != nil {
 			return Planned{}, runErr
+		}
+		if response.Status != "planned" && response.Status != "blocked" {
+			return Planned{}, fmt.Errorf("component %q returned %q during planning", component.ID, response.Status)
 		}
 		responses = append(responses, response)
 		command, commandErr := engine.adapterCommand(snapshot, component.ID, true)
@@ -291,6 +300,21 @@ func (engine *Engine) ExportObserved(ctx context.Context, profileRoot string) (E
 		Accounts: planned.Accounts, Components: verification.Components,
 	}
 	return result, verifyErr
+}
+
+func (engine *Engine) verifySnapshotTrust(snapshot profile.Snapshot) error {
+	if engine.options.Development {
+		return nil
+	}
+	proposed := filepath.Join(snapshot.Root, filepath.FromSlash(snapshot.Deployment.Runtime.PublicKey.Path))
+	_, needsPin, err := bundle.TrustedPublicKey(engine.options.Paths.StateDir, proposed)
+	if err != nil {
+		return fmt.Errorf("verify deployment runtime trust root: %w", err)
+	}
+	if needsPin {
+		return errors.New("deployment runtime trust root is not pinned; run the verified BrokerKit bootstrap")
+	}
+	return nil
 }
 
 func (engine *Engine) requirePrivileged() error {

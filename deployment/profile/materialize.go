@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // Materialize copies one verified deployment kit into an operator-owned pack.
@@ -14,7 +15,8 @@ import (
 //
 //nolint:cyclop // Validation, idempotent reuse, staged copy, and atomic publication share one materialization boundary.
 func Materialize(snapshot Snapshot, destination string) (string, error) {
-	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination || destination == snapshot.Root {
+	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination ||
+		pathsOverlap(destination, snapshot.Root) {
 		return "", errors.New("deployment materialization destination is invalid")
 	}
 	if _, statErr := os.Lstat(destination); statErr == nil {
@@ -53,6 +55,18 @@ func Materialize(snapshot Snapshot, destination string) (string, error) {
 	if err := Lock(staging, true); err != nil {
 		return "", fmt.Errorf("verify materialized deployment lock: %w", err)
 	}
+	candidate, err := Load(staging)
+	if err != nil {
+		return "", fmt.Errorf("verify materialized deployment: %w", err)
+	}
+	if candidate.Digest != snapshot.Digest {
+		return "", errors.New("deployment kit changed during materialization")
+	}
+	for _, component := range candidate.Manifest.Components {
+		if _, err := candidate.VerifyArtifact(component.Source, component.SHA256); err != nil {
+			return "", fmt.Errorf("verify materialized runtime artifact: %w", err)
+		}
+	}
 	if err := os.Rename(staging, destination); err != nil {
 		return "", err
 	}
@@ -66,6 +80,12 @@ func syncMaterializationDirectory(path string) error {
 	}
 	syncErr := directory.Sync()
 	return errors.Join(syncErr, directory.Close())
+}
+
+func pathsOverlap(first, second string) bool {
+	first, second = filepath.Clean(first), filepath.Clean(second)
+	return first == second || strings.HasPrefix(first, second+string(filepath.Separator)) ||
+		strings.HasPrefix(second, first+string(filepath.Separator))
 }
 
 func materializationPaths(snapshot Snapshot) ([]string, error) {

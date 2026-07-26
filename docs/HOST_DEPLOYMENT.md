@@ -15,9 +15,12 @@ curl -fsSL \
   | sh -s -- --release brokerkit/v<reviewed-version> setup
 ```
 
-The bootstrap verifies the archive checksum and GitHub build attestation. It
-installs only the user CLI below `~/.local/bin`. The CLI refuses interactive
-root execution.
+The bootstrap verifies the archive checksum, exact tagged release workflow,
+and GitHub build attestation. It installs only the user CLI below
+`~/.local/bin`. The root phase separately verifies and pins the attested
+BrokerKit runtime public key before any deployment adapter can run. Production
+validation and planning reject a missing or different key. The CLI refuses
+interactive root execution.
 
 The guide explains the operator and agent boundary and opens a locked deployment
 kit. Recommended and Custom setup materialize only its verified profile graph

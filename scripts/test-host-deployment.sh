@@ -19,6 +19,8 @@ EOF
     go build -o /tmp/brokerkit ./cmd/brokerkit
     go build -ldflags "-X github.com/osolmaz/brokerkit/internal/buildinfo.Version=e2e" -o /tmp/fake-adapter ./internal/host/deployment/testdata/component
     go run ./internal/host/deployment/testdata/pack /tmp/deployment /tmp/fake-adapter
+    groupadd --system brokerkit-e2e-agent
+    usermod --append --groups brokerkit-e2e-agent operator
     /tmp/brokerkit system profile lock --check --profile /tmp/deployment
     /tmp/brokerkit system validate \
       --development --profile /tmp/deployment \
@@ -40,6 +42,7 @@ EOF
     getent passwd brokerkit-agent >/dev/null
     getent passwd brokerkit-e2e >/dev/null
     id -nG brokerkit-agent | grep -qw brokerkit-e2e-agent
+    ! id -nG operator | grep -qw brokerkit-e2e-agent
     /tmp/brokerkit system verify \
       --development --profile /tmp/deployment \
       --root /tmp/runtime --state-dir /tmp/state

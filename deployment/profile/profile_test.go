@@ -68,6 +68,9 @@ func TestMaterializeVerifiedDeployment(t *testing.T) {
 	if _, err := Materialize(snapshot, "relative"); err == nil {
 		t.Fatal("relative materialization destination was accepted")
 	}
+	if _, err := Materialize(snapshot, filepath.Join(source, "nested")); err == nil {
+		t.Fatal("nested materialization destination was accepted")
+	}
 }
 
 func TestLoadUnlockedAndVerifyArtifact(t *testing.T) {

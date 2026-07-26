@@ -25,7 +25,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$release" ] || usage
-case "$release" in brokerkit/v[0-9]*) ;; *) usage ;; esac
+command -v grep >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: grep is required' >&2; exit 1; }
+printf '%s\n' "$release" | grep -Eq '^brokerkit/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || usage
 
 command -v curl >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: curl is required' >&2; exit 1; }
 command -v gh >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: GitHub CLI is required for attestation verification' >&2; exit 1; }
@@ -59,7 +60,7 @@ curl -fL --proto '=https' --tlsv1.2 "$base/checksums.txt" -o "$temporary/checksu
 gh attestation verify "$temporary/$asset" \
   --repo osolmaz/brokerkit \
   --signer-workflow osolmaz/brokerkit/.github/workflows/release.yml \
-  --source-ref "refs/tags/$tag" \
+  --source-ref "refs/tags/$release" \
   --deny-self-hosted-runners >/dev/null
 
 tar -xzf "$temporary/$asset" -C "$temporary" brokerkit

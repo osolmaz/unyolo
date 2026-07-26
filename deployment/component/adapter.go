@@ -161,8 +161,8 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		state.agents[agent.ID] = agent
 	}
 	for _, group := range profile.Groups {
-		state.fingerprints = append(state.fingerprints, "group:"+group.Name+":"+groupFingerprint(group))
-		if !groupMatches(group) {
+		state.fingerprints = append(state.fingerprints, "group:"+group.Name+":"+groupFingerprint(ctx, group))
+		if !groupMatches(ctx, group) {
 			state.actions = append(state.actions, api.PlannedAction{
 				ID: "group-" + group.Name, Type: "reconcile", Risk: "high",
 				Resource:      api.Resource{Kind: "group", ID: group.Name},
@@ -420,17 +420,16 @@ func pathFingerprint(path string) string {
 	return fmt.Sprintf("sha256:%x", hash.Sum(nil))
 }
 
-func groupFingerprint(value Group) string {
+func groupFingerprint(ctx context.Context, value Group) string {
 	group, err := user.LookupGroup(value.Name)
 	if err != nil {
 		return "missing"
 	}
-	parts := []string{group.Gid}
-	for _, member := range value.Members {
-		parts = append(parts, member+":"+strconv.FormatBool(memberInGroup(member, value.Name)))
+	members, err := groupMemberNames(ctx, value.Name)
+	if err != nil {
+		return "unavailable"
 	}
-	slices.Sort(parts)
-	return digest([]byte(strings.Join(parts, "\x00")))
+	return digest([]byte(group.Gid + "\x00" + strings.Join(members, "\x00")))
 }
 
 func accountFingerprint(ctx context.Context, value Account) string {
@@ -442,22 +441,49 @@ func accountFingerprint(ctx context.Context, value Account) string {
 	return digest([]byte(account.Uid + "\x00" + account.Gid + "\x00" + account.HomeDir + "\x00" + shell))
 }
 
-func groupMatches(value Group) bool {
-	group, err := user.LookupGroup(value.Name)
+func groupMatches(ctx context.Context, value Group) bool {
+	if _, err := user.LookupGroup(value.Name); err != nil {
+		return false
+	}
+	members, err := groupMemberNames(ctx, value.Name)
 	if err != nil {
 		return false
 	}
-	for _, member := range value.Members {
-		account, lookupErr := user.Lookup(member)
-		if lookupErr != nil {
-			return false
+	desired := append([]string(nil), value.Members...)
+	slices.Sort(desired)
+	return slices.Equal(members, desired)
+}
+
+func groupMemberNames(ctx context.Context, name string) ([]string, error) {
+	var output []byte
+	var err error
+	if runtime.GOOS == "darwin" {
+		output, err = exec.CommandContext(ctx, "dscl", ".", "-read", "/Groups/"+name, "GroupMembership").Output() // #nosec G204 -- validated exact group argument.
+	} else {
+		output, err = exec.CommandContext(ctx, "getent", "group", name).Output() // #nosec G204 -- validated exact group argument.
+	}
+	if err != nil {
+		return nil, err
+	}
+	text := strings.TrimSpace(string(output))
+	var members []string
+	if runtime.GOOS == "darwin" {
+		_, value, found := strings.Cut(text, ":")
+		if !found {
+			return nil, errors.New("group membership output is invalid")
 		}
-		groups, groupErr := account.GroupIds()
-		if groupErr != nil || !slices.Contains(groups, group.Gid) {
-			return false
+		members = strings.Fields(value)
+	} else {
+		parts := strings.Split(text, ":")
+		if len(parts) != 4 {
+			return nil, errors.New("group membership output is invalid")
+		}
+		if parts[3] != "" {
+			members = strings.Split(parts[3], ",")
 		}
 	}
-	return true
+	slices.Sort(members)
+	return members, nil
 }
 
 func accountMatches(ctx context.Context, value Account) bool {

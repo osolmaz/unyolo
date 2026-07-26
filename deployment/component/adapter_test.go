@@ -309,11 +309,15 @@ func TestHostInspectionHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	account := Account{Name: current.Username, Group: group.Name, Home: current.HomeDir, Shell: shell}
-	groupProfile := Group{Name: group.Name, Members: []string{current.Username}}
-	if !accountMatches(t.Context(), account) || !groupMatches(groupProfile) || !memberInGroup(current.Username, group.Name) {
+	members, err := groupMemberNames(t.Context(), group.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groupProfile := Group{Name: group.Name, Members: members}
+	if !accountMatches(t.Context(), account) || !groupMatches(t.Context(), groupProfile) || !memberInGroup(current.Username, group.Name) {
 		t.Fatal("current account or group did not match")
 	}
-	if accountFingerprint(t.Context(), account) == "missing" || groupFingerprint(groupProfile) == "missing" {
+	if accountFingerprint(t.Context(), account) == "missing" || groupFingerprint(t.Context(), groupProfile) == "missing" {
 		t.Fatal("current account or group fingerprint is missing")
 	}
 	if err := applyGroups(t.Context(), []Group{{Name: group.Name}}); err != nil {

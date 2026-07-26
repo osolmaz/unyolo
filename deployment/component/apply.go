@@ -210,23 +210,53 @@ func applyAccounts(ctx context.Context, values []Account) error {
 }
 
 func applyGroupMembers(ctx context.Context, values []Group) error {
-	if runtime.GOOS != "linux" {
-		for _, value := range values {
-			if !groupMatches(value) {
-				return errors.New("automatic group membership is supported only on Linux")
-			}
-		}
-		return nil
-	}
 	for _, value := range values {
-		for _, member := range value.Members {
-			if memberInGroup(member, value.Name) {
+		current, err := groupMemberNames(ctx, value.Name)
+		if err != nil {
+			return fmt.Errorf("inspect component group members: %w", err)
+		}
+		desired := append([]string(nil), value.Members...)
+		slices.Sort(desired)
+		for _, member := range desired {
+			if slices.Contains(current, member) {
 				continue
 			}
-			if output, err := exec.CommandContext(ctx, "usermod", "--append", "--groups", value.Name, member).CombinedOutput(); err != nil { // #nosec G204 -- validated exact group and user arguments.
-				return fmt.Errorf("add component group member: %w: %s", err, strings.TrimSpace(string(output)))
+			if err := editGroupMember(ctx, value.Name, member, true); err != nil {
+				return err
 			}
 		}
+		for _, member := range current {
+			if slices.Contains(desired, member) {
+				continue
+			}
+			if err := editGroupMember(ctx, value.Name, member, false); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func editGroupMember(ctx context.Context, group, member string, add bool) error {
+	var command *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		action := "-d"
+		if add {
+			action = "-a"
+		}
+		command = exec.CommandContext(ctx, "dseditgroup", "-o", "edit", action, member, "-t", "user", group) // #nosec G204 -- validated exact user and group arguments.
+	} else if add {
+		command = exec.CommandContext(ctx, "usermod", "--append", "--groups", group, member) // #nosec G204 -- validated exact user and group arguments.
+	} else {
+		command = exec.CommandContext(ctx, "gpasswd", "--delete", member, group) // #nosec G204 -- validated exact user and group arguments.
+	}
+	output, err := command.CombinedOutput()
+	if err != nil {
+		action := "remove"
+		if add {
+			action = "add"
+		}
+		return fmt.Errorf("%s component group member: %w: %s", action, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
@@ -365,7 +395,7 @@ func credentialAction(values []api.CredentialAction, slot string) string {
 func verify(ctx context.Context, profile Profile, config Config, state inspected) ([]string, error) {
 	var evidence []string
 	for _, group := range profile.Groups {
-		if !groupMatches(group) {
+		if !groupMatches(ctx, group) {
 			return nil, fmt.Errorf("group %q does not match", group.Name)
 		}
 		evidence = append(evidence, "group "+group.Name+" matches")

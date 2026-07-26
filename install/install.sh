@@ -223,6 +223,13 @@ verify_complete_release() {
     validate_archive "${tmp_dir}/${release_asset}" "${tmp_dir}/${release_asset}.list"
     set -- "$@" "${tmp_dir}/${release_asset}"
   done
+  if [ "$BROKER" = brokerkit ]; then
+    for release_asset in brokerkit-bootstrap-root.sh brokerkit-runtime-release.pub; do
+      curl -fsSL "${base_url}/${release_asset}" -o "${tmp_dir}/${release_asset}"
+      verify_checksum "$release_asset" "${tmp_dir}/checksums.txt"
+      set -- "$@" "${tmp_dir}/${release_asset}"
+    done
+  fi
   curl -fsSL "${base_url}/sbom.spdx.json" -o "${tmp_dir}/sbom.spdx.json"
   set -- "$@" "${tmp_dir}/sbom.spdx.json"
   verify_provenance "$@"

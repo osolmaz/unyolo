@@ -105,6 +105,46 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	}
 }
 
+func TestProductionEngineRequiresPinnedProfileTrust(t *testing.T) {
+	pack := engineTestPack(t)
+	snapshot, err := profile.Load(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := t.TempDir()
+	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}}}
+	if err := engine.verifySnapshotTrust(snapshot); err == nil {
+		t.Fatal("unpinned profile trust root was accepted")
+	}
+	publicKey := filepath.Join(pack, filepath.FromSlash(snapshot.Deployment.Runtime.PublicKey.Path))
+	if _, err := bundle.PinTrustedPublicKey(state, publicKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.verifySnapshotTrust(snapshot); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPlanRejectsNonPlanningAdapterStatus(t *testing.T) {
+	pack := engineTestPack(t)
+	if err := os.WriteFile(filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"fake/v1","test_plan_status":"valid"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := profile.Lock(pack, false); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Options{
+		Paths:   bundle.Paths{Root: t.TempDir(), StateDir: filepath.Join(t.TempDir(), "state")},
+		Manager: fakeManager{}, Development: true, Identity: engineTestIdentity(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Plan(t.Context(), pack); err == nil || !strings.Contains(err.Error(), "during planning") {
+		t.Fatalf("non-planning adapter status error = %v", err)
+	}
+}
+
 func TestSecretSourcesAndEngineOptions(t *testing.T) {
 	root := t.TempDir()
 	secretPath := filepath.Join(root, "secret")
@@ -202,6 +242,9 @@ func TestEngineAdapterHelper(t *testing.T) {
 		response.Status = "valid"
 	case api.ActionPlan:
 		response.Status, response.PlanDigest = "planned", engineDigest("component-plan")
+		if strings.Contains(string(request.Profile), `"test_plan_status":"valid"`) {
+			response.Status, response.PlanDigest = "valid", ""
+		}
 	case api.ActionApply:
 		response.Status, response.PlanDigest, response.RollbackHandle = "applied", request.PlanDigest, "rollback-id"
 	case api.ActionVerify:
