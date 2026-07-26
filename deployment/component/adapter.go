@@ -315,6 +315,11 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 		}
 		handle, err := apply(ctx, request, profile, config, state)
 		if err != nil {
+			var rolledBack rolledBackApplyError
+			if errors.As(err, &rolledBack) {
+				base.Status, base.BlockedReason = "rolled_back", "component apply failed and was rolled back"
+				return base, nil
+			}
 			return api.Response{}, err
 		}
 		base.Status, base.RollbackHandle = "applied", handle

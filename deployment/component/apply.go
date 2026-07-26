@@ -41,6 +41,11 @@ type groupBackup struct {
 	Members []string `json:"members,omitempty"`
 }
 
+type rolledBackApplyError struct{ cause error }
+
+func (err rolledBackApplyError) Error() string { return err.cause.Error() }
+func (err rolledBackApplyError) Unwrap() error { return err.cause }
+
 type backupEntry struct {
 	Path      string `json:"path"`
 	Existed   bool   `json:"existed"`
@@ -60,7 +65,11 @@ func apply(ctx context.Context, request api.Request, profile Profile, config Con
 	}
 	defer func() {
 		if returnErr != nil {
-			returnErr = errors.Join(returnErr, rollback(ctx, config, record.ID))
+			if rollbackErr := rollback(ctx, config, record.ID); rollbackErr != nil {
+				returnErr = errors.Join(returnErr, rollbackErr)
+			} else {
+				returnErr = rolledBackApplyError{cause: returnErr}
+			}
 		}
 	}()
 	secrets, err := readSecrets(request.Secrets)

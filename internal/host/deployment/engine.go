@@ -511,6 +511,7 @@ func (engine *Engine) adapterCommand(snapshot profile.Snapshot, id string, stage
 	return adapterruntime.Command{Executable: path, Arguments: append([]string(nil), component.Setup.Arguments...)}, nil
 }
 
+//nolint:cyclop // Transaction assembly binds component, identity, runtime, service, and uncertain-step compensation.
 func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([]transaction.Step, error) {
 	responseByID := map[string]api.Response{}
 	for _, response := range planned.Responses {
@@ -527,6 +528,7 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 		if err != nil {
 			return nil, err
 		}
+		selfRolledBack := false
 		steps = append(steps, transaction.Step{
 			ID: "component." + component.ID, Kind: "component:" + component.ID,
 			Apply: func(ctx context.Context) (string, error) {
@@ -535,6 +537,7 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 					return "", applyErr
 				}
 				if applied.Status != "applied" {
+					selfRolledBack = applied.Status == "rolled_back"
 					return "", errors.New("component apply did not succeed")
 				}
 				return applied.RollbackHandle, nil
@@ -542,7 +545,12 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 			Rollback: func(ctx context.Context, handle string) error {
 				return engine.rollbackComponent(ctx, planned.Snapshot, component.ID, response.PlanDigest, handle)
 			},
-			RollbackRunning: func(context.Context) error { return nil }, // The adapter self-rolls back before returning an apply error.
+			RollbackRunning: func(context.Context) error {
+				if !selfRolledBack {
+					return errors.New("component apply outcome is uncertain; manual recovery is required")
+				}
+				return nil
+			},
 		})
 	}
 	if planned.ActiveBundleID != planned.Snapshot.Manifest.BundleID {
