@@ -20,10 +20,11 @@ const APIVersion = "brokerkit.io/host-transaction/v1"
 
 // Step is one durable host mutation with a secret-safe rollback handle.
 type Step struct {
-	ID       string
-	Kind     string
-	Apply    func(context.Context) (string, error)
-	Rollback func(context.Context, string) error
+	ID              string
+	Kind            string
+	Apply           func(context.Context) (string, error)
+	Rollback        func(context.Context, string) error
+	RollbackRunning func(context.Context) error
 }
 
 // StepRecord is one durable completion marker.
@@ -90,6 +91,19 @@ func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDi
 		}
 		handle, applyErr := step.Apply(ctx)
 		if applyErr != nil {
+			journal.Phase = "rolling_back"
+			if err := coordinator.write(journal); err != nil {
+				return errors.Join(applyErr, err)
+			}
+			if err := step.RollbackRunning(ctx); err != nil {
+				journal.Phase = "recovery_required"
+				_ = coordinator.write(journal)
+				return errors.Join(applyErr, err)
+			}
+			journal.Steps[index].State = "rolled_back"
+			if err := coordinator.write(journal); err != nil {
+				return errors.Join(applyErr, err)
+			}
 			return coordinator.rollback(ctx, journal, steps, index-1, applyErr)
 		}
 		journal.Steps[index].State = "complete"
@@ -99,8 +113,33 @@ func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDi
 		}
 	}
 	journal.Phase = "committed"
-	if err := coordinator.write(journal); err != nil {
+	return coordinator.write(journal)
+}
+
+// Finalize cleans committed step rollback artifacts before clearing the journal.
+func (coordinator Coordinator) Finalize(ctx context.Context, handlers map[string]func(context.Context, string) error) error {
+	journal, found, err := coordinator.read()
+	if err != nil || !found || journal.Phase != "committed" {
 		return err
+	}
+	for index, record := range journal.Steps {
+		if record.State == "finalized" {
+			continue
+		}
+		if record.State != "complete" {
+			return errors.New("committed host deployment transaction has an invalid step state")
+		}
+		handler := handlers[record.Kind]
+		if handler == nil {
+			return fmt.Errorf("finalizer for %q is unavailable", record.Kind)
+		}
+		if err := handler(ctx, record.RollbackHandle); err != nil {
+			return err
+		}
+		journal.Steps[index].State = "finalized"
+		if err := coordinator.write(journal); err != nil {
+			return err
+		}
 	}
 	return coordinator.clear()
 }
@@ -114,7 +153,7 @@ func (coordinator Coordinator) Recover(ctx context.Context, handlers map[string]
 		return err
 	}
 	if journal.Phase == "committed" {
-		return coordinator.clear()
+		return errors.New("committed host deployment transaction requires finalization")
 	}
 	for index := len(journal.Steps) - 1; index >= 0; index-- {
 		record := journal.Steps[index]
@@ -241,7 +280,7 @@ func validateSteps(steps []Step) error {
 	}
 	ids := make([]string, 0, len(steps))
 	for _, step := range steps {
-		if step.ID == "" || step.Kind == "" || step.Apply == nil || step.Rollback == nil || slices.Contains(ids, step.ID) {
+		if step.ID == "" || step.Kind == "" || step.Apply == nil || step.Rollback == nil || step.RollbackRunning == nil || slices.Contains(ids, step.ID) {
 			return errors.New("host deployment transaction step is invalid or duplicated")
 		}
 		ids = append(ids, step.ID)

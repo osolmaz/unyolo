@@ -65,13 +65,14 @@ func (runner Runner) Run(ctx context.Context, command Command, request api.Reque
 	commandContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	var input, output bytes.Buffer
+	var input bytes.Buffer
+	output := &boundedBuffer{maximum: api.MaxMessageBytes + 4}
 	stderr := &boundedBuffer{maximum: maxStderrBytes}
 	if err := WriteFrame(&input, request); err != nil {
 		return api.Response{}, err
 	}
 	process := exec.CommandContext(commandContext, command.Executable, command.Arguments...) // #nosec G204 -- executable and arguments come from the signed runtime manifest.
-	process.Stdin, process.Stdout, process.Stderr = &input, &output, stderr
+	process.Stdin, process.Stdout, process.Stderr = &input, output, stderr
 	process.ExtraFiles = extraFiles
 	process.Env = runner.environment()
 	if err := process.Run(); err != nil {
@@ -80,11 +81,15 @@ func (runner Runner) Run(ctx context.Context, command Command, request api.Reque
 		}
 		return api.Response{}, fmt.Errorf("setup-component adapter failed: %w", err)
 	}
+	if output.overflowed {
+		return api.Response{}, errors.New("setup-component response exceeds size limit")
+	}
+	reader := bytes.NewReader(output.data.Bytes())
 	var response api.Response
-	if err := ReadFrame(&output, &response); err != nil {
+	if err := ReadFrame(reader, &response); err != nil {
 		return api.Response{}, err
 	}
-	if output.Len() != 0 {
+	if reader.Len() != 0 {
 		return api.Response{}, errors.New("setup-component emitted trailing protocol bytes")
 	}
 	if response.ComponentID != request.ComponentID {
@@ -161,14 +166,18 @@ func (runner Runner) environment() []string {
 }
 
 type boundedBuffer struct {
-	data    bytes.Buffer
-	maximum int
+	data       bytes.Buffer
+	maximum    int
+	overflowed bool
 }
 
 func (buffer *boundedBuffer) Write(value []byte) (int, error) {
 	remaining := buffer.maximum - buffer.data.Len()
 	if remaining > 0 {
 		_, _ = buffer.data.Write(value[:min(len(value), remaining)])
+	}
+	if len(value) > remaining {
+		buffer.overflowed = true
 	}
 	return len(value), nil
 }

@@ -258,6 +258,8 @@ func TestEngineAdapterHelper(t *testing.T) {
 		response.Status, response.Verification = "verified", []string{"fake client read succeeded"}
 	case api.ActionRollback:
 		response.Status, response.PlanDigest = "rolled_back", request.PlanDigest
+	case api.ActionFinalize:
+		response.Status, response.PlanDigest = "finalized", request.PlanDigest
 	}
 	if err := deploymentruntime.WriteFrame(os.Stdout, response); err != nil {
 		os.Exit(3)

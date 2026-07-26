@@ -411,18 +411,25 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "file")
 	created := filepath.Join(root, "created")
+	directory := filepath.Join(root, "managed")
+	if err := os.Mkdir(directory, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(file, []byte("before"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	config := Config{AllowedPaths: []string{root}, BackupDirectory: filepath.Join(root, "backups")}
-	record, err := createBackup(t.Context(), config, []string{file, created}, Profile{})
-	if err != nil || len(record.Entries) != 2 {
+	record, err := createBackup(t.Context(), config, []string{file, created, directory}, Profile{})
+	if err != nil || len(record.Entries) != 3 {
 		t.Fatalf("backup = %#v, %v", record, err)
 	}
 	if err := os.WriteFile(file, []byte("after"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(created, []byte("created"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o777); err != nil {
 		t.Fatal(err)
 	}
 	if err := rollback(t.Context(), config, record.ID); err != nil {
@@ -434,6 +441,19 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	}
 	if _, err := os.Stat(created); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("created file remains: %v", err)
+	}
+	if info, err := os.Stat(directory); err != nil || info.Mode().Perm() != 0o750 {
+		t.Fatalf("restored directory mode = %v, %v", info, err)
+	}
+	finalized, err := createBackup(t.Context(), config, []string{file}, Profile{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := finalizeBackup(config, finalized.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(config.BackupDirectory, finalized.ID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("finalized backup remains: %v", err)
 	}
 	if err := rollback(t.Context(), config, "missing"); err == nil {
 		t.Fatal("missing rollback handle was accepted")

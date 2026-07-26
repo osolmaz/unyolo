@@ -552,6 +552,17 @@ func rollback(ctx context.Context, config Config, handle string) error {
 	return nil
 }
 
+func finalizeBackup(config Config, handle string) error {
+	if len(handle) != 32 {
+		return errors.New("component finalize handle is invalid")
+	}
+	path := filepath.Join(config.BackupDirectory, handle+".json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func restoreBackupEntry(entry backupEntry) error {
 	if !entry.Existed {
 		return os.RemoveAll(entry.Path)
@@ -560,7 +571,10 @@ func restoreBackupEntry(entry backupEntry) error {
 		if err := os.MkdirAll(entry.Path, os.FileMode(entry.Mode)); err != nil {
 			return err
 		}
-		return os.Chown(entry.Path, entry.UID, entry.GID)
+		if err := os.Chown(entry.Path, entry.UID, entry.GID); err != nil {
+			return err
+		}
+		return os.Chmod(entry.Path, os.FileMode(entry.Mode))
 	}
 	return writeAtomic(entry.Path, entry.Data, os.FileMode(entry.Mode), entry.UID, entry.GID)
 }

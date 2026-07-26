@@ -75,6 +75,13 @@ func TestOwnershipEnvelopeCoversEveryResourceKind(t *testing.T) {
 	}
 }
 
+func TestBoundedBufferCapsAdapterOutput(t *testing.T) {
+	buffer := &boundedBuffer{maximum: 4}
+	if count, err := buffer.Write([]byte("excess")); err != nil || count != 6 || buffer.data.String() != "exce" || !buffer.overflowed {
+		t.Fatalf("bounded output = %q, overflow=%v, count=%d, err=%v", buffer.data.String(), buffer.overflowed, count, err)
+	}
+}
+
 func TestRunnerRejectsInvalidCommandsAndResponses(t *testing.T) {
 	request := api.Request{
 		APIVersion: api.APIVersion, Action: api.ActionPlan,

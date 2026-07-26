@@ -64,6 +64,7 @@ EOF
     test "$(cat /etc/brokerkit-e2e/config.json)" = "{\"enabled\":true}"
     test "$(cat /etc/brokerkit-e2e/token)" = "clean-host-secret-canary"
     test "$(stat -c %a /etc/brokerkit-e2e/token)" = 640
+    test -z "$(find /var/lib/brokerkit-e2e/backups -name "*.json" -print -quit)"
     getent passwd brokerkit-agent >/dev/null
     getent passwd brokerkit-e2e >/dev/null
     id -nG brokerkit-agent | grep -qw brokerkit-e2e-agent

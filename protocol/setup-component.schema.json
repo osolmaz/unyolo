@@ -21,7 +21,7 @@
       "required": ["api_version", "action", "deployment_digest", "component_id", "profile", "files"],
       "properties": {
         "api_version": { "const": "brokerkit.io/setup-component/v1" },
-        "action": { "enum": ["validate", "plan", "apply", "verify", "rollback"] },
+        "action": { "enum": ["validate", "plan", "apply", "verify", "rollback", "finalize"] },
         "deployment_digest": { "$ref": "#/$defs/digest" },
         "plan_digest": { "$ref": "#/$defs/digest" },
         "component_id": { "type": "string", "minLength": 1, "maxLength": 128 },
@@ -60,7 +60,7 @@
       "type": "object", "additionalProperties": false, "required": ["api_version", "component_id", "status"],
       "properties": {
         "api_version": { "const": "brokerkit.io/setup-component/v1" }, "component_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "status": { "enum": ["valid", "planned", "applied", "verified", "rolled_back", "blocked"] }, "plan_digest": { "$ref": "#/$defs/digest" },
+        "status": { "enum": ["valid", "planned", "applied", "verified", "rolled_back", "finalized", "blocked"] }, "plan_digest": { "$ref": "#/$defs/digest" },
         "actions": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/action" } },
         "credentials": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/credential" } },
         "rollback_handle": { "type": "string", "maxLength": 4096 }, "verification": { "type": "array", "maxItems": 1024, "items": { "type": "string", "maxLength": 4096 } },

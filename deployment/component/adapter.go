@@ -129,13 +129,11 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, config Config
 	if err := strictjson.Decode(request.Profile, &profile, true); err != nil {
 		return errors.New("component deployment profile is invalid")
 	}
-	if request.Action == api.ActionValidate {
-		if err := validateProfile(profile, config, request.Agents); err != nil {
+	if response, handled, err := dispatchWithoutInspection(ctx, request, profile, config); handled || err != nil {
+		if err != nil {
 			return err
 		}
-		return deploymentruntime.WriteFrame(output, api.Response{
-			APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "valid",
-		})
+		return deploymentruntime.WriteFrame(output, response)
 	}
 	state, err := inspect(ctx, request, profile, config)
 	if err != nil {
@@ -146,6 +144,33 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, config Config
 		return err
 	}
 	return deploymentruntime.WriteFrame(output, response)
+}
+
+func dispatchWithoutInspection(ctx context.Context, request api.Request, profile Profile, config Config) (api.Response, bool, error) {
+	switch request.Action {
+	case api.ActionValidate, api.ActionRollback, api.ActionFinalize:
+		if err := validateProfile(profile, config, request.Agents); err != nil {
+			return api.Response{}, true, err
+		}
+		response := api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "valid"}
+		if request.Action == api.ActionRollback {
+			if err := rollback(ctx, config, request.RollbackHandle); err != nil {
+				return api.Response{}, true, err
+			}
+			response.Status, response.PlanDigest = "rolled_back", request.PlanDigest
+		}
+		if request.Action == api.ActionFinalize {
+			if err := finalizeBackup(config, request.RollbackHandle); err != nil {
+				return api.Response{}, true, err
+			}
+			response.Status, response.PlanDigest = "finalized", request.PlanDigest
+		}
+		return response, true, nil
+	case api.ActionPlan, api.ActionApply, api.ActionVerify:
+		return api.Response{}, false, nil
+	default:
+		return api.Response{}, true, errors.New("unsupported component action")
+	}
 }
 
 type inspected struct {
@@ -305,6 +330,8 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 			return api.Response{}, err
 		}
 		return api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "rolled_back", PlanDigest: request.PlanDigest}, nil
+	case api.ActionFinalize:
+		return api.Response{}, errors.New("finalize requires lifecycle dispatch")
 	default:
 		return api.Response{}, errors.New("unsupported component action")
 	}

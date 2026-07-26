@@ -30,6 +30,7 @@ const (
 	ActionApply    Action = "apply"
 	ActionVerify   Action = "verify"
 	ActionRollback Action = "rollback"
+	ActionFinalize Action = "finalize"
 )
 
 // File is one nonsecret digest-bound profile file.
@@ -114,16 +115,16 @@ func (request Request) Validate() error {
 	if request.APIVersion != APIVersion || !identifierPattern.MatchString(request.ComponentID) {
 		return errors.New("setup-component request identity is invalid")
 	}
-	if !slices.Contains([]Action{ActionValidate, ActionPlan, ActionApply, ActionVerify, ActionRollback}, request.Action) {
+	if !slices.Contains([]Action{ActionValidate, ActionPlan, ActionApply, ActionVerify, ActionRollback, ActionFinalize}, request.Action) {
 		return errors.New("setup-component action is invalid")
 	}
 	if !validDigest(request.DeploymentDigest) || (request.PlanDigest != "" && !validDigest(request.PlanDigest)) {
 		return errors.New("setup-component request digest is invalid")
 	}
-	if slices.Contains([]Action{ActionApply, ActionRollback}, request.Action) && request.PlanDigest == "" {
+	if slices.Contains([]Action{ActionApply, ActionRollback, ActionFinalize}, request.Action) && request.PlanDigest == "" {
 		return errors.New("setup-component mutation requires a plan digest")
 	}
-	if request.Action == ActionRollback && !validHandle(request.RollbackHandle) {
+	if slices.Contains([]Action{ActionRollback, ActionFinalize}, request.Action) && !validHandle(request.RollbackHandle) {
 		return errors.New("setup-component rollback requires a valid handle")
 	}
 	if request.Action != ActionApply && len(request.Secrets) != 0 {
@@ -162,7 +163,7 @@ func (response Response) Validate() error {
 	if response.APIVersion != APIVersion || !identifierPattern.MatchString(response.ComponentID) {
 		return errors.New("setup-component response identity is invalid")
 	}
-	if !slices.Contains([]string{"valid", "planned", "applied", "verified", "rolled_back", "blocked"}, response.Status) {
+	if !slices.Contains([]string{"valid", "planned", "applied", "verified", "rolled_back", "finalized", "blocked"}, response.Status) {
 		return errors.New("setup-component response status is invalid")
 	}
 	if len(response.Actions) > MaxActions || len(response.Credentials) > MaxCredentialSlots || len(response.Verification) > MaxActions ||
@@ -172,7 +173,7 @@ func (response Response) Validate() error {
 	if response.PlanDigest != "" && !validDigest(response.PlanDigest) {
 		return errors.New("setup-component plan digest is invalid")
 	}
-	if slices.Contains([]string{"planned", "applied", "blocked", "rolled_back"}, response.Status) && response.PlanDigest == "" {
+	if slices.Contains([]string{"planned", "applied", "blocked", "rolled_back", "finalized"}, response.Status) && response.PlanDigest == "" {
 		return errors.New("setup-component response requires a plan digest")
 	}
 	seen := map[string]bool{}

@@ -218,6 +218,9 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 		return Verification{}, err
 	}
 	coordinator := transaction.Coordinator{StateDirectory: engine.options.Paths.StateDir}
+	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(planned)); err != nil {
+		return Verification{}, err
+	}
 	if err := coordinator.Recover(ctx, engine.recoveryHandlers(planned)); err != nil {
 		return Verification{}, err
 	}
@@ -239,6 +242,9 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 		return Verification{}, err
 	}
 	if err := coordinator.Run(ctx, planned.Snapshot.Digest, planned.Plan.Digest, planned.Snapshot.Manifest.BundleID, planned.ActiveBundleID, steps); err != nil {
+		return Verification{}, err
+	}
+	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(planned)); err != nil {
 		return Verification{}, err
 	}
 	return engine.Verify(ctx, profileRoot)
@@ -536,6 +542,7 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 			Rollback: func(ctx context.Context, handle string) error {
 				return engine.rollbackComponent(ctx, planned.Snapshot, component.ID, response.PlanDigest, handle)
 			},
+			RollbackRunning: func(context.Context) error { return nil }, // The adapter self-rolls back before returning an apply error.
 		})
 	}
 	if planned.ActiveBundleID != planned.Snapshot.Manifest.BundleID {
@@ -545,7 +552,8 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 				manifestFile := planned.Snapshot.Files[planned.Snapshot.Deployment.Runtime.Manifest.Path]
 				return "", engine.installer().Activate(ctx, planned.Snapshot.Manifest, manifestFile.Data, planned.Snapshot.Root)
 			},
-			Rollback: func(ctx context.Context, _ string) error { return engine.installer().Rollback(ctx) },
+			Rollback:        func(ctx context.Context, _ string) error { return engine.installer().Rollback(ctx) },
+			RollbackRunning: func(ctx context.Context) error { return engine.installer().Rollback(ctx) },
 		})
 	} else {
 		for _, service := range restartServices(planned) {
@@ -558,7 +566,8 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 					}
 					return "", engine.options.Manager.Start(ctx, service)
 				},
-				Rollback: func(ctx context.Context, _ string) error { return engine.options.Manager.Start(ctx, service) },
+				Rollback:        func(ctx context.Context, _ string) error { return engine.options.Manager.Start(ctx, service) },
+				RollbackRunning: func(ctx context.Context) error { return engine.options.Manager.Start(ctx, service) },
 			})
 		}
 	}
@@ -568,7 +577,8 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 			_, verifyErr := engine.Verify(ctx, planned.Snapshot.Root)
 			return "", verifyErr
 		},
-		Rollback: func(context.Context, string) error { return nil },
+		Rollback:        func(context.Context, string) error { return nil },
+		RollbackRunning: func(context.Context) error { return nil },
 	})
 	return steps, nil
 }
@@ -607,6 +617,7 @@ func (engine *Engine) identitySteps(planned Planned) ([]transaction.Step, error)
 			Rollback: func(ctx context.Context, handle string) error {
 				return deleteManagedAgent(ctx, agent, handle)
 			},
+			RollbackRunning: func(ctx context.Context) error { return deleteManagedAgent(ctx, agent, "created") },
 		})
 	}
 	return steps, nil
@@ -640,6 +651,26 @@ func deleteManagedAgent(ctx context.Context, agent profile.Agent, handle string)
 		return fmt.Errorf("remove managed agent home: %w", err)
 	}
 	return nil
+}
+
+func (engine *Engine) finalizationHandlers(planned Planned) map[string]func(context.Context, string) error {
+	handlers := map[string]func(context.Context, string) error{
+		"runtime":      func(context.Context, string) error { return nil },
+		"verification": func(context.Context, string) error { return nil },
+	}
+	for _, component := range deploymentComponents(planned.Snapshot) {
+		component := component
+		handlers["component:"+component.ID] = func(ctx context.Context, handle string) error {
+			return engine.finalizeComponent(ctx, planned.Snapshot, component.ID, handle)
+		}
+	}
+	for _, agent := range planned.Snapshot.Deployment.Agents {
+		handlers["identity:"+agent.ID] = func(context.Context, string) error { return nil }
+	}
+	for _, service := range restartServices(planned) {
+		handlers["service:"+service] = func(context.Context, string) error { return nil }
+	}
+	return handlers
 }
 
 func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.Context, string) error {
@@ -709,7 +740,7 @@ func (engine *Engine) rollbackComponent(ctx context.Context, snapshot profile.Sn
 	request := api.Request{
 		APIVersion: api.APIVersion, Action: api.ActionRollback, DeploymentDigest: snapshot.Digest,
 		PlanDigest: planDigest, ComponentID: id, Profile: snapshot.Files[desired.Profile.Path].Data,
-		RollbackHandle: handle,
+		Agents: agentBindings(snapshot, id), RollbackHandle: handle,
 	}
 	response, err := (adapterruntime.Runner{Timeout: engine.options.AdapterTimeout}).Run(ctx, command, request, nil)
 	if err != nil {
@@ -717,6 +748,30 @@ func (engine *Engine) rollbackComponent(ctx context.Context, snapshot profile.Sn
 	}
 	if response.Status != "rolled_back" {
 		return errors.New("component rollback did not succeed")
+	}
+	return nil
+}
+
+func (engine *Engine) finalizeComponent(ctx context.Context, snapshot profile.Snapshot, id, handle string) error {
+	desired, _, err := componentByID(snapshot, id)
+	if err != nil {
+		return err
+	}
+	command, err := engine.adapterCommand(snapshot, id, true)
+	if err != nil {
+		return err
+	}
+	request := api.Request{
+		APIVersion: api.APIVersion, Action: api.ActionFinalize, DeploymentDigest: snapshot.Digest,
+		PlanDigest: digestText("finalize:" + handle), ComponentID: id,
+		Profile: snapshot.Files[desired.Profile.Path].Data, Agents: agentBindings(snapshot, id), RollbackHandle: handle,
+	}
+	response, err := (adapterruntime.Runner{Timeout: engine.options.AdapterTimeout}).Run(ctx, command, request, nil)
+	if err != nil {
+		return err
+	}
+	if response.Status != "finalized" {
+		return errors.New("component finalization did not succeed")
 	}
 	return nil
 }
