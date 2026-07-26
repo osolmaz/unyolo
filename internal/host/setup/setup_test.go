@@ -30,9 +30,9 @@ func TestParseAndConfigureClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "TEST_BROKER_AGENT_ENDPOINT='unix:///run/brokerkit/test/agent.sock'") ||
-		!strings.Contains(string(data), "TEST_BROKER_SHARED_SECRET='"+secret+"'") ||
-		strings.Contains(string(data), "TEST_BROKER_ENDPOINT=") {
+	if !strings.Contains(string(data), `"agent_endpoint": "unix:///run/brokerkit/test/agent.sock"`) ||
+		!strings.Contains(string(data), `"client_id": "bob"`) ||
+		!strings.Contains(string(data), `"shared_secret": "`+secret+`"`) {
 		t.Fatalf("client config = %s", data)
 	}
 	if strings.Contains(output.String(), secret) || !strings.Contains(output.String(), "test-broker client config written") {

@@ -41,21 +41,37 @@ type Manifest struct {
 
 // Component is one separately released process or companion executable.
 type Component struct {
-	Name                   string   `json:"name"`
-	Source                 string   `json:"source"`
-	Destination            string   `json:"destination"`
-	SHA256                 string   `json:"sha256"`
-	BuildID                string   `json:"build_id"`
-	Role                   Role     `json:"role"`
-	Services               []string `json:"services"`
-	OperatorEndpoint       string   `json:"operator_endpoint,omitempty"`
-	OperatorTokenFile      string   `json:"operator_token_file,omitempty"`
-	OperatorContractDigest string   `json:"operator_contract_digest,omitempty"`
-	AgentContractDigest    string   `json:"agent_contract_digest,omitempty"`
-	StateFormatDigest      string   `json:"state_format_digest"`
-	StateDir               string   `json:"state_dir,omitempty"`
-	ReplaceState           bool     `json:"replace_state,omitempty"`
-	Required               bool     `json:"required"`
+	Name                   string        `json:"name"`
+	Source                 string        `json:"source"`
+	Destination            string        `json:"destination"`
+	SHA256                 string        `json:"sha256"`
+	BuildID                string        `json:"build_id"`
+	Role                   Role          `json:"role"`
+	Services               []string      `json:"services"`
+	OperatorEndpoint       string        `json:"operator_endpoint,omitempty"`
+	OperatorTokenFile      string        `json:"operator_token_file,omitempty"`
+	OperatorContractDigest string        `json:"operator_contract_digest,omitempty"`
+	AgentContractDigest    string        `json:"agent_contract_digest,omitempty"`
+	StateFormatDigest      string        `json:"state_format_digest"`
+	StateDir               string        `json:"state_dir,omitempty"`
+	ReplaceState           bool          `json:"replace_state,omitempty"`
+	Required               bool          `json:"required"`
+	Setup                  *SetupAdapter `json:"setup,omitempty"`
+}
+
+// SetupAdapter declares the fixed setup-component entrypoint and ownership.
+type SetupAdapter struct {
+	Protocol  string            `json:"protocol"`
+	Arguments []string          `json:"arguments"`
+	Ownership OwnershipEnvelope `json:"ownership"`
+}
+
+// OwnershipEnvelope bounds resources an adapter may claim.
+type OwnershipEnvelope struct {
+	Paths    []string `json:"paths"`
+	Services []string `json:"services"`
+	Accounts []string `json:"accounts"`
+	Groups   []string `json:"groups"`
 }
 
 // Role controls safe service stop and start ordering.
@@ -73,19 +89,41 @@ func Load(path, signaturePath, publicKeyPath string, development bool) (Manifest
 	if err != nil {
 		return Manifest{}, nil, fmt.Errorf("read runtime bundle manifest: %w", err)
 	}
+	var signature, publicKey []byte
 	if !development {
-		if err := verifySignature(data, signaturePath, publicKeyPath); err != nil {
-			return Manifest{}, nil, err
+		signature, err = readBounded(signaturePath, 1024)
+		if err != nil {
+			return Manifest{}, nil, fmt.Errorf("read runtime bundle signature: %w", err)
+		}
+		publicKey, err = readBounded(publicKeyPath, 1024)
+		if err != nil {
+			return Manifest{}, nil, fmt.Errorf("read runtime bundle public key: %w", err)
+		}
+	}
+	manifest, err := decode(data, signature, publicKey, development)
+	return manifest, data, err
+}
+
+// LoadBytes verifies and strictly decodes an in-memory detached-signed manifest.
+func LoadBytes(data, signature, publicKey []byte, development bool) (Manifest, []byte, error) {
+	manifest, err := decode(data, signature, publicKey, development)
+	return manifest, append([]byte(nil), data...), err
+}
+
+func decode(data, signature, publicKey []byte, development bool) (Manifest, error) {
+	if !development {
+		if err := verifySignatureBytes(data, signature, publicKey); err != nil {
+			return Manifest{}, err
 		}
 	}
 	var manifest Manifest
 	if err := strictjson.Decode(data, &manifest, true); err != nil {
-		return Manifest{}, nil, fmt.Errorf("decode runtime bundle manifest: %w", err)
+		return Manifest{}, fmt.Errorf("decode runtime bundle manifest: %w", err)
 	}
 	if err := manifest.Validate(development); err != nil {
-		return Manifest{}, nil, err
+		return Manifest{}, err
 	}
-	return manifest, data, nil
+	return manifest, nil
 }
 
 // Validate checks the closed manifest's platform, protocol, and path invariants.
@@ -148,6 +186,7 @@ func (c Component) validate(development bool, manifest Manifest, names, destinat
 		func() error { return c.registerServices(services) },
 		func() error { return c.validateOperator(manifest) },
 		func() error { return c.validateProcess(manifest) },
+		c.validateSetup,
 	}
 	for _, check := range checks {
 		if err := check(); err != nil {
@@ -236,19 +275,58 @@ func (c Component) validateProcess(manifest Manifest) error {
 	return nil
 }
 
+func (c Component) validateSetup() error {
+	if c.Setup == nil {
+		return nil
+	}
+	if c.Setup.Protocol != "brokerkit.io/setup-component/v1" || len(c.Setup.Arguments) == 0 || len(c.Setup.Arguments) > 16 {
+		return errors.New("setup adapter protocol or arguments are invalid")
+	}
+	for _, argument := range c.Setup.Arguments {
+		if argument == "" || len(argument) > 256 || strings.ContainsRune(argument, 0) {
+			return errors.New("setup adapter argument is invalid")
+		}
+	}
+	ownership := c.Setup.Ownership
+	if len(ownership.Paths) > 64 || len(ownership.Services) > 32 || len(ownership.Accounts) > 32 || len(ownership.Groups) > 64 {
+		return errors.New("setup ownership envelope exceeds limits")
+	}
+	for _, path := range ownership.Paths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == string(filepath.Separator) {
+			return errors.New("setup ownership path is unsafe")
+		}
+	}
+	for _, service := range ownership.Services {
+		if !slices.Contains(c.Services, service) {
+			return errors.New("setup ownership service is not owned by the component")
+		}
+	}
+	for _, account := range ownership.Accounts {
+		if !identifierPattern.MatchString(account) {
+			return errors.New("setup ownership account is invalid")
+		}
+	}
+	for _, group := range ownership.Groups {
+		if !identifierPattern.MatchString(group) {
+			return errors.New("setup ownership group is invalid")
+		}
+	}
+	return nil
+}
+
 func safeRelative(path string) bool {
 	return path != "" && !filepath.IsAbs(path) && filepath.Clean(path) == path && path != "." && !strings.HasPrefix(path, ".."+string(filepath.Separator))
 }
 
-func verifySignature(data []byte, signaturePath, publicKeyPath string) error {
-	if signaturePath == "" || publicKeyPath == "" {
+func verifySignatureBytes(data, signatureText, publicKeyText []byte) error {
+	if len(signatureText) == 0 || len(publicKeyText) == 0 {
 		return errors.New("runtime bundle signature and public key are required")
 	}
-	signature, err := readEncodedValue(signaturePath, ed25519.SignatureSize, "signature")
+	signature, err := decodeEncodedValue(signatureText, ed25519.SignatureSize, "signature")
 	if err != nil {
 		return err
 	}
-	publicKey, err := readEncodedValue(publicKeyPath, ed25519.PublicKeySize, "public key")
+	publicKey, err := decodeEncodedValue(publicKeyText, ed25519.PublicKeySize, "public key")
 	if err != nil {
 		return err
 	}
@@ -258,11 +336,7 @@ func verifySignature(data []byte, signaturePath, publicKeyPath string) error {
 	return nil
 }
 
-func readEncodedValue(path string, size int, label string) ([]byte, error) {
-	text, err := readBounded(path, 1024)
-	if err != nil {
-		return nil, fmt.Errorf("read runtime bundle %s: %w", label, err)
-	}
+func decodeEncodedValue(text []byte, size int, label string) ([]byte, error) {
 	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(text)))
 	if err != nil || len(decoded) != size {
 		return nil, fmt.Errorf("runtime bundle %s is invalid", label)

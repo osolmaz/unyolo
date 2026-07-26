@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/setup-flow/v1/step.schema.json",
+  "title": "BrokerKit setup flow step",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "id", "type", "title"],
+  "properties": {
+    "api_version": { "const": "brokerkit.io/setup-flow/v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$" },
+    "type": { "enum": ["note", "select", "multiselect", "text", "secret", "file", "confirm", "device_code", "progress", "open_url", "review"] },
+    "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "help": { "type": "string", "maxLength": 16384 },
+    "required": { "type": "boolean" },
+    "default": { "type": "string", "maxLength": 16384 },
+    "default_values": { "type": "array", "maxItems": 512, "items": { "type": "string", "maxLength": 512 } },
+    "options": { "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/option" } },
+    "searchable": { "type": "boolean" },
+    "safe_confirmation": { "type": "boolean" },
+    "validation": { "$ref": "#/$defs/validation" },
+    "navigation": { "$ref": "#/$defs/navigation" },
+    "url": { "type": "string", "format": "uri", "maxLength": 4096 },
+    "code": { "type": "string", "maxLength": 256 },
+    "expires_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "option": {
+      "type": "object", "additionalProperties": false, "required": ["value", "label"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "hint": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "validation": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "min_length": { "type": "integer", "minimum": 0, "maximum": 16384 },
+        "max_length": { "type": "integer", "minimum": 0, "maximum": 16384 },
+        "pattern": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "navigation": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "can_go_back": { "type": "boolean" }, "can_go_forward": { "type": "boolean" } }
+    }
+  }
+}

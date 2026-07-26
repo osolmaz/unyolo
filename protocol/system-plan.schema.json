@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/system-plan/v1/plan.schema.json",
+  "title": "BrokerKit canonical host plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "deployment_name", "deployment_digest", "observed_fingerprint", "runtime_bundle_id", "kind", "actions", "components", "digest"],
+  "properties": {
+    "api_version": { "const": "brokerkit.io/system-plan/v1" },
+    "deployment_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "deployment_digest": { "$ref": "#/$defs/digest" },
+    "observed_fingerprint": { "$ref": "#/$defs/digest" },
+    "runtime_bundle_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "kind": { "enum": ["noop", "install", "reconcile", "upgrade", "blocked"] },
+    "actions": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/action" } },
+    "components": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/component" } },
+    "digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "resource": { "type": "object", "additionalProperties": false, "required": ["kind", "id"], "properties": { "kind": { "type": "string" }, "id": { "type": "string" }, "path": { "type": "string" } } },
+    "action": {
+      "type": "object", "additionalProperties": false, "required": ["id", "component_id", "type", "risk", "resource"],
+      "properties": {
+        "id": { "type": "string" }, "component_id": { "type": "string" }, "type": { "type": "string" }, "risk": { "enum": ["low", "medium", "high", "critical"] },
+        "resource": { "$ref": "#/$defs/resource" }, "current_digest": { "$ref": "#/$defs/digest" }, "desired_digest": { "$ref": "#/$defs/digest" },
+        "restart": { "type": "boolean" }, "depends_on": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "credential": { "type": "object", "additionalProperties": false, "required": ["slot", "action"], "properties": { "slot": { "type": "string" }, "action": { "enum": ["install", "retain", "rotate", "remove"] } } },
+    "component": {
+      "type": "object", "additionalProperties": false, "required": ["id", "plan_digest"],
+      "properties": {
+        "id": { "type": "string" }, "plan_digest": { "$ref": "#/$defs/digest" }, "credentials": { "type": "array", "items": { "$ref": "#/$defs/credential" } },
+        "verification": { "type": "array", "items": { "type": "string" } }, "blocked_reason": { "type": "string" }
+      }
+    }
+  }
+}

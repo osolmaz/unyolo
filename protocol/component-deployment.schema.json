@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brokerkit.io/schema/component-deployment/v1/profile.schema.json",
+  "title": "BrokerKit component deployment resources",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version"],
+  "properties": {
+    "api_version": { "enum": ["brokerkit.io/github-deployment/v1", "brokerkit.io/huggingface-deployment/v1", "brokerkit.io/sudo-deployment/v1", "brokerkit.io/telegram-deployment/v1", "brokerkit.io/openclaw-deployment/v1"] },
+    "accounts": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/account" } },
+    "groups": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/group" } },
+    "directories": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/directory" } },
+    "files": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/file" } },
+    "credentials": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/credential" } },
+    "clients": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/client" } },
+    "services": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } }
+  },
+  "$defs": {
+    "account": {
+      "type": "object", "additionalProperties": false, "required": ["name", "group", "home", "shell"],
+      "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 32 }, "group": { "type": "string", "minLength": 1, "maxLength": 32 }, "home": { "type": "string", "minLength": 1, "maxLength": 2048 }, "shell": { "type": "string", "minLength": 1, "maxLength": 2048 } }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 32 }, "members": { "type": "array", "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 32 } } }
+    },
+    "reference": { "type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": { "path": { "type": "string", "minLength": 1, "maxLength": 2048 }, "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } } },
+    "owned": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "destination": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "mode": { "type": "integer", "minimum": 0, "maximum": 511 },
+        "owner": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "group": { "type": "string", "minLength": 1, "maxLength": 32 }
+      },
+      "required": ["id", "destination", "mode", "owner", "group"]
+    },
+    "directory": { "allOf": [{ "$ref": "#/$defs/owned" }], "unevaluatedProperties": false },
+    "file": {
+      "allOf": [
+        { "$ref": "#/$defs/owned" },
+        { "type": "object", "properties": { "source": { "$ref": "#/$defs/reference" }, "restart": { "type": "boolean" } }, "required": ["source"] }
+      ],
+      "unevaluatedProperties": false
+    },
+    "credential": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slot", "destination", "mode", "owner", "group", "encoding"],
+      "properties": {
+        "slot": { "type": "string", "minLength": 1, "maxLength": 128 }, "destination": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "mode": { "type": "integer", "minimum": 0, "maximum": 511 }, "owner": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "group": { "type": "string", "minLength": 1, "maxLength": 32 }, "encoding": { "enum": ["raw", "client_secret_file"] },
+        "client_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "client": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agent_id", "broker_name", "env_prefix", "secret_slot", "endpoint"],
+      "properties": {
+        "agent_id": { "type": "string", "minLength": 1, "maxLength": 64 }, "broker_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "env_prefix": { "type": "string", "minLength": 1, "maxLength": 64 }, "secret_slot": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 }, "git_endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    }
+  }
+}

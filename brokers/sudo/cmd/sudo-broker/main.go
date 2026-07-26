@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/osolmaz/brokerkit/deployment/component"
 	"github.com/osolmaz/brokerkit/internal/storage/command"
 )
 
@@ -56,6 +57,22 @@ func runSubcommand(ctx context.Context, name string, args []string, stdout io.Wr
 		return runSetup(ctx, args, stdout, stderr)
 	case "state":
 		return statecmd.Run(ctx, args, stdout, stderr)
+	case "setup-component-probe":
+		if err := component.Probe(ctx, args); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintln(stdout, "ok")
+		return err
+	case "setup-component":
+		if len(args) != 0 {
+			return errors.New("setup-component does not accept arguments")
+		}
+		return component.Serve(ctx, os.Stdin, stdout, component.Config{
+			ComponentID: "sudo", ProfileAPI: "brokerkit.io/sudo-deployment/v1",
+			AllowedPaths:    []string{"/etc/sudo-broker", "/var/lib/sudo-broker", "/etc/systemd/system/sudo-broker.service", "/etc/systemd/system/sudo-broker-exec.service"},
+			AllowedServices: []string{"sudo-broker.service", "sudo-broker-exec.service"}, AllowedAccounts: []string{"sudo-broker"},
+			AllowedGroups: []string{"sudo-broker", "sudo-broker-agent", "sudo-broker-operator"}, BackupDirectory: "/var/lib/sudo-broker/deployment-backups",
+		})
 	case "version", "--version":
 		_, err := fmt.Fprintln(stdout, version)
 		return err

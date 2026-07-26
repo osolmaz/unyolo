@@ -125,6 +125,7 @@ func ConfigureClient(stdout io.Writer, opts ClientOptions) (string, error) {
 	path, err := clientconfig.WriteForHomeOwner(clientconfig.Config{
 		BrokerName:  opts.BrokerName,
 		EnvPrefix:   opts.EnvPrefix,
+		ClientID:    opts.ClientName,
 		Endpoint:    opts.Endpoint,
 		GitEndpoint: opts.GitEndpoint,
 		Secret:      secret,

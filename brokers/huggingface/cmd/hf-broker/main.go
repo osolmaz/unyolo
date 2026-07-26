@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/brokerkit/deployment/component"
 	"github.com/osolmaz/brokerkit/internal/storage/command"
 	"github.com/osolmaz/brokerkit/internal/strictjson"
 	"github.com/osolmaz/brokerkit/telemetry/audit"
@@ -91,6 +92,8 @@ var commandRunners = map[string]func(commandContext, []string) error{
 	"client":                   runClientTopLevelCommand,
 	"mcp":                      runMCPCommand,
 	"state":                    runStateCommand,
+	"setup-component":          runSetupComponentCommand,
+	"setup-component-probe":    runSetupComponentProbeCommand,
 	"__doctor-isolation-probe": runIsolationProbeCommand,
 }
 
@@ -125,6 +128,26 @@ func runMCPCommand(command commandContext, args []string) error {
 
 func runStateCommand(command commandContext, args []string) error {
 	return statecmd.Run(command.ctx, args, command.stdout, command.stderr)
+}
+
+func runSetupComponentProbeCommand(command commandContext, args []string) error {
+	if err := component.Probe(command.ctx, args); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(command.stdout, "ok")
+	return err
+}
+
+func runSetupComponentCommand(command commandContext, args []string) error {
+	if len(args) != 0 {
+		return errors.New("setup-component does not accept arguments")
+	}
+	return component.Serve(command.ctx, command.stdin, command.stdout, component.Config{
+		ComponentID: "huggingface", ProfileAPI: "brokerkit.io/huggingface-deployment/v1",
+		AllowedPaths:    []string{"/etc/hf-broker", "/var/lib/hf-broker", "/etc/systemd/system/hf-broker.service"},
+		AllowedServices: []string{"hf-broker.service"}, AllowedAccounts: []string{"hf-broker"},
+		AllowedGroups: []string{"hf-broker", "hf-broker-agent", "hf-broker-operator"}, BackupDirectory: "/var/lib/hf-broker/deployment-backups",
+	})
 }
 
 func runIsolationProbeCommand(command commandContext, args []string) error {

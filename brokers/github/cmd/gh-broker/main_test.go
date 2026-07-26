@@ -143,20 +143,17 @@ func TestRunSetupClientWritesClientEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runWithArgs(setup client) error = %v", err)
 	}
-	path := filepath.Join(dir, ".config", "gh-broker", "client.env")
+	path := filepath.Join(dir, ".config", "gh-broker", "client.json")
 	data, err := os.ReadFile(path) // #nosec G304 -- path is in a test temp directory.
 	if err != nil {
-		t.Fatalf("read client env: %v", err)
+		t.Fatalf("read client JSON: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "GH_BROKER_AGENT_ENDPOINT='unix:///run/gh-broker/agent.sock'") {
-		t.Fatalf("client env missing endpoint: %q", text)
+	if !strings.Contains(text, `"agent_endpoint": "unix:///run/gh-broker/agent.sock"`) {
+		t.Fatalf("client JSON missing endpoint: %q", text)
 	}
-	if strings.Contains(text, "GH_BROKER_ENDPOINT=") {
-		t.Fatalf("client env contains legacy endpoint: %q", text)
-	}
-	if !strings.Contains(text, "GH_BROKER_SHARED_SECRET='"+secret+"'") {
-		t.Fatalf("client env missing secret: %q", text)
+	if !strings.Contains(text, `"client_id": "bob"`) || !strings.Contains(text, `"shared_secret": "`+secret+`"`) {
+		t.Fatalf("client JSON missing identity or secret: %q", text)
 	}
 	if strings.Contains(stdout.String(), secret) {
 		t.Fatalf("setup client stdout leaked secret: %q", stdout.String())

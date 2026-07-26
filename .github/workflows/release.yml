@@ -67,6 +67,8 @@ jobs:
               echo "broker=brokerkit" >> "$GITHUB_OUTPUT"
               echo "directory=." >> "$GITHUB_OUTPUT"
               echo "command=./cmd/brokerkit" >> "$GITHUB_OUTPUT"
+              extra="--extra-command=openclaw-brokerkit-setup=./plugins/openclaw/deployment/cmd/openclaw-brokerkit-setup"
+              companions="openclaw-brokerkit-setup"
               ;;
             *) exit 64 ;;
           esac
