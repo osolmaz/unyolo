@@ -78,30 +78,54 @@ func apply(ctx context.Context, request api.Request, profile Profile, config Con
 		return "", err
 	}
 	defer clearSecrets(secrets)
-	if err := applyGroups(ctx, profile.Groups); err != nil {
+	planned := plannedActionIDs(state.actions)
+	groups := plannedValues(profile.Groups, planned, "group-", func(value Group) string { return value.Name })
+	if err := applyGroups(ctx, groups); err != nil {
 		return "", err
 	}
-	if err := applyAccounts(ctx, profile.Accounts); err != nil {
+	accounts := plannedValues(profile.Accounts, planned, "account-", func(value Account) string { return value.Name })
+	if err := applyAccounts(ctx, accounts); err != nil {
 		return "", err
 	}
-	if err := applyGroupMembers(ctx, profile.Groups); err != nil {
+	if err := applyGroupMembers(ctx, groups); err != nil {
 		return "", err
 	}
-	if err := applyDirectories(profile.Directories); err != nil {
+	directories := plannedValues(profile.Directories, planned, "directory-", func(value Directory) string { return value.ID })
+	if err := applyDirectories(directories); err != nil {
 		return "", err
 	}
-	if err := applyFiles(profile.Files, state.files); err != nil {
+	files := plannedValues(profile.Files, planned, "file-", func(value ManagedFile) string { return value.ID })
+	if err := applyFiles(files, state.files); err != nil {
 		return "", err
 	}
-	installed, err := applyCredentials(profile.Credentials, state.credentials, secrets)
+	installed, err := applyCredentials(profile.Credentials, state.credentials, secrets, planned)
 	if err != nil {
 		return "", err
 	}
 	defer clearSecrets(installed)
-	if err := applyClients(profile.Clients, state.agents, installed); err != nil {
+	clients := plannedValues(profile.Clients, planned, "client-", func(value Client) string { return value.AgentID })
+	if err := applyClients(clients, state.agents, installed); err != nil {
 		return "", err
 	}
 	return record.ID, nil
+}
+
+func plannedActionIDs(actions []api.PlannedAction) map[string]bool {
+	result := make(map[string]bool, len(actions))
+	for _, action := range actions {
+		result[action.ID] = true
+	}
+	return result
+}
+
+func plannedValues[T any](values []T, planned map[string]bool, prefix string, id func(T) string) []T {
+	result := make([]T, 0, len(values))
+	for _, value := range values {
+		if planned[prefix+id(value)] {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func changedPaths(profile Profile, state inspected) []string {
@@ -348,7 +372,8 @@ func applyFiles(values []ManagedFile, files map[string]api.File) error {
 	return nil
 }
 
-func applyCredentials(values []Credential, actions []api.CredentialAction, supplied map[string][]byte) (map[string][]byte, error) {
+//nolint:cyclop // Credential install, rotation, retention, and reviewed metadata repair share secret-clearing paths.
+func applyCredentials(values []Credential, actions []api.CredentialAction, supplied map[string][]byte, planned map[string]bool) (map[string][]byte, error) {
 	result := map[string][]byte{}
 	for _, value := range values {
 		action := credentialAction(actions, value.Slot)
@@ -379,16 +404,18 @@ func applyCredentials(values []Credential, actions []api.CredentialAction, suppl
 				clearSecrets(result)
 				return nil, err
 			}
-			uid, gid, ownerErr := resolveOwner(value.Owner, value.Group)
-			if ownerErr != nil {
-				clear(raw)
-				clearSecrets(result)
-				return nil, ownerErr
-			}
-			if err := setFileMetadataNoFollow(value.Destination, os.FileMode(value.Mode), uid, gid); err != nil {
-				clear(raw)
-				clearSecrets(result)
-				return nil, err
+			if planned["credential-"+value.Slot] {
+				uid, gid, ownerErr := resolveOwner(value.Owner, value.Group)
+				if ownerErr != nil {
+					clear(raw)
+					clearSecrets(result)
+					return nil, ownerErr
+				}
+				if err := setFileMetadataNoFollow(value.Destination, os.FileMode(value.Mode), uid, gid); err != nil {
+					clear(raw)
+					clearSecrets(result)
+					return nil, err
+				}
 			}
 		}
 		result[value.Slot] = append([]byte(nil), raw...)

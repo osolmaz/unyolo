@@ -124,7 +124,7 @@ func (engine *Engine) Validate(ctx context.Context, profileRoot string) (profile
 		return profile.Snapshot{}, err
 	}
 	for _, component := range deploymentComponents(snapshot) {
-		response, runErr := engine.runComponent(ctx, snapshot, component.ID, api.ActionValidate, "", nil, false)
+		response, runErr := engine.runComponent(ctx, snapshot, component.ID, api.ActionValidate, "", nil, !engine.options.Development)
 		if runErr != nil {
 			return profile.Snapshot{}, runErr
 		}

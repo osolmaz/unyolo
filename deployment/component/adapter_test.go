@@ -87,6 +87,11 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	if err != nil || loaded.ClientID != "agent" || loaded.SharedSecret != strings.Repeat("s", 32) {
 		t.Fatalf("client = %#v, %v", loaded, err)
 	}
+	policyPath := filepath.Join(root, "config", "policy.json")
+	policyBefore, err := os.Stat(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	profile.Credentials[0].Action = "rotate"
 	base.Profile, err = json.Marshal(profile)
@@ -117,6 +122,10 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	loaded, err = clientconfig.Read(agentHome, "test-broker", "TEST_BROKER")
 	if err != nil || loaded.SharedSecret != strings.Repeat("r", 32) {
 		t.Fatalf("rotated client = %#v, %v", loaded, err)
+	}
+	policyAfter, err := os.Stat(policyPath)
+	if err != nil || !os.SameFile(policyBefore, policyAfter) {
+		t.Fatalf("unchanged managed file was rewritten: %v", err)
 	}
 	base.Action, base.Secrets, base.PlanDigest, base.RollbackHandle = api.ActionRollback, nil, rotated.PlanDigest, rotated.RollbackHandle
 	if response := runAdapter(t, base, config); response.Status != "rolled_back" {
