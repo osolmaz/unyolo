@@ -21,6 +21,31 @@ EOF
     go run ./internal/host/deployment/testdata/pack /tmp/deployment /tmp/fake-adapter
     groupadd --system brokerkit-e2e-agent
     usermod --append --groups brokerkit-e2e-agent operator
+
+    cp -a /tmp/deployment /tmp/failure-deployment
+    sed -i "s#/etc/brokerkit-e2e#/proc/brokerkit-e2e#g" /tmp/failure-deployment/components/fake.json
+    /tmp/brokerkit system profile lock --profile /tmp/failure-deployment
+    /tmp/brokerkit system plan \
+      --development --profile /tmp/failure-deployment \
+      --root /tmp/failure-runtime --state-dir /tmp/failure-state --json >/tmp/failure-plan.json
+    failure_plan=$(awk -F\" '\''/"digest":/ {print $4; exit}'\'' /tmp/failure-plan.json)
+    printf "%s" "rollback-secret-canary" >/tmp/failure-secret
+    chmod 0600 /tmp/failure-secret
+    if /tmp/brokerkit system apply \
+      --development --profile /tmp/failure-deployment \
+      --root /tmp/failure-runtime --state-dir /tmp/failure-state \
+      --expect-plan "$failure_plan" --secret-file e2e-token=/tmp/failure-secret; then
+      echo "failure fixture unexpectedly applied" >&2
+      exit 1
+    fi
+    ! getent passwd brokerkit-agent >/dev/null
+    ! getent passwd brokerkit-e2e >/dev/null
+    ! getent group brokerkit-e2e >/dev/null
+    id -nG operator | grep -qw brokerkit-e2e-agent
+    test ! -e /var/lib/brokerkit-agent
+    test ! -e /var/lib/brokerkit-e2e
+    test ! -e /tmp/failure-state/deployment-transaction.json
+
     /tmp/brokerkit system profile lock --check --profile /tmp/deployment
     /tmp/brokerkit system validate \
       --development --profile /tmp/deployment \

@@ -113,9 +113,6 @@ func createBackup(ctx context.Context, config Config, paths []string, profile Pr
 	if config.BackupDirectory == "" || !ownedPath(config.BackupDirectory, config.AllowedPaths) {
 		return backup{}, errors.New("component backup directory is outside ownership")
 	}
-	if err := os.MkdirAll(config.BackupDirectory, 0o700); err != nil {
-		return backup{}, err
-	}
 	id, err := randomID()
 	if err != nil {
 		return backup{}, err
@@ -131,6 +128,9 @@ func createBackup(ctx context.Context, config Config, paths []string, profile Pr
 			return backup{}, entryErr
 		}
 		record.Entries = append(record.Entries, entry)
+	}
+	if err := os.MkdirAll(config.BackupDirectory, 0o700); err != nil {
+		return backup{}, err
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -528,31 +528,41 @@ func rollback(ctx context.Context, config Config, handle string) error {
 	if err := rollbackIdentities(ctx, config, record); err != nil {
 		return err
 	}
+	var backupAncestor *backupEntry
 	for index := len(record.Entries) - 1; index >= 0; index-- {
 		entry := record.Entries[index]
 		if !ownedPath(entry.Path, config.AllowedPaths) && !isAgentClientPath(entry.Path) {
 			return errors.New("component rollback path exceeds ownership")
 		}
-		if !entry.Existed {
-			if err := os.RemoveAll(entry.Path); err != nil {
-				return err
-			}
+		if ownedPath(config.BackupDirectory, []string{entry.Path}) {
+			entryCopy := entry
+			backupAncestor = &entryCopy
 			continue
 		}
-		if entry.Directory {
-			if err := os.MkdirAll(entry.Path, os.FileMode(entry.Mode)); err != nil {
-				return err
-			}
-			if err := os.Chown(entry.Path, entry.UID, entry.GID); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := writeAtomic(entry.Path, entry.Data, os.FileMode(entry.Mode), entry.UID, entry.GID); err != nil {
+		if err := restoreBackupEntry(entry); err != nil {
 			return err
 		}
 	}
-	return os.Remove(path)
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	if backupAncestor != nil {
+		return restoreBackupEntry(*backupAncestor)
+	}
+	return nil
+}
+
+func restoreBackupEntry(entry backupEntry) error {
+	if !entry.Existed {
+		return os.RemoveAll(entry.Path)
+	}
+	if entry.Directory {
+		if err := os.MkdirAll(entry.Path, os.FileMode(entry.Mode)); err != nil {
+			return err
+		}
+		return os.Chown(entry.Path, entry.UID, entry.GID)
+	}
+	return writeAtomic(entry.Path, entry.Data, os.FileMode(entry.Mode), entry.UID, entry.GID)
 }
 
 func rollbackIdentities(ctx context.Context, config Config, record backup) error {

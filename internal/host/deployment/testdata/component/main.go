@@ -19,7 +19,7 @@ func main() {
 	}
 	config := component.Config{
 		ComponentID: "fake", ProfileAPI: "brokerkit.io/fake-deployment/v1",
-		AllowedPaths:    []string{"/etc/brokerkit-e2e", "/var/lib/brokerkit-e2e"},
+		AllowedPaths:    []string{"/etc/brokerkit-e2e", "/var/lib/brokerkit-e2e", "/proc/brokerkit-e2e"},
 		AllowedAccounts: []string{"brokerkit-e2e"},
 		AllowedGroups:   []string{"brokerkit-e2e", "brokerkit-e2e-agent"},
 		BackupDirectory: "/var/lib/brokerkit-e2e/backups",
