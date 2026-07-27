@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
@@ -95,6 +96,51 @@ func TestDownloadAndChecksum(t *testing.T) {
 	}
 	if _, err := checksumFor(checksums, "missing"); err == nil {
 		t.Fatal("missing checksum was accepted")
+	}
+}
+
+func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
+	t.Setenv("GH_TOKEN", "environment-value")
+	token, err := githubToken(t.Context())
+	if err != nil || string(token) != "environment-value" {
+		t.Fatalf("environment token = %q, %v", token, err)
+	}
+	clear(token)
+
+	t.Setenv("GH_TOKEN", "")
+	bin := t.TempDir()
+	gh := filepath.Join(bin, "gh")
+	if err := os.WriteFile(gh, []byte("#!/bin/sh\nprintf 'configured-value\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	token, err = githubToken(t.Context())
+	if err != nil || string(token) != "configured-value" {
+		t.Fatalf("configured token = %q, %v", token, err)
+	}
+	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), "0.4.1", "brokerkit/v0.4.1", token)
+	for _, argument := range command.Args {
+		if strings.Contains(argument, string(token)) {
+			t.Fatal("GitHub token was included in a process argument")
+		}
+	}
+	if !strings.Contains(strings.Join(command.Args, "\x00"), "--preserve-env=GH_TOKEN") {
+		t.Fatalf("sudo arguments = %#v", command.Args)
+	}
+	var bindings int
+	for _, value := range command.Env {
+		if strings.HasPrefix(value, "GH_TOKEN=") {
+			bindings++
+		}
+	}
+	if bindings != 1 {
+		t.Fatalf("GitHub token environment bindings = %d", bindings)
+	}
+	clear(token)
+
+	t.Setenv("GH_TOKEN", strings.Repeat("x", maxGitHubTokenBytes+1))
+	if token, err := githubToken(t.Context()); err == nil || token != nil {
+		t.Fatal("oversized GitHub token was accepted")
 	}
 }
 

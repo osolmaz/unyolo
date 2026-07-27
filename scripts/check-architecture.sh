@@ -35,7 +35,7 @@ then
 	echo 'convenience installers must never invoke sudo' >&2
 	exit 1
 fi
-if [ "$(grep -R --include='*.go' -c 'exec.CommandContext(ctx, "sudo", "sh", "-c", script' internal/host/privilege | awk -F: '{sum += $2} END {print sum + 0}')" -ne 1 ] ||
+if [ "$(grep -R --include='*.go' -c 'exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script' internal/host/privilege | awk -F: '{sum += $2} END {print sum + 0}')" -ne 1 ] ||
   grep -n 'exec.Command.*"sudo"' cmd/brokerkit/deployment.go cmd/brokerkit/setup.go 2>/dev/null
 then
 	echo 'the host bootstrap must have exactly one bounded privilege transition' >&2
