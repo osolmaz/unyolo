@@ -57,4 +57,5 @@ destination="/opt/brokerkit/bootstrap/$build"
 install -d -o root -g root -m 0755 "$destination"
 install -o root -g root -m 0755 "$temporary/brokerkit" "$destination/brokerkit.new"
 mv -f "$destination/brokerkit.new" "$destination/brokerkit"
+unset GH_TOKEN
 exec "$destination/brokerkit" system setup-worker --protocol-stdio

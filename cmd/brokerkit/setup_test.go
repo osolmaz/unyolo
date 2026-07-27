@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/brokerkit/deployment/profile"
 	"github.com/osolmaz/brokerkit/deployment/session"
 )
 
@@ -54,6 +55,22 @@ func TestSetupDeploymentDirectory(t *testing.T) {
 	}
 	if _, err := setupDeploymentDirectory("bad name"); err == nil {
 		t.Fatal("invalid deployment name was accepted")
+	}
+}
+
+func TestSetupMaterializationResume(t *testing.T) {
+	destination := "/tmp/generated-pack"
+	digest := "sha256:" + strings.Repeat("a", 64)
+	value := session.Session{Generated: map[string]string{profile.EntryFilename: digest}}
+	if ready, err := setupProfileAlreadyMaterialized(value, destination, destination, digest); err != nil || !ready {
+		t.Fatalf("matching materialization = %v, %v", ready, err)
+	}
+	if ready, err := setupProfileAlreadyMaterialized(value, "/tmp/source-pack", destination, digest); err != nil || ready {
+		t.Fatalf("source materialization = %v, %v", ready, err)
+	}
+	value.Generated[profile.EntryFilename] = "sha256:" + strings.Repeat("b", 64)
+	if ready, err := setupProfileAlreadyMaterialized(value, destination, destination, digest); err == nil || ready {
+		t.Fatal("changed materialization digest was accepted")
 	}
 }
 

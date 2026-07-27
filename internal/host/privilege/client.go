@@ -1,6 +1,7 @@
 package privilege
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -17,6 +18,8 @@ import (
 	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
 )
 
+const maxGitHubTokenBytes = 4096
+
 var (
 	releasePattern  = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$`)
 	checksumPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -30,6 +33,23 @@ type Client struct {
 	temporary string
 }
 
+type boundedTokenBuffer struct {
+	data     bytes.Buffer
+	maximum  int
+	exceeded bool
+}
+
+func (buffer *boundedTokenBuffer) Write(value []byte) (int, error) {
+	remaining := buffer.maximum - buffer.data.Len()
+	if remaining > 0 {
+		_, _ = buffer.data.Write(value[:min(remaining, len(value))])
+	}
+	if len(value) > remaining {
+		buffer.exceeded = true
+	}
+	return len(value), nil
+}
+
 // Start verifies the release-published root bootstrap as the operator, then
 // asks root to copy, rehash, and execute only the root-owned copy.
 func Start(ctx context.Context, release string, stderr io.Writer) (*Client, error) {
@@ -40,29 +60,73 @@ func Start(ctx context.Context, release string, stderr io.Writer) (*Client, erro
 	if err != nil {
 		return nil, err
 	}
+	token, err := githubToken(ctx)
+	if err != nil {
+		_ = os.RemoveAll(temporary)
+		return nil, err
+	}
 	tag := "brokerkit/" + release
 	build := strings.TrimPrefix(release, "v")
-	script := `set -eu; src=$1; expected=$2; build=$3; tag=$4; destination="/opt/brokerkit/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$src" "$destination/bootstrap-root.sh.new"; actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); [ "$actual" = "$expected" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; exec "$destination/bootstrap-root.sh" "$tag"`
-	command := exec.CommandContext(ctx, "sudo", "sh", "-c", script, "brokerkit-root-stage", bootstrap, expected, build, tag) // #nosec G204 -- fixed staging command with verified release-derived values.
+	command := rootWorkerCommand(ctx, bootstrap, expected, build, tag, token)
+	clear(token)
 	input, err := command.StdinPipe()
 	if err != nil {
+		command.Env = nil
 		_ = os.RemoveAll(temporary)
 		return nil, err
 	}
 	output, err := command.StdoutPipe()
 	if err != nil {
+		command.Env = nil
 		_ = input.Close()
 		_ = os.RemoveAll(temporary)
 		return nil, err
 	}
 	command.Stderr = stderr
 	if err := command.Start(); err != nil {
+		command.Env = nil
 		_ = input.Close()
 		_ = output.Close()
 		_ = os.RemoveAll(temporary)
 		return nil, err
 	}
+	command.Env = nil
 	return &Client{command: command, input: input, output: output, temporary: temporary}, nil
+}
+
+func githubToken(ctx context.Context) ([]byte, error) {
+	if value := strings.TrimSpace(os.Getenv("GH_TOKEN")); value != "" {
+		if len(value) > maxGitHubTokenBytes {
+			return nil, errors.New("GitHub authentication token exceeds size limit")
+		}
+		return []byte(value), nil
+	}
+	command := exec.CommandContext(ctx, "gh", "auth", "token")
+	output := boundedTokenBuffer{maximum: maxGitHubTokenBytes}
+	command.Stdout = &output
+	command.Stderr = io.Discard
+	if err := command.Run(); err != nil || output.exceeded {
+		clear(output.data.Bytes())
+		return nil, errors.New("resolve GitHub authentication for root setup")
+	}
+	data := bytes.TrimSpace(output.data.Bytes())
+	if len(data) == 0 {
+		return nil, errors.New("GitHub authentication is required for root setup")
+	}
+	return data, nil
+}
+
+func rootWorkerCommand(ctx context.Context, bootstrap, expected, build, tag string, token []byte) *exec.Cmd {
+	script := `set -eu; src=$1; expected=$2; build=$3; tag=$4; destination="/opt/brokerkit/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$src" "$destination/bootstrap-root.sh.new"; actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); [ "$actual" = "$expected" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; exec "$destination/bootstrap-root.sh" "$tag"`
+	command := exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script, "brokerkit-root-stage", bootstrap, expected, build, tag) // #nosec G204 -- fixed staging command with verified release-derived values.
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, value := range os.Environ() {
+		if !strings.HasPrefix(value, "GH_TOKEN=") {
+			environment = append(environment, value)
+		}
+	}
+	command.Env = append(environment, "GH_TOKEN="+string(token))
+	return command
 }
 
 func prepareRootBootstrap(ctx context.Context, release string, stderr io.Writer) (string, string, string, error) {

@@ -133,22 +133,28 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		if pathErr != nil {
 			return pathErr
 		}
-		materializeProgress := prompter.Progress("Materializing the operator-owned deployment pack")
-		profilePath, err = profile.Materialize(snapshot, destination)
-		if err != nil {
-			materializeProgress.Fail("Deployment pack materialization failed")
-			return err
+		materialized, materializedErr := setupProfileAlreadyMaterialized(setupSession, profilePath, destination, snapshot.Digest)
+		if materializedErr != nil {
+			return materializedErr
 		}
-		snapshot, err = profile.Load(profilePath)
-		if err != nil {
-			materializeProgress.Fail("Materialized deployment pack validation failed")
-			return err
-		}
-		materializeProgress.Stop("Operator-owned deployment pack is ready")
-		setupSession.Answers["profile"] = []string{profilePath}
-		setupSession.Generated[profile.EntryFilename] = snapshot.Digest
-		if err := store.Save(setupSession); err != nil {
-			return err
+		if !materialized {
+			materializeProgress := prompter.Progress("Materializing the operator-owned deployment pack")
+			profilePath, err = profile.Materialize(snapshot, destination)
+			if err != nil {
+				materializeProgress.Fail("Deployment pack materialization failed")
+				return err
+			}
+			snapshot, err = profile.Load(profilePath)
+			if err != nil {
+				materializeProgress.Fail("Materialized deployment pack validation failed")
+				return err
+			}
+			materializeProgress.Stop("Operator-owned deployment pack is ready")
+			setupSession.Answers["profile"] = []string{profilePath}
+			setupSession.Generated[profile.EntryFilename] = snapshot.Digest
+			if err := store.Save(setupSession); err != nil {
+				return err
+			}
 		}
 	}
 	if err := showSetupReview(ctx, prompter, snapshot); err != nil {
@@ -386,6 +392,16 @@ func runSetupCancel(args []string, stdout, stderr io.Writer) error {
 	}
 	_, err = fmt.Fprintln(stdout, "Cancelled local setup session")
 	return err
+}
+
+func setupProfileAlreadyMaterialized(setupSession session.Session, profilePath, destination, digest string) (bool, error) {
+	if profilePath != destination {
+		return false, nil
+	}
+	if setupSession.Generated[profile.EntryFilename] != digest {
+		return false, errors.New("resumable setup materialization digest is invalid")
+	}
+	return true, nil
 }
 
 func setupDeploymentDirectory(name string) (string, error) {
