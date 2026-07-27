@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -251,6 +252,32 @@ func TestStageRejectsRelativeArtifactsAndChangedBundleIdentity(t *testing.T) {
 	}
 	if _, err := installer.stage(missing, missingData, artifacts); err == nil {
 		t.Fatal("bundle with a missing artifact was staged")
+	}
+}
+
+func TestStageIgnoresRestrictiveUmask(t *testing.T) {
+	root, artifacts := filepath.Join(t.TempDir(), "root"), t.TempDir()
+	installer := Installer{Paths: Paths{Root: root, StateDir: filepath.Join(t.TempDir(), "state")}}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	oldMask := syscall.Umask(0o077)
+	release, stageErr := installer.stage(manifest, data, artifacts)
+	syscall.Umask(oldMask)
+	if stageErr != nil {
+		t.Fatal(stageErr)
+	}
+	for path, expected := range map[string]os.FileMode{
+		root:                                      0o755,
+		filepath.Join(root, "releases"):           0o755,
+		release:                                   0o755,
+		filepath.Join(release, "bin"):             0o755,
+		filepath.Join(release, manifestFilename):  0o444,
+		filepath.Join(release, "bin", "gh"):       0o555,
+		filepath.Join(release, "bin", "telegram"): 0o555,
+	} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != expected {
+			t.Fatalf("mode %s = %v, %v; want %v", path, info, err, expected)
+		}
 	}
 }
 
@@ -515,6 +542,34 @@ func TestStatusReportsCurrentPointerMismatch(t *testing.T) {
 	report, err := installer.Status(t.Context())
 	if err != nil || report.Healthy || !strings.Contains(strings.Join(report.Problems, "\n"), "pointer") {
 		t.Fatalf("Status() = %+v, %v", report, err)
+	}
+}
+
+func TestRollbackCandidateRestoresFirstInstall(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.RollbackCandidate(t.Context(), "other-bundle"); err == nil {
+		t.Fatal("transaction rollback accepted a changed active bundle")
+	}
+	if err := installer.RollbackCandidate(t.Context(), manifest.BundleID); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.RollbackCandidate(t.Context(), manifest.BundleID); err != nil {
+		t.Fatalf("completed transaction rollback was not idempotent: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "current")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("first-install rollback retained current: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(state, activationFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("first-install rollback retained activation record: %v", err)
+	}
+	if manager.active["gh.service"] || manager.active["telegram.service"] {
+		t.Fatalf("first-install rollback retained services: %v", manager.active)
 	}
 }
 

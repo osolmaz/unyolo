@@ -236,6 +236,59 @@ func (i Installer) Rollback(ctx context.Context) error {
 	return i.rollbackLocked(ctx)
 }
 
+// RollbackCandidate compensates one transaction-bound activation, including a
+// first installation that has no previous runtime bundle.
+func (i Installer) RollbackCandidate(ctx context.Context, candidate string) error {
+	if err := i.normalize(); err != nil {
+		return err
+	}
+	lock, err := acquireLock(i.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.close()
+	if err := i.recoverInterruptedActivation(); err != nil {
+		return err
+	}
+	return i.rollbackCandidateLocked(ctx, candidate)
+}
+
+func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate string) error {
+	snapshot, err := i.activationSnapshot()
+	if err != nil {
+		return err
+	}
+	if snapshot == nil {
+		active, _, currentErr := i.currentManifest()
+		if currentErr != nil {
+			return currentErr
+		}
+		if active == "" {
+			return nil
+		}
+		return errors.New("active BrokerKit bundle has no activation record during transaction rollback")
+	}
+	record := *snapshot
+	if record.ActiveBundleID != candidate {
+		return errors.New("active BrokerKit bundle changed before transaction rollback")
+	}
+	activeManifest, err := i.manifest(record.ActiveBundleID)
+	if err != nil {
+		return err
+	}
+	if record.PreviousBundleID == "" {
+		if err := i.restore("", Manifest{}, activeManifest); err != nil {
+			return err
+		}
+		return i.restoreActivationRecord(nil)
+	}
+	previousManifest, err := i.manifest(record.PreviousBundleID)
+	if err != nil {
+		return err
+	}
+	return i.commitRollback(ctx, record, activeManifest, previousManifest)
+}
+
 func (i Installer) rollbackLocked(ctx context.Context) error {
 	if err := i.recoverInterruptedActivation(); err != nil {
 		return err
@@ -359,8 +412,17 @@ func (i Installer) stage(manifest Manifest, data []byte, artifacts string) (stri
 	if !filepath.IsAbs(artifacts) {
 		return "", errors.New("artifact directory must be absolute")
 	}
+	if err := os.MkdirAll(i.Paths.Root, 0o755); err != nil { // #nosec G301 -- service users must traverse the root-owned immutable release tree.
+		return "", err
+	}
+	if err := os.Chmod(i.Paths.Root, 0o755); err != nil { // #nosec G302 -- an inherited private umask must not make the signed release unreachable.
+		return "", err
+	}
 	releases := filepath.Join(i.Paths.Root, "releases")
 	if err := os.MkdirAll(releases, 0o755); err != nil { // #nosec G301 -- service users must traverse the root-owned immutable release tree.
+		return "", err
+	}
+	if err := os.Chmod(releases, 0o755); err != nil { // #nosec G302 -- an inherited private umask must not make the signed release unreachable.
 		return "", err
 	}
 	release := filepath.Join(releases, manifest.BundleID)
@@ -411,10 +473,29 @@ func prepareStagedRelease(temporary, artifacts string, data []byte, manifest Man
 			return err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(temporary, manifestFilename), data, 0o444); err != nil { // #nosec G306 -- the signed manifest is intentionally immutable and public to service users.
+	manifestPath := filepath.Join(temporary, manifestFilename)
+	if err := os.WriteFile(manifestPath, data, 0o444); err != nil { // #nosec G306 -- the signed manifest is intentionally immutable and public to service users.
+		return err
+	}
+	if err := os.Chmod(manifestPath, 0o444); err != nil { // #nosec G302 -- an inherited private umask must not hide the signed manifest.
+		return err
+	}
+	if err := chmodReleaseDirectories(temporary); err != nil {
 		return err
 	}
 	return syncTree(temporary)
+}
+
+func chmodReleaseDirectories(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.Chmod(path, 0o755) // #nosec G122,G302 -- fresh private staging contains only validated regular artifacts and directories.
+		}
+		return nil
+	})
 }
 
 func publishStagedRelease(temporary, release, releases string) error {
@@ -459,9 +540,10 @@ func copyArtifactFile(in *os.File, destination string) error {
 		return err
 	}
 	_, copyErr := io.Copy(out, io.LimitReader(in, maximumArtifact+1))
+	modeErr := out.Chmod(0o555) // #nosec G302 -- service users must execute signed runtime artifacts regardless of the caller umask.
 	syncErr := out.Sync()
 	closeErr := out.Close()
-	return errors.Join(copyErr, syncErr, closeErr)
+	return errors.Join(copyErr, modeErr, syncErr, closeErr)
 }
 
 func (i Installer) verifyRelease(manifest Manifest, release string) error {
