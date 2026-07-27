@@ -25,9 +25,11 @@ const (
 	maxTargetBytes    = 16 * 1024
 	maxArgumentsBytes = 1024 * 1024
 	maxResultBytes    = 2 * 1024 * 1024
-	maxOperations     = 2048
-	defaultListLimit  = 20
-	maxListLimit      = 50
+	// Keep enough terminal operations to honor the 30-day replay window under
+	// sustained automation workloads such as repository inventory polling.
+	maxOperations    = 32 * 1024
+	defaultListLimit = 20
+	maxListLimit     = 50
 	// TerminalRetention is the period during which completed operation keys
 	// remain replayable.
 	TerminalRetention = 30 * 24 * time.Hour
