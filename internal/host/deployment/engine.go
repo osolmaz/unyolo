@@ -582,8 +582,12 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 				manifestFile := planned.Snapshot.Files[planned.Snapshot.Deployment.Runtime.Manifest.Path]
 				return "", engine.installer().Activate(ctx, planned.Snapshot.Manifest, manifestFile.Data, planned.Snapshot.Root)
 			},
-			Rollback:        func(ctx context.Context, _ string) error { return engine.installer().Rollback(ctx) },
-			RollbackRunning: func(ctx context.Context) error { return engine.installer().Rollback(ctx) },
+			Rollback: func(ctx context.Context, _ string) error {
+				return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID)
+			},
+			RollbackRunning: func(ctx context.Context) error {
+				return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID)
+			},
 		})
 	} else {
 		for _, service := range restartServices(planned) {
@@ -705,7 +709,9 @@ func (engine *Engine) finalizationHandlers(planned Planned) map[string]func(cont
 
 func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.Context, string) error {
 	handlers := map[string]func(context.Context, string) error{
-		"runtime":      func(ctx context.Context, _ string) error { return engine.installer().Rollback(ctx) },
+		"runtime": func(ctx context.Context, _ string) error {
+			return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID)
+		},
 		"verification": func(context.Context, string) error { return nil },
 	}
 	responseByID := map[string]api.Response{}
