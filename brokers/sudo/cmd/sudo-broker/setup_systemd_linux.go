@@ -42,6 +42,7 @@ type sudoSystemdOptions struct {
 	TelegramBotTokenFile string
 	TelegramChatID       int64
 	Lifecycle            *credentiallifecycle.Reporter
+	helperManaged        bool
 }
 
 type sudoInstallPaths struct {
@@ -178,6 +179,7 @@ func finalizeSudoHelperBinary(opts *sudoSystemdOptions) error {
 		return errors.New("production helper must use the BrokerKit managed current release path")
 	}
 	opts.HelperBinary = resolvedHelper
+	opts.helperManaged = managed
 	return nil
 }
 
@@ -273,10 +275,14 @@ func validateTelegramSetup(opts sudoSystemdOptions) error {
 }
 
 func validateTrustedHelperBinary(opts sudoSystemdOptions) error {
-	if os.Geteuid() != 0 || opts.DryRun {
+	return validateTrustedHelperBinaryWith(opts, os.Geteuid(), hostcheck.ValidateRootFile)
+}
+
+func validateTrustedHelperBinaryWith(opts sudoSystemdOptions, effectiveUID int, validateRootFile func(string) error) error {
+	if effectiveUID != 0 || opts.DryRun || opts.helperManaged {
 		return nil
 	}
-	if err := hostcheck.ValidateRootFile(opts.HelperBinary); err != nil {
+	if err := validateRootFile(opts.HelperBinary); err != nil {
 		return fmt.Errorf("helper binary is not trusted: %w", err)
 	}
 	return nil
