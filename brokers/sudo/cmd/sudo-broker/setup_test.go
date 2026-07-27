@@ -124,6 +124,27 @@ func TestSetupPathAndOptionHelpers(t *testing.T) {
 	}
 }
 
+func TestManagedHelperSkipsDuplicateSymlinkRejectingValidation(t *testing.T) {
+	t.Parallel()
+	called := false
+	validate := func(string) error {
+		called = true
+		return errors.New("managed current pointer is a symlink")
+	}
+	opts := sudoSystemdOptions{helperManaged: true}
+	if err := validateTrustedHelperBinaryWith(opts, 0, validate); err != nil {
+		t.Fatalf("managed helper was rejected after managed-path validation: %v", err)
+	}
+	if called {
+		t.Fatal("managed helper was passed through duplicate root-file validation")
+	}
+
+	opts.helperManaged = false
+	if err := validateTrustedHelperBinaryWith(opts, 0, validate); err == nil {
+		t.Fatal("unmanaged root helper skipped trusted-file validation")
+	}
+}
+
 func TestSetupFileAndTelegramBranches(t *testing.T) {
 	directory := t.TempDir()
 	empty := filepath.Join(directory, "empty")
