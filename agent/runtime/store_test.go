@@ -377,7 +377,8 @@ func TestStoreRejectsInvalidInputsAndState(t *testing.T) {
 func TestStoreBoundsAndPrunesOperations(t *testing.T) {
 	now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
 	store := newTestStore(t, func() time.Time { return now }, func() (string, error) { return "op_new", nil })
-	operations := make([]agentv1.Operation, maxOperations)
+	store.maxOperations = 8
+	operations := make([]agentv1.Operation, store.maxOperations)
 	for index := range operations {
 		operations[index] = validOperationForStore(fmt.Sprintf("op_%d", index), agentv1.StatePending, now)
 		if err := store.db.InsertOperation(t.Context(), operationRecord(operations[index])); err != nil {

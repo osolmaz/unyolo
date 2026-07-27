@@ -27,7 +27,7 @@ const (
 	maxResultBytes    = 2 * 1024 * 1024
 	// Keep enough terminal operations to honor the 30-day replay window under
 	// sustained automation workloads such as repository inventory polling.
-	maxOperations    = 32 * 1024
+	maxOperations    = 1_000_000
 	defaultListLimit = 20
 	maxListLimit     = 50
 	// TerminalRetention is the period during which completed operation keys
@@ -77,11 +77,12 @@ func (s *Store) NewID() (string, error) {
 }
 
 type Store struct {
-	db     *state.Database
-	now    func() time.Time
-	newID  func() (string, error)
-	mu     sync.Mutex
-	signal chan struct{}
+	db            *state.Database
+	now           func() time.Time
+	newID         func() (string, error)
+	maxOperations int64
+	mu            sync.Mutex
+	signal        chan struct{}
 }
 
 func New(database *state.Database) *Store {
@@ -89,7 +90,7 @@ func New(database *state.Database) *Store {
 }
 
 func newStore(database *state.Database, now func() time.Time, newID func() (string, error)) *Store {
-	return &Store{db: database, now: now, newID: newID, signal: make(chan struct{})}
+	return &Store{db: database, now: now, newID: newID, maxOperations: maxOperations, signal: make(chan struct{})}
 }
 
 func (s *Store) Submit(input Submit) (agentv1.Operation, bool, error) {
@@ -168,7 +169,7 @@ func (s *Store) createOperation(ctx context.Context, input Submit, now time.Time
 	if err != nil {
 		return agentv1.Operation{}, false, err
 	}
-	if count >= maxOperations {
+	if count >= s.maxOperations {
 		return agentv1.Operation{}, false, ErrCapacity
 	}
 	id := input.ID
