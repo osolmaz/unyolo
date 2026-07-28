@@ -1,38 +1,46 @@
-# unYOLO Protocols
+# unYOLO protocols
 
-This directory holds the canonical wire artifacts for the protocols unYOLO
-brokers, clients, and UIs speak. The OpenAPI documents under `openapi/` are
-the sole canonical contracts; every payload lives under
-`components/schemas`. Storage structs and UI models are not wire
-specifications.
+This directory is the canonical source for the wire protocols used by unYOLO
+brokers and clients. Only the OpenAPI documents under `openapi/` define what
+may cross a process boundary between unYOLO components. Storage structs and UI
+models remain internal representations.
 
-- `openapi/operator-v1.yaml` defines Operator V1
-  (`unyolo.io/operator/v1`): the protected operator inbox used to list,
-  approve, deny, and revoke requests. Provider execution plans and
-  credentials are deliberately absent. The same document defines the
-  aggregate Operator UI payloads used by the packaged OpenClaw interface and
-  delegated hosts: `UISnapshot` is the full authoritative view,
-  `UISnapshotEvent` is a cursor-only invalidation for bounded authenticated
-  long polling, and `UISummary` drives host badges without exposing request
-  details.
-- `openapi/agent-v1.yaml` defines Agent Operations V1
-  (`unyolo.io/agent/v1`): authenticated agents submit and resume typed
-  provider operations without receiving the provider credential. Providers
-  own target, argument, execution, and result validation; the shared
-  contract owns only identity, idempotency, lifecycle, presentation, and
-  safe errors.
-- `openapi/mcp-v1.yaml` defines the closed MCP operation documents
-  (`unyolo.io/mcp-operation/v1`) that broker MCP servers return for
-  transcript-safe operation state and recovery.
+## Operator V1
 
-The closed JSON Schemas under `schema/`, `agent-schema/`, and `mcp-schema/`,
-the generated Go clients and Echo interfaces under `operatorwire/` and
-`agentwire/`, and the generated TypeScript types and validators are committed
-build artifacts. After editing any canonical document, regenerate them with:
+`openapi/operator-v1.yaml` defines `unyolo.io/operator/v1`, the protected inbox
+for listing and deciding approval requests. Provider credentials and executable
+plans never appear on this surface.
+
+The document also defines the OpenClaw UI payloads. `UISnapshot` contains the
+current view, `UISnapshotEvent` invalidates a cursor during authenticated long
+polling, and `UISummary` supplies badge counts without request details.
+
+## Agent Operations V1
+
+`openapi/agent-v1.yaml` defines `unyolo.io/agent/v1`. Authenticated agents use it
+to submit and resume typed operations without receiving a provider credential.
+Provider adapters validate each target and its arguments. They also validate
+execution results. The shared contract covers identity and idempotency through the full
+operation lifecycle. It also defines presentation data and safe errors.
+
+## MCP operation documents
+
+`openapi/mcp-v1.yaml` defines the closed `unyolo.io/mcp-operation/v1` documents
+returned by broker MCP servers. These documents provide transcript-safe
+operation state and recovery data.
+
+## Generated artifacts
+
+Closed JSON Schemas live under `schema/` and `agent-schema/`. MCP schemas live
+under `mcp-schema/`. Generated Go clients and Echo interfaces live under `operatorwire/` and
+`agentwire/` while checked-in TypeScript types and validators expose the same
+contracts to JavaScript consumers.
+
+After changing a canonical OpenAPI document, regenerate its artifacts with:
 
 ```sh
 scripts/generate-protocol.sh
 ```
 
-`scripts/check-protocol.sh` validates the documents and rejects stale or
-invalid generated output.
+`scripts/check-protocol.sh` validates the canonical documents and rejects stale
+or invalid generated output.

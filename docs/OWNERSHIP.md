@@ -18,7 +18,7 @@ executed.
 
 unyolo should provide these reusable packages.
 
-### Identity And Auth
+### Identity and auth
 
 - named broker clients
 - bearer shared-secret authentication
@@ -54,7 +54,7 @@ deny > active generated grant > allow > request > no_match
 unyolo should not ship Hugging Face, GitHub, or Unix operation semantics as
 global built-ins. Brokers register their own vocabulary.
 
-### Operation And Target Registry
+### Operation and target registry
 
 - generic registry API
 - operation validation
@@ -82,7 +82,7 @@ Each broker stores grants, immutable plans, and Agent operations in its own
 shared SQLite `state.db`; provider packages must not restore JSON lifecycle
 files or filesystem plan stores.
 
-### Agent Tool Compatibility
+### Agent tool compatibility
 
 unYOLO owns the MCP request-ID contract, secure generated IDs, immediate
 submission, transcript-safe operation/page documents, bounded get/wait/list
@@ -275,7 +275,7 @@ should be attached through typed extension fields.
 Brokers may still choose Git-shaped, JSON, or local-socket response formats at
 their edges.
 
-### Config And Storage Primitives
+### Config and storage primitives
 
 - strict YAML/JSON decoding helpers
 - config file discovery helpers
@@ -287,7 +287,7 @@ their edges.
 
 Broker-specific config fields stay in the broker.
 
-### Generic Git Helpers
+### Generic Git helpers
 
 `hf-broker` and `gh-broker` both speak Git smart HTTP. Generic Git parsing and
 safety helpers should move to unyolo when the API is clear.
@@ -312,7 +312,7 @@ unyolo must not own:
 - GitHub branch protection or ruleset checks
 - GitHub REST or GraphQL calls
 
-## Owned By Brokers
+## Owned by brokers
 
 ### hf-broker
 

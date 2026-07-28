@@ -1,4 +1,4 @@
-# Hugging Face Policy Presets
+# Hugging Face policy presets
 
 hf-broker can render a provider-owned policy from a small operator profile. A
 preset is installation convenience, not a second policy engine: the resulting

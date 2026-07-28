@@ -1,9 +1,9 @@
 # OpenClaw unYOLO
 
-`openclaw-unyolo` is an OpenClaw plugin that adds a provider-neutral
-Approvals tab and `/unyolo` commands to OpenClaw. It connects to one or
-more unYOLO Operator V1 sources; the brokers remain authoritative and
-retain all provider credentials and executable plans.
+`openclaw-unyolo` is an approvals plugin for OpenClaw. It adds an Approvals tab
+and the `/unyolo` command, then reads requests from one or more unYOLO Operator
+V1 sources. The brokers retain their provider credentials and executable
+plans.
 
 The minimum supported host is `openclaw@2026.7.1`, the first stable
 SDK used by this package that includes public tab descriptors.

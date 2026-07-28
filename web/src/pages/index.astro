@@ -10,32 +10,32 @@ const shiki = { light: "github-light", dark: "github-dark" } as const;
 
 const steps = [
   {
-    title: "Authenticate the client",
-    body: "The caller presents a named broker-client secret. Reaching the broker is not authentication.",
+    title: "Client authentication",
+    body: "The caller presents a named broker-client secret before the broker accepts a request.",
   },
   {
-    title: "Classify the request",
-    body: "Your adapter reduces an HTTP call, a Git pack, or a command into one client, operation, target, and set of attrs.",
+    title: "Request classification",
+    body: "The provider adapter identifies the client and operation together with its target attrs.",
   },
   {
-    title: "Evaluate policy",
-    body: "The shared engine matches that tuple against your rules file.",
+    title: "Policy evaluation",
+    body: "The shared engine matches that tuple against the rules file.",
   },
   {
-    title: "Check active grants",
-    body: "An approved grant acts as a generated allow rule with an expiry and a use budget.",
+    title: "Active grants",
+    body: "An approved grant acts as an allow rule with an expiry and a use budget.",
   },
   {
-    title: "Create an approval request",
-    body: "A requestable operation waits in the operator inbox, and in Telegram if you enabled it.",
+    title: "Approval request",
+    body: "A requestable operation waits in the operator inbox and can also appear in Telegram.",
   },
   {
-    title: "Execute",
-    body: "Only the broker touches the real credential. The client gets the result, never the token.",
+    title: "Provider execution",
+    body: "The broker performs the operation with the provider credential and returns only the result.",
   },
   {
-    title: "Write the audit entry",
-    body: "The decision is recorded with the rule IDs that matched, and without secrets.",
+    title: "Audit entry",
+    body: "The broker records the decision and matching rule IDs without including secrets.",
   },
 ];
 
@@ -51,14 +51,14 @@ const brokers = [
     href: "/docs/brokers/hugging-face",
     name: "hf-broker",
     blurb:
-      "Holds a Hugging Face token for Git, LFS, Hub, and Router inference. It parses every push before forwarding it, so a history rewrite is refused at the broker instead of reaching the Hub.",
+      "Holds a Hugging Face token for Hub repositories and Router inference. It parses Git and LFS pushes before forwarding them, so history rewrites stop at the broker.",
     ops: ["git.push.append", "repo.contents.read", "bucket.object.write"],
   },
   {
     href: "/docs/brokers/sudo",
     name: "sudo-broker",
     blurb:
-      "Runs one exact command from a root-owned catalog as another Unix user. Shell strings, arbitrary executables, TTYs, and caller-supplied environments are all refused.",
+      "Runs one exact command from a root-owned catalog as another Unix user. It rejects shell strings and arbitrary executables along with TTYs or caller-supplied environments.",
     ops: ["exec.command"],
   },
 ];
@@ -166,9 +166,8 @@ const operatorTranscript = `<span class="t-prompt">$</span> curl -sS --unix-sock
 <span class="t-ok">200  state=active  uses_remaining=1</span>`;
 
 const description =
-  "unYOLO is a Go framework for building credential brokers. Run your coding agent in YOLO " +
-  "mode with the approval prompts off, because the credential it holds cannot force-push over " +
-  "main, delete a repository, or reach anything you did not list.";
+  "unYOLO is an access-control framework for coding agents. It keeps provider credentials " +
+  "outside the agent and checks every requested operation against policy.";
 ---
 
 <BaseLayout title="unYOLO" description={description} section="home">
@@ -177,12 +176,11 @@ const description =
     <section class="hero">
       <div class="wrap hero__inner">
         <div>
-          <h1>YOLO safely with your agents</h1>
+          <h1>Credential boundaries for coding agents</h1>
 
           <p>
-            unYOLO is a Go framework for building credential brokers. Turn the approval prompts
-            off and let your agent run flat out, because the credential it holds cannot force-push
-            over <code>main</code>, delete a repository, or reach anything you did not list.
+            unYOLO keeps provider credentials in separate broker processes. Your agent can use the
+            operations allowed by policy without receiving the token or privilege behind them.
           </p>
 
           <div class="hero__actions">
@@ -208,16 +206,15 @@ const description =
     <section class="section section--tinted">
       <div class="wrap">
         <div class="section__intro">
-          <h2>With and without a broker</h2>
+          <h2>Credential boundary</h2>
           <p>
-            YOLO mode means turning the approval prompts off and letting the agent work unattended.
-            That is fine right up until a confused retry force-pushes over <code>main</code>, or a
-            cleanup step deletes the wrong repository. The token it is holding is scoped to your
-            whole account, so nothing stops either one.
+            Agent tools often receive the same account-wide token a person would use. A mistaken
+            command can then reach every repository and operation covered by that token.
           </p>
           <p>
-            A broker moves the limit onto the credential itself. The agent still runs flat out, and
-            the operations you never authorized fail before they reach GitHub.
+            A broker keeps the provider token in another process. The agent receives a client
+            credential whose authority comes from policy, so an unauthorized force-push fails
+            before GitHub sees it.
           </p>
         </div>
 
@@ -229,11 +226,10 @@ const description =
     <section class="section">
       <div class="wrap">
         <div class="section__intro">
-          <h2>How a request is handled</h2>
+          <h2>Request path</h2>
           <p>
-            Every broker built on unYOLO walks the same seven stages, whether the request is a
-            Git pack, a JSON operation, or a privileged command. Only the classifier and the
-            executor know anything about the provider.
+            Every broker uses the same request path. Only classification and execution depend on
+            the provider.
           </p>
         </div>
 
@@ -279,19 +275,17 @@ const description =
     <section class="section">
       <div class="wrap split">
         <div class="split__text">
-          <h2>The policy file</h2>
+          <h2>Policy file</h2>
           <p>
-            A broker loads one JSON rules file at startup, and that file is the authorization source
-            of truth. There is no policy UI, no inference from past behaviour, and no learning mode.
-            Reading the file tells you what an agent can do, and it reviews in a pull request like
-            any other code.
+            A broker loads one JSON rules file at startup as its authorization source. You can read
+            it directly and review changes in a pull request. unYOLO does not infer permissions from
+            traffic.
           </p>
           <p>
-            Attrs are where the useful narrowing happens. The rule beside this text lets an agent
-            push to <code>refs/heads/agent-a/**</code> and leaves <code>refs/heads/main</code>
-            uncovered, so a push to the default branch matches nothing and is denied. Loading is
-            strict: unknown fields, duplicate rule IDs, unsupported operations, and invalid globs
-            fail the service rather than quietly widening it.
+            Attrs provide the useful narrowing. The rule beside this text allows pushes to
+            <code>refs/heads/agent-a/**</code>. It leaves <code>refs/heads/main</code> uncovered, so a
+            push to the default branch is denied. Unknown fields, duplicate rule IDs, unsupported
+            operations, and invalid globs prevent the service from starting.
           </p>
           <a class="text-link" href="/docs/reference/policy-schema">
             Full policy schema
@@ -332,18 +326,15 @@ const description =
         <div class="split__text">
           <h2>Operator approval</h2>
           <p>
-            Marking an operation <code>request</code> parks it instead of running it. The broker
-            creates a durable approval record and holds the original call open, so an approved
-            <code>git push</code> resumes as the same push rather than asking the agent to start
-            again. A denial, an expiry, or changed upstream state returns an ordinary Git failure
-            and forwards nothing.
+            Marking an operation <code>request</code> creates a durable approval record and keeps the
+            original call open. Once approved, a <code>git push</code> resumes as the same push. A
+            denial, expiry, or change in upstream state returns an ordinary Git failure and forwards
+            nothing.
           </p>
           <p>
-            You decide through a protected inbox on a separate listener, with its own credential
-            that no agent holds. Telegram is an optional view over the same durable record, so a tap
-            on Approve and a call to the inbox API close the same request exactly once. Approving
-            can shorten the window or reduce the use count; it can never swap the operation, the
-            target, or the plan the broker will execute.
+            Operators decide through a protected inbox on a separate listener with its own
+            credential. Telegram can display the same approval record. Either interface closes the
+            request exactly once, and approval may only narrow its duration or use count.
           </p>
           <a class="text-link" href="/docs/concepts/approvals">
             How approvals work
@@ -366,9 +357,9 @@ const description =
         <div class="section__intro">
           <h2>Brokers included</h2>
           <p>
-            Three brokers ship ready to run. Each is a separate process with its own listener,
-            credential domain, state directory, release artifact, and audit stream, so one broker
-            cannot reach another provider's credentials.
+            The repository includes GitHub and Hugging Face brokers. <code>sudo-broker</code> handles
+            approved Unix commands. Each runs as a separate process and cannot reach another
+            provider's credentials.
           </p>
         </div>
 
@@ -398,12 +389,12 @@ const description =
     <section class="section section--tinted">
       <div class="wrap">
         <div class="section__intro">
-          <h2>Build a broker for anything else</h2>
+          <h2>Custom brokers</h2>
           <p>
-            The three shipped brokers are consumers of the framework rather than the product of it.
-            To put the same policy boundary in front of an internal API key, a cloud role, or a
-            database superuser, you write the parts that know about that provider and inherit the
-            rest. A build fails if shared code imports a provider, so the boundary stays real.
+            The included brokers use the same framework available to custom providers. To protect
+            an internal API key or cloud role, implement the provider-specific classifier and
+            executor. Shared packages supply the policy and approval machinery. The architecture
+            check rejects shared code that imports a provider.
           </p>
         </div>
 
@@ -411,18 +402,18 @@ const description =
           <div>
             <h3>You write</h3>
             <ul>
-              <li>A classifier that reduces a request to a client, operation, target, and attrs</li>
-              <li>A registry declaring your operations, target kinds, and attrs</li>
+              <li>A classifier that identifies the client and operation with its target attrs</li>
+              <li>A registry declaring operations and their target kinds with accepted attrs</li>
               <li>An executor that holds the credential and performs the action</li>
-              <li>Bounded approval wording: titles, risk, warnings, and facts</li>
+              <li>Bounded approval wording with a title, risk facts, and warnings</li>
             </ul>
           </div>
           <div>
             <h3>You inherit</h3>
             <ul>
               <li>Client and operator authentication on separate credentials</li>
-              <li>Policy parsing, matching, and the fixed decision order</li>
-              <li>Grant lifecycle, use budgets, reservations, and idempotency</li>
+              <li>The policy engine and its fixed decision order</li>
+              <li>Grant lifecycle with use budgets, reservations, and idempotent retries</li>
               <li>The operator inbox, SSE cursors, and the Telegram channel</li>
               <li>Agent Operations V1, its MCP bridge, and restart recovery</li>
               <li>Secret-safe audit, installers, service rendering, and doctor checks</li>
@@ -442,10 +433,10 @@ const description =
     <!-- ------------------------------------------------------------- cta -->
     <section class="cta">
       <div class="wrap">
-        <h2>Run the GitHub broker in about ten minutes</h2>
+        <h2>GitHub quickstart</h2>
         <p>
-          The quickstart brings up <code>gh-broker</code> against one repository, then shows a
-          branch push going through and a force push to <code>main</code> getting refused.
+          Run <code>gh-broker</code> against one repository, push an allowed branch, and verify that
+          a force-push to <code>main</code> is refused.
         </p>
         <div class="cta__actions">
           <a class="button button--primary" href="/docs/get-started/quickstart">

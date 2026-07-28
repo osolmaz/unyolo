@@ -1,4 +1,4 @@
-# Broker Operations Runtime
+# Broker operations runtime
 
 unYOLO owns the provider-neutral install, setup, service, and doctor logic
 used by the broker family. Component directories keep only thin command

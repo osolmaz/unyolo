@@ -1,4 +1,4 @@
-# sudo-broker Threat Model
+# sudo-broker threat model
 
 ## Protected Authority
 
@@ -25,8 +25,9 @@ frontend account.
   exact execution facts, limits, catalog digest, and creation time.
 - Execution ids bind plan, grant, and reservation ids in root-owned durable
   state before process start.
-- Inherited environment is empty; stdin is `/dev/null`; output, time, process,
-  descriptor, file-size, CPU, and core limits are applied.
+- The child starts with an empty inherited environment and `/dev/null` as
+  stdin. Output, time, process, descriptor, file-size, CPU, and core limits are
+  applied.
 - The child creates a process group, drops supplementary groups, gid, and uid,
   and uses no shell parsing.
 - Timeout or output overflow kills the whole process group.

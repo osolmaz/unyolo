@@ -1,4 +1,4 @@
-# Policy Rules Specification
+# Policy rules specification
 
 Status: current.
 
@@ -16,7 +16,7 @@ the shared engine. Generic grant lifecycle, approval workflow, Telegram
 transport, audit helpers, storage helpers, and provider-neutral Git parsing
 belong in unyolo instead of remaining duplicated in hf-broker.
 
-## Smallest Valid File
+## Smallest valid file
 
 ```json
 {
@@ -43,7 +43,7 @@ This lets `local-agent` list that repository and read its broker-exposed
 metadata. It does not allow file contents, git fetch, git push, settings
 changes, member changes, or deletion.
 
-## Full Example
+## Full example
 
 ```json
 {
@@ -129,7 +129,7 @@ changes, member changes, or deletion.
 }
 ```
 
-## Object Model
+## Object model
 
 `scope.json` contains an ordered list of policy rules. Each rule is
 independent. A request matches a rule only when that same rule matches
@@ -143,7 +143,7 @@ Static rules and approved grants use the same decision engine. An
 approved grant becomes a generated temporary allow rule with expiry and
 use-budget constraints.
 
-## Top-Level Fields
+## Top-level fields
 
 | Field | Required | Type | Meaning |
 |-------|----------|------|---------|
@@ -151,7 +151,7 @@ use-budget constraints.
 
 Unknown top-level fields are rejected.
 
-## Rule Fields
+## Rule fields
 
 | Field | Required | Type | Meaning |
 |-------|----------|------|---------|
@@ -188,7 +188,7 @@ without granting standing execution access to those repos.
 The operation is refused. Deny rules win over static allow rules,
 request rules, and active grants. A deny rule is not requestable.
 
-## Decision Algorithm
+## Decision algorithm
 
 For a classified broker request:
 
@@ -208,7 +208,7 @@ For a classified broker request:
 
 This is fail-closed: no match means no access.
 
-## Policy Decision Object
+## Policy decision object
 
 All broker handlers classify their request into a `policy.Request` and
 ask `internal/policy` for one decision. Handlers do not interpret policy
@@ -273,7 +273,7 @@ Stable decision reasons:
 | `grant_expired` | Matching grant is expired. |
 | `grant_consumed` | Matching grant has no remaining uses. |
 
-## JSend API Envelope
+## JSend API envelope
 
 Every JSON API response under `/api/*` uses JSend. Git smart-HTTP routes
 do not use JSend because Git clients require Git-shaped responses.
@@ -369,7 +369,7 @@ API responses never include raw upstream response bodies, broker client
 secrets, upstream tokens, request bodies, pack contents, file contents,
 object payloads, or unredacted generated grant plans.
 
-## Conflict Resolution
+## Conflict resolution
 
 Rule list order does not affect authorization. The `rules` array is
 ordered only so humans can keep related rules together and so diagnostics
@@ -424,7 +424,7 @@ If the broker cannot prove two request rules are disjoint, it rejects the
 policy at startup. Operators should split or narrow rules until the
 overlap is obvious.
 
-## Operation Registry
+## Operation registry
 
 Operation names are stable strings. New operations require an explicit
 registry entry, default grant mode, and tests.
@@ -463,7 +463,7 @@ The broker never grants generic Hugging Face HTTP proxying, arbitrary URLs or
 methods, arbitrary request bodies, raw upstream credentials, or unregistered
 operations.
 
-## Repo Listing And Content Reads
+## Repository listing and content reads
 
 `repo.list` is intentionally separate from `repo.contents.read`.
 
@@ -523,9 +523,9 @@ Broker-routed public reads still require policy. Agents may read public
 Hub data directly without the broker if they do not need the broker's
 credential or audit trail.
 
-## Target Matchers
+## Target matchers
 
-### Repo Target
+### Repository target
 
 ```json
 {
@@ -554,7 +554,7 @@ Omit an optional array to mean "any". If `refs`, `paths`, or
 are rejected at startup so a partially edited policy cannot silently
 widen access.
 
-## Glob Rules
+## Glob rules
 
 The policy format uses small segment globs, not arbitrary regular
 expressions.
@@ -581,7 +581,7 @@ Examples:
 | `refs/heads/*` | `refs/heads/main` | `refs/tags/v1` |
 | `runs/**/*.json` | `runs/a/b/out.json` | `runs/a/out.txt` |
 
-## Attribute Constraints
+## Attribute constraints
 
 `attrs` holds constraints that are not part of the stable target identity.
 Every field in `attrs` is matched with AND semantics. Arrays are OR
@@ -613,7 +613,7 @@ configured values are invalid policy. If a rule requires a numeric
 attribute and the broker cannot classify the request's actual value, the
 request is refused.
 
-## Grant Policy
+## Grant policy
 
 `request` rules require `grant_policy`.
 
@@ -809,7 +809,7 @@ Every grant request must include `client_request_id`. The tuple
 returns the existing grant. Reusing the same key with a different body
 returns `409` with reason `idempotency_conflict`.
 
-## Operator Prompt Contract
+## Operator prompt contract
 
 Operator channels must render approval requests from the classified
 operation and target, not from raw URLs or request bodies.
@@ -832,7 +832,7 @@ consumed states. When a grant changes state, the corresponding operator
 message is updated if the channel supports updates. Expired grants update
 their prompt state even when no operator clicked a button.
 
-## Generated Grant Rules
+## Generated grant rules
 
 An approved grant is stored as a generated allow rule. Generated rules are
 not authored in `scope.json`, but they use the same matching semantics.
@@ -870,7 +870,7 @@ Generated grant rules:
 
 Generated grant rules must never use `clients: ["*"]`.
 
-## Generated Grant Storage
+## Generated grant storage
 
 Generated grants are stored under the broker state directory, not inside
 `scope.json`:
@@ -958,7 +958,7 @@ Execution grants store a canonical plan hash and consume on successful
 execution. If an execution may have partially applied upstream, the grant
 is retained for operator review and is not retried automatically.
 
-## Validation Rules
+## Validation rules
 
 The broker validates the full policy at startup and refuses to boot on
 invalid policy.
@@ -1011,7 +1011,7 @@ Diagnostics must not print broker client secrets, upstream tokens,
 request bodies, pack contents, file contents, object payloads, or
 unredacted generated grant plans.
 
-## Audit Requirements
+## Audit requirements
 
 Every policy decision audit entry includes at least:
 
@@ -1043,14 +1043,14 @@ rule ids per category plus a count:
 }
 ```
 
-## Runtime Ownership
+## Runtime ownership
 
 `internal/policy` now wraps the unyolo policy core with the hf-broker parser,
 provider registry, and typed request classifiers. It must not contain a second
 generic matcher, precedence implementation, ambiguity checker, or grant
 overlay engine.
 
-## Canonical Test Fixtures
+## Canonical test fixtures
 
 Implementation must include policy fixture files for:
 
@@ -1067,7 +1067,7 @@ Implementation must include policy fixture files for:
 - generated grant bound to one client
 - generated grant with `clients: ["*"]` rejected
 
-## Security Invariants
+## Security invariants
 
 - Deny wins.
 - No match denies.

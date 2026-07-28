@@ -1,4 +1,4 @@
-# Hugging Face Capability Maintenance
+# Hugging Face capability maintenance
 
 The weekly `Hugging Face capability drift` workflow compares the reviewed Hub
 OpenAPI snapshot with the live official document and maintains one issue when

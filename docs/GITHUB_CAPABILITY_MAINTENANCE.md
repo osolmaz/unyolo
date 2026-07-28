@@ -1,4 +1,4 @@
-# GitHub Capability Maintenance
+# GitHub capability maintenance
 
 unYOLO generates the GitHub operation catalog from reviewed, immutable
 snapshots. A weekly read-only monitor compares those snapshots with current

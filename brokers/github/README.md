@@ -1,13 +1,12 @@
 # gh-broker
 
-gh-broker is a GitHub credential broker for coding agents. It gives an agent a
-broker secret, keeps the real GitHub credential server-side, and allows only
-the Git and GitHub API operations matched by `scope.json`.
+gh-broker is a GitHub access broker for coding agents. It keeps GitHub App
+credentials on the broker host and exposes only the Git and API operations
+allowed by `scope.json`.
 
-The central invariant is strict: gh-broker must not provide an API, log path,
-error path, or helper that returns original GitHub credential material.
-Callers choose an operation and target, never a credential kind, token scope,
-installation, or permission set.
+GitHub credential material must never appear in an API response, log, error, or
+helper output. Callers name an operation and target. The broker selects the
+installation and permissions needed for that operation.
 
 ## Install
 
@@ -105,8 +104,8 @@ gh-broker git install
 gh-broker git doctor
 ```
 
-Normal `https://github.com/OWNER/REPO.git` and GitHub SSH-form remotes now use
-the broker for clone, fetch, pull, push, and Git LFS. LFS signed URLs and
+Normal `https://github.com/OWNER/REPO.git` and GitHub SSH-form remotes now send
+all Git and LFS traffic through the broker. LFS signed URLs and
 headers stay in the broker and are replaced by bounded broker-local actions.
 `gh-broker git status --json`
 reports the owned configuration, and `gh-broker git uninstall` removes only
@@ -289,7 +288,7 @@ other credentials remain sealed or slot-backed and never appear in tool
 output.
 
 GitHub retains only provider-specific selection, schemas, projections, API
-execution, resources, and file-boundary decisions. JSON-RPC handling,
+execution, resource handling, and file-boundary decisions. JSON-RPC handling,
 operation lifecycle utilities, sealed-payload upload, and bounded stream
 transport are shared with the Hugging Face broker.
 
@@ -302,8 +301,8 @@ into:
 client + operation + target + attrs -> allow | request | deny | no_match
 ```
 
-Deny rules win over allow rules. A rule matches only when the same rule
-matches the client, operation, target, and operation-relevant attributes. If
+Deny rules win over allow rules. A rule must match the authenticated client
+and the complete operation target with every relevant attribute. If
 a rule has attrs, every operation in that rule must support every attr; split
 rules when operations need different attrs. Start from
 [scope.example.json](scope.example.json).
@@ -399,15 +398,15 @@ Authenticate the operator listener with the separate credential from
 `/etc/gh-broker/operator-secrets`. Agent credentials cannot use it. Telegram
 is an optional notification view over the same durable request, so a decision
 through either path closes the same state exactly once. GitHub supplies the
-bounded operation, target, risk, warning, and generated projection facts;
-unYOLO renders the shared Telegram HTML, controls, callback answers, and
-terminal states.
+bounded operation and target along with its risk and warnings. It also supplies
+generated projection facts. unYOLO renders the shared Telegram HTML, controls, callback
+answers, and terminal states.
 
 ## Security model
 
-Run gh-broker behind Tailnet-only or otherwise restricted reachability, but
-treat network access as transport, not authorization: every endpoint except
-`GET /healthz` still requires its route-appropriate authentication. Agent
+Run gh-broker behind Tailnet-only or otherwise restricted reachability.
+Network restrictions are transport controls. Every endpoint except `GET
+/healthz` still requires its route-appropriate authentication. Agent
 routes require the broker client secret, the operator listener requires the
 separate operator credential, and the webhook route requires a verified
 `X-Hub-Signature-256` payload signature.
@@ -437,8 +436,8 @@ Deployment safety settings:
 - `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
   Telegram notifications. Telegram tokens are loaded only from protected
   files.
-- Audit logs record client, operation, target, outcome, and matched rule ids.
-  They never include tokens, cookies, request bodies, PR bodies, pack
+- Audit logs record the client and operation with its target, outcome, and
+  matching rule IDs. They never include tokens, cookies, request bodies, PR bodies, pack
   contents, diffs, or any GitHub or Telegram credential material.
 
 See [.env.example](.env.example) for the full annotated environment.
