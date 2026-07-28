@@ -2,6 +2,7 @@
 import { Code } from "astro:components";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Icon from "../components/Icon.astro";
+import AccessDemo from "../components/AccessDemo.astro";
 import { GITHUB_REPO } from "../config/nav";
 import "../styles/landing.css";
 
@@ -35,33 +36,6 @@ const steps = [
   {
     title: "Write the audit entry",
     body: "The decision is recorded with the rule IDs that matched, and without secrets.",
-  },
-];
-
-const comparison = [
-  {
-    label: "YOLO mode, no broker",
-    risk: true,
-    path: ["agent", "GitHub"],
-    holds: "The agent holds your GitHub token, which is scoped to your whole account.",
-    rows: [
-      { action: "Push to its own branch", outcome: "runs" },
-      { action: "Force-push over <code>main</code>", outcome: "runs", bad: true },
-      { action: "Delete the repository", outcome: "runs", bad: true },
-      { action: "Read every private repo you can read", outcome: "runs", bad: true },
-    ],
-  },
-  {
-    label: "YOLO mode, with BrokerKit",
-    risk: false,
-    path: ["agent", "broker", "GitHub"],
-    holds: "The agent holds a broker credential, which is worth nothing to GitHub.",
-    rows: [
-      { action: "Push to its own branch", outcome: "runs" },
-      { action: "Force-push over <code>main</code>", outcome: "refused" },
-      { action: "Delete the repository", outcome: "refused" },
-      { action: "Read every private repo you can read", outcome: "refused" },
-    ],
   },
 ];
 
@@ -243,38 +217,12 @@ const description =
           </p>
           <p>
             A broker moves the limit onto the credential itself. The agent still runs flat out, and
-            the operations you never authorized fail before they reach GitHub.
+            the operations you never authorized fail before they reach GitHub. Send a request below,
+            then turn the broker on and send the same one again.
           </p>
         </div>
 
-        <div class="compare">
-          {
-            comparison.map((side) => (
-              <div class={`compare__card${side.risk ? " compare__card--risk" : ""}`}>
-                <p class="compare__label">{side.label}</p>
-                <div class="compare__path">
-                  {side.path.map((node, index) => (
-                    <>
-                      {index > 0 && <span aria-hidden="true">→</span>}
-                      <code>{node}</code>
-                    </>
-                  ))}
-                </div>
-                <p class="compare__holds">{side.holds}</p>
-                <ul class="compare__rows">
-                  {side.rows.map((row) => (
-                    <li>
-                      <span class="compare__action" set:html={row.action} />
-                      <span class={`compare__outcome${row.bad ? " compare__outcome--danger" : ""}`}>
-                        {row.outcome}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))
-          }
-        </div>
+        <AccessDemo />
       </div>
     </section>
 
