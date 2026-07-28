@@ -17,9 +17,7 @@ const packageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const temporary = mkdtempSync(
-  path.join(os.tmpdir(), "openclaw-unyolo-pack-"),
-);
+const temporary = mkdtempSync(path.join(os.tmpdir(), "openclaw-unyolo-pack-"));
 run("npm", ["pack", "--pack-destination", temporary], packageDir);
 const tarball = readdirSync(temporary).find((file) => file.endsWith(".tgz"));
 if (!tarball) throw new Error("npm pack did not produce a tarball");
@@ -119,11 +117,7 @@ if (installed.peerDependenciesMeta?.openclaw?.optional !== true)
   throw new Error(
     "packed contract consumer must not install the OpenClaw host",
   );
-const installedRoot = path.join(
-  temporary,
-  "node_modules",
-  "openclaw-unyolo",
-);
+const installedRoot = path.join(temporary, "node_modules", "openclaw-unyolo");
 const pluginManifest = JSON.parse(
   readFileSync(path.join(installedRoot, "openclaw.plugin.json"), "utf8"),
 );

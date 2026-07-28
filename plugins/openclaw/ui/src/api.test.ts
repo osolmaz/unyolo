@@ -75,9 +75,7 @@ describe("unYOLOUiApi", () => {
     const api = new unYOLOUiApi(parseUiBootstrap(direct));
     await api.snapshot();
     expect(api.canDecide()).toBe(true);
-    expect(fetchCall(fetchMock, 0)[0]).toBe(
-      "/plugins/unyolo/api/v1/snapshot",
-    );
+    expect(fetchCall(fetchMock, 0)[0]).toBe("/plugins/unyolo/api/v1/snapshot");
     expect(fetchCall(fetchMock, 0)[1]).toEqual(
       expect.objectContaining({ credentials: "omit" }),
     );
@@ -335,9 +333,7 @@ describe("unYOLOUiApi", () => {
     embedded = null;
     await api.snapshot();
 
-    expect(fetchCall(fetchMock, 1)[0]).toBe(
-      "/trusted-host/api/unyolo/session",
-    );
+    expect(fetchCall(fetchMock, 1)[0]).toBe("/trusted-host/api/unyolo/session");
     expectBrowserSession(fetchCall(fetchMock, 1)[1], "f".repeat(48), "omit");
     expectBrowserSession(fetchCall(fetchMock, 2)[1], "r".repeat(48), "omit");
   });

@@ -52,8 +52,7 @@ describe("BrokerRuntime", () => {
         res.statusCode = 401;
         return res.end();
       }
-      if (req.url === "/.well-known/unyolo-operator")
-        return res.end(discovery);
+      if (req.url === "/.well-known/unyolo-operator") return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end(
           JSON.stringify({
@@ -202,9 +201,7 @@ describe("BrokerRuntime", () => {
       deliver: async () => undefined,
       log: () => undefined,
     });
-    await runtime.start(
-      mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-")),
-    );
+    await runtime.start(mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-")));
     expect(runtime.snapshot().sources).toEqual([
       expect.objectContaining({ id: "bad", healthy: false }),
       expect.objectContaining({ id: "good", healthy: true }),
@@ -216,8 +213,7 @@ describe("BrokerRuntime", () => {
     let listCalls = 0;
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
-      if (req.url === "/.well-known/unyolo-operator")
-        return res.end(discovery);
+      if (req.url === "/.well-known/unyolo-operator") return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?")) {
         listCalls += 1;
         return res.end('{"requests":[],"event_cursor":"cursor-1"}');
@@ -256,9 +252,7 @@ describe("BrokerRuntime", () => {
       deliver: async () => undefined,
       log: () => undefined,
     });
-    await runtime.start(
-      mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-")),
-    );
+    await runtime.start(mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-")));
     await expect.poll(() => listCalls).toBeGreaterThanOrEqual(4);
     expect(runtime.snapshot().sources).toEqual([
       expect.objectContaining({ id: "source", healthy: true }),

@@ -272,12 +272,10 @@ describe("OpenClaw HTTP boundary", () => {
     expect(asset.headers.get("cross-origin-resource-policy")).toBe(
       "cross-origin",
     );
-    expect((await fetch(`${base}/plugins/unyolo/unrelated`)).status).toBe(
+    expect((await fetch(`${base}/plugins/unyolo/unrelated`)).status).toBe(404);
+    expect((await fetch(`${base}/plugins/unyolo/ui/?token=nope`)).status).toBe(
       404,
     );
-    expect(
-      (await fetch(`${base}/plugins/unyolo/ui/?token=nope`)).status,
-    ).toBe(404);
   });
 });
 

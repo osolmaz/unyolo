@@ -28,8 +28,7 @@ describe("BrokerClient", () => {
         return res.end();
       }
       res.setHeader("content-type", "application/json");
-      if (req.url === "/.well-known/unyolo-operator")
-        return res.end(discovery);
+      if (req.url === "/.well-known/unyolo-operator") return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end('{"requests":[],"event_cursor":"cursor-1"}');
       if (req.url === "/api/operator/v1/events") {

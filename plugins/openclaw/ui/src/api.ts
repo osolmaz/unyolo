@@ -36,12 +36,10 @@ type DelegatedSession = {
   renewalTransport: "direct" | "parent";
 };
 
-export const DELEGATED_SESSION_REQUEST =
-  "unyolo.delegated-web.session.request";
+export const DELEGATED_SESSION_REQUEST = "unyolo.delegated-web.session.request";
 export const DELEGATED_SESSION_RESPONSE =
   "unyolo.delegated-web.session.response";
-export const DELEGATED_REBOOTSTRAP_REQUEST =
-  "unyolo.delegated-web.rebootstrap";
+export const DELEGATED_REBOOTSTRAP_REQUEST = "unyolo.delegated-web.rebootstrap";
 export const DELEGATED_SESSION_META = "unyolo-delegated-session";
 
 export class unYOLOUiApi {

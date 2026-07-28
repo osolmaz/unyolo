@@ -69,12 +69,7 @@ describe("StateStore", () => {
   });
   it("rejects an earlier or unknown state schema", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
-    const database = path.join(
-      directory,
-      "plugins",
-      "unyolo",
-      "state.sqlite",
-    );
+    const database = path.join(directory, "plugins", "unyolo", "state.sqlite");
     mkdirSync(path.dirname(database), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(database);
     db.exec("PRAGMA user_version=1");
@@ -85,12 +80,7 @@ describe("StateStore", () => {
   it("rejects a symlink database", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
     const target = path.join(directory, "target");
-    const database = path.join(
-      directory,
-      "plugins",
-      "unyolo",
-      "state.sqlite",
-    );
+    const database = path.join(directory, "plugins", "unyolo", "state.sqlite");
     mkdirSync(path.dirname(database), { recursive: true, mode: 0o700 });
     writeFileSync(target, "");
     symlinkSync(target, database);
