@@ -1,0 +1,458 @@
+---
+/**
+ * Two stacked scenarios on the landing page. The top one hands your credential
+ * straight to the agent, so every wire out of it is live. The bottom one gives
+ * the credential to the broker instead, so only the wire policy allows carries
+ * current.
+ *
+ * Everything here is inline SVG plus CSS. There is no JavaScript, so the
+ * diagram works with scripting disabled and stops animating under
+ * prefers-reduced-motion.
+ */
+
+// Shared vertical positions for the four resources on the right of each row.
+const resources = [
+  { y: 40, name: "agent-a/parser-fix", note: "branch", allowed: true },
+  { y: 100, name: "main", note: "default branch", allowed: false },
+  { y: 160, name: "acme/api", note: "repository", allowed: false },
+  { y: 220, name: "acme/secrets", note: "private repo", allowed: false },
+];
+
+/* ---- isometric icons, drawn as flat three-tone faces (no gradients) ---- */
+
+const personIcon = `
+  <circle class="iso-left" cx="0" cy="-30" r="12"/>
+  <path class="iso-top" d="M -12,-30 A 12 12 0 0 1 12,-30 Z"/>
+  <polygon class="iso-top"   points="-20,-6 0,-16 20,-6 0,4"/>
+  <polygon class="iso-left"  points="-20,-6 0,4 0,30 -20,20"/>
+  <polygon class="iso-right" points="20,-6 20,20 0,30 0,4"/>
+`;
+
+const agentIcon = `
+  <line x1="0" y1="-30" x2="0" y2="-42" stroke="var(--iso-mark)" stroke-width="2"/>
+  <circle cx="0" cy="-45" r="3.5" class="iso-mark"/>
+  <polygon class="iso-top"   points="-28,-16 0,-30 28,-16 0,-2"/>
+  <polygon class="iso-left"  points="-28,-16 0,-2 0,32 -28,18"/>
+  <polygon class="iso-right" points="28,-16 28,18 0,32 0,-2"/>
+  <circle class="iso-mark" cx="-19" cy="4"  r="3"/>
+  <circle class="iso-mark" cx="-9"  cy="9"  r="3"/>
+  <rect class="iso-mark" x="-24" y="18" width="16" height="2.5" rx="1.25" transform="rotate(26.6 -24 18)"/>
+`;
+
+const brokerIcon = `
+  <polygon class="iso-a-top"   points="-30,-24 0,-40 30,-24 0,-8"/>
+  <polygon class="iso-a-left"  points="-30,-24 0,-8 0,34 -30,18"/>
+  <polygon class="iso-a-right" points="30,-24 30,18 0,34 0,-8"/>
+  <g transform="translate(-16 4) skewY(26.6)">
+    <path d="M -5,-6 A 5 5 0 0 1 5,-6 L 5,-2 L 2.5,-2 L 2.5,-6 A 2.5 2.5 0 0 0 -2.5,-6 L -2.5,-2 L -5,-2 Z" class="iso-a-mark"/>
+    <rect x="-6.5" y="-2" width="13" height="11" rx="1.5" class="iso-a-mark"/>
+  </g>
+`;
+
+const cubeIcon = `
+  <polygon class="iso-top"   points="-18,-11 0,-21 18,-11 0,-1"/>
+  <polygon class="iso-left"  points="-18,-11 0,-1 0,17 -18,7"/>
+  <polygon class="iso-right" points="18,-11 18,7 0,17 0,-1"/>
+`;
+
+/** Wire from a hub on the left to a resource on the right. */
+const wire = (fromX: number, y: number) =>
+  `M ${fromX} 130 C ${fromX + 110} 130, ${fromX + 150} ${y}, 640 ${y}`;
+
+/**
+ * Point on that cubic bezier at t, so a cut marker lands exactly on its wire
+ * instead of being eyeballed. t = 0.6 is far enough along that the four wires
+ * have fanned apart.
+ */
+function pointOnWire(fromX: number, y: number, t = 0.6) {
+  const p0 = { x: fromX, y: 130 };
+  const p1 = { x: fromX + 110, y: 130 };
+  const p2 = { x: fromX + 150, y };
+  const p3 = { x: 640, y };
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+  };
+}
+---
+
+<div class="diagram">
+  <!-- ------------------------------------------------------- loose agent -- -->
+  <figure class="scenario scenario--risk">
+    <figcaption class="scenario__caption">
+      <span class="scenario__tag">Without a broker</span>
+      <p class="scenario__line">
+        You hand the token to the agent. Now the agent reaches everything the token reaches.
+      </p>
+    </figcaption>
+
+    <svg class="scenario__svg" viewBox="0 0 900 248" role="img" aria-labelledby="loose-title">
+      <title id="loose-title">
+        You give your GitHub token to the agent, which can then reach your branch, the default
+        branch, the repository, and a private repository.
+      </title>
+
+      {/* live wires: agent out to every resource */}
+      {
+        resources.map((r) => (
+          <>
+            <path class="wire wire--base" d={wire(330, r.y)} />
+            <path class="wire wire--danger" d={wire(330, r.y)} />
+            <circle class="spark spark--danger" r="3.5" style={`offset-path: path('${wire(330, r.y)}')`} />
+          </>
+        ))
+      }
+
+      {/* you -> agent, carrying the token */}
+      <path class="wire wire--base" d="M 132 130 L 270 130" />
+      <path class="wire wire--danger" d="M 132 130 L 270 130" />
+      <g class="token" transform="translate(201 130)">
+        <rect x="-27" y="-11" width="54" height="22" rx="11" />
+        <text x="0" y="4">token</text>
+      </g>
+
+      <g transform="translate(90 130)" set:html={personIcon} />
+      <g transform="translate(300 130)" set:html={agentIcon} />
+      <text class="node-label" x="90" y="196" text-anchor="middle">YOU</text>
+      <text class="node-label" x="300" y="196" text-anchor="middle">AGENT</text>
+
+      {
+        resources.map((r) => (
+          <>
+            <g transform={`translate(662 ${r.y})`} set:html={cubeIcon} />
+            <text class="res-name" x="694" y={r.y - 1}>
+              {r.name}
+            </text>
+            <text class="res-note" x="694" y={r.y + 13}>
+              {r.note}
+            </text>
+          </>
+        ))
+      }
+    </svg>
+  </figure>
+
+  <!-- ------------------------------------------------------ brokered path -- -->
+  <figure class="scenario scenario--safe">
+    <figcaption class="scenario__caption">
+      <span class="scenario__tag">With BrokerKit</span>
+      <p class="scenario__line">
+        The broker holds the token. The agent can only ask, and only the wire your policy allows
+        carries anything.
+      </p>
+    </figcaption>
+
+    <svg class="scenario__svg" viewBox="0 0 900 260" role="img" aria-labelledby="brokered-title">
+      <title id="brokered-title">
+        You give your GitHub token to the broker. The agent sends requests to the broker, which
+        allows the branch push and cuts the other three paths.
+      </title>
+
+      {
+        resources.map((r) => (
+          <>
+            <path class="wire wire--base" d={wire(400, r.y)} />
+            {r.allowed ? (
+              <>
+                <path class="wire wire--live" d={wire(400, r.y)} />
+                <circle class="spark spark--live" r="3.5" style={`offset-path: path('${wire(400, r.y)}')`} />
+              </>
+            ) : (
+              <g
+                class="cut"
+                transform={`translate(${pointOnWire(400, r.y).x.toFixed(1)} ${pointOnWire(400, r.y).y.toFixed(1)})`}
+              >
+                <line x1="-7" y1="-7" x2="7" y2="7" />
+                <line x1="7" y1="-7" x2="-7" y2="7" />
+              </g>
+            )}
+          </>
+        ))
+      }
+
+      {/* you -> broker, carrying the token */}
+      <path class="wire wire--base" d="M 128 78 C 210 88, 250 100, 322 118" />
+      <path class="wire wire--live" d="M 128 78 C 210 88, 250 100, 322 118" />
+      <g class="token" transform="translate(216 96)">
+        <rect x="-27" y="-11" width="54" height="22" rx="11" />
+        <text x="0" y="4">token</text>
+      </g>
+
+      {/* agent -> broker, carrying only a request */}
+      <path class="wire wire--base" d="M 128 190 C 210 180, 250 166, 322 144" />
+      <path class="wire wire--request" d="M 128 190 C 210 180, 250 166, 322 144" />
+      <g class="token token--muted" transform="translate(216 168)">
+        <rect x="-33" y="-11" width="66" height="22" rx="11" />
+        <text x="0" y="4">request</text>
+      </g>
+
+      <g transform="translate(88 74)" set:html={personIcon} />
+      <g transform="translate(88 190)" set:html={agentIcon} />
+      <g transform="translate(370 130)" set:html={brokerIcon} />
+      <text class="node-label" x="88" y="130" text-anchor="middle">YOU</text>
+      <text class="node-label" x="88" y="246" text-anchor="middle">AGENT</text>
+      <text class="node-label" x="370" y="200" text-anchor="middle">BROKER</text>
+
+      {
+        resources.map((r) => (
+          <>
+            <g transform={`translate(662 ${r.y})`} set:html={cubeIcon} class:list={[!r.allowed && "is-dim"]} />
+            <text class="res-name" x="694" y={r.y - 1} class:list={[!r.allowed && "is-dim"]}>
+              {r.name}
+            </text>
+            <text class="res-note" x="694" y={r.y + 13}>
+              {r.note}
+            </text>
+          </>
+        ))
+      }
+    </svg>
+  </figure>
+</div>
+
+<style>
+  .diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .scenario {
+    margin: 0;
+    padding: 1.25rem 1.4rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+  }
+
+  .scenario--risk {
+    border-color: var(--danger-border);
+  }
+
+  .scenario__caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.9rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .scenario__tag {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .scenario--risk .scenario__tag {
+    color: var(--danger-text);
+  }
+
+  .scenario__line {
+    margin: 0;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+
+  .scenario__svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  /* ------------------------------------------------------------- shapes -- */
+
+  .scenario__svg :global(.iso-top) {
+    fill: var(--iso-top);
+  }
+  .scenario__svg :global(.iso-left) {
+    fill: var(--iso-left);
+  }
+  .scenario__svg :global(.iso-right) {
+    fill: var(--iso-right);
+  }
+  .scenario__svg :global(.iso-mark) {
+    fill: var(--iso-mark);
+  }
+  .scenario__svg :global(.iso-a-top) {
+    fill: var(--iso-a-top);
+  }
+  .scenario__svg :global(.iso-a-left) {
+    fill: var(--iso-a-left);
+  }
+  .scenario__svg :global(.iso-a-right) {
+    fill: var(--iso-a-right);
+  }
+  .scenario__svg :global(.iso-a-mark) {
+    fill: var(--iso-a-mark);
+  }
+
+  .scenario__svg :global(.is-dim) {
+    opacity: 0.4;
+  }
+
+  .node-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    fill: var(--text-faint);
+  }
+
+  .res-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    fill: var(--text-strong);
+  }
+
+  .res-note {
+    font-family: var(--font-sans);
+    font-size: 10.5px;
+    fill: var(--text-faint);
+  }
+
+  .res-name.is-dim {
+    fill: var(--text-faint);
+  }
+
+  /* -------------------------------------------------------------- wires -- */
+
+  .wire {
+    fill: none;
+    stroke-linecap: round;
+  }
+
+  .wire--base {
+    stroke: var(--border-strong);
+    stroke-width: 1.5;
+  }
+
+  /* Marching dashes read as current moving along the wire. */
+  .wire--danger,
+  .wire--live,
+  .wire--request {
+    stroke-width: 2;
+    stroke-dasharray: 5 9;
+    animation: current 0.85s linear infinite;
+  }
+
+  .wire--danger {
+    stroke: var(--wire-danger);
+    animation-duration: 0.55s;
+  }
+
+  .wire--live {
+    stroke: var(--wire-live);
+  }
+
+  .wire--request {
+    stroke: var(--text-faint);
+    animation-duration: 1.3s;
+  }
+
+  @keyframes current {
+    to {
+      stroke-dashoffset: -14;
+    }
+  }
+
+  /* A brighter pulse riding the same path. */
+  .spark {
+    offset-rotate: 0deg;
+    animation: travel 2.1s linear infinite;
+  }
+
+  .spark--danger {
+    fill: var(--wire-danger);
+    animation-duration: 1.5s;
+  }
+
+  .spark--live {
+    fill: var(--wire-live);
+  }
+
+  @keyframes travel {
+    from {
+      offset-distance: 0%;
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    88% {
+      opacity: 1;
+    }
+    to {
+      offset-distance: 100%;
+      opacity: 0;
+    }
+  }
+
+  .cut line {
+    stroke: var(--danger-text);
+    stroke-width: 2.25;
+    stroke-linecap: round;
+  }
+
+  .token rect {
+    fill: var(--bg);
+    stroke: var(--border-strong);
+    stroke-width: 1;
+  }
+
+  .token text {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-anchor: middle;
+    fill: var(--text-muted);
+  }
+
+  .scenario--risk .token rect {
+    stroke: var(--danger-border);
+  }
+
+  .scenario--risk .token text {
+    fill: var(--danger-text);
+  }
+
+  .token--muted rect {
+    stroke: var(--border);
+  }
+
+  /* --------------------------------------------------------------- misc -- */
+
+  @media (prefers-reduced-motion: reduce) {
+    .wire--danger,
+    .wire--live,
+    .wire--request,
+    .spark {
+      animation: none;
+    }
+    .spark {
+      opacity: 0;
+    }
+  }
+
+  @media (max-width: 46rem) {
+    .scenario {
+      padding: 1rem 0.9rem 0.75rem;
+    }
+    .scenario__svg {
+      min-width: 520px;
+    }
+    .scenario > svg {
+      display: block;
+    }
+    .scenario {
+      overflow-x: auto;
+    }
+  }
+</style>

@@ -68,6 +68,18 @@ html[data-theme="light"] {
   --accent-subtle: #eef3f9;
   --accent-border: #bcd0e6;
 
+  /* Isometric diagram faces: three flat tones, plus an accent cube. */
+  --iso-top: #e9e9ec;
+  --iso-left: #cdcdd3;
+  --iso-right: #b3b3bb;
+  --iso-mark: #6f6f78;
+  --iso-a-top: #35353c;
+  --iso-a-left: #232328;
+  --iso-a-right: #16161a;
+  --iso-a-mark: #e9e9ec;
+  --wire-danger: #b4444a;
+  --wire-live: #2f7a4d;
+
   --note-bg: #f4f7fb;
   --note-border: #9db6d4;
   --note-text: #2c4a70;
@@ -107,6 +119,17 @@ html[data-theme="dark"] {
   --accent-contrast: #0d1a2a;
   --accent-subtle: #16202c;
   --accent-border: #2b4360;
+
+  --iso-top: #3d3e45;
+  --iso-left: #2c2d33;
+  --iso-right: #212227;
+  --iso-mark: #9c9ca6;
+  --iso-a-top: #f0f0f2;
+  --iso-a-left: #c7c7cf;
+  --iso-a-right: #a4a4ae;
+  --iso-a-mark: #16161a;
+  --wire-danger: #e08588;
+  --wire-live: #7fc79b;
 
   --note-bg: #15202c;
   --note-border: #3a5b7d;
