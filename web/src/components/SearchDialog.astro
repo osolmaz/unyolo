@@ -1,0 +1,216 @@
+---
+import Icon from "./Icon.astro";
+---
+
+<dialog class="search-dialog" data-search-dialog aria-label="Search documentation">
+  <div class="search-dialog__input-row">
+    <Icon name="search" />
+    <input
+      type="search"
+      placeholder="Search the documentation"
+      autocomplete="off"
+      spellcheck="false"
+      data-search-input
+    />
+    <kbd>Esc</kbd>
+  </div>
+  <ul class="search-results" data-search-results></ul>
+  <p class="search-empty" data-search-empty>Type to search across every documentation page.</p>
+  <div class="search-dialog__footer">
+    <span><kbd>↑</kbd> <kbd>↓</kbd> to navigate</span>
+    <span><kbd>↵</kbd> to open</span>
+  </div>
+</dialog>
+
+<script>
+  type Entry = {
+    slug: string;
+    title: string;
+    section: string;
+    description: string;
+    body: string;
+  };
+
+  const dialogEl = document.querySelector<HTMLDialogElement>("[data-search-dialog]");
+  const inputEl = document.querySelector<HTMLInputElement>("[data-search-input]");
+  const listEl = document.querySelector<HTMLUListElement>("[data-search-results]");
+  const emptyEl = document.querySelector<HTMLParagraphElement>("[data-search-empty]");
+
+  if (dialogEl && inputEl && listEl && emptyEl) {
+    // Rebound as non-nullable locals: narrowing from the guard above does not
+    // reach the function declarations below.
+    const dialog = dialogEl;
+    const input = inputEl;
+    const list = listEl;
+    const empty = emptyEl;
+
+    let index: Entry[] | null = null;
+    let selected = 0;
+
+    async function loadIndex(): Promise<Entry[]> {
+      if (!index) {
+        const response = await fetch("/search.json");
+        index = (await response.json()) as Entry[];
+      }
+      return index;
+    }
+
+    // Matching is case-insensitive; entry.body keeps its original casing so it
+    // can be shown verbatim as the result excerpt.
+    const folded = new WeakMap<Entry, string>();
+    const bodyOf = (entry: Entry) => {
+      let value = folded.get(entry);
+      if (value === undefined) {
+        value = entry.body.toLowerCase();
+        folded.set(entry, value);
+      }
+      return value;
+    };
+
+    function score(entry: Entry, terms: string[]): number {
+      const title = entry.title.toLowerCase();
+      const section = entry.section.toLowerCase();
+      const description = entry.description.toLowerCase();
+      const body = bodyOf(entry);
+      let total = 0;
+      for (const term of terms) {
+        if (title.includes(term)) total += 30;
+        if (title.startsWith(term)) total += 15;
+        if (section.includes(term)) total += 8;
+        if (description.includes(term)) total += 6;
+        const hits = body.split(term).length - 1;
+        if (hits > 0) total += Math.min(hits, 6);
+        else if (!title.includes(term) && !description.includes(term)) return 0;
+      }
+      return total;
+    }
+
+    function excerptFor(entry: Entry, term: string): string {
+      const at = bodyOf(entry).indexOf(term);
+      if (at === -1) return entry.description;
+      const start = Math.max(0, at - 40);
+      return (start > 0 ? "…" : "") + entry.body.slice(start, start + 130).trim() + "…";
+    }
+
+    function render(query: string, entries: Entry[]) {
+      const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      if (terms.length === 0) {
+        list.replaceChildren();
+        empty.textContent = "Type to search across every documentation page.";
+        empty.hidden = false;
+        return;
+      }
+
+      const matches = entries
+        .map((entry) => ({ entry, value: score(entry, terms) }))
+        .filter((row) => row.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 12);
+
+      if (matches.length === 0) {
+        list.replaceChildren();
+        empty.textContent = `No page matches “${query}”.`;
+        empty.hidden = false;
+        return;
+      }
+
+      empty.hidden = true;
+      selected = 0;
+      list.replaceChildren(
+        ...matches.map(({ entry }, position) => {
+          const item = document.createElement("li");
+          if (position === 0) item.dataset.selected = "true";
+
+          const anchor = document.createElement("a");
+          anchor.href = `/docs/${entry.slug}`;
+
+          const section = document.createElement("span");
+          section.className = "search-results__section";
+          section.textContent = entry.section;
+
+          const title = document.createElement("span");
+          title.className = "search-results__title";
+          title.textContent = entry.title;
+
+          const excerpt = document.createElement("span");
+          excerpt.className = "search-results__excerpt";
+          excerpt.textContent = excerptFor(entry, terms[0]!);
+
+          anchor.append(section, title, excerpt);
+          item.append(anchor);
+          return item;
+        }),
+      );
+    }
+
+    function move(delta: number) {
+      const items = [...list.querySelectorAll("li")];
+      if (items.length === 0) return;
+      delete items[selected]?.dataset.selected;
+      selected = (selected + delta + items.length) % items.length;
+      const active = items[selected];
+      if (active) {
+        active.dataset.selected = "true";
+        active.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    input.addEventListener("input", () => {
+      const query = input.value;
+      void loadIndex().then((entries) => {
+        // Ignore a resolved index if the reader has typed on since this request.
+        if (input.value === query) render(query, entries);
+      });
+    });
+
+    async function open() {
+      dialog.showModal();
+      input.value = "";
+      render("", []);
+      input.focus();
+      await loadIndex();
+    }
+
+    document.querySelectorAll("[data-search-open]").forEach((button) => {
+      button.addEventListener("click", () => void open());
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        if (dialog.open) dialog.close();
+        else void open();
+        return;
+      }
+      if (event.key === "/" && !dialog.open) {
+        const target = event.target as HTMLElement | null;
+        const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+        if (!typing) {
+          event.preventDefault();
+          void open();
+        }
+      }
+    });
+
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        move(1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        move(-1);
+      } else if (event.key === "Enter") {
+        const anchor = list.querySelector<HTMLAnchorElement>('li[data-selected="true"] a');
+        if (anchor) {
+          event.preventDefault();
+          window.location.href = anchor.href;
+        }
+      }
+    });
+
+    // Clicking the backdrop (outside the dialog box) closes the dialog.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+  }
+</script>

@@ -1,7 +1,7 @@
 # AGENTS.md
 
-These instructions apply to the BrokerKit monorepo. More specific instructions
-under a component directory may add stricter requirements.
+These instructions apply to the BrokerKit repository. More specific
+instructions under a component directory may add stricter requirements.
 
 ## Project Rules
 

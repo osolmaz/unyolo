@@ -1,0 +1,63 @@
+---
+import { AUTHOR_URL, GITHUB_REPO } from "../config/nav";
+
+const columns = [
+  {
+    title: "Documentation",
+    links: [
+      { href: "/docs/get-started/overview", label: "Overview" },
+      { href: "/docs/get-started/quickstart", label: "Quickstart" },
+      { href: "/docs/concepts/policy", label: "Policy engine" },
+      { href: "/docs/deploy/host-deployment", label: "Host deployment" },
+      { href: "/docs/reference/cli", label: "CLI reference" },
+    ],
+  },
+  {
+    title: "Brokers",
+    links: [
+      { href: "/docs/brokers/github", label: "gh-broker" },
+      { href: "/docs/brokers/hugging-face", label: "hf-broker" },
+      { href: "/docs/brokers/sudo", label: "sudo-broker" },
+      { href: "/docs/build/framework", label: "Build your own" },
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      { href: GITHUB_REPO, label: "Source" },
+      { href: `${GITHUB_REPO}/releases`, label: "Releases" },
+      { href: `${GITHUB_REPO}/issues`, label: "Issues" },
+      { href: "/docs/security/threat-model", label: "Threat model" },
+    ],
+  },
+];
+---
+
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <div>
+      <h2>BrokerKit</h2>
+      <p class="site-footer__blurb">
+        A Go framework for building credential brokers, so an agent can work in your accounts
+        without holding the credentials that would let it destroy anything.
+      </p>
+      <p class="site-footer__credit">
+        Built by <a href={AUTHOR_URL} rel="noopener">Onur Solmaz</a>. MIT licensed.
+      </p>
+    </div>
+    {
+      columns.map((column) => (
+        <div>
+          <h2>{column.title}</h2>
+          <ul>
+            {column.links.map((link) => (
+              <li>
+                <a href={link.href}>{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+</footer>
