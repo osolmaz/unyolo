@@ -13,11 +13,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
-const mcpHelperEnvironment = "BROKERKIT_HF_MCP_HELPER"
+const mcpHelperEnvironment = "UNYOLO_HF_MCP_HELPER"
 
 func TestHFMCPSHelperProcess(t *testing.T) {
 	if os.Getenv(mcpHelperEnvironment) != "1" {
@@ -47,7 +47,7 @@ func TestMCPSubprocessRecoversLostSubmissionAcrossRestarts(t *testing.T) {
 			return
 		}
 		switch {
-		case request.Method == http.MethodGet && request.URL.Path == "/.well-known/brokerkit-agent":
+		case request.Method == http.MethodGet && request.URL.Path == "/.well-known/unyolo-agent":
 			writeAgentJSON(writer, agentv1.Descriptor{APIVersion: agentv1.APIVersion,
 				ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.create"},
 				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "fine_grained_user_token", Generation: 1, VerificationState: "valid"}})

@@ -10,27 +10,27 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/admission"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/broker/controlplane"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/presenter"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/internal/clockx"
-	"github.com/osolmaz/brokerkit/internal/slicex"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	"github.com/osolmaz/unyolo/approval"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/admission"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/broker/controlplane"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorclient"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/presenter"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/unyolo/internal/clockx"
+	"github.com/osolmaz/unyolo/internal/slicex"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 type DecisionPoller interface {
@@ -71,7 +71,7 @@ type Server struct {
 	database           *state.Database
 	operations         *agentops.Store
 	admission          *admission.Controller
-	authorization      *bkauthorization.Coordinator
+	authorization      *unyoloauthorization.Coordinator
 	operationRegistry  *operations.Registry
 	operationRuntime   *operations.Runtime
 	agentAPI           *agentapi.Handler
@@ -112,7 +112,7 @@ type serverParts struct {
 	grantStore        *grants.Store
 	validator         plan.Validator
 	operationRegistry *operations.Registry
-	authorization     *bkauthorization.Coordinator
+	authorization     *unyoloauthorization.Coordinator
 	control           *controlplane.Runtime
 	operationStore    *agentops.Store
 	admission         *admission.Controller
@@ -152,7 +152,7 @@ func newServerParts(opts Options) (serverParts, error) {
 	if err != nil {
 		return serverParts{}, err
 	}
-	authorization, err := bkauthorization.New(bkauthorization.Options{Registry: sudopolicy.Registry(opts.Catalog),
+	authorization, err := unyoloauthorization.New(unyoloauthorization.Options{Registry: sudopolicy.Registry(opts.Catalog),
 		Decide: opts.Policy.Decide, Grants: grantStore, Now: now})
 	if err != nil {
 		return serverParts{}, err

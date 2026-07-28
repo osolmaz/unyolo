@@ -19,10 +19,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/deployment/api"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const maxSecretBytes = 1024 * 1024

@@ -6,11 +6,11 @@ import (
 	"context"
 	"strconv"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func runActiveProbe(ctx context.Context, agent identity, opts Options) (ProbeResult, bool, error) {
-	return bkdoctor.RunProbeCommand(ctx, bkdoctor.ProbeCommand{
+	return unyolodoctor.RunProbeCommand(ctx, unyolodoctor.ProbeCommand{
 		HelperPath:    opts.HelperPath,
 		Args:          activeProbeArgs(opts),
 		Identity:      doctorIdentity(agent),

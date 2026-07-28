@@ -24,13 +24,13 @@ const (
 
 // Defines values for DescriptorApiVersion.
 const (
-	DescriptorApiVersionBrokerkitIoagentv1 DescriptorApiVersion = "brokerkit.io/agent/v1"
+	DescriptorApiVersionUnyoloIoagentv1 DescriptorApiVersion = "unyolo.io/agent/v1"
 )
 
 // Valid indicates whether the value is a known member of the DescriptorApiVersion enum.
 func (e DescriptorApiVersion) Valid() bool {
 	switch e {
-	case DescriptorApiVersionBrokerkitIoagentv1:
+	case DescriptorApiVersionUnyoloIoagentv1:
 		return true
 	default:
 		return false
@@ -39,13 +39,13 @@ func (e DescriptorApiVersion) Valid() bool {
 
 // Defines values for OperationApiVersion.
 const (
-	OperationApiVersionBrokerkitIoagentv1 OperationApiVersion = "brokerkit.io/agent/v1"
+	OperationApiVersionUnyoloIoagentv1 OperationApiVersion = "unyolo.io/agent/v1"
 )
 
 // Valid indicates whether the value is a known member of the OperationApiVersion enum.
 func (e OperationApiVersion) Valid() bool {
 	switch e {
-	case OperationApiVersionBrokerkitIoagentv1:
+	case OperationApiVersionUnyoloIoagentv1:
 		return true
 	default:
 		return false
@@ -54,13 +54,13 @@ func (e OperationApiVersion) Valid() bool {
 
 // Defines values for OperationPageApiVersion.
 const (
-	OperationPageApiVersionBrokerkitIoagentv1 OperationPageApiVersion = "brokerkit.io/agent/v1"
+	OperationPageApiVersionUnyoloIoagentv1 OperationPageApiVersion = "unyolo.io/agent/v1"
 )
 
 // Valid indicates whether the value is a known member of the OperationPageApiVersion enum.
 func (e OperationPageApiVersion) Valid() bool {
 	switch e {
-	case OperationPageApiVersionBrokerkitIoagentv1:
+	case OperationPageApiVersionUnyoloIoagentv1:
 		return true
 	default:
 		return false
@@ -69,13 +69,13 @@ func (e OperationPageApiVersion) Valid() bool {
 
 // Defines values for OperationSummaryApiVersion.
 const (
-	OperationSummaryApiVersionBrokerkitIoagentv1 OperationSummaryApiVersion = "brokerkit.io/agent/v1"
+	OperationSummaryApiVersionUnyoloIoagentv1 OperationSummaryApiVersion = "unyolo.io/agent/v1"
 )
 
 // Valid indicates whether the value is a known member of the OperationSummaryApiVersion enum.
 func (e OperationSummaryApiVersion) Valid() bool {
 	switch e {
-	case OperationSummaryApiVersionBrokerkitIoagentv1:
+	case OperationSummaryApiVersionUnyoloIoagentv1:
 		return true
 	default:
 		return false
@@ -326,7 +326,7 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// DiscoverAgent performs a GET /.well-known/brokerkit-agent (the `DiscoverAgent` operationId) request.
+	// DiscoverAgent performs a GET /.well-known/unyolo-agent (the `DiscoverAgent` operationId) request.
 	DiscoverAgent(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAgentOperations performs a GET /api/agent/v1/operations (the `ListAgentOperations` operationId) request.
@@ -350,7 +350,7 @@ type ClientInterface interface {
 	WaitForAgentOperation(ctx context.Context, id OperationID, params *WaitForAgentOperationParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-// DiscoverAgent performs a GET /.well-known/brokerkit-agent (the `DiscoverAgent` operationId) request.
+// DiscoverAgent performs a GET /.well-known/unyolo-agent (the `DiscoverAgent` operationId) request.
 func (c *Client) DiscoverAgent(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDiscoverAgentRequest(c.Server)
 	if err != nil {
@@ -452,7 +452,7 @@ func NewDiscoverAgentRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/.well-known/brokerkit-agent")
+	operationPath := fmt.Sprintf("/.well-known/unyolo-agent")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -785,7 +785,7 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// DiscoverAgentWithResponse performs a GET /.well-known/brokerkit-agent (the `DiscoverAgent` operationId) request.
+	// DiscoverAgentWithResponse performs a GET /.well-known/unyolo-agent (the `DiscoverAgent` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	DiscoverAgentWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverAgentResponse, error)
@@ -1116,7 +1116,7 @@ func (r WaitForAgentOperationResponse) ContentType() string {
 	return ""
 }
 
-// DiscoverAgentWithResponse performs a GET /.well-known/brokerkit-agent (the `DiscoverAgent` operationId) request.
+// DiscoverAgentWithResponse performs a GET /.well-known/unyolo-agent (the `DiscoverAgent` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) DiscoverAgentWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverAgentResponse, error) {
@@ -1401,7 +1401,7 @@ func ParseWaitForAgentOperationResponse(rsp *http.Response) (*WaitForAgentOperat
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
-	// (GET /.well-known/brokerkit-agent)
+	// (GET /.well-known/unyolo-agent)
 	DiscoverAgent(ctx echo.Context) error
 
 	// (GET /api/agent/v1/operations)
@@ -1605,7 +1605,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 		Handler: si,
 	}
 
-	router.GET(options.BaseURL+"/.well-known/brokerkit-agent", wrapper.DiscoverAgent, options.OperationMiddlewares["discoverAgent"]...)
+	router.GET(options.BaseURL+"/.well-known/unyolo-agent", wrapper.DiscoverAgent, options.OperationMiddlewares["discoverAgent"]...)
 	router.GET(options.BaseURL+"/api/agent/v1/operations", wrapper.ListAgentOperations, options.OperationMiddlewares["listAgentOperations"]...)
 	router.POST(options.BaseURL+"/api/agent/v1/operations", wrapper.SubmitAgentOperation, options.OperationMiddlewares["submitAgentOperation"]...)
 	router.GET(options.BaseURL+"/api/agent/v1/operations/:id", wrapper.GetAgentOperation, options.OperationMiddlewares["getAgentOperation"]...)

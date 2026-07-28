@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/openapidrift"
+	"github.com/osolmaz/unyolo/internal/openapidrift"
 )
 
 type graphSurface struct {

@@ -4,7 +4,7 @@ import { BrokerClient } from "./client.js";
 import { OPERATOR_V1_SCHEMA_SHA256 } from "./operator-v1.js";
 
 const discovery = JSON.stringify({
-  api_version: "brokerkit.io/operator/v1",
+  api_version: "unyolo.io/operator/v1",
   contract_digest: OPERATOR_V1_SCHEMA_SHA256,
   build_id: "test",
 });
@@ -23,13 +23,12 @@ describe("BrokerClient", () => {
         res.statusCode = 401;
         return res.end();
       }
-      if (req.headers["brokerkit-session"] !== undefined) {
+      if (req.headers["unyolo-session"] !== undefined) {
         res.statusCode = 400;
         return res.end();
       }
       res.setHeader("content-type", "application/json");
-      if (req.url === "/.well-known/brokerkit-operator")
-        return res.end(discovery);
+      if (req.url === "/.well-known/unyolo-operator") return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end('{"requests":[],"event_cursor":"cursor-1"}');
       if (req.url === "/api/operator/v1/events") {

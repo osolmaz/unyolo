@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/notifier"
 )
 
 const durablePollDelay = time.Second

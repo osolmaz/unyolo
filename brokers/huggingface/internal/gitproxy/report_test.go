@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/git/protocol"
+	"github.com/osolmaz/unyolo/git/protocol"
 )
 
 func TestReceivePackAcceptedParsesReports(t *testing.T) {

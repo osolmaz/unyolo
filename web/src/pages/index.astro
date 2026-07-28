@@ -166,12 +166,12 @@ const operatorTranscript = `<span class="t-prompt">$</span> curl -sS --unix-sock
 <span class="t-ok">200  state=active  uses_remaining=1</span>`;
 
 const description =
-  "BrokerKit is a Go framework for building credential brokers. Run your coding agent in YOLO " +
+  "unYOLO is a Go framework for building credential brokers. Run your coding agent in YOLO " +
   "mode with the approval prompts off, because the credential it holds cannot force-push over " +
   "main, delete a repository, or reach anything you did not list.";
 ---
 
-<BaseLayout title="BrokerKit" description={description} section="home">
+<BaseLayout title="unYOLO" description={description} section="home">
   <div class="landing">
     <!-- ------------------------------------------------------------ hero -->
     <section class="hero">
@@ -180,7 +180,7 @@ const description =
           <h1>YOLO safely with your agents</h1>
 
           <p>
-            BrokerKit is a Go framework for building credential brokers. Turn the approval prompts
+            unYOLO is a Go framework for building credential brokers. Turn the approval prompts
             off and let your agent run flat out, because the credential it holds cannot force-push
             over <code>main</code>, delete a repository, or reach anything you did not list.
           </p>
@@ -231,7 +231,7 @@ const description =
         <div class="section__intro">
           <h2>How a request is handled</h2>
           <p>
-            Every broker built on BrokerKit walks the same seven stages, whether the request is a
+            Every broker built on unYOLO walks the same seven stages, whether the request is a
             Git pack, a JSON operation, or a privileged command. Only the classifier and the
             executor know anything about the provider.
           </p>

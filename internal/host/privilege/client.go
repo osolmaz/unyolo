@@ -15,7 +15,7 @@ import (
 	"slices"
 	"strings"
 
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 )
 
 const maxGitHubTokenBytes = 4096
@@ -65,7 +65,7 @@ func Start(ctx context.Context, release string, stderr io.Writer) (*Client, erro
 		_ = os.RemoveAll(temporary)
 		return nil, err
 	}
-	tag := "brokerkit/" + release
+	tag := "unyolo/" + release
 	build := strings.TrimPrefix(release, "v")
 	command := rootWorkerCommand(ctx, bootstrap, expected, build, tag, token)
 	clear(token)
@@ -117,8 +117,8 @@ func githubToken(ctx context.Context) ([]byte, error) {
 }
 
 func rootWorkerCommand(ctx context.Context, bootstrap, expected, build, tag string, token []byte) *exec.Cmd {
-	script := `set -eu; src=$1; expected=$2; build=$3; tag=$4; destination="/opt/brokerkit/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$src" "$destination/bootstrap-root.sh.new"; actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); [ "$actual" = "$expected" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; exec "$destination/bootstrap-root.sh" "$tag"`
-	command := exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script, "brokerkit-root-stage", bootstrap, expected, build, tag) // #nosec G204 -- fixed staging command with verified release-derived values.
+	script := `set -eu; src=$1; expected=$2; build=$3; tag=$4; destination="/opt/unyolo/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$src" "$destination/bootstrap-root.sh.new"; actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); [ "$actual" = "$expected" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; exec "$destination/bootstrap-root.sh" "$tag"`
+	command := exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, build, tag) // #nosec G204 -- fixed staging command with verified release-derived values.
 	environment := make([]string, 0, len(os.Environ())+1)
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(value, "GH_TOKEN=") {
@@ -130,7 +130,7 @@ func rootWorkerCommand(ctx context.Context, bootstrap, expected, build, tag stri
 }
 
 func prepareRootBootstrap(ctx context.Context, release string, stderr io.Writer) (string, string, string, error) {
-	temporary, err := os.MkdirTemp("", "brokerkit-root-bootstrap.*")
+	temporary, err := os.MkdirTemp("", "unyolo-root-bootstrap.*")
 	if err != nil {
 		return "", "", "", err
 	}
@@ -138,16 +138,16 @@ func prepareRootBootstrap(ctx context.Context, release string, stderr io.Writer)
 		_ = os.RemoveAll(temporary)
 		return "", "", "", err
 	}
-	base := "https://github.com/osolmaz/brokerkit/releases/download/brokerkit/" + release
-	bootstrap := filepath.Join(temporary, "brokerkit-bootstrap-root.sh")
-	if err := download(ctx, base+"/brokerkit-bootstrap-root.sh", bootstrap, 256*1024); err != nil {
+	base := "https://github.com/osolmaz/unyolo/releases/download/unyolo/" + release
+	bootstrap := filepath.Join(temporary, "unyolo-bootstrap-root.sh")
+	if err := download(ctx, base+"/unyolo-bootstrap-root.sh", bootstrap, 256*1024); err != nil {
 		return fail(err)
 	}
 	checksums := filepath.Join(temporary, "checksums.txt")
 	if err := download(ctx, base+"/checksums.txt", checksums, 4*1024*1024); err != nil {
 		return fail(err)
 	}
-	expected, err := checksumFor(checksums, "brokerkit-bootstrap-root.sh")
+	expected, err := checksumFor(checksums, "unyolo-bootstrap-root.sh")
 	if err != nil {
 		return fail(err)
 	}
@@ -159,10 +159,10 @@ func prepareRootBootstrap(ctx context.Context, release string, stderr io.Writer)
 	if actual != expected {
 		return fail(errors.New("root bootstrap checksum mismatch"))
 	}
-	workflow := "osolmaz/brokerkit/.github/workflows/release.yml"
+	workflow := "osolmaz/unyolo/.github/workflows/release.yml"
 	command := exec.CommandContext(ctx, "gh", "attestation", "verify", bootstrap,
-		"--repo", "osolmaz/brokerkit", "--signer-workflow", workflow,
-		"--source-ref", "refs/tags/brokerkit/"+release, "--deny-self-hosted-runners") // #nosec G204 -- fixed verifier and validated release.
+		"--repo", "osolmaz/unyolo", "--signer-workflow", workflow,
+		"--source-ref", "refs/tags/unyolo/"+release, "--deny-self-hosted-runners") // #nosec G204 -- fixed verifier and validated release.
 	command.Stdout, command.Stderr = io.Discard, stderr
 	if err := command.Run(); err != nil {
 		return fail(fmt.Errorf("verify root bootstrap provenance: %w", err))

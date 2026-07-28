@@ -8,20 +8,20 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/operation/runtime"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/v1"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/ghplan"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/operation/runtime"
 )
 
 const operationAuthorizationGrace = 30 * time.Second
@@ -64,15 +64,15 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 	})
 }
 
-func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
+func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloauthorization.GrantIntent, error) {
 	adapter, descriptor, err := s.runtimePlanDescriptor(preparation.DescriptorName)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	mode := runtimeGrantMode(descriptor)
 	duration, pending, err := runtimeGrantBounds(adapter, preparation, mode)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	request := runtimeGrantRequest(preparation, mode, duration, pending, runtimeGrantUses(preparation, mode))
 	presentation := adapter.Present(preparation.Plan)
@@ -80,17 +80,17 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 	if preparation.Plan.Credential.Kind != githubauth.KindDevelopmentToken {
 		snapshot, snapshotErr := githubauth.SnapshotForMetadata(preparation.Plan.Credential, 1, preparation.CreatedAt)
 		if snapshotErr != nil {
-			return bkauthorization.GrantIntent{}, errors.New("GitHub credential binding is unavailable")
+			return unyoloauthorization.GrantIntent{}, errors.New("GitHub credential binding is unavailable")
 		}
 		binding = providercredential.Bind(snapshot)
 	}
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, presentation, string(preparation.Decision.Effect),
 		runtimePlanRuleIDs(preparation), preparation.CreatedAt, binding)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	bindPreparedRuntimePlan(&request, prepared, presentation, preparation.Direct)
-	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+	return unyoloauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
 }
 
 func (s *Server) runtimePlanDescriptor(name string) (operations.Adapter, opcatalog.Descriptor, error) {

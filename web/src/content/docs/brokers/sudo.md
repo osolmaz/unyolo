@@ -14,11 +14,11 @@ identical:
 ```text
 client
   ↓
-brokerkit auth
+unyolo auth
   ↓
 sudo-broker classifier
   ↓
-brokerkit policy and grants
+unyolo policy and grants
   ↓
 approval channel
   ↓
@@ -31,7 +31,7 @@ target Unix user
 
 The runtime is split so that the network-facing part is unprivileged:
 
-`sudo-broker` is an unprivileged HTTP frontend using BrokerKit policy, grants, Operator V1, and
+`sudo-broker` is an unprivileged HTTP frontend using unYOLO policy, grants, Operator V1, and
 optional Telegram approval. `sudo-broker-exec` is a root helper reachable only through a private
 Unix socket, and only by the dedicated frontend account.
 
@@ -41,8 +41,8 @@ performs the identity transition.
 ## Install
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/sudo/install.sh" | sh
 ```
 
 The frontend goes into the selected binary directory. The helper goes into the adjacent `libexec`
@@ -83,7 +83,7 @@ Write a client config for the agent account:
 ```sh
 sudo sudo-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/sudo/agent/broker.sock \
+  --endpoint unix:///run/unyolo/sudo/agent/broker.sock \
   --secret-file /etc/sudo-broker/secrets \
   --home-dir /home/agent-a
 ```
@@ -156,7 +156,7 @@ problem the project declines to take on, so the surface that would require it do
 ## Service hardening
 
 `sudo-broker` is the one broker that deliberately performs an identity transition, which means it
-must explicitly select the privilege escalation policy so BrokerKit renders
+must explicitly select the privilege escalation policy so unYOLO renders
 `NoNewPrivileges=false`. Every other broker keeps the default, which denies escalation.
 
 Home access stays denied in V1, and the helper requires root-trusted executable and working
@@ -167,7 +167,7 @@ file occupy non-overlapping paths, and trusted service paths are always rejected
 ## Approval presentation
 
 When Telegram notifications are configured, `sudo-broker` supplies only the cataloged command
-description, target user, bounded arguments, timeout, and risk. BrokerKit renders the same escaped
+description, target user, bounded arguments, timeout, and risk. unYOLO renders the same escaped
 approval layout and fixed Approve and Deny controls used by the other brokers.
 
 Raw executables, environment values, and unrestricted command lines are never notification fields.

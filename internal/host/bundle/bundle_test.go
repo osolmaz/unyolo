@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 func TestLoadRequiresValidDetachedSignature(t *testing.T) {
@@ -85,12 +85,12 @@ func TestOperatorProbeRequiresAuthenticatedExpectedBuild(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
-		case "/.well-known/brokerkit-operator":
+		case "/.well-known/unyolo-operator":
 			if request.Header.Get("Authorization") != "Bearer "+token {
 				http.Error(writer, `{}`, http.StatusUnauthorized)
 				return
 			}
-			_, _ = fmt.Fprintf(writer, `{"api_version":"brokerkit.io/operator/v1","contract_digest":%q,"build_id":%q}`, contract.OperatorV1Digest, buildID)
+			_, _ = fmt.Fprintf(writer, `{"api_version":"unyolo.io/operator/v1","contract_digest":%q,"build_id":%q}`, contract.OperatorV1Digest, buildID)
 		case "/healthz":
 			_, _ = fmt.Fprintf(writer, `{"status":"ok","contract_digest":%q,"build_id":%q}`, contract.OperatorV1Digest, buildID)
 		default:
@@ -134,7 +134,7 @@ func TestDefaultPathsMatchPlatform(t *testing.T) {
 		t.Fatalf("darwin paths = %+v", got)
 	}
 	runtimeGOOS = func() string { return "linux" }
-	if got := DefaultPaths(); got.Root != "/opt/brokerkit" || got.StateDir != "/var/lib/brokerkit-host" {
+	if got := DefaultPaths(); got.Root != "/opt/unyolo" || got.StateDir != "/var/lib/unyolo-host" {
 		t.Fatalf("linux paths = %+v", got)
 	}
 }
@@ -866,7 +866,7 @@ func testManifest(t *testing.T, bundleID, buildID string) Manifest {
 			{Name: "gh-broker", Source: "gh-" + buildID, Destination: "bin/gh", SHA256: "sha256:" + strings.Repeat("0", 64), BuildID: buildID, Role: RoleProvider,
 				Services: []string{"gh.service"}, OperatorEndpoint: "unix:///tmp/gh.sock", OperatorTokenFile: "/run/secrets/gh-operator", OperatorContractDigest: contract.OperatorV1Digest,
 				AgentContractDigest: contract.AgentV1Digest, StateFormatDigest: "sha256:" + strings.Repeat("1", 64), Required: true},
-			{Name: "brokerkit-telegram", Source: "telegram-" + buildID, Destination: "bin/telegram", SHA256: "sha256:" + strings.Repeat("0", 64), BuildID: buildID,
+			{Name: "unyolo-telegram", Source: "telegram-" + buildID, Destination: "bin/telegram", SHA256: "sha256:" + strings.Repeat("0", 64), BuildID: buildID,
 				Role: RoleConsumer, Services: []string{"telegram.service"}, StateFormatDigest: "sha256:" + strings.Repeat("2", 64), Required: true},
 		}}
 }

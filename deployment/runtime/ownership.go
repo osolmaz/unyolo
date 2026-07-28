@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
 // ValidateOwnership rejects adapter claims outside its signed envelope.

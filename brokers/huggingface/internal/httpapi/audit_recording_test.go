@@ -8,19 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestOperationOutcomeAuditBindsPlanPolicyAndApproval(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	requested, _, err := store.Request(grants.Request{Client: "agent", ClientRequestID: "op-1", Operation: "repo.delete",
-		Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}}, Reason: "remove test repo",
+		Target: unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}}, Reason: "remove test repo",
 		Duration: time.Minute, PendingTimeout: time.Minute, MaxUses: 1, MaxUsesSpecified: true})
 	if err != nil {
 		t.Fatal(err)

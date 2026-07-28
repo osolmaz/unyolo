@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 func TestGrantRequestRequiresClientRequestID(t *testing.T) {

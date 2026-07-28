@@ -21,7 +21,7 @@ export function createHttpHandler(
     res: import("node:http").ServerResponse,
   ): Promise<boolean> => {
     const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname.startsWith("/plugins/brokerkit/api/v1/"))
+    if (url.pathname.startsWith("/plugins/unyolo/api/v1/"))
       return handleApi(req, res, url, runtime, capability, rateLimit);
     return serveUi(req, res, url, uiDir);
   };
@@ -48,7 +48,7 @@ async function handleApi(
   try {
     if (
       req.method === "GET" &&
-      url.pathname === "/plugins/brokerkit/api/v1/events"
+      url.pathname === "/plugins/unyolo/api/v1/events"
     ) {
       const input = parseEventQuery(url);
       const controller = new AbortController();
@@ -71,12 +71,12 @@ async function handleApi(
     if (url.search) return json(res, 400, { error: { code: "invalid_input" } });
     if (
       req.method === "GET" &&
-      url.pathname === "/plugins/brokerkit/api/v1/snapshot"
+      url.pathname === "/plugins/unyolo/api/v1/snapshot"
     )
       return json(res, 200, runtime().snapshot());
     if (
       req.method === "GET" &&
-      url.pathname === "/plugins/brokerkit/api/v1/summary"
+      url.pathname === "/plugins/unyolo/api/v1/summary"
     ) {
       const snapshot = runtime().snapshot();
       return json(res, 200, {
@@ -89,7 +89,7 @@ async function handleApi(
       });
     }
     const detail = url.pathname.match(
-      /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)$/,
+      /^\/plugins\/unyolo\/api\/v1\/requests\/([^/]+)$/,
     );
     if (req.method === "GET" && detail) {
       const handle = decodeHandle(detail[1]);
@@ -101,7 +101,7 @@ async function handleApi(
         : json(res, 404, { error: { code: "request_not_found" } });
     }
     const decision = url.pathname.match(
-      /^\/plugins\/brokerkit\/api\/v1\/requests\/([^/]+)\/(approve|deny|revoke)$/,
+      /^\/plugins\/unyolo\/api\/v1\/requests\/([^/]+)\/(approve|deny|revoke)$/,
     );
     if (req.method === "POST" && decision) {
       if (!isJSON(req.headers["content-type"]))
@@ -132,12 +132,12 @@ function serveUi(
   url: URL,
   uiDir: string,
 ): boolean {
-  if (url.search || !url.pathname.startsWith("/plugins/brokerkit/ui/"))
+  if (url.search || !url.pathname.startsWith("/plugins/unyolo/ui/"))
     return json(res, 404, { error: { code: "not_found" } });
   if (req.method !== "GET")
     return json(res, 405, { error: { code: "invalid_input" } });
   const relative =
-    url.pathname.replace(/^\/plugins\/brokerkit\/ui\/?/, "") || "index.html";
+    url.pathname.replace(/^\/plugins\/unyolo\/ui\/?/, "") || "index.html";
   if (relative.includes("..")) return json(res, 404, {});
   let file = path.join(uiDir, relative);
   if (!existsSync(file) || !statSync(file).isFile())

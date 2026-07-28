@@ -355,11 +355,11 @@ export class BrokerRuntime {
     this.publishSnapshot();
     this.hooks.log(
       "warn",
-      `BrokerKit source ${source.config.id} unavailable: ${safeError(message)}`,
+      `unYOLO source ${source.config.id} unavailable: ${safeError(message)}`,
     );
   }
   private requireStore(): StateStore {
-    if (!this.store) throw new Error("BrokerKit runtime is not started");
+    if (!this.store) throw new Error("unYOLO runtime is not started");
     return this.store;
   }
   private async deliverPending(): Promise<void> {
@@ -414,7 +414,7 @@ function deterministicDecisionKey(
   return createHash("sha256")
     .update(
       [
-        "brokerkit-decision-v1",
+        "unyolo-decision-v1",
         source,
         request,
         String(revision),
@@ -437,7 +437,7 @@ function notificationText(request: SafeRequest): string {
     value.presentation.summary ?? "",
     `Handle: ${request.handle}`,
     ...value.allowed_actions.map(
-      (action) => `/brokerkit ${action} ${request.handle}`,
+      (action) => `/unyolo ${action} ${request.handle}`,
     ),
   ]
     .filter(Boolean)

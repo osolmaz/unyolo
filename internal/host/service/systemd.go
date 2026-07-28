@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"unicode"
 
-	"github.com/osolmaz/brokerkit/internal/validatex"
+	"github.com/osolmaz/unyolo/internal/validatex"
 )
 
 // CommandRunner runs provider-neutral host setup commands.

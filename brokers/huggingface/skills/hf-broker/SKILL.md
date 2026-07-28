@@ -1,17 +1,17 @@
 ---
 name: hf-broker
-description: Use BrokerKit for Hugging Face Hub Git, repositories, datasets, models, Spaces, inference, grants, and typed Hub operations when hf-broker is installed. Use instead of exposing, retrieving, or configuring a Hugging Face access token.
+description: Use unYOLO for Hugging Face Hub Git, repositories, datasets, models, Spaces, inference, grants, and typed Hub operations when hf-broker is installed. Use instead of exposing, retrieving, or configuring a Hugging Face access token.
 metadata:
   { "openclaw": { "emoji": "🤗", "requires": { "bins": ["hf-broker"] } } }
 ---
 
 # Hugging Face Broker
 
-Use `hf-broker` whenever the runtime is enrolled with BrokerKit. The upstream
+Use `hf-broker` whenever the runtime is enrolled with unYOLO. The upstream
 Hugging Face credential stays inside the broker and must never be requested,
 printed, copied, or exported to the agent.
 
-## Authenticate to BrokerKit
+## Authenticate to unYOLO
 
 `hf-broker` loads its private client V1 document directly from
 `~/.config/hf-broker/client.json`. Do not source it or copy its credential into
@@ -35,7 +35,7 @@ Run `hf-broker git doctor` if routing is in doubt. Keep normal remote URLs; do
 not write broker endpoints or credentials into repository configuration.
 
 History rewrites, ref deletion, and tag movement require their own explicit
-BrokerKit policy and grants. Do not work around a broker rejection.
+unYOLO policy and grants. Do not work around a broker rejection.
 
 ## Typed Hub operations
 
@@ -100,6 +100,6 @@ records a decision or explicitly cancels it.
 ## Inference
 
 When configured, OpenAI-compatible inference uses the broker endpoint and the
-BrokerKit client secret. Never substitute the upstream Hugging Face token. Use
+unYOLO client secret. Never substitute the upstream Hugging Face token. Use
 only models and operations allowed by the broker policy, and do not expose the
 client secret in output, logs, or generated files.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestReporterRecordsClosedSecretSafeLifecycleEvent(t *testing.T) {

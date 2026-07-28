@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/upstreamdrift"
+	"github.com/osolmaz/unyolo/brokers/github/internal/upstreamdrift"
 )
 
 func TestRunWithWritesCleanReportAndStatus(t *testing.T) {

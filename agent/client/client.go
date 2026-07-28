@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/agent/wire"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/protocol/agentwire"
-	"github.com/osolmaz/brokerkit/protocol/contract"
-	"github.com/osolmaz/brokerkit/transport/http"
-	"github.com/osolmaz/brokerkit/transport/http/client"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/agent/wire"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/protocol/agentwire"
+	"github.com/osolmaz/unyolo/protocol/contract"
+	"github.com/osolmaz/unyolo/transport/http"
+	"github.com/osolmaz/unyolo/transport/http/client"
 )
 
 // A stored operation may contain a 1 MiB argument object and a 2 MiB result,

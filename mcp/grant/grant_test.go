@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	usebudget "github.com/osolmaz/brokerkit/authorization/budget"
+	usebudget "github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestProjectReturnsClosedGrantDocument(t *testing.T) {

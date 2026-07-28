@@ -11,23 +11,23 @@ reads, and the alternatives.
 
 ## Install a broker
 
-Fetch the bootstrap from a BrokerKit commit you have reviewed. It resolves the latest release for
+Fetch the bootstrap from a unYOLO commit you have reviewed. It resolves the latest release for
 that broker to its exact commit, verifies release checksums, and installs to `$HOME/.local/bin`:
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
+UNYOLO_REV=<verified-40-character-commit-sha>
 
 # Hugging Face
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/huggingface/install.sh" | sh
 
 # GitHub
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
 
 # sudo
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/sudo/install.sh" | sh
 ```
 
-Pinning `BROKERKIT_REV` to a reviewed commit is the point of the exercise. Piping a script from a
+Pinning `UNYOLO_REV` to a reviewed commit is the point of the exercise. Piping a script from a
 mutable branch into a shell gives you whatever that branch says today.
 
 Two environment variables change the outcome:
@@ -41,19 +41,19 @@ Two environment variables change the outcome:
 
 The runtime detects `linux` or `darwin` and `amd64` or `arm64`, then downloads the matching tarball
 and `checksums.txt`. It checks the archive digest against the manifest, and it verifies GitHub
-artifact attestations for both files against the BrokerKit repository, the release workflow, and
+artifact attestations for both files against the unYOLO repository, the release workflow, and
 the selected tag. Verification uses a GitHub CLI build whose Linux and macOS checksums are embedded
 in the installer itself, so the verifier is pinned rather than fetched from wherever.
 
 A version label alone is never treated as evidence. The attestation ties the artifact to the
 workflow run that produced it.
 
-Two variables cover unusual situations. `BROKERKIT_VERIFIER_FILE` points at an absolute executable
+Two variables cover unusual situations. `UNYOLO_VERIFIER_FILE` points at an absolute executable
 path for a verifier you obtained and checked separately, which is how an offline install works.
-`BROKERKIT_VERIFY_ONLY=true` authenticates and validates release contents without installing
-anything; the release workflow combines it with `BROKERKIT_VERIFY_RELEASE_SET=true`
+`UNYOLO_VERIFY_ONLY=true` authenticates and validates release contents without installing
+anything; the release workflow combines it with `UNYOLO_VERIFY_RELEASE_SET=true`
 after publication to check all four platform archives, the checksum manifest, and the SBOM. The
-remaining `BROKERKIT_*` URL and platform variables exist as test seams and normal installs do not
+remaining `UNYOLO_*` URL and platform variables exist as test seams and normal installs do not
 need them.
 
 ## Installer boundaries
@@ -92,7 +92,7 @@ The repository is one Go module. Build any component with the Go version declare
 go build ./brokers/huggingface/cmd/hf-broker
 go build ./brokers/github/cmd/gh-broker
 go build ./brokers/sudo/cmd/sudo-broker ./brokers/sudo/cmd/sudo-broker-exec
-go build ./cmd/brokerkit ./cmd/brokerkit-telegram
+go build ./cmd/unyolo ./cmd/unyolo-telegram
 ```
 
 A source build carries no attestation, so keep it to development and to hosts where you control the

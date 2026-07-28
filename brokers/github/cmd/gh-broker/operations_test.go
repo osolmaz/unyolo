@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/operation/payload"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/operation/payload"
 )
 
 const operationTestSecret = "0123456789abcdef0123456789abcdef"
@@ -28,7 +28,7 @@ func githubTestOperation(state agentv1.State) agentv1.Operation {
 	return agentv1.Operation{
 		APIVersion: agentv1.APIVersion, ID: "op_test", Broker: "gh-broker", ClientID: "agent",
 		IdempotencyKey: "request-1", Operation: "repo.metadata.read",
-		Target: json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), Arguments: json.RawMessage(`{}`),
+		Target: json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), Arguments: json.RawMessage(`{}`),
 		Reason: "test", State: state, Revision: 2, CreatedAt: now, UpdatedAt: now,
 		Presentation: agentv1.Presentation{Title: "Read repository metadata"},
 	}
@@ -107,7 +107,7 @@ func TestOperationSubmissionAndLifecycleUseAgentV1(t *testing.T) {
 	}
 	var output bytes.Buffer
 	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
-		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`,
+		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`,
 		"--arguments-json", `{}`, "--request-id", "request-1", "--reason", "test", "--wait",
 	})
 	if err != nil || submitted["operation"] != "repo.metadata.read" || !strings.Contains(output.String(), `"state": "succeeded"`) {
@@ -159,7 +159,7 @@ func TestSealedOperationUploadsSecretBeforeSubmission(t *testing.T) {
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
 	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
-		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`,
+		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`,
 		"--arguments-json", `{"secret_name":"DEPLOY_TOKEN"}`,
 		"--sealed-file", sealedFile,
 		"--request-id", requestKey,
@@ -191,7 +191,7 @@ func TestCredentialOutputSubmissionRequiresEncryptedSlot(t *testing.T) {
 	defer server.Close()
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
-	withoutSlot := []string{"--target-json", `{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`, "--arguments-json", `{}`}
+	withoutSlot := []string{"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`, "--arguments-json", `{}`}
 	if err := submitCatalogOperation(t.Context(), &output, descriptor, withoutSlot); err == nil {
 		t.Fatal("credential output accepted without a slot")
 	}
@@ -243,7 +243,7 @@ func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
 	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
-		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`,
+		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","repo":"unyolo"}`,
 		"--arguments-json", `{"name":"asset.bin"}`, "--stream-file", input, "--stream-media-type", "application/octet-stream",
 		"--request-id", "asset-request", "--reason", "upload release asset",
 	})

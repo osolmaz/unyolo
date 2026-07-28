@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
 func TestBuildIsStableAndOrdersDependencies(t *testing.T) {

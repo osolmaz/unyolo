@@ -7,7 +7,7 @@ Status: implemented
 ## Objective
 
 Implement the first provider adapter for the
-[shared BrokerKit credential framework](2026-07-18-provider-credential-lifecycle-plan.md).
+[shared unYOLO credential framework](2026-07-18-provider-credential-lifecycle-plan.md).
 Replace the manual Hugging Face token-file repair procedure and current
 complete-permissions credential profile. A user must be able to repair an
 installed HF Broker by running:
@@ -48,12 +48,12 @@ an operation executed.
 
 - A normal HF Broker deployment uses one dedicated fine-grained Hugging Face
   user access token per broker installation.
-- The token-creation form is not permission-prefilled. BrokerKit supplies only
+- The token-creation form is not permission-prefilled. unYOLO supplies only
   the fine-grained token type; the user selects permissions, resources, and
   organizations in Hugging Face.
-- BrokerKit accepts any valid fine-grained token. It does not require the token
+- unYOLO accepts any valid fine-grained token. It does not require the token
   to cover the entire HF operation catalog.
-- The inspected token scope is an upstream credential ceiling, not BrokerKit
+- The inspected token scope is an upstream credential ceiling, not unYOLO
   authorization policy.
 - MCP exposure is the intersection of implementation, client exposure,
   policy, and the active credential ceiling.
@@ -64,14 +64,14 @@ an operation executed.
 - Credential acquisition runs as the invoking user. Only exact installation
   and activation run with deployment-owner privileges.
 - Candidate and active credentials are never active together. Rotation keeps
-  BrokerKit's existing exact-replacement contract.
+  unYOLO's existing exact-replacement contract.
 - The user's HF CLI login, token cache, and Git credential configuration are
   never read, modified, logged out, or replaced.
 - Upstream retirement of the previous Hugging Face token remains manual until
   Hugging Face exposes a documented API suitable for that credential.
 - Generic command parsing, secret input, privilege transition, protected
   replacement, metadata, status, requirement evaluation, MCP filtering,
-  generation binding, and contract tests live in shared BrokerKit packages.
+  generation binding, and contract tests live in shared unYOLO packages.
 - The HF adapter contains no GitHub branches. The subsequent GitHub App
   implementation must use the same shared contracts without copying HF code.
 
@@ -309,7 +309,7 @@ crash output, or command logs.
 
 ### Host-neutral integration
 
-BrokerKit must not know about MLClaw or any delegated host. Trusted hosts may
+unYOLO must not know about MLClaw or any delegated host. Trusted hosts may
 invoke `credential inspect --token-stdin --json` and a separately authorized
 activation path, or use a future protected Credential V1 protocol with the
 same lifecycle state machine.
@@ -626,11 +626,11 @@ Mutation tooling remains available but disabled and non-blocking.
    validation without publishing a final release;
 6. implement and validate the GitHub App adapter against the same immutable
    shared contracts;
-7. publish the unified BrokerKit artifacts from one immutable commit after HF
+7. publish the unified unYOLO artifacts from one immutable commit after HF
    and GitHub are green;
-8. update trusted hosts to that immutable BrokerKit release;
+8. update trusted hosts to that immutable unYOLO release;
 9. build the dependent MLClaw runtime image without adding MLClaw knowledge to
-   BrokerKit;
+   unYOLO;
 10. deploy the test environment;
 11. repeat credential status, MCP repository read, approval, and UI smoke
     tests;

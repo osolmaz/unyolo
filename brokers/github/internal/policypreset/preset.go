@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	shared "github.com/osolmaz/brokerkit/authorization/preset"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
+	shared "github.com/osolmaz/unyolo/authorization/preset"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
 )
 
 const RequestAllAgentOperations = "request-all-agent-operations"

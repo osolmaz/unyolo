@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/internal/host/layout"
+	"github.com/osolmaz/unyolo/internal/host/layout"
 )
 
 func TestRenderSystemd(t *testing.T) {
@@ -93,14 +93,14 @@ func TestManagedExecutableAccessRejectsMissingRelease(t *testing.T) {
 
 func TestRenderSystemdSocket(t *testing.T) {
 	body, err := RenderSystemdSocket(SystemdSocketUnit{
-		Description: "test agent listener", ListenStream: "/run/brokerkit/test/agent/broker.sock",
+		Description: "test agent listener", ListenStream: "/run/unyolo/test/agent/broker.sock",
 		Service: "test-broker.service", FileDescriptorName: "agent", SocketUser: "root",
 		SocketGroup: "test-broker-agent", SocketMode: 0o660, DirectoryMode: 0o750,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"ListenStream=/run/brokerkit/test/agent/broker.sock", "FileDescriptorName=agent", "SocketGroup=test-broker-agent", "SocketMode=0660", "DirectoryMode=0750", "Service=test-broker.service", "WantedBy=sockets.target"} {
+	for _, want := range []string{"ListenStream=/run/unyolo/test/agent/broker.sock", "FileDescriptorName=agent", "SocketGroup=test-broker-agent", "SocketMode=0660", "DirectoryMode=0750", "Service=test-broker.service", "WantedBy=sockets.target"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("socket unit missing %q:\n%s", want, body)
 		}
@@ -218,7 +218,7 @@ func TestStrictSystemdExecutableValidation(t *testing.T) {
 	}
 	unit := SystemdUnit{
 		Description: "test", User: rootAccount.Username, Group: rootGroup.Name, EnvironmentFile: environmentFile,
-		ExecStart: executable, StateDir: filepath.Join(stateRoot, "lib", "brokerkit-test-missing"), ConfigDir: filepath.Dir(environmentFile),
+		ExecStart: executable, StateDir: filepath.Join(stateRoot, "lib", "unyolo-test-missing"), ConfigDir: filepath.Dir(environmentFile),
 	}
 	if _, err := RenderSystemd(unit); err == nil || !strings.Contains(err.Error(), "regular file") {
 		t.Fatalf("RenderSystemd(directory executable) error = %v", err)

@@ -21,7 +21,7 @@ Completed on 2026-07-15 as part of the production-readiness cutover.
 
 ## Goal
 
-Give every BrokerKit provider the same reliable policy-preset lifecycle without
+Give every unYOLO provider the same reliable policy-preset lifecycle without
 making provider-specific security decisions part of shared infrastructure.
 
 The Hugging Face broker already ships the
@@ -45,7 +45,7 @@ Policy presets have two distinct layers:
    digests, drift checks, replacement previews, transactional artifact writes,
    and preservation of local deny overrides.
 
-Only the second layer belongs in BrokerKit's shared root packages.
+Only the second layer belongs in unYOLO's shared root packages.
 
 This avoids two bad outcomes:
 
@@ -67,7 +67,7 @@ are not an acceptable shared abstraction.
 
 ## Ownership Boundaries
 
-### Shared BrokerKit packages own
+### Shared unYOLO packages own
 
 - strict version 1 profile and manifest envelopes;
 - canonical JSON encoding and SHA-256 digest generation;
@@ -144,7 +144,7 @@ Every managed preset installation continues to contain three files:
 - the broker's concrete scope policy file;
 - `policy-manifest.json`: immutable render evidence and operation fingerprints.
 
-All BrokerKit-owned persisted formats remain version 1. Before BrokerKit's
+All unYOLO-owned persisted formats remain version 1. Before unYOLO's
 first public release, incompatible changes replace version 1 in place through a
 coordinated fresh-state cutover. Do not add compatibility readers, format
 aliases, dual writes, or migrations.
@@ -245,7 +245,7 @@ scanning, and one compiled CLI end-to-end test for both brokers.
 ## ML Claw Impact
 
 ML Claw should not render or interpret provider policy presets. It continues to
-start and connect to separate broker processes through BrokerKit's version 1
+start and connect to separate broker processes through unYOLO's version 1
 operator contract. Installation may select each broker's default preset, but
 the preset profile, manifest, policy, drift checks, and replacement lifecycle
 remain owned by that broker.

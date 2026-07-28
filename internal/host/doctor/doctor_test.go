@@ -323,7 +323,7 @@ func TestLookupAndValidateIdentity(t *testing.T) {
 	if err := ValidateIdentity(Identity{UID: -1}); err == nil {
 		t.Fatal("ValidateIdentity(invalid) error = nil")
 	}
-	if _, err := LookupIdentity("brokerkit-no-such-user"); err == nil {
+	if _, err := LookupIdentity("unyolo-no-such-user"); err == nil {
 		t.Fatal("LookupIdentity(missing) error = nil")
 	}
 }

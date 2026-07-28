@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/security"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 const (
-	githubLFSActionQuery = "brokerkit_lfs_action"
+	githubLFSActionQuery = "unyolo_lfs_action"
 	githubLFSActionTTL   = time.Hour
 	maxGitHubLFSBatch    = 1 << 20
 	maxGitHubLFSActions  = 4096

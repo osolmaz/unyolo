@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/osolmaz/brokerkit/internal/host/service"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/internal/host/service"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 // SystemdActivation describes the socket units and local access groups for one
@@ -109,7 +109,7 @@ func activationDefaults(opts SystemdOptions) SystemdOptions {
 
 func activationSocket(unitName, descriptor, path, group, serviceUnit string) service.SystemdSocketInstall {
 	return service.SystemdSocketInstall{UnitName: unitName, Unit: service.SystemdSocketUnit{
-		Description:  "BrokerKit " + descriptor + " listener",
+		Description:  "unYOLO " + descriptor + " listener",
 		ListenStream: path, Service: serviceUnit, FileDescriptorName: descriptor,
 		SocketUser: "root", SocketGroup: group, SocketMode: 0o660, DirectoryMode: 0o711,
 	}}

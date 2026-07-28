@@ -3,7 +3,7 @@ package mcpcatalog
 import (
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
 
 func allEnabled() Enabled {

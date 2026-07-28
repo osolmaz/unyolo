@@ -1,6 +1,6 @@
 # sudo-broker Model
 
-sudo-broker is the Unix privilege-transition broker in the brokerkit family.
+sudo-broker is the Unix privilege-transition broker in the unyolo family.
 It protects the ability to act as another local user.
 
 The protected resource is different from `hf-broker` and `gh-broker`, but the
@@ -9,11 +9,11 @@ control-plane shape is the same:
 ```text
 client
   ↓
-brokerkit auth
+unyolo auth
   ↓
 sudo-broker classifier
   ↓
-brokerkit policy and grants
+unyolo policy and grants
   ↓
 approval channel
   ↓
@@ -22,9 +22,9 @@ sudo-broker executor
 target Unix user
 ```
 
-## Brokerkit Responsibilities
+## unYOLO Responsibilities
 
-brokerkit should provide:
+unyolo should provide:
 
 - named-client authentication
 - policy rules and decisions
@@ -76,5 +76,5 @@ environment variables, stdin, or command discovery.
 
 ## Runtime Boundary
 
-sudo-broker uses BrokerKit policy and grants directly and does not implement a
+sudo-broker uses unYOLO policy and grants directly and does not implement a
 separate local control plane.

@@ -55,7 +55,7 @@ capability boundary.
 - Do not expose a generic Hub HTTP proxy, arbitrary URL, arbitrary method, or
   arbitrary request body.
 - Do not move Hugging Face vocabulary, credentials, API clients, or operation
-  semantics into provider-neutral BrokerKit packages.
+  semantics into provider-neutral unYOLO packages.
 - Do not grant an interactive shell or raw token to the requesting agent.
 - Do not treat approval as permission to perform a related but different
   action.

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 // ErrBodyTooLarge is returned when ReadLimited sees more bytes than allowed.

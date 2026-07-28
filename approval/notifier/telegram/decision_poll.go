@@ -5,7 +5,7 @@ import (
 	"errors"
 	"html"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/notifier"
 )
 
 // ErrDecisionRetry reports that a decision handler asked Telegram polling to

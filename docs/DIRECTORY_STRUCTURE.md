@@ -1,13 +1,13 @@
-# BrokerKit Directory Structure
+# unYOLO Directory Structure
 
-BrokerKit uses a domain-first Go package tree. Top-level directories represent
+unYOLO uses a domain-first Go package tree. Top-level directories represent
 stable product domains or repository-level deliverables. Implementation details
 that are not part of the reusable Go surface belong under `internal/`.
 
 ## Canonical Tree
 
 ```text
-brokerkit/
+unyolo/
 |-- agent/           # Agent V1 API, client, runtime, MCP bridge, and wire adapters.
 |-- approval/        # Decisions, safe presentation, notifications, and channels.
 |-- auth/            # Shared broker-client authentication primitives.
@@ -54,7 +54,7 @@ Use these rules in order:
 
 Host-wide immutable activation lives in `internal/host/bundle`. Native
 service-manager mechanics stay in platform-suffixed files in that package. The
-operator-facing entrypoint is `cmd/brokerkit`; individual broker setup commands
+operator-facing entrypoint is `cmd/unyolo`; individual broker setup commands
 must not duplicate bundle staging, protocol identity, rollback, or host doctor
 logic.
 
@@ -67,7 +67,7 @@ the first package considered.
 Every shared Go package outside `internal/` and `brokers/` is an intentional
 reusable surface. Keep it provider-neutral, documented, bounded, and
 independently tested. Provider packages are product implementation boundaries,
-not shared APIs. Move a package into `internal/` when only BrokerKit binaries
+not shared APIs. Move a package into `internal/` when only unYOLO binaries
 consume it.
 
 Go enforces the `internal/` boundary. All packages in this module may use root
@@ -84,7 +84,7 @@ commands and plugins
         v
 provider brokers
         v
-public BrokerKit domains
+public unYOLO domains
         v
 internal infrastructure and protocol artifacts
 ```

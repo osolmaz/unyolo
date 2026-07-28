@@ -36,15 +36,13 @@ type DelegatedSession = {
   renewalTransport: "direct" | "parent";
 };
 
-export const DELEGATED_SESSION_REQUEST =
-  "brokerkit.delegated-web.session.request";
+export const DELEGATED_SESSION_REQUEST = "unyolo.delegated-web.session.request";
 export const DELEGATED_SESSION_RESPONSE =
-  "brokerkit.delegated-web.session.response";
-export const DELEGATED_REBOOTSTRAP_REQUEST =
-  "brokerkit.delegated-web.rebootstrap";
-export const DELEGATED_SESSION_META = "brokerkit-delegated-session";
+  "unyolo.delegated-web.session.response";
+export const DELEGATED_REBOOTSTRAP_REQUEST = "unyolo.delegated-web.rebootstrap";
+export const DELEGATED_SESSION_META = "unyolo-delegated-session";
 
-export class BrokerKitUiApi {
+export class unYOLOUiApi {
   private delegatedSession?: DelegatedSession;
   private delegatedRefresh: Promise<DelegatedSession> | undefined;
   private delegatedRebootstrapRequested = false;
@@ -102,7 +100,7 @@ export class BrokerKitUiApi {
     const auth = await this.authorization();
     const basePath =
       this.bootstrap.mode === "direct"
-        ? "/plugins/brokerkit/api/v1"
+        ? "/plugins/unyolo/api/v1"
         : this.bootstrap.basePath;
     const response = await fetch(`${basePath}${path}`, {
       ...init,
@@ -166,7 +164,7 @@ export class BrokerKitUiApi {
     const keys = Object.keys(value).sort().join(",");
     if (
       keys !== "access,api_version,expires_at,renewal_transport,token" ||
-      value.api_version !== "brokerkit.io/delegated-web/v1" ||
+      value.api_version !== "unyolo.io/delegated-web/v1" ||
       typeof value.token !== "string" ||
       !validBrowserSession(value.token) ||
       (value.access !== "read" && value.access !== "decide") ||

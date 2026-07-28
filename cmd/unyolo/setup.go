@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/flow"
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	"github.com/osolmaz/brokerkit/deployment/session"
-	"github.com/osolmaz/brokerkit/internal/buildinfo"
-	"github.com/osolmaz/brokerkit/internal/host/privilege"
-	terminalsetup "github.com/osolmaz/brokerkit/internal/terminal/setup"
+	"github.com/osolmaz/unyolo/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/session"
+	"github.com/osolmaz/unyolo/internal/buildinfo"
+	"github.com/osolmaz/unyolo/internal/host/privilege"
+	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
 	"golang.org/x/term"
 )
 
@@ -32,7 +32,7 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 	if len(args) > 0 && args[0] == "cancel" {
 		return runSetupCancel(args[1:], stdout, stderr)
 	}
-	flags := flag.NewFlagSet("brokerkit setup", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo setup", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	profilePath := flags.String("profile", "", "existing deployment pack to review or repair")
 	accessible := flags.Bool("accessible", false, "use screen-reader-friendly prompts")
@@ -66,11 +66,11 @@ type setupOptions struct {
 
 //nolint:cyclop // The ordered guide deliberately keeps persisted checkpoints adjacent to each operator decision.
 func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setupOptions) error {
-	if err := prompter.Intro(ctx, "BrokerKit host setup"); err != nil {
+	if err := prompter.Intro(ctx, "unYOLO host setup"); err != nil {
 		return err
 	}
 	if err := prompter.Note(ctx,
-		"Setup runs as your trusted operator account. The agent remains a separate nonprivileged Unix identity. BrokerKit will show and bind one exact plan before any protected host change.",
+		"Setup runs as your trusted operator account. The agent remains a separate nonprivileged Unix identity. unYOLO will show and bind one exact plan before any protected host change.",
 		"Security boundary"); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return err
 	}
 	if options.PlanOnly {
-		return prompter.Outro(ctx, "Profile ready. Run brokerkit system plan as a trusted administrator.")
+		return prompter.Outro(ctx, "Profile ready. Run unyolo system plan as a trusted administrator.")
 	}
 	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
 		Message: "Continue to protected host planning?", Description: "No host mutation occurs until the exact plan digest is shown and confirmed.", Safe: true,
@@ -237,7 +237,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if err := store.Save(setupSession); err != nil {
 		return err
 	}
-	return prompter.Outro(ctx, fmt.Sprintf("Verified deployment %s. Run brokerkit system verify --profile %s", snapshot.Deployment.Name, profilePath))
+	return prompter.Outro(ctx, fmt.Sprintf("Verified deployment %s. Run unyolo system verify --profile %s", snapshot.Deployment.Name, profilePath))
 }
 
 //nolint:cyclop // New, explicit, and latest-session choices are one closed resume policy.
@@ -304,7 +304,7 @@ func chooseProfile(ctx context.Context, prompter flow.SetupPrompter, configured 
 	}
 	if configured == "" {
 		value, err := prompter.Text(ctx, flow.Prompt{
-			Message: "Deployment pack directory", Placeholder: filepath.Join("~", ".config", "brokerkit", "deployments", setupSession.Deployment), Required: true,
+			Message: "Deployment pack directory", Placeholder: filepath.Join("~", ".config", "unyolo", "deployments", setupSession.Deployment), Required: true,
 			Validate: func(value string) error {
 				if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 					return errors.New("enter an absolute clean directory path")
@@ -338,7 +338,7 @@ func showSetupReview(ctx context.Context, prompter flow.SetupPrompter, snapshot 
 }
 
 func runSetupStatus(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("brokerkit setup status", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo setup status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	jsonOutput := flags.Bool("json", false, "write closed JSON output")
 	if err := flags.Parse(args); err != nil {
@@ -374,14 +374,14 @@ func runSetupStatus(args []string, stdout, stderr io.Writer) error {
 }
 
 func runSetupCancel(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("brokerkit setup cancel", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo setup cancel", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	confirmed := flags.Bool("confirm", false, "confirm local session removal")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 || !*confirmed {
-		return errors.New("usage: brokerkit setup cancel --confirm <session-id>")
+		return errors.New("usage: unyolo setup cancel --confirm <session-id>")
 	}
 	store, err := setupSessionStore()
 	if err != nil {
@@ -415,7 +415,7 @@ func setupDeploymentDirectory(name string) (string, error) {
 	if !filepath.IsAbs(root) {
 		return "", errors.New("user configuration directory is not absolute")
 	}
-	return filepath.Join(root, "brokerkit", "deployments", name), nil
+	return filepath.Join(root, "unyolo", "deployments", name), nil
 }
 
 func setupSessionStore() (session.Store, error) {

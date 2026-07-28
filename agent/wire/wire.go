@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/internal/optional"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/protocol/agentwire"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/internal/optional"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/protocol/agentwire"
 )
 
 func DescriptorToWire(input agentv1.Descriptor) agentwire.Descriptor {
 	return agentwire.Descriptor{
-		ApiVersion:     agentwire.DescriptorApiVersionBrokerkitIoagentv1,
+		ApiVersion:     agentwire.DescriptorApiVersionUnyoloIoagentv1,
 		ContractDigest: input.ContractDigest,
 		BuildId:        input.BuildID,
 		Operations:     cloneStrings(input.Operations),
@@ -92,7 +92,7 @@ func OperationToWire(input agentv1.Operation) (agentwire.Operation, error) {
 	if err != nil {
 		return agentwire.Operation{}, err
 	}
-	result := agentwire.Operation{ApiVersion: agentwire.OperationApiVersionBrokerkitIoagentv1, Id: input.ID, Broker: input.Broker,
+	result := agentwire.Operation{ApiVersion: agentwire.OperationApiVersionUnyoloIoagentv1, Id: input.ID, Broker: input.Broker,
 		ClientId: input.ClientID, IdempotencyKey: input.IdempotencyKey, Operation: input.Operation, Target: target, Arguments: arguments,
 		Reason: input.Reason, State: agentwire.State(input.State), Revision: int(input.Revision), ApprovalId: optional.NonZero(input.ApprovalID),
 		CreatedAt: input.CreatedAt, UpdatedAt: input.UpdatedAt, TerminalAt: input.TerminalAt,
@@ -143,7 +143,7 @@ func OperationPageToWire(input agentv1.OperationPage) agentwire.OperationPage {
 		operations = append(operations, operationSummaryToWire(operation))
 	}
 	return agentwire.OperationPage{
-		ApiVersion: agentwire.OperationPageApiVersionBrokerkitIoagentv1,
+		ApiVersion: agentwire.OperationPageApiVersionUnyoloIoagentv1,
 		Operations: operations, NextCursor: input.NextCursor,
 	}
 }
@@ -158,7 +158,7 @@ func OperationPageFromWire(input agentwire.OperationPage) agentv1.OperationPage 
 
 func operationSummaryToWire(input agentv1.OperationSummary) agentwire.OperationSummary {
 	return agentwire.OperationSummary{
-		ApiVersion: agentwire.OperationSummaryApiVersionBrokerkitIoagentv1,
+		ApiVersion: agentwire.OperationSummaryApiVersionUnyoloIoagentv1,
 		Id:         input.ID, Broker: input.Broker, ClientId: input.ClientID, IdempotencyKey: input.IdempotencyKey,
 		Operation: input.Operation, State: agentwire.State(input.State), Revision: int(input.Revision),
 		CreatedAt: input.CreatedAt, UpdatedAt: input.UpdatedAt, TerminalAt: input.TerminalAt,

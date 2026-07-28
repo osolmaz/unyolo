@@ -13,15 +13,15 @@ func TestReadWriteJSONAtomic(t *testing.T) {
 	if err := ReadJSON(path, &missing); err != nil {
 		t.Fatalf("ReadJSON(missing) error = %v", err)
 	}
-	if err := WriteJSONAtomic(path, map[string]string{"name": "brokerkit"}, 0o600); err != nil {
+	if err := WriteJSONAtomic(path, map[string]string{"name": "unyolo"}, 0o600); err != nil {
 		t.Fatalf("WriteJSONAtomic() error = %v", err)
 	}
 	var got struct{ Name string }
 	if err := ReadJSON(path, &got); err != nil {
 		t.Fatalf("ReadJSON() error = %v", err)
 	}
-	if got.Name != "brokerkit" {
-		t.Fatalf("decoded name = %q, want brokerkit", got.Name)
+	if got.Name != "unyolo" {
+		t.Fatalf("decoded name = %q, want unyolo", got.Name)
 	}
 	info, err := os.Stat(path)
 	if err != nil {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 func TestOperationRepositoryLifecycle(t *testing.T) {
@@ -17,7 +17,7 @@ func TestOperationRepositoryLifecycle(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)
 	record := OperationRecord{
-		ID: "op_one", APIVersion: "brokerkit.io/agent/v1", Broker: "hf-broker",
+		ID: "op_one", APIVersion: "unyolo.io/agent/v1", Broker: "hf-broker",
 		ClientID: "agent", IdempotencyKey: "one", Operation: "repo.create",
 		TargetJSON: []byte(`{"kind":"repo"}`), ArgumentsJSON: []byte(`{}`),
 		Reason: "create", State: "pending", Revision: 1, CreatedAt: now, UpdatedAt: now,
@@ -98,7 +98,7 @@ func TestOperationPagesSortFractionalSecondsChronologically(t *testing.T) {
 
 func testOperationRecord(id string, createdAt time.Time) OperationRecord {
 	return OperationRecord{
-		ID: id, APIVersion: "brokerkit.io/agent/v1", Broker: "test", ClientID: "agent", IdempotencyKey: id,
+		ID: id, APIVersion: "unyolo.io/agent/v1", Broker: "test", ClientID: "agent", IdempotencyKey: id,
 		Operation: "repo.read", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), Reason: "read",
 		State: "pending", Revision: 1, CreatedAt: createdAt, UpdatedAt: createdAt,
 		PresentationJSON: []byte(`{"title":"Read"}`),
@@ -114,7 +114,7 @@ func TestInsertOperationWithPlanIsAtomic(t *testing.T) {
 	now := time.Date(2026, 7, 13, 9, 0, 0, 0, time.UTC)
 	canonical := []byte(`{"api_version":"hf-broker.io/plan/v1","operation":"repo.delete"}`)
 	plan := PlanRecord{Digest: plandigest.Digest(canonical), SchemaName: "hf-broker.io/plan/v1", Canonical: canonical, CreatedAt: now}
-	record := OperationRecord{ID: "op_plan", APIVersion: "brokerkit.io/agent/v1", Broker: "hf-broker", ClientID: "agent",
+	record := OperationRecord{ID: "op_plan", APIVersion: "unyolo.io/agent/v1", Broker: "hf-broker", ClientID: "agent",
 		IdempotencyKey: "plan", Operation: "repo.delete", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), Reason: "delete",
 		State: "pending", Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{"title":"Delete"}`), PlanDigest: plan.Digest}
 	if err := database.InsertOperationWithPlan(t.Context(), record, plan); err != nil {
@@ -142,7 +142,7 @@ func TestUpdateOperationWithPlanIsAtomic(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Date(2026, 7, 13, 9, 30, 0, 0, time.UTC)
-	record := OperationRecord{ID: "op_bind", APIVersion: "brokerkit.io/agent/v1", Broker: "hf-broker", ClientID: "agent",
+	record := OperationRecord{ID: "op_bind", APIVersion: "unyolo.io/agent/v1", Broker: "hf-broker", ClientID: "agent",
 		IdempotencyKey: "bind", Operation: "repo.delete", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), Reason: "delete",
 		State: "pending", Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{"title":"Delete"}`)}
 	if err := database.InsertOperation(t.Context(), record); err != nil {
@@ -167,7 +167,7 @@ func TestOperationRepositoryRejectsCorruptTimestamps(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Date(2026, 7, 13, 1, 0, 0, 0, time.UTC)
-	record := OperationRecord{ID: "op", APIVersion: "brokerkit.io/agent/v1", Broker: "test", ClientID: "client",
+	record := OperationRecord{ID: "op", APIVersion: "unyolo.io/agent/v1", Broker: "test", ClientID: "client",
 		IdempotencyKey: "key", Operation: "test", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), State: "pending",
 		Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{}`)}
 	if err := database.InsertOperation(t.Context(), record); err != nil {

@@ -14,8 +14,8 @@ They never choose a credential kind, a token scope, an installation, or a permis
 ## Install
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
 ```
 
 Pin a release with `VERSION=<version>` or choose a directory with `INSTALL_DIR=/absolute/path`.
@@ -66,7 +66,7 @@ sudo gh-broker setup systemd \
 ```
 
 Add Telegram with `--telegram-bot-token-file ./telegram-bot-token` and
-`--telegram-chat-id 123456789`. Run the separate `brokerkit-telegram` ingress to receive button
+`--telegram-chat-id 123456789`. Run the separate `unyolo-telegram` ingress to receive button
 decisions, so provider services never compete for the shared bot's update offset.
 
 ### Development token fallback
@@ -91,7 +91,7 @@ rejected outright.
 ```sh
 sudo gh-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/github/agent/broker.sock \
+  --endpoint unix:///run/unyolo/github/agent/broker.sock \
   --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/gh-broker/secrets \
   --home-dir /home/agent-a
@@ -145,7 +145,7 @@ rm user-credential.json
 
 Use `rotate` with a replacement file to rotate, and `github-user revoke --user-id 1234` to revoke
 immediately. These commands return only the action and the immutable user ID. There is no
-credential readback command and no API route for one. Enrolled credentials live only in BrokerKit's
+credential readback command and no API route for one. Enrolled credentials live only in unYOLO's
 encrypted credential store and refresh before expiry.
 
 ## The operation catalog
@@ -164,12 +164,12 @@ Discrete operations use the typed Agent V1 CLI, which loads the client config au
 
 ```sh
 gh-broker operation submit repo.contents.read \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
   --arguments-json '{"path":"README.md","ref":"main"}' \
   --wait
 
 gh-broker operation submit pull_request.create \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
   --arguments-json '{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}' \
   --reason "Open the reviewed feature branch" \
   --request-id open-agent-pr \
@@ -188,15 +188,15 @@ caller-supplied `admin` flag sent to GitHub.
 
 ```sh
 gh-broker operation submit pull_request.merge_admin \
-  --target-json '{"kind":"pull_request","owner":"osolmaz","repo":"brokerkit","number":123}' \
+  --target-json '{"kind":"pull_request","owner":"osolmaz","repo":"unyolo","number":123}' \
   --arguments-json '{"merge_method":"squash"}' \
   --reason "Merge the reviewed pull request despite its remaining GitHub requirement" \
-  --request-id admin-merge-brokerkit-123 \
+  --request-id admin-merge-unyolo-123 \
   --wait
 ```
 
 Admin merge is a distinct high-risk, explicit, one-use operation and requests operator approval by
-default. BrokerKit resolves the pull request itself, binds approval to the exact head commit,
+default. unYOLO resolves the pull request itself, binds approval to the exact head commit,
 rechecks it before execution, and supplies it to GitHub as the mutation's atomic `expectedHeadOid`
 guard. A pull request that changed after approval must be submitted and approved again.
 
@@ -252,7 +252,7 @@ POST /api/grants
 GET  /api/grants
 GET  /api/grants/{id}
 
-GET  /.well-known/brokerkit-agent
+GET  /.well-known/unyolo-agent
 POST /api/agent/v1/operations
 GET  /api/agent/v1/operations/{id}
 GET  /api/agent/v1/operations/{id}/events
@@ -287,7 +287,7 @@ and other credentials stay sealed or slot-backed and never appear in tool output
 
 ## Error sanitization
 
-BrokerKit parses GitHub's documented error `message` fields, removes control characters, redacts
+unYOLO parses GitHub's documented error `message` fields, removes control characters, redacts
 credential-like values, and limits the text before returning it to the requesting client. Raw
 response bodies, GraphQL paths, and extensions are not retained. Sealed operations omit provider
 messages entirely, because GitHub may echo request values back.
@@ -306,7 +306,7 @@ credentials immediately. Invalid or unknown signed payloads fail closed.
 
 ```sh
 sudo gh-broker doctor github \
-  --repo osolmaz/brokerkit \
+  --repo osolmaz/unyolo \
   --agent-user agent-a \
   --service-user gh-broker
 ```

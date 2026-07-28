@@ -23,7 +23,7 @@ func (r *darwinRunner) Run(_ context.Context, name string, args ...string) ([]by
 		return []byte("pid = 42\n"), nil
 	}
 	if name == "ps" {
-		return []byte("/Library/Application Support/BrokerKit/current/bin/gh-broker\n"), nil
+		return []byte("/Library/Application Support/unyolo/current/bin/gh-broker\n"), nil
 	}
 	return nil, nil
 }
@@ -31,16 +31,16 @@ func (r *darwinRunner) Run(_ context.Context, name string, args ...string) ([]by
 func TestLaunchdManagerLifecycleAndStatus(t *testing.T) {
 	runner := &darwinRunner{}
 	manager := newNativeManager(runner)
-	if err := manager.Stop(t.Context(), "io.brokerkit.github"); err != nil {
+	if err := manager.Stop(t.Context(), "io.unyolo.github"); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Start(t.Context(), "io.brokerkit.github"); err != nil {
+	if err := manager.Start(t.Context(), "io.unyolo.github"); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	status, err := manager.Status(t.Context(), "io.brokerkit.github")
+	status, err := manager.Status(t.Context(), "io.unyolo.github")
 	if err != nil || !status.Active || status.PID != 42 || status.Executable == "" {
 		t.Fatalf("Status() = %+v, %v", status, err)
 	}
@@ -54,7 +54,7 @@ func TestLaunchdManagerRejectsMissingProcess(t *testing.T) {
 		t.Fatalf("launchdPID() = %d", pid)
 	}
 	runner := &darwinRunner{fail: true}
-	status, err := newNativeManager(runner).Status(t.Context(), "io.brokerkit.github")
+	status, err := newNativeManager(runner).Status(t.Context(), "io.unyolo.github")
 	if err != nil || status.Active {
 		t.Fatalf("Status() = %+v, %v", status, err)
 	}

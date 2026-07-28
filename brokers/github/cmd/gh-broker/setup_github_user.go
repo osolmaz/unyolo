@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const maxUserSetupFileBytes = 128 * 1024

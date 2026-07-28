@@ -19,7 +19,7 @@ git push
 ```
 
 The integration must apply to existing repositories and future clones without
-editing each repository. BrokerKit must remain the only holder of provider
+editing each repository. unYOLO must remain the only holder of provider
 credentials. Git clients receive only their existing broker client credential,
 and every fetch, push, LFS request, and supported Xet request remains subject to
 the owning broker's policy, approval, audit, and bounded transport controls.
@@ -102,7 +102,7 @@ not the canonical installation and cannot be used to claim LFS/Xet support.
 
 ### Why an explicit loopback listener is acceptable
 
-There is no BrokerKit default port. The deployment allocates and persists the
+There is no unYOLO default port. The deployment allocates and persists the
 listener during broker service setup, following the existing listener endpoint
 architecture. Linux may use systemd socket activation, macOS may use launchd,
 and containers or orchestrators may provide their own listener.
@@ -154,8 +154,8 @@ The command:
    network use;
 3. verifies the listener belongs to the expected broker;
 4. verifies the required `git` and optional `git-lfs` versions;
-5. installs or exposes the shared `git-credential-brokerkit` executable;
-6. writes only BrokerKit-owned user-level Git configuration;
+5. installs or exposes the shared `git-credential-unyolo` executable;
+6. writes only unYOLO-owned user-level Git configuration;
 7. runs a non-mutating authenticated discovery check; and
 8. prints the exact providers and URL forms now routed through the broker.
 
@@ -289,7 +289,7 @@ Configure the helper only for the exact loopback origin:
 
 ```ini
 [credential "http://127.0.0.1:52147"]
-    helper = brokerkit --provider github
+    helper = unyolo --provider github
     useHttpPath = true
 ```
 
@@ -323,11 +323,11 @@ format once if that is required.
 - repository-local LFS URL overrides;
 - a global hooks path or LFS configuration that changes transport behavior;
 - missing `git-lfs` when LFS pointers are present; and
-- stale BrokerKit values for an endpoint that no longer exists.
+- stale unYOLO values for an endpoint that no longer exists.
 
 Do not silently delete user configuration. Fail with the exact conflicting key
 and provide an explicit repair command. `git install --replace` may replace only
-values previously marked and recognized as BrokerKit-owned.
+values previously marked and recognized as unYOLO-owned.
 
 ## Git Listener Contract
 
@@ -461,7 +461,7 @@ required and scoped correctly. Do not write repository-local `.lfsconfig`.
 
 GitHub LFS batch, object, verification, and locking routes use the same Git
 listener. Signed object URLs and action headers are retained inside the broker
-and replaced with client- and repository-bound BrokerKit action URLs.
+and replaced with client- and repository-bound unYOLO action URLs.
 
 ### Xet
 
@@ -563,7 +563,7 @@ Provider binaries expose the same command shape:
 <broker> git status [--home-dir PATH]
 ```
 
-Shared parsing and behavior live in BrokerKit. Provider binaries supply their
+Shared parsing and behavior live in unYOLO. Provider binaries supply their
 descriptor and presentation names only.
 
 `status` is machine-readable with `--json`. `doctor` performs no mutations and
@@ -593,7 +593,7 @@ checks:
 
 - Implement strict descriptors, URL mappings, config ownership, install,
   uninstall, status, and doctor.
-- Implement `git-credential-brokerkit` with bounded protocol parsing.
+- Implement `git-credential-unyolo` with bounded protocol parsing.
 - Add exact-value conflict detection and idempotency tests.
 - Add Linux and macOS path and ownership tests.
 
@@ -648,7 +648,7 @@ checks:
 - Update systemd and launchd setup for explicit Git listeners.
 - Update package manifests, checksums, and installer ownership records.
 - Run install, upgrade, uninstall, and reinstall tests from packed artifacts.
-- Release all affected broker binaries from one coherent BrokerKit revision.
+- Release all affected broker binaries from one coherent unYOLO revision.
 
 ## Test Strategy
 
@@ -705,7 +705,7 @@ go-git as a substitute for client conformance.
 
 On clean Linux and macOS user homes:
 
-1. install BrokerKit artifacts;
+1. install unYOLO artifacts;
 2. configure provider services and explicit Git listeners;
 3. run `<broker> setup client`;
 4. run `<broker> git install`;
@@ -762,7 +762,7 @@ The implementation is complete only when all of the following are true:
 - no repository-local setup is required;
 - existing and newly cloned provider URLs route correctly;
 - default installation brokers clone, fetch, pull, and push;
-- no fixed BrokerKit Git port exists;
+- no fixed unYOLO Git port exists;
 - no provider or broker credential appears in Git configuration or remotes;
 - direct allows finish without prompts;
 - request decisions continue after approval in the same local Git command;
@@ -784,10 +784,10 @@ The implementation is complete only when all of the following are true:
 - Reimplementing Git pack or wire protocols.
 - Replacing Git, Git LFS, or the official supported Xet client.
 - Installing hooks or configuration into each repository.
-- Defining a universal BrokerKit TCP port.
+- Defining a universal unYOLO TCP port.
 - Exposing operator APIs on the Git listener.
 - Acting as a general-purpose HTTP proxy.
 - Supplying provider tokens through Git credential helpers.
-- Silently bypassing BrokerKit when it is unavailable.
+- Silently bypassing unYOLO when it is unavailable.
 - Supporting arbitrary third-party Git hosts without a broker-owned provider
   adapter and conformance suite.

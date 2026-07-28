@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	APIVersion         = "brokerkit.io/setup-component/v1"
+	APIVersion         = "unyolo.io/setup-component/v1"
 	MaxFiles           = 256
 	MaxActions         = 1024
 	MaxCredentialSlots = 64

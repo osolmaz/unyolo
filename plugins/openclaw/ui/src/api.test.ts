@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  BrokerKitUiApi,
+  unYOLOUiApi,
   DELEGATED_REBOOTSTRAP_REQUEST,
   DELEGATED_SESSION_META,
   DELEGATED_SESSION_REQUEST,
@@ -19,7 +19,7 @@ const direct = encoded({
 const delegated = encoded({
   version: 1,
   mode: "delegated-web",
-  basePath: "/trusted-host/api/brokerkit",
+  basePath: "/trusted-host/api/unyolo",
 });
 
 afterEach(() => {
@@ -33,7 +33,7 @@ describe("parseUiBootstrap", () => {
     expect(parseUiBootstrap(delegated)).toEqual({
       version: 1,
       mode: "delegated-web",
-      basePath: "/trusted-host/api/brokerkit",
+      basePath: "/trusted-host/api/unyolo",
     });
   });
 
@@ -63,7 +63,7 @@ describe("parseUiBootstrap", () => {
   });
 });
 
-describe("BrokerKitUiApi", () => {
+describe("unYOLOUiApi", () => {
   it("uses the dedicated session field for direct browser requests", async () => {
     const fetchMock = vi.fn(
       async () =>
@@ -72,12 +72,10 @@ describe("BrokerKitUiApi", () => {
         }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(direct));
+    const api = new unYOLOUiApi(parseUiBootstrap(direct));
     await api.snapshot();
     expect(api.canDecide()).toBe(true);
-    expect(fetchCall(fetchMock, 0)[0]).toBe(
-      "/plugins/brokerkit/api/v1/snapshot",
-    );
+    expect(fetchCall(fetchMock, 0)[0]).toBe("/plugins/unyolo/api/v1/snapshot");
     expect(fetchCall(fetchMock, 0)[1]).toEqual(
       expect.objectContaining({ credentials: "omit" }),
     );
@@ -89,7 +87,7 @@ describe("BrokerKitUiApi", () => {
     const meta = {
       getAttribute: vi.fn(() =>
         encoded({
-          api_version: "brokerkit.io/delegated-web/v1",
+          api_version: "unyolo.io/delegated-web/v1",
           token: delegatedToken,
           expires_at: new Date(Date.now() + 60_000).toISOString(),
           access: "decide",
@@ -106,7 +104,7 @@ describe("BrokerKitUiApi", () => {
       const url = String(input);
       if (url.includes("/events?"))
         return Response.json({
-          api_version: "brokerkit.io/operator-ui/v1",
+          api_version: "unyolo.io/operator-ui/v1",
           cursor: "epoch.1",
           changed: false,
         });
@@ -116,20 +114,20 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const cases: Array<{
-      api: BrokerKitUiApi;
+      api: unYOLOUiApi;
       basePath: string;
       token: string;
       credentials: RequestCredentials;
     }> = [
       {
-        api: new BrokerKitUiApi(parseUiBootstrap(direct)),
-        basePath: "/plugins/brokerkit/api/v1",
+        api: new unYOLOUiApi(parseUiBootstrap(direct)),
+        basePath: "/plugins/unyolo/api/v1",
         token: "a".repeat(43),
         credentials: "omit",
       },
       {
-        api: new BrokerKitUiApi(parseUiBootstrap(delegated)),
-        basePath: "/trusted-host/api/brokerkit",
+        api: new unYOLOUiApi(parseUiBootstrap(delegated)),
+        basePath: "/trusted-host/api/unyolo",
         token: delegatedToken,
         credentials: "omit",
       },
@@ -166,13 +164,13 @@ describe("BrokerKitUiApi", () => {
   it("waits with an authenticated bounded cursor request", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
-        api_version: "brokerkit.io/operator-ui/v1",
+        api_version: "unyolo.io/operator-ui/v1",
         cursor: "epoch.2",
         changed: true,
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(direct));
+    const api = new unYOLOUiApi(parseUiBootstrap(direct));
     const controller = new AbortController();
     await expect(
       api.events("epoch.1", controller.signal),
@@ -181,7 +179,7 @@ describe("BrokerKitUiApi", () => {
       changed: true,
     });
     expect(fetchCall(fetchMock, 0)[0]).toBe(
-      "/plugins/brokerkit/api/v1/events?cursor=epoch.1&wait_seconds=25",
+      "/plugins/unyolo/api/v1/events?cursor=epoch.1&wait_seconds=25",
     );
     expect(fetchCall(fetchMock, 0)[1]).toEqual(
       expect.objectContaining({ signal: controller.signal }),
@@ -196,7 +194,7 @@ describe("BrokerKitUiApi", () => {
     vi.stubGlobal("document", { querySelector: vi.fn(() => null) });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
     await expect(api.snapshot()).rejects.toThrow(
       "Approval authorization expired",
     );
@@ -205,7 +203,7 @@ describe("BrokerKitUiApi", () => {
 
   it("consumes a one-shot delegated session embedded by a trusted host", async () => {
     const session = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "e".repeat(48),
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       access: "decide",
@@ -230,7 +228,7 @@ describe("BrokerKitUiApi", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
     await api.snapshot();
 
     expect(meta.remove).toHaveBeenCalledOnce();
@@ -241,7 +239,7 @@ describe("BrokerKitUiApi", () => {
 
   it("consumes a trusted embedded delegated session while framed", async () => {
     const session = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "e".repeat(48),
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       access: "read",
@@ -260,7 +258,7 @@ describe("BrokerKitUiApi", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
     await api.snapshot();
 
     expect(meta.remove).toHaveBeenCalledOnce();
@@ -272,7 +270,7 @@ describe("BrokerKitUiApi", () => {
 
   it("accepts decision authority inside a delegated frame", async () => {
     const session = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "e".repeat(48),
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       access: "decide",
@@ -287,7 +285,7 @@ describe("BrokerKitUiApi", () => {
     const fetchMock = vi.fn(async () => Response.json(emptySnapshot()));
     vi.stubGlobal("fetch", fetchMock);
 
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
     await api.snapshot();
 
     expect(meta.remove).toHaveBeenCalledOnce();
@@ -299,14 +297,14 @@ describe("BrokerKitUiApi", () => {
     let now = Date.now();
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const first = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "f".repeat(48),
       expires_at: new Date(now + 31_000).toISOString(),
       access: "decide",
       renewal_transport: "direct",
     };
     const renewed = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "r".repeat(48),
       expires_at: new Date(now + 60_000).toISOString(),
       access: "decide",
@@ -328,16 +326,14 @@ describe("BrokerKitUiApi", () => {
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
 
     await api.snapshot();
     now += 2_000;
     embedded = null;
     await api.snapshot();
 
-    expect(fetchCall(fetchMock, 1)[0]).toBe(
-      "/trusted-host/api/brokerkit/session",
-    );
+    expect(fetchCall(fetchMock, 1)[0]).toBe("/trusted-host/api/unyolo/session");
     expectBrowserSession(fetchCall(fetchMock, 1)[1], "f".repeat(48), "omit");
     expectBrowserSession(fetchCall(fetchMock, 2)[1], "r".repeat(48), "omit");
   });
@@ -346,14 +342,14 @@ describe("BrokerKitUiApi", () => {
     let now = Date.now();
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const initial = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "f".repeat(48),
       expires_at: new Date(now + 31_000).toISOString(),
       access: "decide",
       renewal_transport: "direct",
     };
     const renewed = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "r".repeat(48),
       expires_at: new Date(now + 60_000).toISOString(),
       access: "decide",
@@ -375,7 +371,7 @@ describe("BrokerKitUiApi", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(renewed)))
       .mockImplementation(async () => new Response(JSON.stringify(snapshot)));
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
 
     await api.snapshot();
     now += 2_000;
@@ -384,7 +380,7 @@ describe("BrokerKitUiApi", () => {
 
     const renewals = fetchCalls(fetchMock).filter(
       ([url, init]) =>
-        url === "/trusted-host/api/brokerkit/session" &&
+        url === "/trusted-host/api/unyolo/session" &&
         (init as RequestInit).credentials === "omit",
     );
     expect(renewals).toHaveLength(1);
@@ -395,7 +391,7 @@ describe("BrokerKitUiApi", () => {
     let now = Date.now();
     vi.spyOn(Date, "now").mockImplementation(() => now);
     const initial = {
-      api_version: "brokerkit.io/delegated-web/v1",
+      api_version: "unyolo.io/delegated-web/v1",
       token: "f".repeat(48),
       expires_at: new Date(now + 31_000).toISOString(),
       access: "decide",
@@ -416,7 +412,7 @@ describe("BrokerKitUiApi", () => {
         Response.json({ error: { code: "not_authorized" } }, { status: 401 }),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
 
     await api.snapshot();
     now += 2_000;
@@ -439,7 +435,7 @@ describe("BrokerKitUiApi", () => {
     const meta = {
       getAttribute: vi.fn(() =>
         encoded({
-          api_version: "brokerkit.io/delegated-web/v1",
+          api_version: "unyolo.io/delegated-web/v1",
           token: "d".repeat(4097),
           expires_at: new Date(Date.now() + 60_000).toISOString(),
           access: "decide",
@@ -449,7 +445,7 @@ describe("BrokerKitUiApi", () => {
       remove: vi.fn(),
     };
     vi.stubGlobal("document", { querySelector: vi.fn(() => meta) });
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
     await expect(api.snapshot()).rejects.toThrow("session is invalid");
     expect(meta.remove).toHaveBeenCalledOnce();
   });
@@ -471,7 +467,7 @@ describe("BrokerKitUiApi", () => {
       const meta = {
         getAttribute: vi.fn(() =>
           encoded({
-            api_version: "brokerkit.io/delegated-web/v1",
+            api_version: "unyolo.io/delegated-web/v1",
             ...value,
             access: "decide",
             renewal_transport: "direct",
@@ -481,7 +477,7 @@ describe("BrokerKitUiApi", () => {
       };
       vi.stubGlobal("document", { querySelector: vi.fn(() => meta) });
       await expect(
-        new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot(),
+        new unYOLOUiApi(parseUiBootstrap(delegated)).snapshot(),
       ).rejects.toThrow("session is invalid");
       expect(meta.remove).toHaveBeenCalledOnce();
     }
@@ -501,7 +497,7 @@ describe("BrokerKitUiApi", () => {
             type: DELEGATED_SESSION_RESPONSE,
             nonce: message.nonce,
             session: {
-              api_version: "brokerkit.io/delegated-web/v1",
+              api_version: "unyolo.io/delegated-web/v1",
               token: "d".repeat(48),
               expires_at: new Date(Date.now() + 60_000).toISOString(),
               access: "read",
@@ -527,7 +523,7 @@ describe("BrokerKitUiApi", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await new BrokerKitUiApi(parseUiBootstrap(delegated)).snapshot();
+    await new unYOLOUiApi(parseUiBootstrap(delegated)).snapshot();
 
     expect(parent.postMessage).toHaveBeenCalledOnce();
     expectBrowserSession(fetchCall(fetchMock, 0)[1], "d".repeat(48), "omit");
@@ -547,7 +543,7 @@ describe("BrokerKitUiApi", () => {
             type: DELEGATED_SESSION_RESPONSE,
             nonce: message.nonce,
             session: {
-              api_version: "brokerkit.io/delegated-web/v1",
+              api_version: "unyolo.io/delegated-web/v1",
               token: (sessions === 1 ? "f" : "r").repeat(48),
               expires_at: new Date(
                 now + (sessions === 1 ? 31_000 : 60_000),
@@ -578,7 +574,7 @@ describe("BrokerKitUiApi", () => {
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const api = new BrokerKitUiApi(parseUiBootstrap(delegated));
+    const api = new unYOLOUiApi(parseUiBootstrap(delegated));
 
     await api.snapshot();
     now += 2_000;
@@ -593,8 +589,8 @@ describe("BrokerKitUiApi", () => {
     const headers = browserSessionHeaders(
       [
         ["Authorization", "Bearer caller-secret"],
-        ["brokerkit-session", "caller-session"],
-        ["BrokerKit-Session", "duplicate-session"],
+        ["unyolo-session", "caller-session"],
+        ["unyolo-session", "duplicate-session"],
         ["Content-Type", "application/json"],
       ],
       "s".repeat(48),
@@ -615,7 +611,7 @@ describe("BrokerKitUiApi", () => {
         ),
       ),
     );
-    const api = new BrokerKitUiApi(
+    const api = new unYOLOUiApi(
       parseUiBootstrap(
         encoded({ version: 1, mode: "direct", capability: secret }),
       ),
@@ -663,7 +659,7 @@ function emptySnapshot(
   cursor = "epoch.1",
 ) {
   return {
-    api_version: "brokerkit.io/operator-ui/v1",
+    api_version: "unyolo.io/operator-ui/v1",
     cursor,
     sources: [],
     requests: [],

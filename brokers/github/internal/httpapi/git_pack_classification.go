@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/git/protocol"
+	"github.com/osolmaz/unyolo/git/protocol"
 )
 
 const (

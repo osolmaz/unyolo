@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/agent/v1"
 )
 
 const (
-	discoveryPath     = "/.well-known/brokerkit-agent"
+	discoveryPath     = "/.well-known/unyolo-agent"
 	operationsPath    = "/api/agent/v1/operations"
 	unknownCredential = "unknown-agent-secret-abcdefghijklmnopqrstuvwxyz"
 	maxErrorBodyBytes = 64 * 1024

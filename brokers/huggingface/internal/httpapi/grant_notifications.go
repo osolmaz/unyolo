@@ -7,23 +7,23 @@ import (
 	"strings"
 	"time"
 
-	bkapproval "github.com/osolmaz/brokerkit/approval"
-	bkapprovalnotify "github.com/osolmaz/brokerkit/approval/notification"
-	bknotify "github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	hfapproval "github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	unyoloapproval "github.com/osolmaz/unyolo/approval"
+	unyoloapprovalnotify "github.com/osolmaz/unyolo/approval/notification"
+	unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	hfapproval "github.com/osolmaz/unyolo/brokers/huggingface/internal/approval"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 func grantNeedsNotification(grant grants.Grant) bool {
 	return grant.Status == grants.StatusPending && grant.Notification == nil
 }
 
-func (s *Server) supersedeGrantMessage(ctx context.Context, ref bknotify.MessageRef) {
+func (s *Server) supersedeGrantMessage(ctx context.Context, ref unyolonotify.MessageRef) {
 	if ref.MessageID == 0 {
 		return
 	}
-	_ = s.updateNotifierStatus(ctx, ref, bknotify.Status{Kind: bknotify.StatusSuperseded})
+	_ = s.updateNotifierStatus(ctx, ref, unyolonotify.Status{Kind: unyolonotify.StatusSuperseded})
 }
 
 func (s *Server) waitForGrantNotification(ctx context.Context, id string) (grants.Grant, error) {
@@ -102,8 +102,8 @@ func invalidGrantTargetSegment(value string) bool {
 	return value == "" || strings.ContainsAny(value, " \t\r\n/\x00*?")
 }
 
-func grantApprovalMessage(ctx context.Context, grant grants.Grant, decisionToken string) bkapprovalnotify.Approval {
-	return bkapprovalnotify.Project(ctx, "Hugging Face", hfapproval.Presenter{}, grant, decisionToken)
+func grantApprovalMessage(ctx context.Context, grant grants.Grant, decisionToken string) unyoloapprovalnotify.Approval {
+	return unyoloapprovalnotify.Project(ctx, "Hugging Face", hfapproval.Presenter{}, grant, decisionToken)
 }
 func (s *Server) startGrantNotificationSweeper(ctx context.Context) {
 	if s.notifier == nil {
@@ -133,7 +133,7 @@ func (s *Server) sweepGrantNotifications(ctx context.Context) {
 		return
 	}
 	for _, item := range updates {
-		status := bkapproval.StatusForUpdate(item)
+		status := unyoloapproval.StatusForUpdate(item)
 		if err := s.updateGrantMessage(ctx, item.Grant, status); err == nil {
 			_ = s.grants.MarkNotificationStatus(item.Grant.ID, item.NotificationStatusKey())
 		}
@@ -162,16 +162,16 @@ func (s *Server) sweepPendingGrantApproval(ctx context.Context, grant grants.Gra
 	s.recordClaimedGrantNotification(ctx, claim, ref)
 }
 
-func (s *Server) sendClaimedGrantApproval(ctx context.Context, claim grants.NotificationClaim) (bknotify.MessageRef, bool) {
+func (s *Server) sendClaimedGrantApproval(ctx context.Context, claim grants.NotificationClaim) (unyolonotify.MessageRef, bool) {
 	ref, err := s.notifier.SendApproval(ctx, grantApprovalMessage(ctx, claim.Grant, claim.DecisionToken))
 	if err != nil || ref.MessageID <= 0 {
 		s.retainGrantNotificationClaim(claim)
-		return bknotify.MessageRef{}, false
+		return unyolonotify.MessageRef{}, false
 	}
 	return ref, true
 }
 
-func (s *Server) recordClaimedGrantNotification(ctx context.Context, claim grants.NotificationClaim, ref bknotify.MessageRef) {
+func (s *Server) recordClaimedGrantNotification(ctx context.Context, claim grants.NotificationClaim, ref unyolonotify.MessageRef) {
 	updated, recorded, err := s.grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
 	if err != nil {
 		s.retainGrantNotificationClaim(claim)
@@ -207,21 +207,21 @@ func (s *Server) deliverGrantStatusUpdate(ctx context.Context, id string) {
 		if update.Grant.ID != id {
 			continue
 		}
-		if err := s.updateGrantMessage(ctx, update.Grant, bkapproval.StatusForUpdate(update)); err == nil {
+		if err := s.updateGrantMessage(ctx, update.Grant, unyoloapproval.StatusForUpdate(update)); err == nil {
 			_ = s.grants.MarkNotificationStatus(id, update.NotificationStatusKey())
 		}
 		return
 	}
 }
 
-func (s *Server) updateGrantMessage(ctx context.Context, grant grants.Grant, status bknotify.Status) error {
+func (s *Server) updateGrantMessage(ctx context.Context, grant grants.Grant, status unyolonotify.Status) error {
 	if grant.Notification == nil {
 		return nil
 	}
 	return s.updateNotifierStatus(ctx, *grant.Notification, status)
 }
 
-func (s *Server) updateNotifierStatus(ctx context.Context, ref bknotify.MessageRef, status bknotify.Status) error {
+func (s *Server) updateNotifierStatus(ctx context.Context, ref unyolonotify.MessageRef, status unyolonotify.Status) error {
 	if s.notifier == nil {
 		return nil
 	}

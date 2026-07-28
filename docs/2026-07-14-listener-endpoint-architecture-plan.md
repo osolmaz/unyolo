@@ -22,7 +22,7 @@ Completed on 2026-07-15 as part of the production-readiness cutover.
 
 ## Objective
 
-Remove globally prescribed TCP ports from BrokerKit and every broker. Broker
+Remove globally prescribed TCP ports from unYOLO and every broker. Broker
 processes must accept deployment-owned listeners instead of assuming that a
 particular port is available. Local privileged traffic should use named Unix
 sockets, standard HTTP and Git traffic should enter through an explicitly
@@ -39,7 +39,7 @@ rerun setup after the cutover.
 
 ## Design Principles
 
-1. There is no collision-free fixed TCP port, so BrokerKit defines no default
+1. There is no collision-free fixed TCP port, so unYOLO defines no default
    TCP port.
 2. A broker identity is a logical name, not a port number.
 3. The deployment layer owns listener allocation, reservation, exposure, and
@@ -61,12 +61,12 @@ rerun setup after the cutover.
 
 ## Canonical Endpoint Model
 
-Add a provider-neutral BrokerKit endpoint package. Configuration uses complete
+Add a provider-neutral unYOLO endpoint package. Configuration uses complete
 endpoint URIs rather than separate host and port fields:
 
 ```text
-unix:///run/brokerkit/github/agent.sock
-unix:///run/brokerkit/github/operator.sock
+unix:///run/unyolo/github/agent.sock
+unix:///run/unyolo/github/operator.sock
 tcp://127.0.0.1:52147
 activation://agent
 activation://operator
@@ -108,9 +108,9 @@ activation handling, or HTTP transport construction.
 For a local system installation, setup creates separate runtime directories:
 
 ```text
-/run/brokerkit/huggingface/
-/run/brokerkit/github/
-/run/brokerkit/sudo/
+/run/unyolo/huggingface/
+/run/unyolo/github/
+/run/unyolo/sudo/
 ```
 
 Each directory is root-owned, non-symlinked, and not writable by untrusted
@@ -150,7 +150,7 @@ request `tcp://127.0.0.1:0` and receive a machine-readable selected endpoint.
 Loopback TCP is accepted without a network-exposure override. Wildcard,
 non-loopback, and externally routable addresses require an explicit
 `network-exposure=allow` setting and a deployment-owned authentication and TLS
-story. BrokerKit must not silently convert an omitted host into `0.0.0.0` or
+story. unYOLO must not silently convert an omitted host into `0.0.0.0` or
 `::`.
 
 ## Client Discovery
@@ -162,8 +162,8 @@ both TCP and Unix sockets without changing Agent V1 or Operator V1 payloads.
 Generated client configuration contains the selected endpoint explicitly:
 
 ```text
-BROKERKIT_AGENT_ENDPOINT=unix:///run/brokerkit/github/agent.sock
-BROKERKIT_OPERATOR_ENDPOINT=unix:///run/brokerkit/github/operator.sock
+UNYOLO_AGENT_ENDPOINT=unix:///run/unyolo/github/agent.sock
+UNYOLO_OPERATOR_ENDPOINT=unix:///run/unyolo/github/operator.sock
 ```
 
 Provider-specific setup may continue to write provider-prefixed files, but it
@@ -182,7 +182,7 @@ production patterns without forcing either one:
 
 1. A broker may receive an explicitly configured or activated TCP agent
    listener directly.
-2. A deployment may place a single BrokerKit-aware or general reverse proxy in
+2. A deployment may place a single unYOLO-aware or general reverse proxy in
    front of broker Unix sockets.
 
 When a shared ingress is used, broker identity is explicit in the route or
@@ -191,10 +191,10 @@ collisions between GitHub and Hugging Face repository paths, preserve bounded
 streaming and cancellation, forward authentication without logging it, reject
 ambiguous path normalization, and never expose an operator socket.
 
-BrokerKit does not need to own TLS, public DNS, certificates, load balancing,
+unYOLO does not need to own TLS, public DNS, certificates, load balancing,
 or cluster service discovery. Caddy, nginx, Envoy, Kubernetes Services, cloud
 load balancers, and equivalent deployment components may own those concerns.
-If a BrokerKit ingress binary is added, it remains a narrow transport router;
+If a unYOLO ingress binary is added, it remains a narrow transport router;
 it does not become a second policy engine or credential holder.
 
 ## Deployment Profiles
@@ -211,7 +211,7 @@ it does not become a second policy engine or credential holder.
 ### macOS
 
 - Prefer named launchd sockets for LaunchDaemon installations.
-- Use a protected runtime path under `/var/run/brokerkit` for direct Unix
+- Use a protected runtime path under `/var/run/unyolo` for direct Unix
   sockets when activation is unavailable.
 - Keep operator sockets inaccessible to ordinary desktop users.
 - Generate the same endpoint URI contract used on Linux.

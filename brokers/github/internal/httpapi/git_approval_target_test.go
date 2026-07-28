@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
 
 func TestGitTransactionRequestIDIncludesTarget(t *testing.T) {

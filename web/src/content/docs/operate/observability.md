@@ -35,14 +35,14 @@ executing operations, pending notifications, and unresolved notifications. Provi
 notification dependencies report last-observed health and their outcomes by closed error category,
 and a bounded durable-database probe runs at scrape time.
 
-When the database probe fails, `brokerkit_database_healthy` reports `0` and the queue gauges are
-omitted. BrokerKit does not report unknown durable state as zero and does not retain stale queue
+When the database probe fails, `unyolo_database_healthy` reports `0` and the queue gauges are
+omitted. unYOLO does not report unknown durable state as zero and does not retain stale queue
 values between scrapes, because a zero that means "I cannot tell" is worse than a missing series.
 
 ## Label cardinality
 
 Each registry has one setup-controlled `broker` label. Every other label comes from a closed
-BrokerKit enum.
+unYOLO enum.
 
 Client names, repository names, target users, reasons, paths, commands, URLs, tokens, and upstream
 error strings are never metric labels. Unknown values collapse to `other`.
@@ -98,7 +98,7 @@ ID. Credential-helper input and output are never logged, and neither are Basic c
 
 ## Host bundle diagnostics
 
-`brokerkit system status --json` and `brokerkit system doctor --json` provide the host-level view:
+`unyolo system status --json` and `unyolo system doctor --json` provide the host-level view:
 bundle IDs, release build IDs, artifact digest results, native service names, PIDs, executable
 paths, active state, and recovery-required state. Neither contains credentials, Telegram
 destinations, decision authority, reasons, or provider payloads.
@@ -117,7 +117,7 @@ usernames, or chat IDs.
 
 ## Alerting
 
-Three signals are worth wiring up first. A `brokerkit_database_healthy` of `0` means the broker
+Three signals are worth wiring up first. A `unyolo_database_healthy` of `0` means the broker
 cannot serve, and readiness will already be failing. A steadily rising pending-approval depth
 usually means an agent is requesting things nobody intends to approve, which is a policy problem
 rather than a capacity one. A rising rejected-submission count with a stable rejection code points

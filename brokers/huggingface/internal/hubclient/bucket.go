@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xethash"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/xethash"
 )
 
 const (

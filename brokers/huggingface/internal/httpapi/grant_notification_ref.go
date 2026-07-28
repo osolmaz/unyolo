@@ -1,7 +1,7 @@
 package httpapi
 
-import bknotify "github.com/osolmaz/brokerkit/approval/notifier"
+import unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
 
-func shouldSupersedeNotifier(stored *bknotify.MessageRef, sent bknotify.MessageRef) bool {
+func shouldSupersedeNotifier(stored *unyolonotify.MessageRef, sent unyolonotify.MessageRef) bool {
 	return stored == nil || *stored != sent
 }

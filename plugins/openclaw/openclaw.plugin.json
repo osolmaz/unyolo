@@ -1,8 +1,8 @@
 {
-  "id": "brokerkit",
+  "id": "unyolo",
   "activation": { "onStartup": true },
-  "name": "BrokerKit",
-  "description": "Provider-neutral approval inbox for BrokerKit sources.",
+  "name": "unYOLO",
+  "description": "Provider-neutral approval inbox for unYOLO sources.",
   "skills": ["./dist/skills"],
   "configSchema": {
     "type": "object",

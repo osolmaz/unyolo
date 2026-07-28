@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 const (

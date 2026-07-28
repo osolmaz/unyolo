@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 func TestRequiredHFProjections(t *testing.T) {

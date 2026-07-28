@@ -13,22 +13,22 @@ import (
 	"strconv"
 	"strings"
 
-	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/hostcheck"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const maxSetupFileBytes = 16 << 20
 
 type sudoSystemdOptions struct {
-	bksetup.SystemdOptions
+	unyolosetup.SystemdOptions
 	PolicyFile           string
 	CatalogFile          string
 	HelperBinary         string
@@ -80,7 +80,7 @@ func newSetupLifecycle(stderr io.Writer) (*credentiallifecycle.Reporter, error) 
 	return credentiallifecycle.New(audit.New(stderr), "sudo-broker", "local-operator")
 }
 
-func finishSetupSystemd(ctx context.Context, stdout io.Writer, opts sudoSystemdOptions, paths sudoInstallPaths, helperPlan bkservice.SystemdInstallPlan, frontendPlan bkservice.SystemdInstallPlan) error {
+func finishSetupSystemd(ctx context.Context, stdout io.Writer, opts sudoSystemdOptions, paths sudoInstallPaths, helperPlan unyoloservice.SystemdInstallPlan, frontendPlan unyoloservice.SystemdInstallPlan) error {
 	if opts.DryRun {
 		return printSudoSystemdPlan(stdout, opts, paths, helperPlan, frontendPlan)
 	}
@@ -92,12 +92,12 @@ func finishSetupSystemd(ctx context.Context, stdout io.Writer, opts sudoSystemdO
 	return err
 }
 
-func installSudoSystemd(ctx context.Context, helperPlan bkservice.SystemdInstallPlan, frontendPlan bkservice.SystemdInstallPlan) error {
-	return installSudoSystemdWith(ctx, helperPlan, frontendPlan, bkservice.InstallSystemd)
+func installSudoSystemd(ctx context.Context, helperPlan unyoloservice.SystemdInstallPlan, frontendPlan unyoloservice.SystemdInstallPlan) error {
+	return installSudoSystemdWith(ctx, helperPlan, frontendPlan, unyoloservice.InstallSystemd)
 }
 
-func installSudoSystemdWith(ctx context.Context, helperPlan bkservice.SystemdInstallPlan, frontendPlan bkservice.SystemdInstallPlan,
-	install func(context.Context, bkservice.SystemdInstallPlan) error) error {
+func installSudoSystemdWith(ctx context.Context, helperPlan unyoloservice.SystemdInstallPlan, frontendPlan unyoloservice.SystemdInstallPlan,
+	install func(context.Context, unyoloservice.SystemdInstallPlan) error) error {
 	if err := install(ctx, helperPlan); err != nil {
 		return fmt.Errorf("install privileged helper: %w", err)
 	}
@@ -108,16 +108,16 @@ func installSudoSystemdWith(ctx context.Context, helperPlan bkservice.SystemdIns
 }
 
 func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (sudoSystemdOptions, bool, error) {
-	common := bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
-		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", Endpoint: "unix:///run/brokerkit/sudo/agent/broker.sock",
+	common := unyolosetup.DefaultSystemdOptions(unyolosetup.SystemdDefaults{
+		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", Endpoint: "unix:///run/unyolo/sudo/agent/broker.sock",
 	})
 	common.StateDir = "/var/lib/sudo-broker/frontend"
 	opts := sudoSystemdOptions{SystemdOptions: common, HelperStateDir: "/var/lib/sudo-broker/helper",
-		HelperSocket: "/run/sudo-broker/helper.sock", OperatorEndpoint: "unix:///run/brokerkit/sudo/operator/broker.sock"}
+		HelperSocket: "/run/sudo-broker/helper.sock", OperatorEndpoint: "unix:///run/unyolo/sudo/operator/broker.sock"}
 	var output strings.Builder
 	flags := flag.NewFlagSet("sudo-broker setup systemd", flag.ContinueOnError)
 	flags.SetOutput(&output)
-	bksetup.BindSystemdFlags(flags, &opts.SystemdOptions)
+	unyolosetup.BindSystemdFlags(flags, &opts.SystemdOptions)
 	flags.StringVar(&opts.PolicyFile, "policy-file", "", "sudo policy JSON source")
 	flags.StringVar(&opts.CatalogFile, "catalog-file", "", "root-reviewed command catalog source")
 	flags.StringVar(&opts.HelperBinary, "helper-binary", "", "sudo-broker-exec binary path")
@@ -152,7 +152,7 @@ func handleSudoSystemdParseError(err error, stderr io.Writer, output string) (su
 }
 
 func finalizeSudoSystemdOptions(opts *sudoSystemdOptions) error {
-	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
+	finalized, err := unyolosetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
 		return err
 	}
@@ -164,19 +164,19 @@ func finalizeSudoSystemdOptions(opts *sudoSystemdOptions) error {
 }
 
 func defaultSudoHelperBinary(frontend string) string {
-	if frontend == bksetup.ManagedExecutablePath(filepath.Join("bin", "sudo-broker")) {
-		return bksetup.ManagedExecutablePath(filepath.Join("libexec", "sudo-broker-exec"))
+	if frontend == unyolosetup.ManagedExecutablePath(filepath.Join("bin", "sudo-broker")) {
+		return unyolosetup.ManagedExecutablePath(filepath.Join("libexec", "sudo-broker-exec"))
 	}
 	return defaultHelperBinary(frontend)
 }
 
 func finalizeSudoHelperBinary(opts *sudoSystemdOptions) error {
-	resolvedHelper, managed, err := bksetup.ResolveServiceExecutable(opts.HelperBinary, filepath.Join("libexec", "sudo-broker-exec"), opts.AllowNonRoot)
+	resolvedHelper, managed, err := unyolosetup.ResolveServiceExecutable(opts.HelperBinary, filepath.Join("libexec", "sudo-broker-exec"), opts.AllowNonRoot)
 	if err != nil {
 		return fmt.Errorf("resolve helper binary: %w", err)
 	}
 	if os.Geteuid() == 0 && !opts.AllowNonRoot && !opts.DryRun && !managed {
-		return errors.New("production helper must use the BrokerKit managed current release path")
+		return errors.New("production helper must use the unYOLO managed current release path")
 	}
 	opts.HelperBinary = resolvedHelper
 	opts.helperManaged = managed
@@ -185,11 +185,11 @@ func finalizeSudoHelperBinary(opts *sudoSystemdOptions) error {
 
 func resolveSudoSystemdSecrets(opts *sudoSystemdOptions, stdin io.Reader) error {
 	var err error
-	opts.SharedSecret, err = bksetup.ResolveSecret(bksetup.SecretInput{File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin}, stdin)
+	opts.SharedSecret, err = unyolosetup.ResolveSecret(unyolosetup.SecretInput{File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin}, stdin)
 	if err != nil {
 		return err
 	}
-	opts.OperatorSecret, err = bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
+	opts.OperatorSecret, err = unyolosetup.ResolveSecret(unyolosetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
 	return err
 }
 
@@ -297,49 +297,49 @@ func sudoPaths(opts sudoSystemdOptions) sudoInstallPaths {
 	}
 }
 
-func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (bkservice.SystemdInstallPlan, bkservice.SystemdInstallPlan, error) {
-	activation, err := bksetup.BuildSystemdActivation(opts.SystemdOptions, opts.OperatorEndpoint, "sudo-broker.service")
+func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (unyoloservice.SystemdInstallPlan, unyoloservice.SystemdInstallPlan, error) {
+	activation, err := unyolosetup.BuildSystemdActivation(opts.SystemdOptions, opts.OperatorEndpoint, "sudo-broker.service")
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, unyoloservice.SystemdInstallPlan{}, err
 	}
 	catalogData, policyData, err := validatedSetupSources(opts)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, unyoloservice.SystemdInstallPlan{}, err
 	}
-	pathValidation := bkservice.PathValidationStrict
+	pathValidation := unyoloservice.PathValidationStrict
 	if opts.DryRun {
-		pathValidation = bkservice.PathValidationPreview
+		pathValidation = unyoloservice.PathValidationPreview
 	}
 	helperUnit := helperSystemdUnit(opts, paths, pathValidation)
 	frontendUnit := frontendSystemdUnit(opts, paths, pathValidation)
 	sharedStateDir := sharedStateDirectory(opts.StateDir, opts.HelperStateDir)
-	helperPlan := bkservice.SystemdInstallPlan{User: "root", Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.HelperStateDir, SharedStateDir: sharedStateDir,
+	helperPlan := unyoloservice.SystemdInstallPlan{User: "root", Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.HelperStateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker-exec.service", NoStart: true, Unit: helperUnit,
-		Files: []bkservice.ManagedFile{
-			{Area: bkservice.ManagedFileConfig, Name: "catalog.json", Data: catalogData, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
-			{Area: bkservice.ManagedFileConfig, Name: "helper.env", Data: []byte("# managed by sudo-broker\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+		Files: []unyoloservice.ManagedFile{
+			{Area: unyoloservice.ManagedFileConfig, Name: "catalog.json", Data: catalogData, Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
+			{Area: unyoloservice.ManagedFileConfig, Name: "helper.env", Data: []byte("# managed by sudo-broker\n"), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 		}}
-	frontendFiles := []bkservice.ManagedFile{
-		{Area: bkservice.ManagedFileConfig, Name: "policy.json", Data: policyData, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+	frontendFiles := []unyoloservice.ManagedFile{
+		{Area: unyoloservice.ManagedFileConfig, Name: "policy.json", Data: policyData, Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 		frontendSecretFile("secrets", []byte(opts.ClientName+" = "+opts.SharedSecret+"\n")),
 		frontendSecretFile("operator-secrets", []byte(opts.OperatorID+" = "+opts.OperatorSecret+"\n")),
-		{Area: bkservice.ManagedFileConfig, Name: "frontend.env", Data: []byte("# managed by sudo-broker\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+		{Area: unyoloservice.ManagedFileConfig, Name: "frontend.env", Data: []byte("# managed by sudo-broker\n"), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 	}
 	if opts.TelegramBotTokenFile != "" {
 		data, readErr := readSetupFile(opts.TelegramBotTokenFile)
 		if readErr != nil {
-			return bkservice.SystemdInstallPlan{}, bkservice.SystemdInstallPlan{}, readErr
+			return unyoloservice.SystemdInstallPlan{}, unyoloservice.SystemdInstallPlan{}, readErr
 		}
 		frontendFiles = append(frontendFiles, frontendSecretFile("telegram-bot-token", data))
 	}
-	var removeFiles []bkservice.ManagedFileRef
+	var removeFiles []unyoloservice.ManagedFileRef
 	if opts.TelegramBotTokenFile == "" {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: "telegram-bot-token", CredentialClass: "telegram-bot"})
+		removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: "telegram-bot-token", CredentialClass: "telegram-bot"})
 	}
-	frontendPlan := bkservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SharedStateDir: sharedStateDir,
+	frontendPlan := unyoloservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles, RemoveFiles: removeFiles,
 		AdditionalGroups: activation.Groups, GroupMembers: activation.GroupMembers, SocketUnits: activation.Sockets,
-		ActivationUnits: activation.ActivationUnits, ReadyCheck: bkservice.EndpointReadyCheck(opts.Endpoint, "/readyz"), Lifecycle: opts.Lifecycle}
+		ActivationUnits: activation.ActivationUnits, ReadyCheck: unyoloservice.EndpointReadyCheck(opts.Endpoint, "/readyz"), Lifecycle: opts.Lifecycle}
 	return helperPlan, frontendPlan, nil
 }
 
@@ -348,7 +348,7 @@ func validatedSetupSources(opts sudoSystemdOptions) ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err := bkpolicy.LoadFile(opts.PolicyFile, sudopolicy.Registry(snapshot)); err != nil {
+	if _, err := unyolopolicy.LoadFile(opts.PolicyFile, sudopolicy.Registry(snapshot)); err != nil {
 		return nil, nil, err
 	}
 	catalogData, err := readSetupFile(opts.CatalogFile)
@@ -362,20 +362,20 @@ func validatedSetupSources(opts sudoSystemdOptions) ([]byte, []byte, error) {
 	return catalogData, policyData, nil
 }
 
-func helperSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation bkservice.PathValidation) bkservice.SystemdUnit {
-	return bkservice.SystemdUnit{Description: "sudo-broker privileged command executor", User: "root", Group: opts.Group,
+func helperSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation unyoloservice.PathValidation) unyoloservice.SystemdUnit {
+	return unyoloservice.SystemdUnit{Description: "sudo-broker privileged command executor", User: "root", Group: opts.Group,
 		EnvironmentFile: paths.helperEnv, ExecStart: strings.Join([]string{opts.HelperBinary, "--catalog", paths.catalog, "--state", filepath.Join(opts.HelperStateDir, "executions.json"), "--socket", opts.HelperSocket, "--broker-user", opts.User}, " "),
-		StateDir: opts.HelperStateDir, ConfigDir: opts.ConfigDir, PrivilegeEscalation: bkservice.PrivilegeEscalationAllow,
+		StateDir: opts.HelperStateDir, ConfigDir: opts.ConfigDir, PrivilegeEscalation: unyoloservice.PrivilegeEscalationAllow,
 		PathValidation: pathValidation, RuntimeDirectory: "sudo-broker", RuntimeDirectoryMode: 0o750,
-		ManagedExecutableDestination: bksetup.ManagedDestination(opts.HelperBinary, filepath.Join("libexec", "sudo-broker-exec")),
+		ManagedExecutableDestination: unyolosetup.ManagedDestination(opts.HelperBinary, filepath.Join("libexec", "sudo-broker-exec")),
 		ExtraDirectives:              hardeningDirectives(false)}
 }
 
-func frontendSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation bkservice.PathValidation) bkservice.SystemdUnit {
-	return bkservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
+func frontendSystemdUnit(opts sudoSystemdOptions, paths sudoInstallPaths, pathValidation unyoloservice.PathValidation) unyoloservice.SystemdUnit {
+	return unyoloservice.SystemdUnit{Description: "sudo-broker approval frontend", User: opts.User, Group: opts.Group,
 		EnvironmentFile: paths.frontendEnv, ExecStart: frontendExec(opts, paths), StateDir: opts.StateDir, ConfigDir: opts.ConfigDir,
 		PathValidation: pathValidation, AfterUnits: []string{"sudo-broker-exec.service"}, RequiresUnits: []string{"sudo-broker-exec.service"},
-		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, opts.ManagedDestination),
+		ManagedExecutableDestination: unyolosetup.ManagedDestination(opts.BinaryPath, opts.ManagedDestination),
 		ExtraDirectives:              hardeningDirectives(true)}
 }
 
@@ -387,9 +387,9 @@ func sharedStateDirectory(frontend string, helper string) string {
 	return parent
 }
 
-func frontendSecretFile(name string, data []byte) bkservice.ManagedFile {
+func frontendSecretFile(name string, data []byte) unyoloservice.ManagedFile {
 	classes := map[string]string{"secrets": "broker-client", "operator-secrets": "broker-operator", "telegram-bot-token": "telegram-bot"}
-	return bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: data, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot, CredentialClass: classes[name]}
+	return unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: name, Data: data, Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot, CredentialClass: classes[name]}
 }
 
 func frontendExec(opts sudoSystemdOptions, paths sudoInstallPaths) string {
@@ -432,16 +432,16 @@ func readSetupFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-func printSudoSystemdPlan(stdout io.Writer, opts sudoSystemdOptions, paths sudoInstallPaths, helper bkservice.SystemdInstallPlan, frontend bkservice.SystemdInstallPlan) error {
-	helperUnit, err := bkservice.RenderSystemd(helper.Unit)
+func printSudoSystemdPlan(stdout io.Writer, opts sudoSystemdOptions, paths sudoInstallPaths, helper unyoloservice.SystemdInstallPlan, frontend unyoloservice.SystemdInstallPlan) error {
+	helperUnit, err := unyoloservice.RenderSystemd(helper.Unit)
 	if err != nil {
 		return err
 	}
-	frontendUnit, err := bkservice.RenderSystemd(frontend.Unit)
+	frontendUnit, err := unyoloservice.RenderSystemd(frontend.Unit)
 	if err != nil {
 		return err
 	}
-	sockets, err := bkservice.RenderSystemdSockets(frontend.SocketUnits)
+	sockets, err := unyoloservice.RenderSystemdSockets(frontend.SocketUnits)
 	if err != nil {
 		return err
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opbinding"
 )
 
 func TestRequestAndBindingInternalsFailClosed(t *testing.T) {

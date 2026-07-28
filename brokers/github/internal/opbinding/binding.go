@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/osolmaz/brokerkit/internal/sortedlookup"
+	"github.com/osolmaz/unyolo/internal/sortedlookup"
 )
 
 type Parameter struct {

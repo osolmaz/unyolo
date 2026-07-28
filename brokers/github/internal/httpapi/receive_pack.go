@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/git/protocol"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/git/protocol"
 )
 
 type receivePackCommand struct {

@@ -3,8 +3,8 @@ package policy
 import (
 	"testing"
 
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
 
 func TestGeneratedPolicyRegistryCoversCatalog(t *testing.T) {
@@ -69,7 +69,7 @@ func TestGeneratedPolicyRegistryAcceptsCreatedResourceIdentity(t *testing.T) {
 			"name": {"osolmaz"},
 		}},
 		Attrs: map[string][]string{
-			"resource_name":  {"brokerkit-next"},
+			"resource_name":  {"unyolo-next"},
 			"resource_owner": {"osolmaz"},
 		},
 	}

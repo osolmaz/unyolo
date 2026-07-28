@@ -3,9 +3,9 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func (s *Server) notifyAPICreatedGrant(w http.ResponseWriter, r *http.Request, client string, claim grants.NotificationClaim) (grants.Grant, bool) {

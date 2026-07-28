@@ -6,7 +6,7 @@ Status: implemented
 
 ## Objective
 
-Build one provider-neutral BrokerKit credential framework and use it for every
+Build one provider-neutral unYOLO credential framework and use it for every
 broker integration. The framework owns inspection orchestration, protected
 replacement, rollback, status, audit, capability enforcement, and test
 contracts. Provider packages own only enrollment instructions, upstream
@@ -17,14 +17,14 @@ Implement the framework with the Hugging Face adapter first. Add the GitHub
 App adapter immediately afterward through the same contracts. Do not copy the
 HF command or lifecycle implementation into the GitHub broker.
 
-The provider credential ceiling and BrokerKit policy remain separate:
+The provider credential ceiling and unYOLO policy remain separate:
 
 ```text
 effective operation authority
     = implemented operation
     AND client exposure
     AND provider credential coverage
-    AND BrokerKit policy or active grant
+    AND unYOLO policy or active grant
 ```
 
 An approval may narrow authority inside the credential ceiling. It can never
@@ -32,7 +32,7 @@ expand the provider credential.
 
 ## Decisions
 
-- BrokerKit owns one credential domain model and lifecycle state machine.
+- unYOLO owns one credential domain model and lifecycle state machine.
 - Shared code never imports a provider package or branches on provider names.
 - Each provider implements a small explicit adapter contract. Do not build a
   runtime plugin loader or a second broker framework.
@@ -54,7 +54,7 @@ expand the provider credential.
 - GitHub uses a GitHub App installation. Fine-grained and classic personal
   access tokens are not supported unless a later concrete requirement is
   approved.
-- BrokerKit stores GitHub App identity, installation selection, and the App
+- unYOLO stores GitHub App identity, installation selection, and the App
   private key. It does not persist one-hour installation access tokens.
 - Existing OAuth, legacy token, and manual overwrite paths are removed when
   their provider adapter ships. Do not retain aliases or parallel readers.
@@ -72,7 +72,7 @@ This work does not:
 - make ordinary broker clients credential operators;
 - implement GitHub OAuth Apps or personal access tokens;
 - require MLClaw, OpenClaw, or a particular delegated host; or
-- make provider credential scope replace BrokerKit authorization policy.
+- make provider credential scope replace unYOLO authorization policy.
 
 ## Architecture
 
@@ -171,7 +171,7 @@ type Adapter interface {
 
 The concrete API may separate secret-bearing and secret-free methods further.
 The important boundary is that the adapter never writes host files, restarts a
-service, renders generic CLI output, filters MCP itself, or decides BrokerKit
+service, renders generic CLI output, filters MCP itself, or decides unYOLO
 policy.
 
 `Enrollment` may contain a constant browser URL and bounded instructions, but

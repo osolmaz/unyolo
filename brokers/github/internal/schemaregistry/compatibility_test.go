@@ -6,10 +6,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/mcpprojection"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 func TestEveryGeneratedGitHubSchemaIsTranscriptSafe(t *testing.T) {
@@ -62,7 +62,7 @@ func TestCompatibilityManifestMatchesCatalog(t *testing.T) {
 			projected = append(projected, descriptor.Name)
 		}
 	}
-	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "github" ||
+	if manifest.APIVersion != "unyolo.io/mcp-compatibility-manifest/v1" || manifest.Provider != "github" ||
 		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1"}) ||
 		manifest.AgentFacingOperations != agentFacing || manifest.AuditedOperations != opcatalog.ExpectedCount ||
 		manifest.OperationTools != agentFacing || manifest.UtilityTools != 3 ||

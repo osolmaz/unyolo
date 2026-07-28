@@ -17,40 +17,40 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/approval/notification"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	bkauth "github.com/osolmaz/brokerkit/auth"
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/admission"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/broker/controlplane"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/approval"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/ghplan"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/security"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/git/server"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
-	"github.com/osolmaz/brokerkit/operation/capability"
-	"github.com/osolmaz/brokerkit/operation/payload"
-	bkaudit "github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/approval/notification"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	unyoloauth "github.com/osolmaz/unyolo/auth"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/admission"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/broker/controlplane"
+	"github.com/osolmaz/unyolo/brokers/github/internal/approval"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/ghplan"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/security"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/git/server"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/storage/stream"
+	"github.com/osolmaz/unyolo/operation/capability"
+	"github.com/osolmaz/unyolo/operation/payload"
+	unyoloaudit "github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 type Server struct {
 	echo                *echo.Echo
-	authorization       *bkauthorization.Coordinator
+	authorization       *unyoloauthorization.Coordinator
 	policy              *policy.Policy
 	grants              *grants.Store
 	plans               *ghplan.Store
@@ -67,7 +67,7 @@ type Server struct {
 	credentialStore     *credentialstore.Store
 	streamStore         *streamstore.Store
 	notifier            approvalnotify.Notifier
-	telegram            *bktelegram.Client
+	telegram            *unyolotelegram.Client
 	githubCredentials   *githubauth.Manager
 	githubUserID        int64
 	githubWebhookSecret string
@@ -75,7 +75,7 @@ type Server struct {
 	githubGitClient     *http.Client
 	githubGitBaseURL    *url.URL
 	githubAPIBaseURL    *url.URL
-	auditWriter         *bkaudit.Writer
+	auditWriter         *unyoloaudit.Writer
 	logger              *slog.Logger
 	maxReceivePackBytes int64
 	operatorConfigured  bool
@@ -224,7 +224,7 @@ func (s *Server) configureOperationRegistry(cfg config.Config, appSource *github
 func (s *Server) configureAuthorization(brokerPolicy *policy.Policy, grantStore *grants.Store) error {
 	registry, registryErr := policy.AuthorizationRegistry()
 	if registryErr == nil {
-		s.authorization, registryErr = bkauthorization.New(bkauthorization.Options{
+		s.authorization, registryErr = unyoloauthorization.New(unyoloauthorization.Options{
 			Registry: registry, Decide: brokerPolicy.DecideAuthorization, Grants: grantStore,
 		})
 	}
@@ -293,11 +293,11 @@ type coreDependencies struct {
 	grants             *grants.Store
 	plans              *ghplan.Store
 	validator          ghplan.Validator
-	audit              *bkaudit.Writer
+	audit              *unyoloaudit.Writer
 	control            *controlplane.Runtime
 	auth               security.TokenAuth
 	notifier           approvalnotify.Notifier
-	telegram           *bktelegram.Client
+	telegram           *unyolotelegram.Client
 	credentialResolver *currentGitHubCredentialResolver
 }
 
@@ -317,7 +317,7 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		Credential:  credentialResolver.snapshot,
 		Requirement: (githubauth.ProviderAdapter{}).Requirement,
 	}
-	auditWriter := bkaudit.New(os.Stderr)
+	auditWriter := unyoloaudit.New(os.Stderr)
 	control, auth, err := newControlPlane(cfg, grantStore, validator, auditWriter)
 	if err != nil {
 		_ = database.Close()
@@ -357,7 +357,7 @@ func (r *currentGitHubCredentialResolver) currentManager() (*githubauth.Manager,
 	return r.manager, nil
 }
 
-func newGitHubDependencies(cfg config.Config, auditWriter bkaudit.Recorder) (githubDependencies, error) {
+func newGitHubDependencies(cfg config.Config, auditWriter unyoloaudit.Recorder) (githubDependencies, error) {
 	gitBaseURL, apiBaseURL, err := githubBaseURLs(cfg)
 	if err != nil {
 		return githubDependencies{}, err
@@ -400,7 +400,7 @@ func githubCredentialMode(cfg config.Config) string {
 	return string(githubauth.KindDevelopmentToken)
 }
 
-func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *bkaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
+func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *unyoloaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
 	operatorSecrets := map[string]string{}
 	if cfg.OperatorSecret != "" {
 		operatorSecrets[cfg.OperatorID] = cfg.OperatorSecret
@@ -455,7 +455,7 @@ func (s *Server) authenticateAgentUpload(response http.ResponseWriter, request *
 	status := http.StatusForbidden
 	reason := "bad_auth"
 	message := "Authentication failed"
-	if errors.Is(err, bkauth.ErrMissing) {
+	if errors.Is(err, unyoloauth.ErrMissing) {
 		status = http.StatusUnauthorized
 		reason = "missing_auth"
 		message = "Authentication required"
@@ -474,7 +474,7 @@ func writeSealedPayloadFailure(response http.ResponseWriter, status int, reason,
 	})
 }
 
-// OperatorHandler exposes Brokerkit's shared inbox over the canonical grant store.
+// OperatorHandler exposes unYOLO's shared inbox over the canonical grant store.
 func (s *Server) OperatorHandler() http.Handler { return s.control.OperatorHandler }
 
 func githubBaseURLs(cfg config.Config) (*url.URL, *url.URL, error) {
@@ -864,7 +864,7 @@ func (s *Server) audit(c echo.Context, request policy.Request, outcome string, r
 	if repo == "" {
 		repo = strings.TrimSuffix(c.Param("repoGit"), ".git")
 	}
-	event := bkaudit.Event{
+	event := unyoloaudit.Event{
 		Broker:         "gh-broker",
 		Client:         request.Client,
 		Operation:      string(request.Operation),

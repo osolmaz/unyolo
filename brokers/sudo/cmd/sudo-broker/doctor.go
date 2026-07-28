@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/internal/host/doctor"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorclient"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/hostcheck"
+	"github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 type doctorOptions struct {

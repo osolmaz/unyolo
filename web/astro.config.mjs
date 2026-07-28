@@ -4,7 +4,7 @@ import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 
 export default defineConfig({
-  site: "https://brokerkit.dev",
+  site: "https://unyolo.io",
   trailingSlash: "ignore",
   // The site ships only SVG, so the native sharp pipeline is not installed.
   image: { service: passthroughImageService() },

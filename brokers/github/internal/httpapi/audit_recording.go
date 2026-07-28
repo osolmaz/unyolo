@@ -3,10 +3,10 @@ package httpapi
 import (
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	bkaudit "github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/github/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	unyoloaudit "github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func operationPolicyTarget(auth operations.Authorization) string {
@@ -41,7 +41,7 @@ func nonemptyStrings(values []string) []string {
 }
 
 func (s *Server) recordOperationOutcome(operation agentv1.Operation, plan operations.Plan, decision, reason string, upstreamStatus int) {
-	event := bkaudit.Event{
+	event := unyoloaudit.Event{
 		Broker:         "gh-broker",
 		Client:         operation.ClientID,
 		Operation:      operation.Operation,
@@ -68,7 +68,7 @@ func (s *Server) recordOperationOutcome(operation agentv1.Operation, plan operat
 }
 
 func (s *Server) recordOperationPolicyDecision(client, operation, target, decision, reason string, upstreamStatus int, policyDecision policy.Decision) {
-	event := bkaudit.Event{
+	event := unyoloaudit.Event{
 		Broker:         "gh-broker",
 		Client:         client,
 		Operation:      operation,
@@ -91,7 +91,7 @@ func (s *Server) recordOperationPolicyDecision(client, operation, target, decisi
 	s.recordOperationAudit(event)
 }
 
-func (s *Server) recordOperationAudit(event bkaudit.Event) {
+func (s *Server) recordOperationAudit(event unyoloaudit.Event) {
 	if s.auditWriter == nil {
 		return
 	}

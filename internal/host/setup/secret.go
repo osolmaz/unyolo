@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/unyolo/auth"
 )
 
 const (

@@ -1,4 +1,4 @@
-// Package validatex contains small validation helpers shared inside brokerkit.
+// Package validatex contains small validation helpers shared inside unyolo.
 package validatex
 
 import (

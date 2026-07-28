@@ -3,7 +3,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Snapshot, SnapshotEvent } from "../../src/types.js";
-import { BrokerKitUiApi } from "./api.js";
+import { unYOLOUiApi } from "./api.js";
 import { UI_INVALIDATE, useBrokerSnapshot } from "./use-broker-snapshot.js";
 
 afterEach(() => {
@@ -81,12 +81,12 @@ describe("useBrokerSnapshot recovery", () => {
 function fakeApi(params: {
   snapshots: Array<Snapshot | Promise<Snapshot>>;
   events: Array<SnapshotEvent | Promise<SnapshotEvent>>;
-}): BrokerKitUiApi {
+}): unYOLOUiApi {
   return {
     snapshot: vi.fn(async () => await shift(params.snapshots, "snapshot")),
     events: vi.fn(async () => await shift(params.events, "event")),
     canDecide: vi.fn(() => true),
-  } as unknown as BrokerKitUiApi;
+  } as unknown as unYOLOUiApi;
 }
 
 async function shift<T>(
@@ -100,7 +100,7 @@ async function shift<T>(
 
 function snapshot(cursor: string): Snapshot {
   return {
-    api_version: "brokerkit.io/operator-ui/v1",
+    api_version: "unyolo.io/operator-ui/v1",
     cursor,
     sources: [],
     requests: [],
@@ -111,7 +111,7 @@ function snapshot(cursor: string): Snapshot {
 
 function event(cursor: string, changed: boolean): SnapshotEvent {
   return {
-    api_version: "brokerkit.io/operator-ui/v1",
+    api_version: "unyolo.io/operator-ui/v1",
     cursor,
     changed,
   };

@@ -36,17 +36,17 @@ export class BrokerClient {
   ) {}
   async discover(): Promise<void> {
     const value = parseDescriptor(
-      await this.json("/.well-known/brokerkit-operator"),
+      await this.json("/.well-known/unyolo-operator"),
     );
-    if (value.api_version !== "brokerkit.io/operator/v1")
-      throw new Error(`unsupported BrokerKit API ${value.api_version}`);
+    if (value.api_version !== "unyolo.io/operator/v1")
+      throw new Error(`unsupported unYOLO API ${value.api_version}`);
     if (value.contract_digest !== OPERATOR_V1_SCHEMA_SHA256)
-      throw new Error("unsupported BrokerKit operator contract");
+      throw new Error("unsupported unYOLO operator contract");
   }
   async health(): Promise<void> {
     const health = parseHealth(await this.json("/healthz", {}, false));
     if (health.contract_digest !== OPERATOR_V1_SCHEMA_SHA256)
-      throw new Error("unsupported BrokerKit operator contract");
+      throw new Error("unsupported unYOLO operator contract");
   }
   async list(
     status: "pending" | "active" = "pending",
@@ -95,7 +95,7 @@ export class BrokerClient {
       if (chunk.done) return;
       buffer += chunk.value;
       if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_FRAME_BYTES)
-        throw new Error("BrokerKit event frame is too large");
+        throw new Error("unYOLO event frame is too large");
       buffer = buffer.replaceAll("\r\n", "\n");
       for (;;) {
         const boundary = buffer.indexOf("\n\n");
@@ -115,7 +115,7 @@ export class BrokerClient {
         if (!data) continue;
         const event = parseBrokerEvent(JSON.parse(data));
         if (!id || event.cursor !== id)
-          throw new Error("BrokerKit event cursor mismatch");
+          throw new Error("unYOLO event cursor mismatch");
         yield event;
       }
     }
@@ -162,13 +162,13 @@ export class BrokerClient {
       );
       return new BrokerError(
         value?.error.code ?? "internal_error",
-        value?.error.message ?? "BrokerKit request failed",
+        value?.error.message ?? "unYOLO request failed",
         response.status,
       );
     } catch {
       return new BrokerError(
         "internal_error",
-        "BrokerKit request failed",
+        "unYOLO request failed",
         response.status,
       );
     }
@@ -178,7 +178,7 @@ export class BrokerClient {
 function requireJSON(response: Response): void {
   const contentType = response.headers.get("content-type") ?? "";
   if (!/^application\/json(?:\s*;|$)/iu.test(contentType))
-    throw new Error("BrokerKit returned an invalid content type");
+    throw new Error("unYOLO returned an invalid content type");
 }
 
 async function boundedText(response: Response, limit: number): Promise<string> {
@@ -192,7 +192,7 @@ async function boundedText(response: Response, limit: number): Promise<string> {
     size += value.byteLength;
     if (size > limit) {
       await reader.cancel();
-      throw new Error("BrokerKit response is too large");
+      throw new Error("unYOLO response is too large");
     }
     chunks.push(value);
   }

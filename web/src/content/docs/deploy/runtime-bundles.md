@@ -3,31 +3,31 @@ title: Runtime bundles
 description: Signed immutable release activation, atomic switching, rollback, and why state changes are replacements.
 ---
 
-Persistent BrokerKit services are deployed as one signed runtime bundle. The `brokerkit` host
+Persistent unYOLO services are deployed as one signed runtime bundle. The `unyolo` host
 command stages each separately released broker and ingress binary under an immutable release
 directory, verifies its digest and its exact Agent and Operator contract identities, then activates
 the complete set together.
 
 The reason for the ceremony is narrow. A host running `hf-broker`, `gh-broker`, `sudo-broker`, and
-`brokerkit-telegram` has four processes that speak generated contracts to each other. Upgrading
+`unyolo-telegram` has four processes that speak generated contracts to each other. Upgrading
 them one at a time creates a window where two of them disagree about the wire format, and the
 Telegram ingress in particular can consume an update it cannot correctly route.
 
 ## Commands
 
 ```sh
-brokerkit system plan    --manifest manifest.json --signature manifest.sig --public-key release.pub
-brokerkit system install --manifest manifest.json --signature manifest.sig --public-key release.pub
-brokerkit system upgrade --manifest manifest.json --signature manifest.sig --public-key release.pub
-brokerkit system status
-brokerkit system doctor
-brokerkit system rollback
+unyolo system plan    --manifest manifest.json --signature manifest.sig --public-key release.pub
+unyolo system install --manifest manifest.json --signature manifest.sig --public-key release.pub
+unyolo system upgrade --manifest manifest.json --signature manifest.sig --public-key release.pub
+unyolo system status
+unyolo system doctor
+unyolo system rollback
 ```
 
 ## Release layout
 
-Linux uses `/opt/brokerkit/releases/<bundle-id>` and macOS uses
-`/Library/Application Support/BrokerKit/releases/<bundle-id>`. A `current` symlink points at the
+Linux uses `/opt/unyolo/releases/<bundle-id>` and macOS uses
+`/Library/Application Support/unyolo/releases/<bundle-id>`. A `current` symlink points at the
 active release and is switched atomically.
 
 Native service definitions use exact component paths below that root-controlled pointer, and
@@ -53,7 +53,7 @@ manual repair.
 
 ## The manifest
 
-The closed `brokerkit.io/runtime-bundle/v1` manifest is defined by
+The closed `unyolo.io/runtime-bundle/v1` manifest is defined by
 `protocol/runtime-bundle.schema.json`. A production manifest requires a detached Ed25519 signature.
 
 `--development` permits unsigned local fixtures, but development build identities cannot enter a
@@ -71,7 +71,7 @@ exposing it.
 
 ## State format replacement
 
-BrokerKit does not run migrations, and it has no runtime compatibility readers. A state-format
+unYOLO does not run migrations, and it has no runtime compatibility readers. A state-format
 change is an explicit replacement: the old service stops, its state directory is archived beside
 the original, and the candidate starts with fresh current-format state.
 
@@ -84,7 +84,7 @@ the old code will misread. Replacing the directory makes rollback a file move.
 
 ## Host health
 
-`brokerkit system doctor` compares the activation record, the immutable artifact digests, the
+`unyolo system doctor` compares the activation record, the immutable artifact digests, the
 native service state, the process executable paths, and the active bundle.
 
 A host is unhealthy when an artifact digest changes, a required service is inactive, a process
@@ -97,8 +97,8 @@ can inspect. Linux marks that executable path as deleted, and the host doctor tr
 unhealthy rather than as a running service.
 
 ```sh
-brokerkit system status --json
-brokerkit system doctor --json
+unyolo system status --json
+unyolo system doctor --json
 ```
 
 Both produce a closed report containing bundle IDs, release build IDs, artifact digest results,

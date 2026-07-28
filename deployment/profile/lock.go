@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 // ErrLockOutOfDate means profile lock --check found stale canonical bytes.
@@ -209,7 +209,7 @@ func compare(a, b string) int {
 func writeAtomic(root, relative string, data []byte, mode os.FileMode) error {
 	path := filepath.Join(root, filepath.FromSlash(relative))
 	directory := filepath.Dir(path)
-	file, err := os.CreateTemp(directory, ".brokerkit-profile-*")
+	file, err := os.CreateTemp(directory, ".unyolo-profile-*")
 	if err != nil {
 		return err
 	}

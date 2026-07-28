@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/notifier"
 )
 
 func TestNotificationClaimAndDeliveryLifecycle(t *testing.T) {

@@ -1,6 +1,6 @@
 package httpapi
 
-import "github.com/osolmaz/brokerkit/authorization/grants"
+import "github.com/osolmaz/unyolo/authorization/grants"
 
 func apiGrantStatus(grant grants.Grant) string {
 	if grant.ReservationRetained {

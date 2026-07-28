@@ -2,7 +2,7 @@
 
 Date: 2026-07-13
 
-BrokerKit uses `github.com/go-git/go-git/v5` v5.19.1 behind the shared `gitx`
+unYOLO uses `github.com/go-git/go-git/v5` v5.19.1 behind the shared `gitx`
 package for Git pkt-line and SHA-1 packfile behavior. Provider packages do not
 import go-git types or parse Git framing themselves.
 
@@ -35,9 +35,9 @@ checksum, OFS/REF delta, thin-pack, and delta-depth validation. The final parser
 stores bounded objects only for the duration of inspection and returns only
 commit and tag objects.
 
-The exact trailer check remains BrokerKit-owned because go-git's buffered
+The exact trailer check remains unYOLO-owned because go-git's buffered
 scanner may read beyond the checksum before its caller can inspect the
-underlying reader offset. The small delta-size decoder remains BrokerKit-owned
+underlying reader offset. The small delta-size decoder remains unYOLO-owned
 because go-git does not expose its target-size decoder before parser allocation.
 
 ## Preservation And Corpus

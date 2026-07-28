@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/credential/store"
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/credential/store"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
@@ -39,11 +39,11 @@ func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
 	}))
 	defer api.Close()
 	oldLookup := lookupIdentity
-	lookupIdentity = func(name string) (bkdoctor.Identity, error) {
+	lookupIdentity = func(name string) (unyolodoctor.Identity, error) {
 		if name == "bob" {
-			return bkdoctor.Identity{User: name, UID: 1000, GID: 1000}, nil
+			return unyolodoctor.Identity{User: name, UID: 1000, GID: 1000}, nil
 		}
-		return bkdoctor.Identity{User: name, UID: 1001, GID: 1001}, nil
+		return unyolodoctor.Identity{User: name, UID: 1001, GID: 1001}, nil
 	}
 	t.Cleanup(func() { lookupIdentity = oldLookup })
 	report, err := Run(context.Background(), config.Config{Environment: "local", GitHubToken: "github-token", GitHubTokenFile: "/protected/github-token"}, Options{
@@ -53,21 +53,21 @@ func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Status != bkdoctor.StatusInconclusive {
+	if report.Status != unyolodoctor.StatusInconclusive {
 		t.Fatalf("report = %+v", report)
 	}
-	assertCheck(t, report.Checks, "github_repo_visible", bkdoctor.CheckPass)
-	assertCheck(t, report.Checks, "github_default_branch_protected", bkdoctor.CheckPass)
+	assertCheck(t, report.Checks, "github_repo_visible", unyolodoctor.CheckPass)
+	assertCheck(t, report.Checks, "github_default_branch_protected", unyolodoctor.CheckPass)
 }
 
 func TestPermissionCheck(t *testing.T) {
-	if got := permissionCheck(map[string]string{"contents": "read"}); got.Status != bkdoctor.CheckPass {
+	if got := permissionCheck(map[string]string{"contents": "read"}); got.Status != unyolodoctor.CheckPass {
 		t.Fatalf("required permissions = %+v", got)
 	}
-	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "administration": "write"}); got.Status != bkdoctor.CheckFail {
+	if got := permissionCheck(map[string]string{"contents": "write", "pull_requests": "write", "administration": "write"}); got.Status != unyolodoctor.CheckFail {
 		t.Fatalf("administrative permissions = %+v", got)
 	}
-	if got := permissionCheck(map[string]string{}); got.Status != bkdoctor.CheckFail {
+	if got := permissionCheck(map[string]string{}); got.Status != unyolodoctor.CheckFail {
 		t.Fatalf("missing permissions = %+v", got)
 	}
 }
@@ -89,7 +89,7 @@ func TestDevelopmentTokenDoctorIsUnsafeInProduction(t *testing.T) {
 	if apis.repository == nil || apis.protection == nil {
 		t.Fatal("development API unavailable")
 	}
-	assertCheck(t, checks, "github_development_token", bkdoctor.CheckFail)
+	assertCheck(t, checks, "github_development_token", unyolodoctor.CheckFail)
 }
 
 func TestInlineCredentialChecksAreInconclusive(t *testing.T) {
@@ -103,7 +103,7 @@ func TestInlineCredentialChecksAreInconclusive(t *testing.T) {
 		t.Fatalf("inline checks = %+v", checks)
 	}
 	for _, check := range checks {
-		if check.Status != bkdoctor.CheckUnknown || !strings.HasPrefix(check.Name, "inline_") {
+		if check.Status != unyolodoctor.CheckUnknown || !strings.HasPrefix(check.Name, "inline_") {
 			t.Fatalf("inline check = %+v", check)
 		}
 	}
@@ -149,18 +149,18 @@ func TestGitHubDoctorAPIMintsAppCredential(t *testing.T) {
 	if apis.repository == nil || apis.protection == nil {
 		t.Fatal("GitHub doctor API is nil")
 	}
-	assertCheck(t, checks, "github_app_jwt", bkdoctor.CheckPass)
-	assertCheck(t, checks, "github_installation_token", bkdoctor.CheckPass)
-	assertCheck(t, checks, "github_app_permissions", bkdoctor.CheckPass)
-	assertCheck(t, checks, "github_protection_token", bkdoctor.CheckPass)
-	assertCheck(t, checks, "github_protection_permissions", bkdoctor.CheckPass)
+	assertCheck(t, checks, "github_app_jwt", unyolodoctor.CheckPass)
+	assertCheck(t, checks, "github_installation_token", unyolodoctor.CheckPass)
+	assertCheck(t, checks, "github_app_permissions", unyolodoctor.CheckPass)
+	assertCheck(t, checks, "github_protection_token", unyolodoctor.CheckPass)
+	assertCheck(t, checks, "github_protection_permissions", unyolodoctor.CheckPass)
 	if tokenMints != 3 {
 		t.Fatalf("installation token mints = %d", tokenMints)
 	}
 }
 
 func TestGitHubDoctorAPIReportsCredentialFailures(t *testing.T) {
-	if apis, checks := githubDoctorAPI(context.Background(), config.Config{}, mustURL(t, "https://api.github.com"), http.DefaultClient, "owner", "repo", true); apis.repository != nil || checks[0].Status != bkdoctor.CheckFail {
+	if apis, checks := githubDoctorAPI(context.Background(), config.Config{}, mustURL(t, "https://api.github.com"), http.DefaultClient, "owner", "repo", true); apis.repository != nil || checks[0].Status != unyolodoctor.CheckFail {
 		t.Fatalf("invalid app credential result = %v, %+v", apis, checks)
 	}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -173,7 +173,7 @@ func TestGitHubDoctorAPIReportsCredentialFailures(t *testing.T) {
 	if apis.repository != nil {
 		t.Fatal("failed GitHub App returned an API client")
 	}
-	assertCheck(t, checks, "github_app_jwt", bkdoctor.CheckFail)
+	assertCheck(t, checks, "github_app_jwt", unyolodoctor.CheckFail)
 }
 
 func TestBranchProtectedFallsBackToClassicProtection(t *testing.T) {
@@ -206,18 +206,18 @@ func TestParseRepoAndOptionalProtection(t *testing.T) {
 		t.Fatal("parseRepo(bad) error = nil")
 	}
 	check := protectionCheck(false, false, nil)
-	if check.Status != bkdoctor.CheckWarn {
+	if check.Status != unyolodoctor.CheckWarn {
 		t.Fatalf("optional protection = %+v", check)
 	}
 }
 
 func TestProtectionCheckDistinguishesAbsentAndInconclusive(t *testing.T) {
 	unknown := protectionCheck(true, false, githubauth.APIError{Code: "forbidden", StatusCode: http.StatusForbidden})
-	if unknown.Status != bkdoctor.CheckUnknown {
+	if unknown.Status != unyolodoctor.CheckUnknown {
 		t.Fatalf("forbidden protection check = %+v", unknown)
 	}
 	missing := protectionCheck(true, false, githubauth.APIError{Code: "not_found", StatusCode: http.StatusNotFound})
-	if missing.Status != bkdoctor.CheckFail {
+	if missing.Status != unyolodoctor.CheckFail {
 		t.Fatalf("missing protection check = %+v", missing)
 	}
 }
@@ -241,10 +241,10 @@ func TestStoredCredentialStatusesReportExactExpiryWithoutValues(t *testing.T) {
 		t.Fatalf("inspect stored credentials: %v", err)
 	}
 	statuses, check := storedCredentialStatuses(stateDir, now)
-	if check == nil || check.Status != bkdoctor.CheckPass || len(statuses) != 2 {
+	if check == nil || check.Status != unyolodoctor.CheckPass || len(statuses) != 2 {
 		t.Fatalf("statuses=%+v check=%+v", statuses, check)
 	}
-	if statuses[0].ExpiresAt == "" || statuses[0].Source != bkdoctor.CredentialSourceEncryptedStore {
+	if statuses[0].ExpiresAt == "" || statuses[0].Source != unyolodoctor.CredentialSourceEncryptedStore {
 		t.Fatalf("access status = %+v", statuses[0])
 	}
 	output, _ := json.Marshal(statuses)
@@ -276,7 +276,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 	return parsed
 }
 
-func assertCheck(t *testing.T, checks []bkdoctor.Check, name string, status bkdoctor.CheckStatus) {
+func assertCheck(t *testing.T, checks []unyolodoctor.Check, name string, status unyolodoctor.CheckStatus) {
 	t.Helper()
 	for _, check := range checks {
 		if check.Name == name {

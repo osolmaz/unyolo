@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	bkauth "github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	"github.com/osolmaz/unyolo/agent/v1"
+	unyoloauth "github.com/osolmaz/unyolo/auth"
 )
 
 const (
-	discoveryPath  = "/.well-known/brokerkit-agent"
+	discoveryPath  = "/.well-known/unyolo-agent"
 	operationsPath = "/api/agent/v1/operations"
 )
 
@@ -93,7 +93,7 @@ func TestAuthenticationAndDiscovery(t *testing.T) {
 		case "Bearer good":
 			return "agent", nil
 		case "":
-			return "", bkauth.ErrMissing
+			return "", unyoloauth.ErrMissing
 		default:
 			return "", errors.New("invalid token")
 		}
@@ -228,7 +228,7 @@ func TestListOperations(t *testing.T) {
 	defer server.Close()
 
 	response, body := request(t, server, http.MethodGet, operationsPath+"?idempotency_key=one&state=pending&limit=1", "Bearer good", nil)
-	if response.StatusCode != http.StatusOK || !strings.Contains(body, `"operations":[{"api_version":"brokerkit.io/agent/v1"`) || !strings.Contains(body, `"next_cursor":null`) {
+	if response.StatusCode != http.StatusOK || !strings.Contains(body, `"operations":[{"api_version":"unyolo.io/agent/v1"`) || !strings.Contains(body, `"next_cursor":null`) {
 		t.Fatalf("list = %d %s", response.StatusCode, body)
 	}
 	for _, query := range []string{"limit=0", "limit=51", "limit=nope", "state=unknown", "cursor=", "idempotency_key=", "idempotency_key=bad%20value"} {

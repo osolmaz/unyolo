@@ -4,7 +4,7 @@ package policy
 import (
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 // Effect is a rule or decision effect.

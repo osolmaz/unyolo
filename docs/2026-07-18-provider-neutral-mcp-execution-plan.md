@@ -7,8 +7,8 @@ Status: implemented; release and live deployment validation pending
 ## Objective
 
 Replace the separate Hugging Face and GitHub MCP implementations with one
-provider-neutral BrokerKit MCP runtime. Every advertised operation tool must
-either perform the declared operation through BrokerKit or return an explicit,
+provider-neutral unYOLO MCP runtime. Every advertised operation tool must
+either perform the declared operation through unYOLO or return an explicit,
 usable protocol-access result for an action that necessarily continues over a
 native data plane such as Git.
 
@@ -17,7 +17,7 @@ parallel MCP implementations, compatibility aliases, dual tool schemas,
 fallback grant dispatch, old tool descriptions, or mixed old/new tests.
 
 The official Hugging Face and GitHub MCP servers are not execution
-dependencies. BrokerKit continues to own policy, approval, audit, durable
+dependencies. unYOLO continues to own policy, approval, audit, durable
 operations, credential isolation, and provider execution.
 
 ## Confirmed Defect
@@ -92,10 +92,10 @@ not leave contradictory live documentation after merge.
 OpenClaw or another MCP host
         |
         v
-brokerkit/mcpserver
+unyolo/mcpserver
         |
         v
-brokerkit/agentmcp
+unyolo/agentmcp
         |
         v
 Agent Operations V1
@@ -217,7 +217,7 @@ Add an explicit, validated runtime binding for every advertised operation.
 The binding identifies one of these execution shapes:
 
 - `inline`: bounded request and bounded JSON result;
-- `stream`: bounded public metadata plus a BrokerKit stream reference;
+- `stream`: bounded public metadata plus a unYOLO stream reference;
 - `credential`: generated secret material written only to an approved
   credential slot; or
 - `protocol_access`: a scoped connection result for a native data plane.
@@ -449,7 +449,7 @@ Generate tests over every advertised operation:
 - run each broker as its packaged stdio MCP subprocess;
 - confirm the advertised tool schemas survive OpenClaw redaction;
 - invoke an HF private-repository read from a real agent session;
-- approve one operation in the embedded BrokerKit popover;
+- approve one operation in the embedded unYOLO popover;
 - verify the original operation reaches its terminal result without agent
   reconstruction; and
 - confirm no direct provider credential is present in agent configuration or
@@ -479,9 +479,9 @@ credentials, or long-lived conversations during automated tests.
     packaged-MCP tests.
 12. Update all long-term architecture, runtime, provider README, and generated
     capability documentation.
-13. Update MLClaw to the immutable BrokerKit commit, deploy the test agent, and
+13. Update MLClaw to the immutable unYOLO commit, deploy the test agent, and
     run the OpenClaw approval and private-repository smoke tests.
-14. Release and install only after BrokerKit and MLClaw CI are green.
+14. Release and install only after unYOLO and MLClaw CI are green.
 
 Use coherent conventional commits. Because this is a hard cutover, do not
 merge an intermediate state that advertises tools without executors or keeps
@@ -515,7 +515,7 @@ Update at least:
 - `brokers/huggingface/README.md` and its policy/specification docs;
 - `brokers/github/README.md` and operation docs;
 - generated capability and MCP compatibility artifacts; and
-- MLClaw's BrokerKit integration and operator-flow documentation.
+- MLClaw's unYOLO integration and operator-flow documentation.
 
 Mark this plan complete only after the released packages and live MLClaw test
 deployment satisfy the acceptance criteria.
@@ -540,7 +540,7 @@ The cutover is complete only when:
    conversation state.
 10. Unit, race, integration, cross-provider conformance, packaged-install,
     OpenClaw, Slophammer, vulnerability, and secret-scanning gates pass.
-11. BrokerKit and MLClaw CI are green on immutable commits.
+11. unYOLO and MLClaw CI are green on immutable commits.
 12. A live MLClaw test deployment proves private HF read and approved mutation
     behavior end to end.
 13. Old dispatch code, duplicated MCP infrastructure, and superseded live

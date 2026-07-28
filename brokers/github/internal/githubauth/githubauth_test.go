@@ -24,9 +24,9 @@ import (
 	"time"
 
 	github "github.com/google/go-github/v88/github"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestInstallationCredentialsUseExactImmutableCacheTuple(t *testing.T) {

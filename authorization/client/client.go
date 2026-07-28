@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/transport/http/client"
+	"github.com/osolmaz/unyolo/transport/http/client"
 )
 
 const maxResponseBytes = 2 * 1024 * 1024

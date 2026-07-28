@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/authorization/admission"
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/auth"
+	"github.com/osolmaz/unyolo/authorization/admission"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const minimumSharedSecretBytes = auth.MinimumSecretBytes

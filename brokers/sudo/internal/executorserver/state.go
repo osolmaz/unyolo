@@ -13,10 +13,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
-	"github.com/osolmaz/brokerkit/internal/storage/files"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/unyolo/internal/storage/files"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 const (

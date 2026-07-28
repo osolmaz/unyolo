@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 // WriteText writes the human-readable report.
@@ -37,7 +37,7 @@ func writeTextChecks(w io.Writer, checks []Check) error {
 	return nil
 }
 
-func writeTextCredentials(w io.Writer, credentials []bkdoctor.CredentialStatus) error {
+func writeTextCredentials(w io.Writer, credentials []unyolodoctor.CredentialStatus) error {
 	for _, credential := range credentials {
 		if _, err := fmt.Fprintf(w, "- credential %s: source=%s age=%s expiry=%s expires_at=%s rotation=%s revocation=%s\n",
 			credential.Class, credential.Source, credential.Age, credential.Expiry, credential.ExpiresAt, credential.Rotation, credential.Revocation); err != nil {
@@ -56,7 +56,7 @@ func WriteJSON(w io.Writer, report Report) error {
 
 // ExitCode returns the command exit code for the report.
 func ExitCode(status Status) int {
-	return bkdoctor.ExitCode(status)
+	return unyolodoctor.ExitCode(status)
 }
 
 func add(report *Report, status CheckStatus, name, message string) {

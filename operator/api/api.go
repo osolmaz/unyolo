@@ -1,4 +1,4 @@
-// Package operatorapi exposes BrokerKit Operator V1 over protected HTTP.
+// Package operatorapi exposes unYOLO Operator V1 over protected HTTP.
 package operatorapi
 
 import (
@@ -18,19 +18,19 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/decision"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/internal/buildinfo"
-	"github.com/osolmaz/brokerkit/internal/optional"
-	"github.com/osolmaz/brokerkit/operator/inbox"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/operator/wire"
-	"github.com/osolmaz/brokerkit/protocol/contract"
-	"github.com/osolmaz/brokerkit/protocol/operatorwire"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/decision"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/internal/buildinfo"
+	"github.com/osolmaz/unyolo/internal/optional"
+	"github.com/osolmaz/unyolo/operator/inbox"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/operator/wire"
+	"github.com/osolmaz/unyolo/protocol/contract"
+	"github.com/osolmaz/unyolo/protocol/operatorwire"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 const (
@@ -149,7 +149,7 @@ func (h *handler) DiscoverOperator(c echo.Context) error {
 	if _, ok := h.actor(c); !ok {
 		return nil
 	}
-	return c.JSON(http.StatusOK, operatorwire.Descriptor{ApiVersion: operatorwire.BrokerkitIooperatorv1,
+	return c.JSON(http.StatusOK, operatorwire.Descriptor{ApiVersion: operatorwire.UnyoloIooperatorv1,
 		ContractDigest: contract.OperatorV1Digest, BuildId: buildinfo.ID()})
 }
 

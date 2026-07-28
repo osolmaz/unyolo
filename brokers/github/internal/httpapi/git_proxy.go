@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/git/protocol"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/git/protocol"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 const upstreamDispatchedContextKey = "gh_broker_upstream_dispatched"

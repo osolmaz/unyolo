@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 type activationTransaction struct {

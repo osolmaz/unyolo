@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 func classifyHTTPError(response *http.Response) error {

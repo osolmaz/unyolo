@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/credential/provider"
 )
 
 func TestInspectNormalizesFineGrainedCredential(t *testing.T) {

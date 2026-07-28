@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 func TestSchemasCoverCatalogAndAreClosed(t *testing.T) {
@@ -62,7 +62,7 @@ func TestRepositoryUpdateSchemasRemainFieldSplit(t *testing.T) {
 			t.Fatalf("%s fields = %v, want %v", name, got, want)
 		}
 	}
-	target := json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
+	target := json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`)
 	if err := ValidateSubmission("repo.description.update", target, json.RawMessage(`{"input":{"visibility":"private"}}`)); err == nil {
 		t.Fatal("repo.description.update accepted a visibility change")
 	}
@@ -109,7 +109,7 @@ func TestInstallationTargetsRequireExecutableSelector(t *testing.T) {
 }
 
 func TestSubmissionValidationRejectsRawAndUnknownFields(t *testing.T) {
-	validTarget := []byte(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
+	validTarget := []byte(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`)
 	if err := ValidateSubmission("pull_request.create", validTarget, []byte(`{"input":{"title":"Coverage","head":"feature","base":"main"}}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestDeployKeyUsesPublicArguments(t *testing.T) {
 }
 
 func TestSpecializedValidationBoundaries(t *testing.T) {
-	target := json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`)
+	target := json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`)
 	sealedOperation := "agent_task.create_or_update_repo_secret"
 	if err := ValidatePublicSubmission(sealedOperation, target, json.RawMessage(`{"secret_name":"DEPLOY_TOKEN"}`)); err != nil {
 		t.Fatal(err)
@@ -230,7 +230,7 @@ func TestSpecializedValidationBoundaries(t *testing.T) {
 	if err := ValidateStreamPublic("repo.download_zipball_archive", target, json.RawMessage(`{"ref":"main"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateResult("repo.metadata.read", json.RawMessage(`{"id":1,"name":"brokerkit"}`)); err != nil {
+	if err := ValidateResult("repo.metadata.read", json.RawMessage(`{"id":1,"name":"unyolo"}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := ValidateResult("artifact.actions_list_artifacts_for_repo", json.RawMessage(`{"artifacts":[{"id":1,"name":"build"}]}`)); err != nil {

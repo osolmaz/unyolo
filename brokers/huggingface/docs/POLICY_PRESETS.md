@@ -151,6 +151,6 @@ preset profile or manifest.
 Wrappers such as ML Claw should invoke `hf-broker policy render` or the default
 setup command. ML Claw passes its state bucket through `--protect-bucket` so the
 generated deny remains part of the managed profile. Wrappers should not copy an
-operation list, infer effects, or create BrokerKit-owned profile and manifest
-formats themselves. BrokerKit owns catalog classification, deterministic
+operation list, infer effects, or create unYOLO-owned profile and manifest
+formats themselves. unYOLO owns catalog classification, deterministic
 rendering, and drift diagnostics.

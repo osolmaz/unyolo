@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
-type procStatus = bkdoctor.ProcessStatus
+type procStatus = unyolodoctor.ProcessStatus
 
 // Run evaluates the requested isolation checks.
 func Run(ctx context.Context, opts Options) (Report, error) {
@@ -34,7 +34,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	runTokenFileChecks(&report, accessAgent, opts.TokenFile)
 	runSocketChecks(&report, accessAgent, opts.Socket)
 	runActiveProbeChecks(ctx, &report, accessAgent, opts)
-	report.Status = bkdoctor.OverallStatus(report.Checks)
+	report.Status = unyolodoctor.OverallStatus(report.Checks)
 	report.Credentials = credentialStatuses(opts)
 	return report, nil
 }
@@ -183,7 +183,7 @@ func runAgentProcChecks(report *Report, agent identity, pid int, status *procSta
 }
 
 func runCapabilityCheck(report *Report, capEff uint64) {
-	found := bkdoctor.RootEquivalentCapabilityNames(capEff, 0)
+	found := unyolodoctor.RootEquivalentCapabilityNames(capEff, 0)
 	if len(found) > 0 {
 		add(report, CheckFail, "agent_capabilities", "agent process has root-equivalent capability bits: "+strings.Join(found, ", "))
 		return
@@ -224,13 +224,13 @@ func runBrokerChecks(report *Report, agent identity, pid int) {
 func runTokenACLChecks(report *Report, _ identity, path string, stat fileStat) {
 	var unknown bool
 	for _, candidate := range tokenACLPaths(path, stat) {
-		switch bkdoctor.PathACLState(candidate) {
-		case bkdoctor.ACLPresent:
+		switch unyolodoctor.PathACLState(candidate) {
+		case unyolodoctor.ACLPresent:
 			add(report, CheckUnknown, "token_file_acl", "token file or parent directory uses POSIX ACLs; Unix mode checks are incomplete")
 			return
-		case bkdoctor.ACLUnknown:
+		case unyolodoctor.ACLUnknown:
 			unknown = true
-		case bkdoctor.ACLAbsent:
+		case unyolodoctor.ACLAbsent:
 		}
 	}
 	if unknown {
@@ -244,7 +244,7 @@ func tokenACLPaths(path string, stat fileStat) []string {
 	seen := make(map[string]bool)
 	var paths []string
 	addPath := func(candidate string) {
-		cleaned := bkdoctor.CleanPath(candidate)
+		cleaned := unyolodoctor.CleanPath(candidate)
 		if seen[cleaned] {
 			return
 		}
@@ -252,18 +252,18 @@ func tokenACLPaths(path string, stat fileStat) []string {
 		paths = append(paths, cleaned)
 	}
 	addPath(path)
-	for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(path))) {
+	for _, dir := range unyolodoctor.ParentDirs(filepath.Dir(unyolodoctor.CleanPath(path))) {
 		addPath(dir)
 	}
-	if bkdoctor.CleanPath(stat.path) != bkdoctor.CleanPath(path) {
+	if unyolodoctor.CleanPath(stat.path) != unyolodoctor.CleanPath(path) {
 		addPath(stat.path)
-		for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(stat.path))) {
+		for _, dir := range unyolodoctor.ParentDirs(filepath.Dir(unyolodoctor.CleanPath(stat.path))) {
 			addPath(dir)
 		}
 	}
-	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
+	if resolved, ok := unyolodoctor.ResolvedCleanPath(path); ok && resolved != unyolodoctor.CleanPath(path) {
 		addPath(resolved)
-		for _, dir := range bkdoctor.ParentDirs(filepath.Dir(resolved)) {
+		for _, dir := range unyolodoctor.ParentDirs(filepath.Dir(resolved)) {
 			addPath(dir)
 		}
 	}
@@ -273,13 +273,13 @@ func tokenACLPaths(path string, stat fileStat) []string {
 func runSocketACLChecks(report *Report, _ identity, path string) {
 	var unknown bool
 	for _, candidate := range socketACLPaths(path) {
-		switch bkdoctor.PathACLState(candidate) {
-		case bkdoctor.ACLPresent:
+		switch unyolodoctor.PathACLState(candidate) {
+		case unyolodoctor.ACLPresent:
 			add(report, CheckUnknown, "socket_acl", "socket or parent directory uses POSIX ACLs; Unix mode checks are incomplete")
 			return
-		case bkdoctor.ACLUnknown:
+		case unyolodoctor.ACLUnknown:
 			unknown = true
-		case bkdoctor.ACLAbsent:
+		case unyolodoctor.ACLAbsent:
 		}
 	}
 	if unknown {
@@ -293,7 +293,7 @@ func socketACLPaths(path string) []string {
 	seen := make(map[string]bool)
 	var paths []string
 	addPath := func(candidate string) {
-		cleaned := bkdoctor.CleanPath(candidate)
+		cleaned := unyolodoctor.CleanPath(candidate)
 		if seen[cleaned] {
 			return
 		}
@@ -301,12 +301,12 @@ func socketACLPaths(path string) []string {
 		paths = append(paths, cleaned)
 	}
 	addPath(path)
-	for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(path))) {
+	for _, dir := range unyolodoctor.ParentDirs(filepath.Dir(unyolodoctor.CleanPath(path))) {
 		addPath(dir)
 	}
-	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
+	if resolved, ok := unyolodoctor.ResolvedCleanPath(path); ok && resolved != unyolodoctor.CleanPath(path) {
 		addPath(resolved)
-		for _, dir := range bkdoctor.ParentDirs(filepath.Dir(resolved)) {
+		for _, dir := range unyolodoctor.ParentDirs(filepath.Dir(resolved)) {
 			addPath(dir)
 		}
 	}
@@ -333,14 +333,14 @@ func addActiveProbeResult(report *Report, opts Options, result ProbeResult) {
 func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {
 	var result ProbeResult
 	if tokenFile != "" {
-		result.TokenFileReadable = bkdoctor.CanOpen(tokenFile)
-		result.TokenFileWritable = bkdoctor.CanOpenForWrite(tokenFile)
+		result.TokenFileReadable = unyolodoctor.CanOpen(tokenFile)
+		result.TokenFileWritable = unyolodoctor.CanOpenForWrite(tokenFile)
 	}
 	if brokerPID > 0 {
-		result.BrokerEnvReadable = bkdoctor.CanOpen(procPath(brokerPID, "environ"))
+		result.BrokerEnvReadable = unyolodoctor.CanOpen(procPath(brokerPID, "environ"))
 	}
 	if socket != "" {
-		result.SocketConnectable = bkdoctor.DialUnix(context.Background(), socket)
+		result.SocketConnectable = unyolodoctor.DialUnix(context.Background(), socket)
 	}
 	return result
 }

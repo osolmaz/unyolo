@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/transport/http/client"
+	"github.com/osolmaz/unyolo/transport/http/client"
 )
 
 // LocalHTTPClient returns a client for broker-local readiness checks without

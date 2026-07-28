@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/broker/controlplane"
-	"github.com/osolmaz/brokerkit/operator/client"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/broker/controlplane"
+	"github.com/osolmaz/unyolo/operator/client"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestRunOperatorV1(t *testing.T) {

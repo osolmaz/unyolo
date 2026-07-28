@@ -1,9 +1,9 @@
 ---
 title: Overview
-description: What BrokerKit is, the problem it solves, and how its pieces fit together.
+description: What unYOLO is, the problem it solves, and how its pieces fit together.
 ---
 
-BrokerKit is a Go framework for building credential brokers. A broker is a small service that holds
+unYOLO is a Go framework for building credential brokers. A broker is a small service that holds
 a real credential, GitHub App keys, a Hugging Face token, or the ability to act as another Unix
 user, and hands an untrusted client a separate credential that works only for the operations you
 allowed.
@@ -71,8 +71,8 @@ release artifact, and audit stream, so one cannot reach another's credentials.
 | [`hf-broker`](/docs/brokers/hugging-face) | A Hugging Face token | Git and LFS traffic, repository reads and writes, bucket objects, Router inference |
 | [`sudo-broker`](/docs/brokers/sudo) | The ability to act as another Unix user | One exact command from a root-owned catalog |
 
-Alongside them sit the `brokerkit` host command, which activates signed immutable runtime bundles
-and verifies the resulting processes, the `brokerkit-telegram` ingress that owns inbound updates
+Alongside them sit the `unyolo` host command, which activates signed immutable runtime bundles
+and verifies the resulting processes, the `unyolo-telegram` ingress that owns inbound updates
 when several brokers share one bot, and an [OpenClaw plugin](/docs/brokers/openclaw) that adds an
 approvals tab and client skills to that agent host.
 
@@ -86,7 +86,7 @@ a client can detect drift without guessing from a version label.
 ## Further reading
 
 Start with the [quickstart](/docs/get-started/quickstart) if you want `gh-broker` running against
-one repository in the next few minutes. Read [why BrokerKit](/docs/get-started/why-brokerkit) if
+one repository in the next few minutes. Read [why unYOLO](/docs/get-started/why-unyolo) if
 you first want to know what it refuses to do, which is often the faster way to decide whether it
 fits.
 

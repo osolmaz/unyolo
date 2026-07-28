@@ -3,7 +3,7 @@ package githubauth
 import (
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
+	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
 )
 
 func installationTargetID(target map[string]any) int64 {

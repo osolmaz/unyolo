@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 )
 
 type coreView uint8
@@ -67,15 +67,15 @@ func (p *Policy) initializeCore() error {
 	ids := make(map[string]string)
 	normal, err := p.buildCorePolicy(coreViewNormal, ids)
 	if err != nil {
-		return fmt.Errorf("build brokerkit policy: %w", err)
+		return fmt.Errorf("build unyolo policy: %w", err)
 	}
 	support, err := p.buildCorePolicy(coreViewSupport, ids)
 	if err != nil {
-		return fmt.Errorf("build brokerkit support policy: %w", err)
+		return fmt.Errorf("build unyolo support policy: %w", err)
 	}
 	discovery, err := p.buildCorePolicy(coreViewDiscovery, ids)
 	if err != nil {
-		return fmt.Errorf("build brokerkit discovery policy: %w", err)
+		return fmt.Errorf("build unyolo discovery policy: %w", err)
 	}
 	p.core = &corePolicies{normal: normal, support: support, discovery: discovery}
 	p.coreRuleIDs = ids

@@ -105,27 +105,27 @@ after setup.
 ## Default sockets
 
 ```text
-/run/brokerkit/huggingface/agent/broker.sock
-/run/brokerkit/huggingface/operator/broker.sock
-/run/brokerkit/github/agent/broker.sock
-/run/brokerkit/github/operator/broker.sock
-/run/brokerkit/sudo/agent/broker.sock
-/run/brokerkit/sudo/operator/broker.sock
+/run/unyolo/huggingface/agent/broker.sock
+/run/unyolo/huggingface/operator/broker.sock
+/run/unyolo/github/agent/broker.sock
+/run/unyolo/github/operator/broker.sock
+/run/unyolo/sudo/agent/broker.sock
+/run/unyolo/sudo/operator/broker.sock
 ```
 
-BrokerKit defines no default TCP port for any listener. The Git data plane requires an explicit
+unYOLO defines no default TCP port for any listener. The Git data plane requires an explicit
 deployment-selected TCP endpoint because standard Git clients cannot use a Unix socket.
 
 ## Client config
 
 `setup client` writes `~/.config/<broker>/client.json`, owner-readable only, using the closed
-`brokerkit.io/client/v1` schema:
+`unyolo.io/client/v1` schema:
 
 ```json
 {
-  "api_version": "brokerkit.io/client/v1",
+  "api_version": "unyolo.io/client/v1",
   "client_id": "agent-a",
-  "agent_endpoint": "unix:///run/brokerkit/provider/agent/broker.sock",
+  "agent_endpoint": "unix:///run/unyolo/provider/agent/broker.sock",
   "git_endpoint": "tcp://127.0.0.1:38471",
   "shared_secret": "broker-client-secret"
 }
@@ -165,14 +165,14 @@ above the global active limit all fail startup.
 
 ```json
 {
-  "telegram_bot_token_file": "/etc/brokerkit-telegram/telegram-bot-token",
+  "telegram_bot_token_file": "/etc/unyolo-telegram/telegram-bot-token",
   "telegram_chat_id": 123456789,
-  "inbox_path": "/var/lib/brokerkit-telegram/callbacks.db",
-  "inbox_key_file": "/etc/brokerkit-telegram/inbox-key",
+  "inbox_path": "/var/lib/unyolo-telegram/callbacks.db",
+  "inbox_key_file": "/etc/unyolo-telegram/inbox-key",
   "routes": {
     "h": {
-      "operator_endpoint": "unix:///run/brokerkit/huggingface/operator/broker.sock",
-      "operator_token_file": "/etc/brokerkit-telegram/operator-token-h"
+      "operator_endpoint": "unix:///run/unyolo/huggingface/operator/broker.sock",
+      "operator_token_file": "/etc/unyolo-telegram/operator-token-h"
     }
   }
 }

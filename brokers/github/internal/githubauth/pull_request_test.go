@@ -11,7 +11,7 @@ const pullRequestTestHead = "1111111111111111111111111111111111111111"
 
 func TestPullRequestReturnsBoundedSnapshot(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.URL.Path != "/repos/osolmaz/brokerkit/pulls/77" {
+		if request.Method != http.MethodGet || request.URL.Path != "/repos/osolmaz/unyolo/pulls/77" {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
 		if request.Header.Get("Authorization") != "Bearer dev-canary" {
@@ -22,7 +22,7 @@ func TestPullRequestReturnsBoundedSnapshot(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	manager := newDevelopmentManager(t, server.URL)
-	snapshot, err := manager.PullRequest(t.Context(), manager.development.Metadata(), "osolmaz", "brokerkit", 77)
+	snapshot, err := manager.PullRequest(t.Context(), manager.development.Metadata(), "osolmaz", "unyolo", 77)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestPullRequestReturnsBoundedSnapshot(t *testing.T) {
 }
 
 func TestPullRequestRejectsInvalidSelectorsAndResponses(t *testing.T) {
-	if _, err := (*Manager)(nil).pullRequestRequest(t.Context(), "osolmaz", "brokerkit", 1); err == nil {
+	if _, err := (*Manager)(nil).pullRequestRequest(t.Context(), "osolmaz", "unyolo", 1); err == nil {
 		t.Fatal("nil manager accepted a pull request selector")
 	}
 	manager := newDevelopmentManager(t, "https://api.github.com")
@@ -42,9 +42,9 @@ func TestPullRequestRejectsInvalidSelectorsAndResponses(t *testing.T) {
 		repo   string
 		number int64
 	}{
-		"owner":  {repo: "brokerkit", number: 1},
+		"owner":  {repo: "unyolo", number: 1},
 		"repo":   {owner: "osolmaz", number: 1},
-		"number": {owner: "osolmaz", repo: "brokerkit"},
+		"number": {owner: "osolmaz", repo: "unyolo"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := manager.pullRequestRequest(t.Context(), selector.owner, selector.repo, selector.number); err == nil {

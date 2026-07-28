@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
 	"golang.org/x/sys/unix"
 )
 

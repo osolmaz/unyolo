@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xethash"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/xethash"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (

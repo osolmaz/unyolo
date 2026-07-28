@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
 func TestRunnerAndOwnership(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 type testManager struct{}
@@ -55,7 +55,7 @@ func TestRunDevelopmentInstall(t *testing.T) {
 	if err := run(t.Context(), args, &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "Activated BrokerKit bundle bundle-install") {
+	if !strings.Contains(stdout.String(), "Activated unYOLO bundle bundle-install") {
 		t.Fatalf("install output=%q", stdout.String())
 	}
 }

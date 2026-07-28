@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 type contractAdapter struct{ descriptor capability.Descriptor }

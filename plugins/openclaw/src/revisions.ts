@@ -33,14 +33,14 @@ export class RevisionPublisher {
     this.material = material;
     this.revision += 1;
     this.current = {
-      api_version: "brokerkit.io/operator-ui/v1",
+      api_version: "unyolo.io/operator-ui/v1",
       cursor: this.cursor(),
       synchronized_at: new Date().toISOString(),
       ...value,
     };
     for (const waiter of [...this.waiters])
       this.finish(waiter, {
-        api_version: "brokerkit.io/operator-ui/v1",
+        api_version: "unyolo.io/operator-ui/v1",
         cursor: this.current.cursor,
         changed: true,
       });
@@ -61,7 +61,7 @@ export class RevisionPublisher {
     if (observed === undefined) return Promise.reject(cursorExpired());
     if (observed !== this.revision)
       return Promise.resolve({
-        api_version: "brokerkit.io/operator-ui/v1",
+        api_version: "unyolo.io/operator-ui/v1",
         cursor: this.cursor(),
         changed: true,
       });
@@ -72,7 +72,7 @@ export class RevisionPublisher {
         reject,
         timer: setTimeout(() => {
           this.finish(waiter, {
-            api_version: "brokerkit.io/operator-ui/v1",
+            api_version: "unyolo.io/operator-ui/v1",
             cursor: this.cursor(),
             changed: false,
           });

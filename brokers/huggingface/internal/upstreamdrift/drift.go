@@ -12,13 +12,13 @@ import (
 	"slices"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/openapidrift"
+	"github.com/osolmaz/unyolo/internal/openapidrift"
 )
 
 const (
 	SourceURL        = "https://huggingface.co/.well-known/openapi.json"
 	maxDocumentBytes = 32 << 20
-	userAgent        = "brokerkit-huggingface-capability-monitor"
+	userAgent        = "unyolo-huggingface-capability-monitor"
 )
 
 // Change is one structural difference from the reviewed OpenAPI snapshot.

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
-  "info": {"title": "BrokerKit Agent Operations API", "version": "1.0.0"},
+  "info": {"title": "unYOLO Agent Operations API", "version": "1.0.0"},
   "paths": {
-    "/.well-known/brokerkit-agent": {
+    "/.well-known/unyolo-agent": {
       "get": {"operationId": "discoverAgent", "security": [{"agentBearer": []}], "responses": {"200": {"description": "Agent Operations V1 discovery", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Descriptor"}}}}, "default": {"$ref": "#/components/responses/ErrorResponse"}}}
     },
     "/api/agent/v1/operations": {
@@ -49,7 +49,7 @@
         "type": "object", "additionalProperties": false,
         "required": ["api_version", "contract_digest", "build_id", "operations", "credential"],
         "properties": {
-          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"},
+          "api_version": {"type": "string", "const": "unyolo.io/agent/v1"},
           "contract_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
           "build_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "operations": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
@@ -76,7 +76,7 @@
         "type": "object", "additionalProperties": false,
         "required": ["api_version", "id", "broker", "client_id", "idempotency_key", "operation", "target", "arguments", "reason", "state", "revision", "created_at", "updated_at", "presentation"],
         "properties": {
-          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"}, "id": {"type": "string", "minLength": 1, "maxLength": 128}, "broker": {"type": "string", "minLength": 1, "maxLength": 64}, "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "api_version": {"type": "string", "const": "unyolo.io/agent/v1"}, "id": {"type": "string", "minLength": 1, "maxLength": 128}, "broker": {"type": "string", "minLength": 1, "maxLength": 64}, "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "idempotency_key": {"$ref": "#/components/schemas/IdempotencyKey"}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "target": {"type": "object", "maxProperties": 32}, "arguments": {"type": "object", "maxProperties": 128}, "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
           "state": {"$ref": "#/components/schemas/State"}, "revision": {"type": "integer", "minimum": 1}, "approval_id": {"type": "string", "minLength": 1, "maxLength": 128}, "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "terminal_at": {"type": "string", "format": "date-time"},
           "presentation": {"$ref": "#/components/schemas/Presentation"}, "plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "result": {"type": "object", "maxProperties": 128}, "error": {"$ref": "#/components/schemas/OperationError"}
@@ -86,7 +86,7 @@
         "type": "object", "additionalProperties": false,
         "required": ["api_version", "operations", "next_cursor"],
         "properties": {
-          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"},
+          "api_version": {"type": "string", "const": "unyolo.io/agent/v1"},
           "operations": {"type": "array", "maxItems": 50, "items": {"$ref": "#/components/schemas/OperationSummary"}},
           "next_cursor": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}
         }
@@ -95,7 +95,7 @@
         "type": "object", "additionalProperties": false,
         "required": ["api_version", "id", "broker", "client_id", "idempotency_key", "operation", "state", "revision", "created_at", "updated_at", "presentation"],
         "properties": {
-          "api_version": {"type": "string", "const": "brokerkit.io/agent/v1"}, "id": {"type": "string", "minLength": 1, "maxLength": 128}, "broker": {"type": "string", "minLength": 1, "maxLength": 64}, "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "api_version": {"type": "string", "const": "unyolo.io/agent/v1"}, "id": {"type": "string", "minLength": 1, "maxLength": 128}, "broker": {"type": "string", "minLength": 1, "maxLength": 64}, "client_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "idempotency_key": {"$ref": "#/components/schemas/IdempotencyKey"}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "state": {"$ref": "#/components/schemas/State"}, "revision": {"type": "integer", "minimum": 1},
           "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "terminal_at": {"type": "string", "format": "date-time"}, "presentation": {"$ref": "#/components/schemas/Presentation"}
         }

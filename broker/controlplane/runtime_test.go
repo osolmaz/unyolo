@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
@@ -23,14 +23,14 @@ func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/brokerkit-operator", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/unyolo-operator", nil)
 	request.Header.Set("Authorization", "Bearer client-secret-abcdefghijklmnopqrstuvwxyz")
 	response := httptest.NewRecorder()
 	runtime.OperatorHandler.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("client credential status = %d, want 401", response.Code)
 	}
-	request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/brokerkit-operator", nil)
+	request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/unyolo-operator", nil)
 	request.Header.Set("Authorization", "Bearer operator-secret-abcdefghijklmnopqrstuvwxyz")
 	response = httptest.NewRecorder()
 	runtime.OperatorHandler.ServeHTTP(response, request)
@@ -42,7 +42,7 @@ func TestRuntimeSeparatesClientAndOperatorCredentials(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer operator-secret-abcdefghijklmnopqrstuvwxyz")
 	response = httptest.NewRecorder()
 	runtime.OperatorHandler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "brokerkit_admission_requests_total") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "unyolo_admission_requests_total") {
 		t.Fatalf("operator metrics status=%d body=%s", response.Code, response.Body.String())
 	}
 }

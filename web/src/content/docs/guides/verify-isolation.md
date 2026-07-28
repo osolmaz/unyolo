@@ -58,7 +58,7 @@ hf-broker doctor \
   --agent-user agent \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/brokerkit/huggingface/agent/broker.sock
+  --socket /run/unyolo/huggingface/agent/broker.sock
 ```
 
 With no agent identity flags supplied, the doctor checks the live doctor process instead. That is
@@ -97,7 +97,7 @@ ruleset visibility, repository access, and default-branch protection:
 
 ```sh
 sudo gh-broker doctor github \
-  --repo osolmaz/brokerkit \
+  --repo osolmaz/unyolo \
   --agent-user agent-a \
   --service-user gh-broker
 ```
@@ -127,7 +127,7 @@ gh-broker git status --json
 
 ## Host-level health
 
-`brokerkit system doctor` adds the view across the whole managed host. It compares the activation
+`unyolo system doctor` adds the view across the whole managed host. It compares the activation
 record, immutable artifact digests, native service state, process executable paths, and the active
 bundle.
 
@@ -136,8 +136,8 @@ executable differs from the immutable active release, a Linux executable is mark
 a rollback did not complete.
 
 ```sh
-brokerkit system status --json
-brokerkit system doctor --json
+unyolo system status --json
+unyolo system doctor --json
 ```
 
 JSON output contains no provider credentials and no callback authority.

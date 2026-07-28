@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/agent/v1"
 )
 
 const (
-	OperationAPIVersion = "brokerkit.io/mcp-operation/v1"
-	PageAPIVersion      = "brokerkit.io/mcp-operation-page/v1"
+	OperationAPIVersion = "unyolo.io/mcp-operation/v1"
+	PageAPIVersion      = "unyolo.io/mcp-operation-page/v1"
 	DefaultWaitSeconds  = 25
 	MaxWaitSeconds      = 25
 	DefaultListLimit    = 20

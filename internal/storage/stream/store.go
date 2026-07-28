@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/securefile"
+	"github.com/osolmaz/unyolo/internal/securefile"
 )
 
 var idPattern = regexp.MustCompile(`^stream_[A-Za-z0-9_-]{24}$`)

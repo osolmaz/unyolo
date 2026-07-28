@@ -5,26 +5,26 @@ package isolation
 import (
 	"time"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 // Status is the overall isolation verdict.
-type Status = bkdoctor.Status
+type Status = unyolodoctor.Status
 
 const (
-	StatusOK           = bkdoctor.StatusOK
-	StatusUnsafe       = bkdoctor.StatusUnsafe
-	StatusInconclusive = bkdoctor.StatusInconclusive
+	StatusOK           = unyolodoctor.StatusOK
+	StatusUnsafe       = unyolodoctor.StatusUnsafe
+	StatusInconclusive = unyolodoctor.StatusInconclusive
 )
 
 // CheckStatus is the result for one isolation check.
-type CheckStatus = bkdoctor.CheckStatus
+type CheckStatus = unyolodoctor.CheckStatus
 
 const (
-	CheckPass    = bkdoctor.CheckPass
-	CheckFail    = bkdoctor.CheckFail
-	CheckWarn    = bkdoctor.CheckWarn
-	CheckUnknown = bkdoctor.CheckUnknown
+	CheckPass    = unyolodoctor.CheckPass
+	CheckFail    = unyolodoctor.CheckFail
+	CheckWarn    = unyolodoctor.CheckWarn
+	CheckUnknown = unyolodoctor.CheckUnknown
 )
 
 // Options controls an isolation check run.
@@ -45,10 +45,10 @@ type Options struct {
 
 // Report is the machine-readable output for doctor isolation.
 type Report struct {
-	Status      Status                      `json:"status"`
-	Agent       AgentInfo                   `json:"agent"`
-	Checks      []Check                     `json:"checks"`
-	Credentials []bkdoctor.CredentialStatus `json:"credentials,omitempty"`
+	Status      Status                          `json:"status"`
+	Agent       AgentInfo                       `json:"agent"`
+	Checks      []Check                         `json:"checks"`
+	Credentials []unyolodoctor.CredentialStatus `json:"credentials,omitempty"`
 }
 
 // AgentInfo identifies the checked agent identity.
@@ -62,26 +62,26 @@ type AgentInfo struct {
 }
 
 // Check is one stable doctor finding.
-type Check = bkdoctor.Check
+type Check = unyolodoctor.Check
 
 // ProbeResult is emitted by the active probe helper.
-type ProbeResult = bkdoctor.ProbeResult
+type ProbeResult = unyolodoctor.ProbeResult
 
-func credentialStatuses(opts Options) []bkdoctor.CredentialStatus {
+func credentialStatuses(opts Options) []unyolodoctor.CredentialStatus {
 	now := time.Now().UTC()
-	values := make([]bkdoctor.CredentialStatus, 0, 4)
+	values := make([]unyolodoctor.CredentialStatus, 0, 4)
 	for _, value := range []struct {
 		class, path, revocation string
 	}{
-		{"huggingface-access", opts.TokenFile, bkdoctor.CredentialRevocationManual},
-		{"broker-client", opts.ClientSecretsFile, bkdoctor.CredentialRevocationLocal},
-		{"broker-operator", opts.OperatorSecretsFile, bkdoctor.CredentialRevocationLocal},
-		{"telegram-bot", opts.TelegramTokenFile, bkdoctor.CredentialRevocationManual},
+		{"huggingface-access", opts.TokenFile, unyolodoctor.CredentialRevocationManual},
+		{"broker-client", opts.ClientSecretsFile, unyolodoctor.CredentialRevocationLocal},
+		{"broker-operator", opts.OperatorSecretsFile, unyolodoctor.CredentialRevocationLocal},
+		{"telegram-bot", opts.TelegramTokenFile, unyolodoctor.CredentialRevocationManual},
 	} {
 		if value.path != "" {
-			values = append(values, bkdoctor.CredentialFileStatus(value.class, value.path, now,
-				bkdoctor.DefaultCredentialRotationAge, time.Time{}, value.revocation))
+			values = append(values, unyolodoctor.CredentialFileStatus(value.class, value.path, now,
+				unyolodoctor.DefaultCredentialRotationAge, time.Time{}, value.revocation))
 		}
 	}
-	return bkdoctor.NormalizeCredentialStatuses(values)
+	return unyolodoctor.NormalizeCredentialStatuses(values)
 }

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/storage/state"
 )
 
 func TestMetricsExposeOnlyClosedBoundedLabels(t *testing.T) {
@@ -27,8 +27,8 @@ func TestMetricsExposeOnlyClosedBoundedLabels(t *testing.T) {
 	response := httptest.NewRecorder()
 	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := response.Body.String()
-	for _, want := range []string{"brokerkit_admission_requests_total", `broker="test-broker"`, `code="other"`,
-		"brokerkit_operation_execution_seconds", "brokerkit_operator_decisions_total", "brokerkit_notification_deliveries_total"} {
+	for _, want := range []string{"unyolo_admission_requests_total", `broker="test-broker"`, `code="other"`,
+		"unyolo_operation_execution_seconds", "unyolo_operator_decisions_total", "unyolo_notification_deliveries_total"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics omitted %q:\n%s", want, body)
 		}
@@ -59,7 +59,7 @@ func TestMetricsCollectDurableStateWithoutUnboundedLabels(t *testing.T) {
 	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := response.Body.String()
 	for _, want := range []string{
-		"brokerkit_database_healthy", `brokerkit_database_healthy{broker="test-broker"} 1`,
+		"unyolo_database_healthy", `unyolo_database_healthy{broker="test-broker"} 1`,
 		`queue="approvals_pending"} 2`, `queue="operations_queued"} 3`,
 		`queue="operations_executing"} 4`, `queue="notifications_pending"} 5`,
 		`queue="notifications_unresolved"} 6`,
@@ -78,10 +78,10 @@ func TestMetricsSuppressQueueDepthWhenDatabaseProbeFails(t *testing.T) {
 	response := httptest.NewRecorder()
 	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := response.Body.String()
-	if !strings.Contains(body, `brokerkit_database_healthy{broker="test-broker"} 0`) {
+	if !strings.Contains(body, `unyolo_database_healthy{broker="test-broker"} 0`) {
 		t.Fatalf("failed database health metric omitted:\n%s", body)
 	}
-	if strings.Contains(body, "brokerkit_queue_depth") || strings.Contains(body, "secret database failure") {
+	if strings.Contains(body, "unyolo_queue_depth") || strings.Contains(body, "secret database failure") {
 		t.Fatalf("failed scrape exposed stale state or raw error:\n%s", body)
 	}
 }
@@ -109,9 +109,9 @@ func TestDiagnosticsShareBoundedMetricsAndStructuredRedaction(t *testing.T) {
 	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := response.Body.String()
 	for _, want := range []string{
-		"brokerkit_dependency_healthy", `dependency="provider"} 0`, `dependency="notification"} 0`,
-		"brokerkit_dependency_requests_total", `error_category="rate_limited"`, `error_category="unavailable"`,
-		"brokerkit_dependency_retries_total", "brokerkit_worker_active", "brokerkit_worker_limit",
+		"unyolo_dependency_healthy", `dependency="provider"} 0`, `dependency="notification"} 0`,
+		"unyolo_dependency_requests_total", `error_category="rate_limited"`, `error_category="unavailable"`,
+		"unyolo_dependency_retries_total", "unyolo_worker_active", "unyolo_worker_limit",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("diagnostic metrics omitted %q:\n%s", want, body)

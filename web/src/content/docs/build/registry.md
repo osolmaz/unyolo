@@ -17,7 +17,7 @@ type Registry struct {
 }
 ```
 
-The Go API is in `brokerkit/policy`. Your broker supplies the values it passes in.
+The Go API is in `unyolo/policy`. Your broker supplies the values it passes in.
 
 The registry defines valid operation names, valid target kinds, the required target fields per
 kind, valid attr names, the attrs each operation supports, which operations may be granted, the
@@ -42,8 +42,8 @@ A target is an object with a required `kind`. Your registry decides which other 
 allows and requires. Some kinds are identified by `kind` alone.
 
 ```json
-{ "kind": "repo", "owner": "osolmaz", "name": "brokerkit" }
-{ "kind": "pull_request", "owner": "osolmaz", "repo": "brokerkit", "number": 123 }
+{ "kind": "repo", "owner": "osolmaz", "name": "unyolo" }
+{ "kind": "pull_request", "owner": "osolmaz", "repo": "unyolo", "number": 123 }
 { "kind": "user", "name": "deploy" }
 ```
 
@@ -58,7 +58,7 @@ repository" into "this agent may push to branches under its own namespace".
 
 Two constraints apply to every attr and cause most of the confusion when they are missed.
 
-Names are exact. BrokerKit applies no aliases, so `ref` and `refs` are different attrs. Your
+Names are exact. unYOLO applies no aliases, so `ref` and `refs` are different attrs. Your
 classifier must normalize provider input into the exact names you registered before calling the
 policy core.
 

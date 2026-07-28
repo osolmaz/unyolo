@@ -1,6 +1,6 @@
 # Telegram approval ingress
 
-BrokerKit uses one `brokerkit-telegram` ingress process for each Telegram bot
+unYOLO uses one `unyolo-telegram` ingress process for each Telegram bot
 token. Provider brokers supply bounded semantic approval data and send durable
 status updates, but they do not format Telegram HTML or call `getUpdates`. The
 shared Telegram renderer owns layout, escaping, emoji, fixed Approve and Deny
@@ -19,7 +19,7 @@ files supplied to their setup commands. Then configure the shared ingress with
 the same bot token and chat ID:
 
 ```sh
-sudo brokerkit-telegram setup systemd \
+sudo unyolo-telegram setup systemd \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
   --hf-operator-token-file ./hf-operator-secret \
@@ -31,24 +31,24 @@ Omit a provider token flag when that provider is not installed. The default
 Operator V1 sockets and access groups match the provider installers. Endpoint
 and group flags are available for non-default layouts.
 
-Setup creates a dedicated `brokerkit-telegram` service account, copies the bot
-and operator tokens into `/etc/brokerkit-telegram` with service-only read
+Setup creates a dedicated `unyolo-telegram` service account, copies the bot
+and operator tokens into `/etc/unyolo-telegram` with service-only read
 access, adds the account to the configured broker operator socket groups, and
-installs `brokerkit-telegram.service`. Secrets are read from files and are not
+installs `unyolo-telegram.service`. Secrets are read from files and are not
 accepted as command-line values.
 
 The managed configuration has this shape:
 
 ```json
 {
-  "telegram_bot_token_file": "/etc/brokerkit-telegram/telegram-bot-token",
+  "telegram_bot_token_file": "/etc/unyolo-telegram/telegram-bot-token",
   "telegram_chat_id": 123456789,
-  "inbox_path": "/var/lib/brokerkit-telegram/callbacks.db",
-  "inbox_key_file": "/etc/brokerkit-telegram/inbox-key",
+  "inbox_path": "/var/lib/unyolo-telegram/callbacks.db",
+  "inbox_key_file": "/etc/unyolo-telegram/inbox-key",
   "routes": {
     "h": {
-      "operator_endpoint": "unix:///run/brokerkit/huggingface/operator/broker.sock",
-      "operator_token_file": "/etc/brokerkit-telegram/operator-token-h"
+      "operator_endpoint": "unix:///run/unyolo/huggingface/operator/broker.sock",
+      "operator_token_file": "/etc/unyolo-telegram/operator-token-h"
     }
   }
 }

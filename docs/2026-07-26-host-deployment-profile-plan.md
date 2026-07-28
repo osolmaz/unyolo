@@ -6,7 +6,7 @@ Status: accepted
 
 ## Objective
 
-BrokerKit needs one supported workflow that can turn a new host into a working
+unYOLO needs one supported workflow that can turn a new host into a working
 agent host and keep that host aligned with reviewed configuration. Today the
 safe pieces exist, but an operator has to join them manually. Installing a host
 like Isengard requires a runtime bundle activation, three provider setup
@@ -15,25 +15,25 @@ installations, shell startup edits, policy application, an OpenClaw package
 installation, service restarts, and several doctor commands.
 
 The normal user experience must begin with one installation command run from a
-trusted user's account. BrokerKit then explains the security model, gathers one
+trusted user's account. unYOLO then explains the security model, gathers one
 choice at a time, creates the deployment profile, shows the exact plan, performs
 one narrow privilege transition, and verifies the finished agent workflow.
 
-Add a strict host deployment profile and make `brokerkit system` reconcile it.
+Add a strict host deployment profile and make `unyolo system` reconcile it.
 A single plan must cover the signed runtime, agent and operator identities,
 provider setup, policies, client credentials, Git routing, optional client
 integrations, service activation, and end-to-end verification. Reapplying the
 same profile must be safe and must either repair drift or explain exactly why it
 cannot proceed.
 
-The implementation must preserve BrokerKit's existing process and credential
+The implementation must preserve unYOLO's existing process and credential
 boundaries. GitHub and Hugging Face keep separate executables, configuration,
 credentials, state, listeners, release artifacts, and audit streams. The same
 is true for sudo and Telegram as well as client integrations. The host command
 coordinates those components through a shared setup protocol. It does not
 absorb provider behavior.
 
-BrokerKit is pre-release. Changed V1 formats are replaced in place through a
+unYOLO is pre-release. Changed V1 formats are replaced in place through a
 coordinated fresh configuration deployment. Do not add compatibility readers,
 aliases, parallel profile versions, migration commands, or fallback loading.
 
@@ -44,18 +44,18 @@ normal user account:
 
 ```sh
 curl -fsSL \
-  "https://raw.githubusercontent.com/osolmaz/brokerkit/<verified-commit>/install/bootstrap.sh" \
-  | sh -s -- --release brokerkit/v<reviewed-version> setup
+  "https://raw.githubusercontent.com/osolmaz/unyolo/<verified-commit>/install/bootstrap.sh" \
+  | sh -s -- --release unyolo/v<reviewed-version> setup
 ```
 
 The URL pins an immutable reviewed commit. The bootstrap script downloads the
-matching `brokerkit` release, verifies its checksum and GitHub attestation,
+matching `unyolo` release, verifies its checksum and GitHub attestation,
 installs it below the current user's home directory, reopens `/dev/tty`, and
-executes `brokerkit setup`. The shell script does not collect configuration,
+executes `unyolo setup`. The shell script does not collect configuration,
 read credentials, invoke `sudo`, or perform host setup. The user-owned binary is
 never executed as root.
 
-`brokerkit setup` is an unprivileged guided frontend over the deployment pack,
+`unyolo setup` is an unprivileged guided frontend over the deployment pack,
 planner, and transaction described in this document. It asks questions, runs
 provider enrollment, writes a nonsecret deployment pack, and renders the final
 plan. It never mutates a broker service directly. The final apply uses the same
@@ -80,13 +80,13 @@ session.
 The normal secure layout uses a separate Unix account for the agent. The
 initiating operator may be an administrator, while the agent account must not
 be root or root-equivalent. The wizard defaults to creating a locked
-`brokerkit-agent` account and lets the operator choose another name or bind an
+`unyolo-agent` account and lets the operator choose another name or bind an
 existing safe account such as `bob`.
 
 The guided production flow requires the initiating user and agent to resolve to
 different UIDs. The wizard also rejects an agent account with `sudo`, `wheel`,
 `docker`, `lxd`, `incus`, or equivalent authority. A user with that authority
-could inspect or replace broker credentials later, so BrokerKit could not
+could inspect or replace broker credentials later, so unYOLO could not
 enforce its stated isolation boundary. Advanced unattended deployments may bind
 an existing nonprivileged account, but provider enrollment still runs through a
 distinct trusted operator.
@@ -111,12 +111,12 @@ exact resources the user wants; it never turns safe defaults into broad access.
 The default flow then uses one guided sequence with safe defaults and progressive
 detail:
 
-1. **Preflight.** Show the BrokerKit release, exact runtime bundle, platform,
+1. **Preflight.** Show the unYOLO release, exact runtime bundle, platform,
    current user, network requirements, and security boundary. Authenticate and
    cache the signed setup adapters. Check that the user can perform the later
    privilege step without invoking it yet.
 2. **Agent identity.** Create a separate locked agent account or select an
-   existing safe account. Show the exact home and shell that BrokerKit will
+   existing safe account. Show the exact home and shell that unYOLO will
    manage.
 3. **Components.** Select GitHub, Hugging Face, sudo, Telegram approvals, and an
    optional client integration. The recommended local-agent profile selects
@@ -158,14 +158,14 @@ it.
 ### Terminal presentation
 
 Use OpenClaw's onboarding as the interaction model. The default renderer is a
-colored, Clack-like inline UI. BrokerKit should feel like the same family of
+colored, Clack-like inline UI. unYOLO should feel like the same family of
 guided terminal flow while keeping its own copy, colors, security warnings, and
 implementation.
 
 The visible behavior follows these OpenClaw patterns:
 
 - an `intro` starts one connected guide rail and an `outro` closes it.
-- focused questions use the BrokerKit accent color; completed answers collapse
+- focused questions use the unYOLO accent color; completed answers collapse
   into dim text so the terminal keeps a readable setup history.
 - notes present security explanations, existing configuration, policy previews,
   and repair instructions without pretending they are questions.
@@ -185,7 +185,7 @@ The visible behavior follows these OpenClaw patterns:
   between completed steps when safe. Arrow keys move within options, and space
   selects items. Enter confirms. Ctrl-C cancels.
 
-Keep flow logic behind a BrokerKit-owned `SetupPrompter` interface modeled on
+Keep flow logic behind a unYOLO-owned `SetupPrompter` interface modeled on
 OpenClaw's `WizardPrompter`. The interface owns `intro`, `outro`, `note`,
 `select`, `multiselect`, `text`, `secret`, `confirm`, `deviceCode`, `openURL`,
 and `progress`. Setup and provider code depend only on this interface. Terminal
@@ -196,13 +196,13 @@ Use `charm.land/huh/v2` for the default Go renderer. Huh provides form groups,
 selects, multiselects, validated input, confirms, themes, a spinner package,
 and a first-class accessible mode. It removes the raw-mode, resize, key handling,
 cursor cleanup, and screen-reader work that a custom prompt implementation
-would otherwise own. BrokerKit supplies a small Huh adapter and theme instead of
+would otherwise own. unYOLO supplies a small Huh adapter and theme instead of
 forking Huh or exposing Huh types in domain packages.
 
 The Huh renderer runs inline and must not use the alternate screen. Use a
-BrokerKit palette with named accent, success, warning, error, muted, and heading
+unYOLO palette with named accent, success, warning, error, muted, and heading
 styles. Honor `NO_COLOR` and `FORCE_COLOR`. `--accessible` and
-`BROKERKIT_ACCESSIBLE=1` enable Huh's simplified screen-reader mode. A dumb
+`UNYOLO_ACCESSIBLE=1` enable Huh's simplified screen-reader mode. A dumb
 terminal falls back to the accessible renderer after confirmation.
 
 Do not use a Go Clack clone solely to copy Clack's appearance. Huh has broader
@@ -213,11 +213,11 @@ landing it. First build a focused renderer spike covering option hints,
 tokenized search, multiselect, horizontal step navigation, fixed secret
 submission text, dynamic width-aware progress, cancellation, and accessible
 mode. If a requirement cannot be implemented through Huh's public API, use a
-small BrokerKit-owned Bubble Tea component behind `SetupPrompter`; never import
+small unYOLO-owned Bubble Tea component behind `SetupPrompter`; never import
 Huh internals or maintain a fork. The implementation pins
 `charm.land/huh/v2` 2.0.3 and `charm.land/lipgloss/v2` 2.0.5. Both use the MIT
-license, pass Linux and macOS builds, and require Go 1.25.8, so BrokerKit now
-declares Go 1.25.8 while retaining the Go 1.26.5 toolchain. A trimmed BrokerKit
+license, pass Linux and macOS builds, and require Go 1.25.8, so unYOLO now
+declares Go 1.25.8 while retaining the Go 1.26.5 toolchain. A trimmed unYOLO
 binary grew from 15,329,372 to 18,557,449 bytes, an increase of 3,228,077 bytes
 or 21.1%, for the complete setup implementation and renderer graph.
 
@@ -239,7 +239,7 @@ The root wizard owns the sequence and rendering. Each provider owns its own
 questions, validation, browser enrollment, safe policy choices, and resulting
 component profile.
 
-Add `brokerkit.io/setup-flow/v1` as a closed conversation protocol between the
+Add `unyolo.io/setup-flow/v1` as a closed conversation protocol between the
 wizard and signed setup adapters. It supports a small fixed set of steps:
 
 ```text
@@ -283,17 +283,17 @@ through setup-component V1.
 The wizard stores resumable nonsecret progress at:
 
 ```text
-~/.local/state/brokerkit/setup/<session-id>.json
+~/.local/state/unyolo/setup/<session-id>.json
 ```
 
-The file is mode `0600` and uses a closed `brokerkit.io/setup-session/v1`
-schema. It records the BrokerKit build, selected deployment name, completed
+The file is mode `0600` and uses a closed `unyolo.io/setup-session/v1`
+schema. It records the unYOLO build, selected deployment name, completed
 step IDs, nonsecret answers, generated file digests, current phase, and last
 safe error. It contains no credential value, secret source path, OAuth code,
 provider response, operator credential, or privileged plan body.
 
-`brokerkit setup` resumes the newest compatible incomplete session after
-confirmation. `brokerkit setup --resume <session-id>` selects one explicitly,
+`unyolo setup` resumes the newest compatible incomplete session after
+confirmation. `unyolo setup --resume <session-id>` selects one explicitly,
 and `--new` starts over. An interrupted credential step must be repeated.
 Successful provider credentials already installed by a committed privileged
 transaction are discovered through safe status checks and are never read back.
@@ -301,12 +301,12 @@ transaction are discovered through safe status checks and are never read back.
 The generated deployment pack is stored by default at:
 
 ```text
-~/.config/brokerkit/deployments/<deployment-name>/
+~/.config/unyolo/deployments/<deployment-name>/
 ```
 
 That directory is the local desired-state source and contains no secrets. The
 final screen explains how to move it into a private control-plane repository.
-BrokerKit stores only the applied pack digest and recovery state under the host
+unYOLO stores only the applied pack digest and recovery state under the host
 state directory, so it does not silently create a second desired-state copy.
 
 ### Privilege boundary
@@ -316,13 +316,13 @@ asks for `sudo` only after the nonsecret profile is complete and the operator is
 ready to inspect protected host state.
 
 The privileged phase must execute a root-owned verified worker. It never runs
-the user-local `brokerkit` binary with `sudo`. On a fresh host, the wizard asks
+the user-local `unyolo` binary with `sudo`. On a fresh host, the wizard asks
 `sudo` to run the immutable bootstrap script from the same pinned commit. That
 root bootstrap independently downloads and verifies the matching host command,
 installs it under a root-owned immutable directory, and execs:
 
 ```text
-/opt/brokerkit/bootstrap/<build-id>/brokerkit \
+/opt/unyolo/bootstrap/<build-id>/unyolo \
   system setup-worker --protocol-stdio
 ```
 
@@ -395,8 +395,8 @@ isengard/
 The normal workflow is:
 
 ```sh
-brokerkit system profile lock --profile ./isengard
-worker=/opt/brokerkit/bootstrap/v<reviewed-version>/brokerkit
+unyolo system profile lock --profile ./isengard
+worker=/opt/unyolo/bootstrap/v<reviewed-version>/unyolo
 sudo "$worker" system validate --profile ./isengard
 sudo "$worker" system plan \
   --profile ./isengard \
@@ -404,10 +404,10 @@ sudo "$worker" system plan \
 sudo "$worker" system apply \
   --profile ./isengard \
   --expect-plan sha256:<reviewed-plan-digest> \
-  --secret-file github-app-key=/run/brokerkit-secrets/github-app-key.pem \
-  --secret-file github-webhook-secret=/run/brokerkit-secrets/github-webhook-secret \
-  --secret-file huggingface-token=/run/brokerkit-secrets/huggingface-token \
-  --secret-file telegram-token=/run/brokerkit-secrets/telegram-token
+  --secret-file github-app-key=/run/unyolo-secrets/github-app-key.pem \
+  --secret-file github-webhook-secret=/run/unyolo-secrets/github-webhook-secret \
+  --secret-file huggingface-token=/run/unyolo-secrets/huggingface-token \
+  --secret-file telegram-token=/run/unyolo-secrets/telegram-token
 sudo "$worker" system verify --profile ./isengard
 ```
 
@@ -423,9 +423,9 @@ change timestamps merely because the command ran again.
 
 ## Current implementation
 
-BrokerKit already has most of the required primitives:
+unYOLO already has most of the required primitives:
 
-- `brokerkit system install`, `upgrade`, `status`, `doctor`, and `rollback`
+- `unyolo system install`, `upgrade`, `status`, `doctor`, and `rollback`
   activate signed immutable runtime bundles.
 - Provider setup commands create service users, config directories, state
   directories, access groups, credentials, and policies. They also create
@@ -438,7 +438,7 @@ BrokerKit already has most of the required primitives:
 - Provider doctors verify policy, credentials, upstream access, and isolation.
 - The control-plane repository stores reviewed nonsecret policy and a redacted
   snapshot of Isengard.
-- The OpenClaw package carries BrokerKit skills and the optional approval UI.
+- The OpenClaw package carries unYOLO skills and the optional approval UI.
 
 The missing piece is a durable desired-state contract above these commands.
 Each current setup command plans and mutates one component. Nothing binds all
@@ -462,7 +462,7 @@ strict JSON and referenced files. It has no inheritance, remote includes,
 templates, variable substitution, arbitrary extension maps, executable hooks,
 or merge semantics.
 
-JSON matches BrokerKit's existing closed-schema tooling and avoids another
+JSON matches unYOLO's existing closed-schema tooling and avoids another
 configuration dependency. Every object rejects unknown fields. Every referenced
 file is opened relative to the pack root, checked for path escape and symlinks,
 read into an immutable snapshot, and verified against its declared SHA-256
@@ -504,7 +504,7 @@ Each component owns its setup profile and validates it through its own code:
 - Telegram owns bot configuration and Operator V1 routes.
 - The OpenClaw package owns plugin installation and plugin configuration.
 
-Shared root packages must not import provider packages. `brokerkit` invokes the
+Shared root packages must not import provider packages. `unyolo` invokes the
 exact setup adapter declared by the signed runtime manifest. The adapter is
 loaded from the staged bundle by absolute path, receives a closed setup request
 on a private file descriptor, and returns a closed redacted response. The host
@@ -513,7 +513,7 @@ a profile.
 
 ### Shared setup protocol
 
-Add `brokerkit.io/setup-component/v1` as the common protocol between the host
+Add `unyolo.io/setup-component/v1` as the common protocol between the host
 command and a bundled component. It supports four fixed actions:
 
 ```text
@@ -552,7 +552,7 @@ values or secret source paths. The apply invocation binds a slot to a protected
 file or an inherited read-only descriptor:
 
 ```sh
---secret-file github-app-key=/run/brokerkit-secrets/github-app-key.pem
+--secret-file github-app-key=/run/unyolo-secrets/github-app-key.pem
 ```
 
 The host opens each source without following symlinks, verifies ownership and
@@ -574,7 +574,7 @@ integration profile explicitly declares an operator trust mode.
 
 ### Agent and operator identities
 
-An agent entry binds one BrokerKit client ID to one Unix account and a list of
+An agent entry binds one unYOLO client ID to one Unix account and a list of
 components. Its account mode is either `managed` or `existing`.
 
 `managed` creates a locked local account when it is absent. The profile supplies
@@ -632,7 +632,7 @@ only provider-owned keys.
 
 The host runs this work under the target UID with a minimal environment and a
 verified home directory. Removal or replacement touches only exact keys owned
-by BrokerKit. Verification uses ordinary upstream repository URLs and confirms
+by unYOLO. Verification uses ordinary upstream repository URLs and confirms
 that the request reached the local broker.
 
 ### OpenClaw integration
@@ -656,7 +656,7 @@ and processes.
 ### Transaction boundary
 
 `system apply` uses one host lock and one durable transaction journal under
-`/var/lib/brokerkit-host`. The journal binds:
+`/var/lib/unyolo-host`. The journal binds:
 
 - the deployment pack digest.
 - the canonical plan digest.
@@ -727,7 +727,7 @@ and one broker is:
 
 ```json
 {
-  "api_version": "brokerkit.io/host-deployment/v1",
+  "api_version": "unyolo.io/host-deployment/v1",
   "name": "isengard",
   "runtime": {
     "manifest": {
@@ -791,7 +791,7 @@ platform account rules. Collection order
 has no semantic meaning; the loader canonicalizes entries by ID before hashing
 and planning.
 
-`api_version` keeps BrokerKit's established API-version vocabulary. Components
+`api_version` keeps unYOLO's established API-version vocabulary. Components
 also keep the established runtime-manifest term because the deployment includes
 provider brokers plus Telegram and client adapters. Provider profiles use
 their own closed V1 identifiers.
@@ -823,7 +823,7 @@ An agent entry contains:
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | Yes | Stable profile-local identity used by integrations. |
-| `client_id` | Yes | Named BrokerKit client written into provider secret files. |
+| `client_id` | Yes | Named unYOLO client written into provider secret files. |
 | `unix_user` | Yes | Local account that runs the agent. |
 | `account_mode` | Yes | `managed` or `existing`. |
 | `home` | Yes | Absolute verified home directory. |
@@ -863,7 +863,7 @@ An integration entry contains:
 | `agent_id` | Yes | Agent account that owns the integration. |
 | `profile` | Yes | Digest-bound integration profile. |
 
-The first implementation supports `openclaw-brokerkit`. Unknown kinds are
+The first implementation supports `openclaw-unyolo`. Unknown kinds are
 fatal. Future integrations require a signed setup adapter and a reviewed
 ownership envelope. A profile cannot introduce an executable path or generic
 command hook.
@@ -886,9 +886,9 @@ service settings.
 
 ## Command contract
 
-### `brokerkit setup`
+### `unyolo setup`
 
-`brokerkit setup` launches or resumes the unprivileged guided flow. It requires
+`unyolo setup` launches or resumes the unprivileged guided flow. It requires
 an interactive terminal and a non-root initiating user. The command may open a
 browser only after showing the exact provider and URL purpose. `--no-open`
 prints URLs for remote or headless terminals.
@@ -899,8 +899,8 @@ inspection and mutation. `--profile <directory>` starts from an existing pack
 and asks only for missing guided choices or credential slots. `--accessible`
 selects the screen-reader renderer for the complete session.
 
-`brokerkit setup status` reports incomplete and completed local sessions without
-reading host secrets. `brokerkit setup cancel <session-id>` removes an
+`unyolo setup status` reports incomplete and completed local sessions without
+reading host secrets. `unyolo setup cancel <session-id>` removes an
 uncommitted local session after confirming that no host transaction is active.
 It never cancels or rolls back a committed host deployment.
 
@@ -929,7 +929,7 @@ schema.
 ### `system plan`
 
 `plan` requires sufficient privilege to inspect protected installed state. It
-loads the same immutable pack snapshot, discovers current BrokerKit resources,
+loads the same immutable pack snapshot, discovers current unYOLO resources,
 asks every component for a plan, builds the dependency graph, and writes one
 canonical plan.
 
@@ -1005,7 +1005,7 @@ retrying mutations or select a profile based on partial state.
 
 ## Drift and idempotency
 
-BrokerKit owns only resources declared by setup adapters. Drift in an owned
+unYOLO owns only resources declared by setup adapters. Drift in an owned
 resource appears in the plan. Drift outside ownership is ignored unless it
 breaks a security invariant such as a writable parent directory or a
 root-equivalent agent group.
@@ -1052,29 +1052,29 @@ Provider implementation remains below its broker:
 brokers/github/internal/deployment/
 brokers/huggingface/internal/deployment/
 brokers/sudo/internal/deployment/
-cmd/brokerkit-telegram/deployment/
+cmd/unyolo-telegram/deployment/
 plugins/openclaw/deployment/
 ```
 
-`cmd/brokerkit` wires the guided frontend and shared host orchestrator. Provider
+`cmd/unyolo` wires the guided frontend and shared host orchestrator. Provider
 binaries expose guided enrollment and setup adapter actions through their
 existing `setup` command. Shared packages do not import these provider
 packages.
 
 Use the standard library for JSON, hashing, file descriptors, subprocesses,
-account lookup, and filesystem work. Reuse BrokerKit's strict JSON and safe
+account lookup, and filesystem work. Reuse unYOLO's strict JSON and safe
 file packages together with the existing service, doctor, and runtime bundle
 code.
 
 The terminal renderer is the one justified dependency exception. Import
 `charm.land/huh/v2` for fields, groups, accessibility, and its spinner package.
 Import `charm.land/lipgloss/v2` only in `internal/terminal/setup` for the
-BrokerKit theme. Keep Bubble Tea and Bubbles behind Huh unless a missing
+unYOLO theme. Keep Bubble Tea and Bubbles behind Huh unless a missing
 renderer requirement proves that a direct import removes more code than it
 adds. This feature does not justify a new configuration framework,
 dependency-injection container, RPC framework, or database.
 
-The transaction journal uses BrokerKit's existing local durable storage
+The transaction journal uses unYOLO's existing local durable storage
 conventions. If relational queries or cross-record constraints are required,
 use the existing CGO-free SQLite stack with explicit V1 schema replacement.
 Do not add a second migration authority.
@@ -1084,13 +1084,13 @@ Do not add a second migration authority.
 Keep these identifiers at V1 and replace their schemas in place where needed:
 
 ```text
-brokerkit.io/host-deployment/v1
-brokerkit.io/setup-flow/v1
-brokerkit.io/setup-session/v1
-brokerkit.io/setup-component/v1
-brokerkit.io/system-plan/v1
-brokerkit.io/client/v1
-brokerkit.io/runtime-bundle/v1
+unyolo.io/host-deployment/v1
+unyolo.io/setup-flow/v1
+unyolo.io/setup-session/v1
+unyolo.io/setup-component/v1
+unyolo.io/system-plan/v1
+unyolo.io/client/v1
+unyolo.io/runtime-bundle/v1
 ```
 
 Add canonical JSON Schemas under `protocol/` and generated Go fixtures where
@@ -1129,7 +1129,7 @@ fixture contains no live credential or state data.
 ### Guided setup frontend
 
 Implement the `SetupPrompter` contract, setup-flow V1 types, Huh renderer,
-BrokerKit theme, navigation footer, searchable selection, accessible renderer,
+unYOLO theme, navigation footer, searchable selection, accessible renderer,
 inline progress, terminal cleanup, hidden secret input, nonsecret session store,
 cancellation, resume, browser opening, and deterministic profile builder.
 Start with one fake component adapter and golden pseudo-terminal transcripts.
@@ -1181,7 +1181,7 @@ shell-source instructions and old parser in the same branch.
 
 Add provider-neutral Linux and macOS account and group planning. Start with
 `existing` accounts, then add safe `managed` agent creation. Operator creation,
-password management, SSH setup, and account deletion stay outside BrokerKit.
+password management, SSH setup, and account deletion stay outside unYOLO.
 
 Test root-equivalent groups, UID collisions, symlinked homes, unsafe shells,
 existing mismatches, concurrent account changes, stale NSS results, and active
@@ -1246,12 +1246,12 @@ Isengard has completed two clean plan/apply/verify cycles from the new path.
 
 ### Verified bootstrap
 
-Add a top-level installer wrapper for the `brokerkit` host command using the
+Add a top-level installer wrapper for the `unyolo` host command using the
 existing release checksum and attestation verifier. The operator pins a reviewed
-BrokerKit commit or release for this first executable. The user bootstrap
+unYOLO commit or release for this first executable. The user bootstrap
 installs the guided CLI below the user's home. The root phase independently
 runs the immutable bootstrap to install the exact verified setup worker below
-`/opt/brokerkit/bootstrap`. The worker then installs the signed runtime bundle
+`/opt/unyolo/bootstrap`. The worker then installs the signed runtime bundle
 and pins the deployment public key.
 
 The user binary installer remains nonprivileged and creates no accounts or
@@ -1341,7 +1341,7 @@ and recovery journal parser.
 The release gate provisions a clean Linux VM by running the documented one-line
 bootstrap through a normal operator account. The test terminal answers the
 wizard with reviewed fixtures and supplies protected credential descriptors.
-No other BrokerKit machine configuration is supplied.
+No other unYOLO machine configuration is supplied.
 
 The test must create the deployment pack and agent account, install the signed
 bundle, configure all providers, apply exact policies, install client
@@ -1361,7 +1361,7 @@ the current explicit policies and installed nonsecret configuration. Pin the
 active signed runtime bundle and the exact OpenClaw package. Map existing
 credentials to retained slots so the first apply does not rotate them.
 
-Run `brokerkit setup --profile <control-plane-pack>` from Onur's normal account
+Run `unyolo setup --profile <control-plane-pack>` from Onur's normal account
 and bind the existing Bob account as the agent. This exercises the guided flow,
 provider status checks, plan review, privilege transition, and real-agent
 verification without asking Bob's untrusted process to handle a provider
@@ -1378,7 +1378,7 @@ After apply, reproduce these workflows as Bob:
   read, and pull-request creation.
 - Hugging Face Git fetch and one policy-allowed typed read.
 - one harmless cataloged sudo operation through its complete approval path.
-- OpenClaw discovery of all packaged BrokerKit skills.
+- OpenClaw discovery of all packaged unYOLO skills.
 - an approval decision through the configured trusted operator path.
 
 Run a second unchanged apply and require a no-op plan with successful
@@ -1403,7 +1403,7 @@ Also run:
 ```sh
 go test -race ./deployment/... ./internal/host/...
 govulncheck ./...
-go build ./cmd/brokerkit
+go build ./cmd/unyolo
 ```
 
 Regenerate and check protocol artifacts whenever a V1 schema changes. Run every
@@ -1420,7 +1420,7 @@ The implementation is complete when all of the following are true:
 
 - A normal operator can begin from a clean host with one immutable installation
   command and complete setup through a guided terminal flow.
-- The terminal flow has an OpenClaw-style connected guide, BrokerKit colors,
+- The terminal flow has an OpenClaw-style connected guide, unYOLO colors,
   notes, searchable selects, multiselects, masked secrets, inline progress, and
   a clear final plan.
 - `NO_COLOR`, `FORCE_COLOR`, narrow terminals, basic terminals, and accessible

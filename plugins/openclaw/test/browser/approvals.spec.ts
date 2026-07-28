@@ -74,7 +74,7 @@ const snapshot = {
       },
     },
   ],
-  api_version: "brokerkit.io/operator-ui/v1",
+  api_version: "unyolo.io/operator-ui/v1",
   cursor: "browser-epoch.1",
   synchronized_at: "2026-07-11T00:00:00Z",
   delivery_failures: 0,
@@ -82,21 +82,21 @@ const snapshot = {
 const pendingRequest = snapshot.requests[0]!;
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
+  await page.route("**/plugins/unyolo/api/v1/snapshot", (route) =>
     route.fulfill({ json: snapshot }),
   );
   await page.route("**/events?*", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.fulfill({
       json: {
-        api_version: "brokerkit.io/operator-ui/v1",
+        api_version: "unyolo.io/operator-ui/v1",
         cursor: snapshot.cursor,
         changed: false,
       },
     });
   });
   await page.route(
-    "**/plugins/brokerkit/api/v1/requests/*/approve",
+    "**/plugins/unyolo/api/v1/requests/*/approve",
     async (route) => {
       expect(
         route.request().headers()[BROWSER_SESSION_HEADER.toLowerCase()],
@@ -119,7 +119,7 @@ test("renders a bounded capability-protected approval surface", async ({
   page,
 }, testInfo) => {
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
   );
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
@@ -189,11 +189,11 @@ test("preserves an unlimited-use approval until expiry", async ({ page }) => {
       },
     ],
   };
-  await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
+  await page.route("**/plugins/unyolo/api/v1/snapshot", (route) =>
     route.fulfill({ json: unlimited }),
   );
   await page.route(
-    "**/plugins/brokerkit/api/v1/requests/*/approve",
+    "**/plugins/unyolo/api/v1/requests/*/approve",
     async (route) => {
       expect(route.request().postDataJSON()).toEqual({
         expectedRevision: 1,
@@ -208,7 +208,7 @@ test("preserves an unlimited-use approval until expiry", async ({ page }) => {
     },
   );
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
   );
   await expect(page.getByText("Unlimited uses")).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).click();
@@ -225,12 +225,12 @@ test("uses delegated web session authority without exposing it in the URL", asyn
 }) => {
   const token = "delegated-decision-token-that-is-long-enough";
   await injectDelegatedSession(page, delegatedSession(token, "decide"));
-  await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
+  await page.route("**/trusted-host/api/unyolo/snapshot", async (route) => {
     expectBrowserSession(route.request().headers(), token);
     await route.fulfill({ json: snapshot });
   });
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/unyolo" })}`,
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page).not.toHaveURL(/#/);
@@ -248,7 +248,7 @@ test("asks a framed host to rebootstrap an expired delegated session", async ({
     await route.fulfill({
       contentType: "text/html",
       body: `<!doctype html><html><body>
-        <iframe id="approvals" sandbox="allow-scripts" src="/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}"></iframe>
+        <iframe id="approvals" sandbox="allow-scripts" src="/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/unyolo" })}"></iframe>
         <script>
           window.rebootstrapMessages = [];
           window.addEventListener("message", function (event) {
@@ -259,7 +259,7 @@ test("asks a framed host to rebootstrap an expired delegated session", async ({
       </body></html>`,
     });
   });
-  await page.route("**/plugins/brokerkit/ui/**", async (route) => {
+  await page.route("**/plugins/unyolo/ui/**", async (route) => {
     const response = await route.fetch();
     await route.fulfill({
       response,
@@ -270,11 +270,11 @@ test("asks a framed host to rebootstrap an expired delegated session", async ({
       },
     });
   });
-  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+  await page.route("**/plugins/unyolo/ui/", async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
       "<head>",
-      `<head><meta name="brokerkit-delegated-session" content="${bootstrap(initialSession)}" />`,
+      `<head><meta name="unyolo-delegated-session" content="${bootstrap(initialSession)}" />`,
     );
     await route.fulfill({
       response,
@@ -288,7 +288,7 @@ test("asks a framed host to rebootstrap an expired delegated session", async ({
       },
     });
   });
-  await page.route("**/trusted-host/api/brokerkit/**", async (route) => {
+  await page.route("**/trusted-host/api/unyolo/**", async (route) => {
     const request = route.request();
     if (request.method() === "OPTIONS") {
       await route.fulfill({ status: 204, headers: delegatedCorsHeaders });
@@ -325,7 +325,7 @@ test("asks a framed host to rebootstrap an expired delegated session", async ({
           ).rebootstrapMessages,
       ),
     )
-    .toEqual([{ type: "brokerkit.delegated-web.rebootstrap", version: 1 }]);
+    .toEqual([{ type: "unyolo.delegated-web.rebootstrap", version: 1 }]);
 });
 
 test("crosses an identity-aware delegated edge and recovers live updates", async ({
@@ -356,7 +356,7 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
 
   page.on("request", (request) => observedUrls.push(request.url()));
   page.on("console", (message) => browserLogs.push(message.text()));
-  await page.route("**/plugins/brokerkit/ui/**", async (route) => {
+  await page.route("**/plugins/unyolo/ui/**", async (route) => {
     const response = await route.fetch();
     await route.fulfill({
       response,
@@ -368,11 +368,11 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
       },
     });
   });
-  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+  await page.route("**/plugins/unyolo/ui/", async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
       "<head>",
-      `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+      `<head><meta name="unyolo-delegated-session" content="${encodedSession}" />`,
     );
     await route.fulfill({
       response,
@@ -385,7 +385,7 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
       },
     });
   });
-  await page.route("**/trusted-host/api/brokerkit/**", async (route) => {
+  await page.route("**/trusted-host/api/unyolo/**", async (route) => {
     const request = route.request();
     const headers = request.headers();
     if (headers.authorization) {
@@ -433,7 +433,7 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
         await new Promise((resolve) => setTimeout(resolve, 250));
       await route.fulfill({
         json: {
-          api_version: "brokerkit.io/operator-ui/v1",
+          api_version: "unyolo.io/operator-ui/v1",
           cursor: eventCalls === 1 ? streamed.cursor : snapshot.cursor,
           changed: eventCalls === 1,
         },
@@ -456,7 +456,7 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
   });
 
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/unyolo" })}`,
   );
   await expect(page.getByText("Streamed protected request")).toBeVisible();
   await page.getByRole("button", { name: "Deny" }).first().click();
@@ -472,7 +472,7 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
   expect(browserLogs.join("\n")).not.toContain(initialToken);
   expect(browserLogs.join("\n")).not.toContain(renewedToken);
   expect(
-    await page.locator('meta[name="brokerkit-delegated-session"]').count(),
+    await page.locator('meta[name="unyolo-delegated-session"]').count(),
   ).toBe(0);
   expect(await page.content()).not.toContain(initialToken);
   expect(await page.content()).not.toContain(renewedToken);
@@ -510,12 +510,12 @@ test("crosses an identity-aware delegated edge and recovers live updates", async
 test("keeps a delegated popover read-only", async ({ page }) => {
   const token = "delegated-read-session-that-is-long-enough";
   await injectDelegatedSession(page, delegatedSession(token, "read"));
-  await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
+  await page.route("**/trusted-host/api/unyolo/snapshot", async (route) => {
     expectBrowserSession(route.request().headers(), token);
     await route.fulfill({ json: snapshot });
   });
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/brokerkit" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "delegated-web", basePath: "/trusted-host/api/unyolo" })}`,
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).not.toBeVisible();
@@ -532,12 +532,12 @@ test("keeps a delegated popover read-only", async ({ page }) => {
 test("reconciles cursor changes without resetting an open decision", async ({
   page,
 }) => {
-  await page.unroute("**/plugins/brokerkit/api/v1/snapshot");
+  await page.unroute("**/plugins/unyolo/api/v1/snapshot");
   await page.unroute("**/events?*");
   const current = structuredClone(snapshot);
   let release: (() => void) | undefined;
   let eventCalls = 0;
-  await page.route("**/plugins/brokerkit/api/v1/snapshot", (route) =>
+  await page.route("**/plugins/unyolo/api/v1/snapshot", (route) =>
     route.fulfill({ json: current }),
   );
   await page.route("**/events?*", async (route) => {
@@ -549,14 +549,14 @@ test("reconciles cursor changes without resetting an open decision", async ({
     else await new Promise((resolve) => setTimeout(resolve, 250));
     await route.fulfill({
       json: {
-        api_version: "brokerkit.io/operator-ui/v1",
+        api_version: "unyolo.io/operator-ui/v1",
         cursor: current.cursor,
         changed: eventCalls === 1,
       },
     });
   });
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
   );
   await page.getByRole("button", { name: "Approve" }).click();
   const dialog = page.getByRole("dialog", { name: "Approve request" });
@@ -578,18 +578,18 @@ test("reconciles cursor changes without resetting an open decision", async ({
 
 test("accepts only strict parent refresh invalidations", async ({ page }) => {
   let snapshots = 0;
-  await page.unroute("**/plugins/brokerkit/api/v1/snapshot");
-  await page.route("**/plugins/brokerkit/api/v1/snapshot", async (route) => {
+  await page.unroute("**/plugins/unyolo/api/v1/snapshot");
+  await page.route("**/plugins/unyolo/api/v1/snapshot", async (route) => {
     snapshots += 1;
     await route.fulfill({ json: snapshot });
   });
   await page.goto(
-    `/plugins/brokerkit/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
+    `/plugins/unyolo/ui/#${bootstrap({ version: 1, mode: "direct", capability: "test-capability-that-is-long-enough-1234" })}`,
   );
   await expect(page.getByText("Hugging Face repository write")).toBeVisible();
   await page.evaluate(() =>
     window.postMessage(
-      { type: "brokerkit.operator-ui.invalidate", version: 1, extra: true },
+      { type: "unyolo.operator-ui.invalidate", version: 1, extra: true },
       "*",
     ),
   );
@@ -597,7 +597,7 @@ test("accepts only strict parent refresh invalidations", async ({ page }) => {
   expect(snapshots).toBe(1);
   await page.evaluate(() =>
     window.postMessage(
-      { type: "brokerkit.operator-ui.invalidate", version: 1 },
+      { type: "unyolo.operator-ui.invalidate", version: 1 },
       "*",
     ),
   );
@@ -611,16 +611,16 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
   const encodedBootstrap = bootstrap({
     version: 1,
     mode: "delegated-web",
-    basePath: "/trusted-host/api/brokerkit",
+    basePath: "/trusted-host/api/unyolo",
   });
   const encodedSession = bootstrap({
-    api_version: "brokerkit.io/delegated-web/v1",
+    api_version: "unyolo.io/delegated-web/v1",
     token,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
     access: "decide",
     renewal_transport: "direct",
   });
-  await page.route("**/plugins/brokerkit/ui/**", async (route) => {
+  await page.route("**/plugins/unyolo/ui/**", async (route) => {
     const response = await route.fetch();
     await route.fulfill({
       response,
@@ -632,11 +632,11 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
       },
     });
   });
-  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+  await page.route("**/plugins/unyolo/ui/", async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
       "<head>",
-      `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+      `<head><meta name="unyolo-delegated-session" content="${encodedSession}" />`,
     );
     await route.fulfill({
       response,
@@ -650,7 +650,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
       },
     });
   });
-  await page.route("**/trusted-host/api/brokerkit/snapshot", async (route) => {
+  await page.route("**/trusted-host/api/unyolo/snapshot", async (route) => {
     expectBrowserSession(route.request().headers(), token);
     await route.fulfill({
       json: snapshot,
@@ -659,7 +659,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
   });
   let decisionReceived = false;
   await page.route(
-    "**/trusted-host/api/brokerkit/requests/*/deny",
+    "**/trusted-host/api/unyolo/requests/*/deny",
     async (route) => {
       expectBrowserSession(route.request().headers(), token);
       expect(route.request().postDataJSON()).toEqual({ expectedRevision: 1 });
@@ -676,7 +676,7 @@ test("decides with a trusted embedded session inside the sandboxed approval fram
 
   await page.goto("/");
   await page.setContent(
-    `<iframe title="Approvals" sandbox="allow-scripts" src="http://127.0.0.1:4179/plugins/brokerkit/ui/#${encodedBootstrap}"></iframe>`,
+    `<iframe title="Approvals" sandbox="allow-scripts" src="http://127.0.0.1:4179/plugins/unyolo/ui/#${encodedBootstrap}"></iframe>`,
   );
   const parentUrl = page.url();
 
@@ -706,10 +706,10 @@ test("loads from a protected host without sending ambient cookies", async ({
   const encodedBootstrap = bootstrap({
     version: 1,
     mode: "delegated-web",
-    basePath: "/trusted-host/api/brokerkit",
+    basePath: "/trusted-host/api/unyolo",
   });
   const encodedSession = bootstrap({
-    api_version: "brokerkit.io/delegated-web/v1",
+    api_version: "unyolo.io/delegated-web/v1",
     token,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
     access: "decide",
@@ -731,11 +731,11 @@ test("loads from a protected host without sending ambient cookies", async ({
     if (url.pathname === "/host") {
       await route.fulfill({
         contentType: "text/html",
-        body: `<iframe title="Approvals" sandbox="allow-scripts" src="${host}/plugins/brokerkit/ui/#${encodedBootstrap}"></iframe>`,
+        body: `<iframe title="Approvals" sandbox="allow-scripts" src="${host}/plugins/unyolo/ui/#${encodedBootstrap}"></iframe>`,
       });
       return;
     }
-    if (url.pathname === "/trusted-host/api/brokerkit/snapshot") {
+    if (url.pathname === "/trusted-host/api/unyolo/snapshot") {
       if (route.request().method() === "OPTIONS") {
         await route.fulfill({ status: 204, headers: delegatedCorsHeaders });
         return;
@@ -751,10 +751,10 @@ test("loads from a protected host without sending ambient cookies", async ({
     const response = await request.get(
       `http://127.0.0.1:4179${url.pathname}${url.search}`,
     );
-    if (url.pathname === "/plugins/brokerkit/ui/") {
+    if (url.pathname === "/plugins/unyolo/ui/") {
       const body = (await response.text()).replace(
         "<head>",
-        `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+        `<head><meta name="unyolo-delegated-session" content="${encodedSession}" />`,
       );
       await route.fulfill({
         response,
@@ -784,7 +784,7 @@ function bootstrap(value: unknown): string {
 
 function delegatedSession(token: string, access: "read" | "decide") {
   return {
-    api_version: "brokerkit.io/delegated-web/v1",
+    api_version: "unyolo.io/delegated-web/v1",
     token,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
     access,
@@ -797,11 +797,11 @@ async function injectDelegatedSession(
   session: ReturnType<typeof delegatedSession>,
 ): Promise<void> {
   const encodedSession = bootstrap(session);
-  await page.route("**/plugins/brokerkit/ui/", async (route) => {
+  await page.route("**/plugins/unyolo/ui/", async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
       "<head>",
-      `<head><meta name="brokerkit-delegated-session" content="${encodedSession}" />`,
+      `<head><meta name="unyolo-delegated-session" content="${encodedSession}" />`,
     );
     await route.fulfill({ response, body });
   });

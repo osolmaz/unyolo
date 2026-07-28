@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/mcp/operation"
+	"github.com/osolmaz/unyolo/mcp/operation"
 )
 
 // InputSchemas supplies provider-owned target, public argument, and sealed

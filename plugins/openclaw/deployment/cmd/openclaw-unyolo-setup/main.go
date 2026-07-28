@@ -1,4 +1,4 @@
-// Command openclaw-brokerkit-setup applies signed OpenClaw integration files.
+// Command openclaw-unyolo-setup applies signed OpenClaw integration files.
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/deployment/component"
+	"github.com/osolmaz/unyolo/deployment/component"
 )
 
 var version = "dev"
@@ -29,13 +29,13 @@ func main() {
 		return
 	}
 	if len(os.Args) != 1 {
-		fmt.Fprintln(os.Stderr, "openclaw-brokerkit-setup does not accept arguments")
+		fmt.Fprintln(os.Stderr, "openclaw-unyolo-setup does not accept arguments")
 		os.Exit(64)
 	}
 	err := component.Serve(ctx, os.Stdin, os.Stdout, component.Config{
-		ComponentID: "openclaw-brokerkit", ProfileAPI: "brokerkit.io/openclaw-deployment/v1",
-		AllowedPaths:    []string{"/home", "/Users", "/var/lib/openclaw-brokerkit"},
-		AllowedServices: []string{"openclaw.service"}, BackupDirectory: "/var/lib/openclaw-brokerkit/deployment-backups",
+		ComponentID: "openclaw-unyolo", ProfileAPI: "unyolo.io/openclaw-deployment/v1",
+		AllowedPaths:    []string{"/home", "/Users", "/var/lib/openclaw-unyolo"},
+		AllowedServices: []string{"openclaw.service"}, BackupDirectory: "/var/lib/openclaw-unyolo/deployment-backups",
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

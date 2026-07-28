@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
@@ -48,7 +48,7 @@ func TestOperatorV1ArtifactsAreClosedAndValid(t *testing.T) {
 			t.Fatalf("OpenAPI missing %s", name)
 		}
 	}
-	for _, route := range []string{"/.well-known/brokerkit-operator", "/api/operator/v1/requests", "/api/operator/v1/events"} {
+	for _, route := range []string{"/.well-known/unyolo-operator", "/api/operator/v1/requests", "/api/operator/v1/events"} {
 		if !strings.Contains(text, route) {
 			t.Fatalf("OpenAPI missing %s", route)
 		}
@@ -92,7 +92,7 @@ func TestAgentV1ArtifactsAreClosedAndValid(t *testing.T) {
 	}
 	text := string(openAPI)
 	assertCanonicalOpenAPI(t, document)
-	for _, route := range []string{"/.well-known/brokerkit-agent", "/api/agent/v1/operations", "/events"} {
+	for _, route := range []string{"/.well-known/unyolo-agent", "/api/agent/v1/operations", "/events"} {
 		if !strings.Contains(text, route) {
 			t.Fatalf("Agent OpenAPI missing %s", route)
 		}

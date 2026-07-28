@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	gitx "github.com/osolmaz/brokerkit/git/protocol"
+	gitx "github.com/osolmaz/unyolo/git/protocol"
 )
 
 func TestReceivePackProvesFastForwardFromUploadedPack(t *testing.T) {
@@ -54,8 +54,8 @@ func initClassificationRepo(t *testing.T) string {
 	t.Helper()
 	directory := t.TempDir()
 	runClassificationGit(t, directory, "init")
-	runClassificationGit(t, directory, "config", "user.name", "BrokerKit Test")
-	runClassificationGit(t, directory, "config", "user.email", "brokerkit@example.invalid")
+	runClassificationGit(t, directory, "config", "user.name", "unYOLO Test")
+	runClassificationGit(t, directory, "config", "user.email", "unyolo@example.invalid")
 	return directory
 }
 

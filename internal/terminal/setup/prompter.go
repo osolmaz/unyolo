@@ -1,4 +1,4 @@
-// Package setup implements BrokerKit's inline guided setup renderer.
+// Package setup implements unYOLO's inline guided setup renderer.
 package setup
 
 import (
@@ -16,7 +16,7 @@ import (
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/osolmaz/brokerkit/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/flow"
 	"golang.org/x/term"
 )
 
@@ -63,7 +63,7 @@ func New(options Options) *Prompter {
 	if output == nil {
 		output = os.Stdout
 	}
-	accessible := options.Accessible || os.Getenv("BROKERKIT_ACCESSIBLE") == "1"
+	accessible := options.Accessible || os.Getenv("UNYOLO_ACCESSIBLE") == "1"
 	color := colorEnabled(output)
 	width := options.Width
 	if width <= 0 {
@@ -283,7 +283,7 @@ func (p *Prompter) Close() error {
 func (p *Prompter) runForm(ctx context.Context, field huh.Field) error {
 	form := huh.NewForm(huh.NewGroup(field)).
 		WithAccessible(p.accessible).
-		WithTheme(brokerKitTheme(p.color)).
+		WithTheme(unyoloTheme(p.color)).
 		WithInput(p.input).
 		WithOutput(p.output).
 		WithShowHelp(true).
@@ -300,7 +300,7 @@ func (p *Prompter) runForm(ctx context.Context, field huh.Field) error {
 	return nil
 }
 
-func brokerKitTheme(color bool) huh.Theme {
+func unyoloTheme(color bool) huh.Theme {
 	return huh.ThemeFunc(func(isDark bool) *huh.Styles {
 		if !color {
 			return huh.ThemeBase(isDark)

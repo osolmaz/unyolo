@@ -1,9 +1,9 @@
 ---
 title: Framework overview
-description: What BrokerKit gives you when you build a broker, and the four things you have to write yourself.
+description: What unYOLO gives you when you build a broker, and the four things you have to write yourself.
 ---
 
-BrokerKit is a Go framework for building credential brokers. The three brokers in this repository
+unYOLO is a Go framework for building credential brokers. The three brokers in this repository
 are consumers of it, not the product. If you need to put a policy boundary in front of some other
 credential, an internal API key, a cloud role, a database superuser, you write the parts that know
 about that provider and the framework supplies everything else.
@@ -67,7 +67,7 @@ client authentication, separately named operator authentication, the operator in
 exporter, and the approval-channel decider. You provide your platform presenter and, if you want
 one, a stricter decider.
 
-HTTP framework middleware and listener ownership stay in your broker, so BrokerKit does not pick
+HTTP framework middleware and listener ownership stay in your broker, so unYOLO does not pick
 your web framework. `internal/config/secretfile` is the only parser and renderer for named client
 and operator credential files; raw single-secret operator files are outside the contract.
 
@@ -84,7 +84,7 @@ built-ins, provider-specific approval wording, or provider API calls. Shared `ag
 `agent/api`, `agent/client`, and `agent/conformance` code must not import a provider, and shared
 code must not branch on provider names.
 
-BrokerKit does not own browser sessions, frontend components, or provider execution plans. It does
+unYOLO does not own browser sessions, frontend components, or provider execution plans. It does
 not own text such as "approve this force-push" or "approve this shell as deploy"; brokers compose
 those summaries.
 

@@ -10,17 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
-	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/broker/conformance"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/operator/client"
-	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	unyologrants "github.com/osolmaz/unyolo/authorization/grants"
+	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/broker/conformance"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/operator/client"
+	"github.com/osolmaz/unyolo/operator/v1"
 )
 
-func TestBrokerkitControlPlaneConformance(t *testing.T) {
+func TestUnyoloControlPlaneConformance(t *testing.T) {
 	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
 	operatorSecret := "operator-secret-abcdefghijklmnopqrstuvwxyz"
 	scope, err := policy.Parse([]byte(`{"rules":[]}`))
@@ -39,9 +39,9 @@ func TestBrokerkitControlPlaneConformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := bkgrants.Request{
+	request := unyologrants.Request{
 		Client: "bob", ClientRequestID: "conformance", Operation: "git.push.force",
-		Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{
+		Target: unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{
 			"name": {"dataset/acme/conformance"}, "ref": {"refs/heads/main"},
 		}},
 		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "verify shared control plane", Duration: 5 * time.Minute, MaxUses: 1,
@@ -71,9 +71,9 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grantRequest := bkgrants.Request{
+	grantRequest := unyologrants.Request{
 		Client: "bob", ClientRequestID: "operator-test", Operation: "git.push.force",
-		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
+		Target:   unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
 		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "repair branch", Duration: 5 * time.Minute, MaxUses: 1,
 	}
 	if err := server.plans.Bind(&grantRequest); err != nil {
@@ -89,7 +89,7 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := client.List(t.Context(), operatorv1.Query{Status: bkgrants.StatusGroupPending})
+	page, err := client.List(t.Context(), operatorv1.Query{Status: unyologrants.StatusGroupPending})
 	if err != nil || len(page.Requests) != 1 || len(page.Requests[0].Presentation.Facts) == 0 {
 		t.Fatalf("List() = %+v, %v", page, err)
 	}
@@ -97,10 +97,10 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 		ExpectedRevision: page.Requests[0].Revision, IdempotencyKey: "operator-test-approve",
 		Constraints: &operatorv1.Constraints{MaxUses: usebudget.Finite(1)},
 	})
-	if err != nil || approved.Status != bkgrants.StatusActive {
+	if err != nil || approved.Status != unyologrants.StatusActive {
 		t.Fatalf("Approve() = %+v, %v", approved, err)
 	}
-	if _, err := server.grants.Deny(result.Grant.ID, result.DecisionToken, "telegram:onur"); !errors.Is(err, bkgrants.ErrNotPending) {
+	if _, err := server.grants.Deny(result.Grant.ID, result.DecisionToken, "telegram:onur"); !errors.Is(err, unyologrants.ErrNotPending) {
 		t.Fatalf("Telegram replay error = %v", err)
 	}
 

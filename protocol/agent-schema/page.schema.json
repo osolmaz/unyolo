@@ -1,7 +1,7 @@
 {
   "$comment": "Generated from protocol/openapi/agent-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/agent/v1/page.schema.json",
+  "$id": "https://unyolo.io/schema/agent/v1/page.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,7 +12,7 @@
   "properties": {
     "api_version": {
       "type": "string",
-      "const": "brokerkit.io/agent/v1"
+      "const": "unyolo.io/agent/v1"
     },
     "operations": {
       "type": "array",
@@ -50,7 +50,7 @@
       "properties": {
         "api_version": {
           "type": "string",
-          "const": "brokerkit.io/agent/v1"
+          "const": "unyolo.io/agent/v1"
         },
         "id": {
           "type": "string",

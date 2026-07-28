@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/transport/http/client"
+	"github.com/osolmaz/unyolo/transport/http/client"
 )
 
 func TestRunFailsClosedWhenRequiredEnvMissing(t *testing.T) {
@@ -216,7 +216,7 @@ func waitForOperator(t *testing.T, endpointURI, secret string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	url := baseURL + "/.well-known/brokerkit-operator"
+	url := baseURL + "/.well-known/unyolo-operator"
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)

@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/config/client"
 )
 
 const maxCredentialInputBytes = 16 * 1024
@@ -47,7 +47,7 @@ func getCredential(provider Provider, homeDir string, stdin io.Reader, stdout io
 	if !credentialMatches(request, origin) {
 		return nil
 	}
-	_, err = fmt.Fprintf(stdout, "username=brokerkit\npassword=%s\n", client.SharedSecret)
+	_, err = fmt.Fprintf(stdout, "username=unyolo\npassword=%s\n", client.SharedSecret)
 	return err
 }
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/upstream"
+	"github.com/osolmaz/unyolo/brokers/github/internal/upstream"
 )
 
 func TestCoverageIsExhaustiveAgainstPinnedSources(t *testing.T) {

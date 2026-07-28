@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/internal/host/layout"
+	"github.com/osolmaz/unyolo/internal/host/layout"
 )
 
 func validateManagedExecutableAccess(unit SystemdUnit) error {

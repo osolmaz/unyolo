@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestRecordManagedCredentialChangesReportsExactCutover(t *testing.T) {

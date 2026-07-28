@@ -13,9 +13,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/internal/config/secretfile"
-	"github.com/osolmaz/brokerkit/internal/storage/files"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
+	"github.com/osolmaz/unyolo/internal/storage/files"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const (
@@ -24,7 +24,7 @@ const (
 )
 
 // APIVersion is the private broker client document contract.
-const APIVersion = "brokerkit.io/client/v1"
+const APIVersion = "unyolo.io/client/v1"
 
 // Config describes one broker client document.
 type Config struct {

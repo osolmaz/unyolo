@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/osolmaz/brokerkit/approval/view"
-	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/approval/view"
+	unyologrants "github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 type Presenter struct{}
 
 // Present returns one bounded display projection for the shared operator inbox.
-func (Presenter) Present(_ context.Context, grant bkgrants.Grant) (approvalview.Presentation, error) {
+func (Presenter) Present(_ context.Context, grant unyologrants.Grant) (approvalview.Presentation, error) {
 	target := displayTarget(grant)
 	if target == "" {
 		return approvalview.Presentation{}, fmt.Errorf("HF grant %q has no target", grant.ID)
@@ -60,7 +60,7 @@ func (Presenter) Present(_ context.Context, grant bkgrants.Grant) (approvalview.
 	}, nil
 }
 
-func transactionFacts(grant bkgrants.Grant) []approvalview.Fact {
+func transactionFacts(grant unyologrants.Grant) []approvalview.Fact {
 	attrs, err := hfgrant.Attrs(grant)
 	if err != nil {
 		return nil
@@ -92,7 +92,7 @@ func transactionCommands(attrs map[string]any) string {
 	return string(encoded)
 }
 
-func displayTarget(grant bkgrants.Grant) string {
+func displayTarget(grant unyologrants.Grant) string {
 	fields := grant.Target.Fields
 	name := policy.FirstValue(fields[targetNameField])
 	kind := policy.FirstValue(fields[targetKindField])

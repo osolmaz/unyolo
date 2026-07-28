@@ -12,10 +12,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/deployment/component"
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 func main() {
@@ -41,10 +41,10 @@ func main() {
 			Name: "fake", Source: "artifacts/fake", Destination: "bin/fake", SHA256: digest(adapterData),
 			BuildID: "e2e", Role: bundle.RoleCompanion, Services: []string{}, StateFormatDigest: digest([]byte("state")), Required: false,
 			Setup: &bundle.SetupAdapter{
-				Protocol: "brokerkit.io/setup-component/v1", Arguments: []string{"setup-component"},
+				Protocol: "unyolo.io/setup-component/v1", Arguments: []string{"setup-component"},
 				Ownership: bundle.OwnershipEnvelope{
-					Paths: []string{"/etc/brokerkit-e2e", "/var/lib/brokerkit-e2e", "/proc/brokerkit-e2e", "/var/lib/brokerkit-agent/.config/fake-broker/client.json"}, Services: []string{},
-					Accounts: []string{"brokerkit-e2e"}, Groups: []string{"brokerkit-e2e", "brokerkit-e2e-agent"},
+					Paths: []string{"/etc/unyolo-e2e", "/var/lib/unyolo-e2e", "/proc/unyolo-e2e", "/var/lib/unyolo-agent/.config/fake-broker/client.json"}, Services: []string{},
+					Accounts: []string{"unyolo-e2e"}, Groups: []string{"unyolo-e2e", "unyolo-e2e-agent"},
 				},
 			},
 		}},
@@ -57,20 +57,20 @@ func main() {
 	must(os.WriteFile(filepath.Join(root, "runtime", "release.pub"), []byte(base64.StdEncoding.EncodeToString(publicKey)+"\n"), 0o600))
 
 	componentProfile := component.Profile{
-		APIVersion: "brokerkit.io/fake-deployment/v1",
-		Accounts:   []component.Account{{Name: "brokerkit-e2e", Group: "brokerkit-e2e", Home: "/var/lib/brokerkit-e2e", Shell: "/usr/sbin/nologin"}},
-		Groups:     []component.Group{{Name: "brokerkit-e2e"}, {Name: "brokerkit-e2e-agent", Members: []string{"brokerkit-agent"}}},
+		APIVersion: "unyolo.io/fake-deployment/v1",
+		Accounts:   []component.Account{{Name: "unyolo-e2e", Group: "unyolo-e2e", Home: "/var/lib/unyolo-e2e", Shell: "/usr/sbin/nologin"}},
+		Groups:     []component.Group{{Name: "unyolo-e2e"}, {Name: "unyolo-e2e-agent", Members: []string{"unyolo-agent"}}},
 		Directories: []component.Directory{
-			{ID: "config", Destination: "/etc/brokerkit-e2e", Mode: 0o750, Owner: "root", Group: "brokerkit-e2e"},
-			{ID: "state", Destination: "/var/lib/brokerkit-e2e", Mode: 0o700, Owner: "brokerkit-e2e", Group: "brokerkit-e2e"},
+			{ID: "config", Destination: "/etc/unyolo-e2e", Mode: 0o750, Owner: "root", Group: "unyolo-e2e"},
+			{ID: "state", Destination: "/var/lib/unyolo-e2e", Mode: 0o700, Owner: "unyolo-e2e", Group: "unyolo-e2e"},
 		},
 		Files: []component.ManagedFile{{
 			ID: "config-file", Source: component.Reference{Path: "files/config.json", SHA256: digest(configData)},
-			Destination: "/etc/brokerkit-e2e/config.json", Mode: 0o640, Owner: "root", Group: "brokerkit-e2e",
+			Destination: "/etc/unyolo-e2e/config.json", Mode: 0o640, Owner: "root", Group: "unyolo-e2e",
 		}},
 		Credentials: []component.Credential{{
-			Slot: "e2e-token", Destination: "/etc/brokerkit-e2e/token", Mode: 0o640,
-			Owner: "root", Group: "brokerkit-e2e", Encoding: "raw",
+			Slot: "e2e-token", Destination: "/etc/unyolo-e2e/token", Mode: 0o640,
+			Owner: "root", Group: "unyolo-e2e", Encoding: "raw",
 		}},
 		Clients: []component.Client{{
 			AgentID: "agent", BrokerName: "fake-broker", EnvPrefix: "FAKE_BROKER",
@@ -87,8 +87,8 @@ func main() {
 			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroDigest()},
 		},
 		Agents: []profile.Agent{{
-			ID: "agent", ClientID: "agent", UnixUser: "brokerkit-agent", AccountMode: "managed",
-			Home: "/var/lib/brokerkit-agent", Shell: "/usr/sbin/nologin", ComponentIDs: []string{"fake"},
+			ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed",
+			Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin", ComponentIDs: []string{"fake"},
 		}},
 		Operators:  []profile.Operator{{ID: "operator", UnixUser: "operator"}},
 		Components: []profile.Component{{ID: "fake", Profile: profile.Reference{Path: "components/fake.json", SHA256: zeroDigest()}}},

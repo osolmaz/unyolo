@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/internal/copyx"
-	"github.com/osolmaz/brokerkit/internal/storage/files"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/internal/copyx"
+	"github.com/osolmaz/unyolo/internal/storage/files"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (
@@ -168,7 +168,7 @@ func New(path string, opts Options) *Store {
 	return newStore(path, nil, opts)
 }
 
-// NewDatabase returns a Store backed by BrokerKit's transactional SQLite
+// NewDatabase returns a Store backed by unYOLO's transactional SQLite
 // state. The database owner remains responsible for closing it.
 func NewDatabase(database *state.Database, opts Options) *Store {
 	return newStore("", database, opts)

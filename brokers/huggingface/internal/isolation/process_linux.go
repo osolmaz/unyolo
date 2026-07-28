@@ -8,20 +8,20 @@ import (
 	"strconv"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
-func readProcStatus(pid int) (bkdoctor.ProcessStatus, error) {
+func readProcStatus(pid int) (unyolodoctor.ProcessStatus, error) {
 	data, err := os.ReadFile(procPath(pid, "status"))
 	if err != nil {
-		return bkdoctor.ProcessStatus{}, err
+		return unyolodoctor.ProcessStatus{}, err
 	}
 	return ParseProcStatus(data)
 }
 
 // ParseProcStatus parses Linux process credentials and capabilities.
-func ParseProcStatus(data []byte) (bkdoctor.ProcessStatus, error) {
-	return bkdoctor.ParseProcessStatus(data)
+func ParseProcStatus(data []byte) (unyolodoctor.ProcessStatus, error) {
+	return unyolodoctor.ParseProcessStatus(data)
 }
 
 func readProcEnviron(pid int) ([]string, error) {
@@ -70,19 +70,19 @@ func envValue(environment []string, target string) (string, bool) {
 }
 
 func sameCredentialPath(checkedPath, brokerPath, brokerCWD string) (bool, bool) {
-	checked, ok := bkdoctor.AbsolutePath(checkedPath, "")
+	checked, ok := unyolodoctor.AbsolutePath(checkedPath, "")
 	if !ok {
 		return false, false
 	}
-	broker, ok := bkdoctor.AbsolutePath(brokerPath, brokerCWD)
+	broker, ok := unyolodoctor.AbsolutePath(brokerPath, brokerCWD)
 	if !ok {
 		return false, false
 	}
 	if checked == broker {
 		return true, true
 	}
-	resolvedChecked, checkedOK := bkdoctor.ResolvedCleanPath(checked)
-	resolvedBroker, brokerOK := bkdoctor.ResolvedCleanPath(broker)
+	resolvedChecked, checkedOK := unyolodoctor.ResolvedCleanPath(checked)
+	resolvedBroker, brokerOK := unyolodoctor.ResolvedCleanPath(broker)
 	if !checkedOK || !brokerOK {
 		return false, true
 	}

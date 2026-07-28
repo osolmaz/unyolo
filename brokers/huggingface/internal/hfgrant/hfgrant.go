@@ -1,4 +1,4 @@
-// Package hfgrant maps Hugging Face request fields onto canonical Brokerkit grants.
+// Package hfgrant maps Hugging Face request fields onto canonical unYOLO grants.
 package hfgrant
 
 import (
@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (
@@ -135,7 +135,7 @@ func CanonicalRequest(input Input) (grants.Request, error) {
 	}
 	return grants.Request{
 		Client: input.Client, ClientRequestID: clientRequestID, Operation: input.Operation,
-		Target: bkpolicy.Target{Kind: "hf", Fields: fields}, Attrs: attrs,
+		Target: unyolopolicy.Target{Kind: "hf", Fields: fields}, Attrs: attrs,
 		Metadata: map[string]string{metadataMode: mode}, Reason: reason,
 		Duration: duration, PendingTimeout: input.PendingTimeout, MaxUses: maxUses, MaxUsesSpecified: true,
 		MaxUsesDefaulted: !input.MaxUsesSpecified,
@@ -314,28 +314,28 @@ func normalizeAttrNumber(value any) any {
 // transport matching.
 func Target(grant grants.Grant) string {
 	fields := grant.Target.Fields
-	if kind := bkpolicy.FirstValue(fields[targetKind]); kind != "" {
-		owner, name := bkpolicy.FirstValue(fields[targetOwner]), bkpolicy.FirstValue(fields[targetName])
+	if kind := unyolopolicy.FirstValue(fields[targetKind]); kind != "" {
+		owner, name := unyolopolicy.FirstValue(fields[targetOwner]), unyolopolicy.FirstValue(fields[targetName])
 		if kind == string(hfpolicy.KindRepo) {
-			return bkpolicy.FirstValue(fields[targetType]) + "/" + owner + "/" + name
+			return unyolopolicy.FirstValue(fields[targetType]) + "/" + owner + "/" + name
 		}
 		return kind + "/" + owner + "/" + name
 	}
-	return bkpolicy.FirstValue(fields[targetName])
+	return unyolopolicy.FirstValue(fields[targetName])
 }
 
 // Ref returns the optional exact Git ref.
-func Ref(grant grants.Grant) string { return bkpolicy.FirstValue(grant.Target.Fields[targetRefs]) }
+func Ref(grant grants.Grant) string { return unyolopolicy.FirstValue(grant.Target.Fields[targetRefs]) }
 
 // PolicyTarget reconstructs the exact provider target persisted in a grant.
 func PolicyTarget(grant grants.Grant) (hfpolicy.Target, error) {
 	fields := grant.Target.Fields
-	kind := hfpolicy.TargetKind(bkpolicy.FirstValue(fields[targetKind]))
+	kind := hfpolicy.TargetKind(unyolopolicy.FirstValue(fields[targetKind]))
 	if kind == "" {
 		return legacyPolicyTarget(grant)
 	}
-	target := hfpolicy.Target{Kind: kind, Type: hfpolicy.RepoType(bkpolicy.FirstValue(fields[targetType])),
-		Owner: bkpolicy.FirstValue(fields[targetOwner]), Name: bkpolicy.FirstValue(fields[targetName]),
+	target := hfpolicy.Target{Kind: kind, Type: hfpolicy.RepoType(unyolopolicy.FirstValue(fields[targetType])),
+		Owner: unyolopolicy.FirstValue(fields[targetOwner]), Name: unyolopolicy.FirstValue(fields[targetName]),
 		Refs: append([]string(nil), fields[targetRefs]...), Paths: append([]string(nil), fields[targetPaths]...),
 		Keys: append([]string(nil), fields[targetKeys]...), Visibility: append([]string(nil), fields[targetVisibility]...)}
 	if err := hfpolicy.ValidateGrantRequest(hfpolicy.Request{Operation: hfpolicy.Operation(grant.Operation), Target: target}); err != nil {

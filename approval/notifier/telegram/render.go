@@ -12,10 +12,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 const (
@@ -32,7 +32,7 @@ type renderLimits struct {
 	includeSummary                              bool
 }
 
-// RenderApproval renders one semantic approval using BrokerKit's canonical Telegram layout.
+// RenderApproval renders one semantic approval using unYOLO's canonical Telegram layout.
 func RenderApproval(approval approvalnotify.Approval) (string, error) {
 	if err := validateApproval(approval); err != nil {
 		return "", err

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state/internal/dbsql"
+	"github.com/osolmaz/unyolo/internal/storage/state/internal/dbsql"
 )
 
 var ErrNotFound = sql.ErrNoRows

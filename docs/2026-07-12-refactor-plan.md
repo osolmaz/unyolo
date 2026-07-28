@@ -1,4 +1,4 @@
-# BrokerKit Refactor Plan
+# unYOLO Refactor Plan
 
 Date: 2026-07-12
 
@@ -11,7 +11,7 @@ Implementation completed: 2026-07-13
 ## Objective
 
 Remove the remaining provider-neutral duplication without moving Hugging Face,
-GitHub, or Unix behavior into BrokerKit. The result should have one shared
+GitHub, or Unix behavior into unYOLO. The result should have one shared
 implementation for common protocol, Git framing, audit, and host-inspection
 mechanics, plus one authorization-to-approval workflow across every broker
 adapter, while each broker retains its own classification, credentials,
@@ -41,11 +41,11 @@ and executors remain separate.
 ## Dependency and Vendoring Policy
 
 Prefer maintained upstream libraries for mature protocol, storage, and provider
-behavior. Wrap them at BrokerKit ownership boundaries so external types do not
+behavior. Wrap them at unYOLO ownership boundaries so external types do not
 spread through policy, lifecycle, or provider execution code.
 
 Libraries with fewer than 500 GitHub stars may be source-vendored when the
-required surface is small and BrokerKit needs tighter security review,
+required surface is small and unYOLO needs tighter security review,
 refactoring, release control, or long-term maintenance. The star threshold makes
 a library eligible for review; it is not sufficient by itself.
 
@@ -59,7 +59,7 @@ For a source-vendored library:
   date, retained files, local changes, and the upstream comparison/update
   procedure;
 - copy only the required behavior and upstream tests, then refactor it to
-  BrokerKit's bounded I/O, clock, error-redaction, and ownership contracts;
+  unYOLO's bounded I/O, clock, error-redaction, and ownership contracts;
 - keep local changes reviewable as a patch against the recorded upstream
   revision and periodically audit upstream security and correctness fixes; and
 - delete the module dependency and any unused upstream surface in the same
@@ -67,13 +67,13 @@ For a source-vendored library:
 
 Do not source-vendor large established libraries merely to avoid dependencies.
 Do not vendor code with unclear provenance, incompatible licensing, generated
-source that cannot be reproduced, or security behavior BrokerKit cannot test.
+source that cannot be reproduced, or security behavior unYOLO cannot test.
 
 ## Current Baseline
 
 - Root and all broker-local Slophammer DRY checks report zero copied blocks.
 - `scripts/check-architecture.sh` passes.
-- BrokerKit already owns authentication, policy, grants, Operator V1,
+- unYOLO already owns authentication, policy, grants, Operator V1,
   notifications, Telegram transport, audit primitives, installation, setup,
   doctor primitives, plan storage, and generic Git receive-pack parsing.
 - HF, GH, and sudo are committed to Agent Operations V1 for discrete approved
@@ -212,7 +212,7 @@ Implementation:
   `database/sql` query code for SQLite; commit generated output and never edit it
   by hand.
 - Keep generated sqlc row and parameter types inside the state repository.
-  Convert them to BrokerKit domain types at that boundary so storage details do
+  Convert them to unYOLO domain types at that boundary so storage details do
   not leak into policy, grants, Agent V1, or provider packages.
 - Put plan binding, grant or operation creation, lifecycle event append, and
   notification outbox insertion in one SQL transaction. Use the sqlc
@@ -283,7 +283,7 @@ Acceptance:
 - Embedded Goose migrations create an empty database, upgrade every retained
   released fixture schema when such fixtures exist, reject checksum drift, and
   fail startup before side effects on migration error.
-- Architecture checks reject GORM and sqlx imports in BrokerKit state packages.
+- Architecture checks reject GORM and sqlx imports in unYOLO state packages.
 - `PRAGMA integrity_check`, backup/restore, and redacted export have automated
   tests.
 - Linux and macOS ownership behavior has focused tests.
@@ -372,7 +372,7 @@ Implementation:
   thin packs, ofs/ref deltas, trailing pack data, SHA-1 packs, SHA-1/SHA-256
   command framing, size limits, object-count limits, cancellation, and current
   refusal behavior.
-- Run that corpus and focused fuzzing against go-git through BrokerKit-owned
+- Run that corpus and focused fuzzing against go-git through unYOLO-owned
   readers, temporary storage, contexts, and observers that enforce compressed
   bytes, inflated bytes, object count, object size, delta depth, allocation,
   disk, and time limits before provider logic sees an object.
@@ -381,7 +381,7 @@ Implementation:
   and SHA-256 object IDs until a stable go-git release supports SHA-256 packs end
   to end. Do not claim that SHA-256 command recognition implies SHA-256 pack
   support.
-- Preserve exact trailing bytes and side-band/report behavior where BrokerKit is
+- Preserve exact trailing bytes and side-band/report behavior where unYOLO is
   a transparent proxy. Do not decode and re-encode a body unless conformance
   tests prove byte-preservation is unnecessary for that route.
 - Convert HF and GH to the shared `gitx` adapter and delete every custom
@@ -389,7 +389,7 @@ Implementation:
   retained custom framing must be narrow, documented by a concrete upstream
   gap, and covered by corpus and fuzz tests.
 - If the stable library cannot enforce a required limit before allocation or
-  decompression, add the limit in the BrokerKit adapter or contribute the
+  decompression, add the limit in the unYOLO adapter or contribute the
   necessary upstream hardening. Do not silently weaken the limit or restore a
   broad private parser.
 - Keep HF ancestry, mirror, LFS/Xet, policy classification, refusal responses,
@@ -426,7 +426,7 @@ resource coverage, pagination, webhook parsing, rate-limit handling, or API
 error behavior that it implements better than the current bounded code. Use
 `ghinstallation` when its token cache and refresh behavior removes more
 security-sensitive code than it introduces. In either case, pin the upstream
-module, wrap it with BrokerKit deadlines, bounds, redirect policy, base-URL
+module, wrap it with unYOLO deadlines, bounds, redirect policy, base-URL
 policy, redaction, and clocks, and delete the replaced implementation in the
 same change.
 
@@ -524,7 +524,7 @@ Provider ownership:
 - Provider adapters classify the exact operation, target, attributes, and safe
   presentation. Provider code builds immutable execution plans and performs
   upstream work with its own credentials.
-- BrokerKit never accepts arbitrary operation strings, shell commands, provider
+- unYOLO never accepts arbitrary operation strings, shell commands, provider
   payloads, or credentials merely because a caller asks for approval.
 
 Decision contract:
@@ -595,7 +595,7 @@ Time-bounded unlimited-use window grants:
 
 - Support requests such as “allow unlimited pushes to this exact repository and
   ref for the next N minutes.” Unlimited means no use-count ceiling only until a
-  mandatory policy-bounded expiry. BrokerKit must never create a grant that is
+  mandatory policy-bounded expiry. unYOLO must never create a grant that is
   both time-unbounded and use-unlimited.
 - Use the existing `max_uses` vocabulary with nullable semantics rather than a
   magic large integer, a second boolean, or a tagged object:
@@ -716,7 +716,7 @@ Acceptance:
 
 ### 11. Make the Operator UI Revision-Reactive Without Reloading Its Frame
 
-Problem: the OpenClaw popover loads the BrokerKit iframe once, while the parent
+Problem: the OpenClaw popover loads the unYOLO iframe once, while the parent
 badge and embedded React application refresh independently. The React app polls
 on a timer that browsers may throttle while its parent is hidden. Reopening the
 popover does not request fresh data, so the badge can advertise a pending
@@ -727,7 +727,7 @@ constraints, and restarts delegated authorization.
 
 Synchronization contract:
 
-- The aggregate BrokerKit runtime assigns an opaque cursor to every materially
+- The aggregate unYOLO runtime assigns an opaque cursor to every materially
   different operator snapshot. The snapshot is authoritative; change events
   are invalidations, not a second copy of request state.
 - Extend the version-1 UI API in place with generated schemas for:
@@ -761,7 +761,7 @@ Transport choice:
   not native `EventSource`. The sandboxed delegated iframe uses a rotating
   bearer token, and native `EventSource` cannot attach its `Authorization`
   header. Long polling works through Hugging Face and ordinary reverse proxies,
-  naturally re-enters delegated-session renewal, and shares BrokerKit's cursor
+  naturally re-enters delegated-session renewal, and shares unYOLO's cursor
   semantics.
 - Use `fetch` with the bearer token in the header. Never put a capability,
   session token, or cursor containing authority in a URL, fragment after
@@ -839,7 +839,7 @@ Runtime publication:
 
 - Provider Operator V1 event streams and their existing polling fallback update
   the aggregate runtime first. Only after the new aggregate snapshot is
-  committed in memory does BrokerKit advance the UI cursor and wake browser
+  committed in memory does unYOLO advance the UI cursor and wake browser
   waiters.
 - Source reconnects, health changes, delivery-failure changes, request
   transitions, expiry, and revocation all advance the cursor when they change
@@ -852,7 +852,7 @@ Runtime publication:
 Implementation sequence:
 
 1. Add the revision publisher and race-free bounded waiter registry beside the
-   aggregate BrokerKit runtime, driven by material snapshot changes.
+   aggregate unYOLO runtime, driven by material snapshot changes.
 2. Define the snapshot cursor and event response in the canonical version-1
    OpenAPI source, remove the operator decision-reason field, regenerate Go and
    TypeScript bindings and validators, and add direct plugin HTTP routes.
@@ -1067,7 +1067,7 @@ Dependency and vendoring changes must also verify:
   provenance;
 - the recorded upstream comparison produces only the documented local patch;
   and
-- retained upstream tests plus BrokerKit boundary, redaction, limit, race, and
+- retained upstream tests plus unYOLO boundary, redaction, limit, race, and
   supported-platform tests pass.
 
 SQLite changes must also run pinned `sqlc generate` and `sqlc vet`, verify a
@@ -1079,7 +1079,7 @@ and any retained released prior-schema fixtures, and run
 rule in the same slice as each cutover. Once a replacement lands, CI must reject:
 
 - GORM, sqlx, alternate SQLite drivers, and alternate migration runners in the
-  BrokerKit state layer;
+  unYOLO state layer;
 - JSON lifecycle stores and filesystem plan stores after the SQLite cutover;
 - handwritten Operator V1 or Agent V1 wire and route bindings after generation;
 - a second HTTP framework beside Echo in broker HTTP packages;
@@ -1101,7 +1101,7 @@ Review each slice against these invariants:
 - no external provider or generated type leaking into policy, grant, plan, or
   executor ownership boundaries;
 - no ORM, alternate SQL helper, or migration framework beside the selected
-  SQLite stack in BrokerKit's state layer;
+  SQLite stack in unYOLO's state layer;
 - no modified third-party source without recorded license, provenance, upstream
   revision, and comparison procedure;
 - no new shared abstraction without two concrete consumers or an existing
@@ -1117,7 +1117,7 @@ The refactor is complete when:
 - all security-relevant JSON and buffered I/O boundaries use shared strict,
   bounded mechanics;
 - each broker exclusively owns and can recover its transactional SQLite state;
-- BrokerKit state uses only `modernc.org/sqlite`, `database/sql`, generated sqlc
+- unYOLO state uses only `modernc.org/sqlite`, `database/sql`, generated sqlc
   queries, and embedded Goose migrations, with storage types contained behind
   shared repositories;
 - lifecycle time and secure identifiers come from explicit, testable runtime
@@ -1129,7 +1129,7 @@ The refactor is complete when:
   JSON route/client bindings while allowlisted streaming routes retain their
   explicit Echo handlers;
 - stable go-git backs the shared `gitx` pkt-line, SHA-1 packfile, object, and
-  delta implementation under BrokerKit resource bounds, with only documented
+  delta implementation under unYOLO resource bounds, with only documented
   unsupported framing retained;
 - HF uses the shared audit recorder;
 - HF isolation is a thin provider adapter over shared doctor primitives;
@@ -1165,4 +1165,4 @@ The refactor is complete when:
 - every source-vendored dependency is minimal, licensed, attributable,
   comparison-tested, and assigned an upstream update procedure;
 - no provider-specific credential, policy vocabulary, plan schema, or executor
-  has moved into BrokerKit.
+  has moved into unYOLO.

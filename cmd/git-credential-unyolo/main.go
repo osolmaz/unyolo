@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/osolmaz/brokerkit/git/client"
+	"github.com/osolmaz/unyolo/git/client"
 )
 
 var providers = map[string]gitclient.Provider{
@@ -33,7 +33,7 @@ func main() {
 		}
 	}
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "git-credential-brokerkit:", err)
+		_, _ = fmt.Fprintln(os.Stderr, "git-credential-unyolo:", err)
 		os.Exit(1)
 	}
 }

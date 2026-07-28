@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/approval/notification"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/approval"
+	"github.com/osolmaz/unyolo/approval/notification"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
 
 const defaultStateDir = "./state"
@@ -24,12 +24,12 @@ func stateDir(value string) string {
 	return value
 }
 
-func configuredNotifier(cfg config.Config) (approvalnotify.Notifier, *bktelegram.Client, error) {
+func configuredNotifier(cfg config.Config) (approvalnotify.Notifier, *unyolotelegram.Client, error) {
 	if cfg.TelegramBotToken == "" && cfg.TelegramChatID == 0 {
 		return nil, nil, nil
 	}
-	telegram, err := bktelegram.NewWithOptions(cfg.TelegramBotToken, cfg.TelegramChatID, nil, "", bktelegram.Options{
-		Route: bktelegram.RouteGitHub,
+	telegram, err := unyolotelegram.NewWithOptions(cfg.TelegramBotToken, cfg.TelegramChatID, nil, "", unyolotelegram.Options{
+		Route: unyolotelegram.RouteGitHub,
 	})
 	if err != nil {
 		return nil, nil, err

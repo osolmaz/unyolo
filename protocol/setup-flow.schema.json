@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/setup-flow/v1/step.schema.json",
-  "title": "BrokerKit setup flow step",
+  "$id": "https://unyolo.io/schema/setup-flow/v1/step.schema.json",
+  "title": "unYOLO setup flow step",
   "type": "object",
   "additionalProperties": false,
   "required": ["api_version", "id", "type", "title"],
   "properties": {
-    "api_version": { "const": "brokerkit.io/setup-flow/v1" },
+    "api_version": { "const": "unyolo.io/setup-flow/v1" },
     "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$" },
     "type": { "enum": ["note", "select", "multiselect", "text", "secret", "file", "confirm", "device_code", "progress", "open_url", "review"] },
     "title": { "type": "string", "minLength": 1, "maxLength": 512 },

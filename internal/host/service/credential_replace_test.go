@@ -165,7 +165,7 @@ func TestCredentialReplacementHelpersRestoreAndCheckReadiness(t *testing.T) {
 	plan.Runner = runner
 	wantRestartTarget := "hf-broker.service"
 	if runtime.GOOS == "darwin" {
-		wantRestartTarget = "dev.brokerkit.hf-broker"
+		wantRestartTarget = "io.unyolo.hf-broker"
 	}
 	if err := restartCredentialService(t.Context(), runner, plan); err != nil || len(runner.calls) != 1 || !strings.Contains(runner.calls[0], wantRestartTarget) {
 		t.Fatalf("restart calls = %v, %v", runner.calls, err)
@@ -191,12 +191,12 @@ func TestCredentialOwnerIdentityHelpers(t *testing.T) {
 	if err != nil || uid < 0 || gid < 0 {
 		t.Fatalf("credential owner IDs = %d:%d, %v", uid, gid, err)
 	}
-	plan.User = "brokerkit-user-does-not-exist"
+	plan.User = "unyolo-user-does-not-exist"
 	if _, _, err := credentialOwnerIDs(plan); err == nil {
 		t.Fatal("missing credential user was accepted")
 	}
 	plan.User, plan.Group = currentIdentity(t)
-	plan.Group = "brokerkit-group-does-not-exist"
+	plan.Group = "unyolo-group-does-not-exist"
 	if _, _, err := credentialOwnerIDs(plan); err == nil {
 		t.Fatal("missing credential group was accepted")
 	}
@@ -205,7 +205,7 @@ func TestCredentialOwnerIdentityHelpers(t *testing.T) {
 func credentialTestPlan(dir string, files []ManagedFile) CredentialReplacePlan {
 	return CredentialReplacePlan{
 		Provider: "test", User: "test", Group: "test", ConfigDir: dir, Files: files, SystemdUnit: "hf-broker.service",
-		LaunchdLabel: "dev.brokerkit.hf-broker", AllowNonRoot: true,
+		LaunchdLabel: "io.unyolo.hf-broker", AllowNonRoot: true,
 	}
 }
 

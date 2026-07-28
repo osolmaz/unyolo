@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/upstream"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/upstream"
 )
 
 type Document struct {

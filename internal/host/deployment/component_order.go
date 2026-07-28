@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
-	"github.com/osolmaz/brokerkit/deployment/profile"
+	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
+	"github.com/osolmaz/unyolo/deployment/profile"
 )
 
 //nolint:cyclop // Component ordering projects the reviewed action DAG onto atomic component apply operations.

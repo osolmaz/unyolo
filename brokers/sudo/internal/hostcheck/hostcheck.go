@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
 )
 
 func ValidateExecution(value plan.Plan, brokerUID uint32) error {

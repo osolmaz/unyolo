@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/operator/client"
+	"github.com/osolmaz/unyolo/operator/client"
 )
 
 func (i *Installer) normalize() error {

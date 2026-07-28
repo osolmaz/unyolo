@@ -14,7 +14,7 @@ import { StateStore } from "./store.js";
 
 describe("StateStore", () => {
   it("persists cursors, handles, subscriptions, and deduplicated delivery", () => {
-    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
     let store = new StateStore(directory);
     store.setCursor("hf", "cursor-1");
     const handle = store.handle("hf", "request-1", 1, Date.now() + 60_000);
@@ -32,16 +32,16 @@ describe("StateStore", () => {
     expect(store.cursor("hf")).toBe("cursor-1");
     expect(store.resolve(handle)?.requestId).toBe("request-1");
     expect(
-      lstatSync(path.join(directory, "plugins", "brokerkit", "state.sqlite"))
+      lstatSync(path.join(directory, "plugins", "unyolo", "state.sqlite"))
         .mode & 0o777,
     ).toBe(0o600);
     expect(
-      lstatSync(path.join(directory, "plugins", "brokerkit")).mode & 0o777,
+      lstatSync(path.join(directory, "plugins", "unyolo")).mode & 0o777,
     ).toBe(0o700);
     store.close();
   });
   it("stops bounded delivery retries and exposes permanent failures", () => {
-    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
     const store = new StateStore(directory);
     const handle = store.handle("hf", "request-1", 1, Date.now() + 60_000);
     const subscription = store.subscribe({ channel: "test", target: "room" });
@@ -53,7 +53,7 @@ describe("StateStore", () => {
     store.close();
   });
   it("removes stale revisions, expired handles, and removed source cursors", () => {
-    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
     const store = new StateStore(directory);
     store.setCursor("removed", "cursor-old");
     store.setCursor("kept", "cursor-new");
@@ -68,13 +68,8 @@ describe("StateStore", () => {
     store.close();
   });
   it("rejects an earlier or unknown state schema", () => {
-    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
-    const database = path.join(
-      directory,
-      "plugins",
-      "brokerkit",
-      "state.sqlite",
-    );
+    const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
+    const database = path.join(directory, "plugins", "unyolo", "state.sqlite");
     mkdirSync(path.dirname(database), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(database);
     db.exec("PRAGMA user_version=1");
@@ -83,14 +78,9 @@ describe("StateStore", () => {
     expect(() => new StateStore(directory)).toThrow(/state version 1/);
   });
   it("rejects a symlink database", () => {
-    const directory = mkdtempSync(path.join(os.tmpdir(), "brokerkit-state-"));
+    const directory = mkdtempSync(path.join(os.tmpdir(), "unyolo-state-"));
     const target = path.join(directory, "target");
-    const database = path.join(
-      directory,
-      "plugins",
-      "brokerkit",
-      "state.sqlite",
-    );
+    const database = path.join(directory, "plugins", "unyolo", "state.sqlite");
     mkdirSync(path.dirname(database), { recursive: true, mode: 0o700 });
     writeFileSync(target, "");
     symlinkSync(target, database);

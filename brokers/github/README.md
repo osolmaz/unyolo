@@ -11,16 +11,16 @@ installation, or permission set.
 
 ## Install
 
-Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+Fetch the bootstrap from a reviewed unYOLO commit. It resolves the latest
 GH Broker release to its exact commit, verifies release checksums, and
 installs to `$HOME/.local/bin`:
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
 ```
 
-Pin a release from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
+Pin a release from [unYOLO releases](https://github.com/osolmaz/unyolo/releases)
 with `VERSION=<version>`, or choose the target directory with
 `INSTALL_DIR=/absolute/path`.
 
@@ -79,7 +79,7 @@ sudo gh-broker setup systemd \
 Add Telegram notifications with `--telegram-bot-token-file ./telegram-bot-token`
 and `--telegram-chat-id 123456789`. The token is copied to a service-owned
 protected file; pending requests remain available in the operator inbox
-without Telegram. Run the separate `brokerkit-telegram` ingress to receive
+without Telegram. Run the separate `unyolo-telegram` ingress to receive
 button decisions; provider services never compete for the shared bot's update
 offset. See [Telegram approval ingress](../../docs/TELEGRAM_INGRESS.md).
 
@@ -88,7 +88,7 @@ Write a client config file for an agent account:
 ```sh
 sudo gh-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/github/agent/broker.sock \
+  --endpoint unix:///run/unyolo/github/agent/broker.sock \
   --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/gh-broker/secrets \
   --home-dir /home/agent-a
@@ -111,7 +111,7 @@ headers stay in the broker and are replaced by bounded broker-local actions.
 `gh-broker git status --json`
 reports the owned configuration, and `gh-broker git uninstall` removes only
 that exact provider installation. The listener port is selected and persisted
-by the deployment; BrokerKit has no fixed Git port.
+by the deployment; unYOLO has no fixed Git port.
 
 ### Development token fallback
 
@@ -166,13 +166,13 @@ rotate an enrollment. Revoke immediately with
 `github-user revoke --user-id 1234` and the same state flags. These commands
 return only the action and immutable user id; there is no credential
 readback command or API route. Enrolled credentials are stored only in
-BrokerKit's encrypted credential store and refresh before expiry.
+unYOLO's encrypted credential store and refresh before expiry.
 
 ### Verify the deployment
 
 ```sh
 sudo gh-broker doctor github \
-  --repo osolmaz/brokerkit \
+  --repo osolmaz/unyolo \
   --agent-user agent-a \
   --service-user gh-broker
 ```
@@ -191,7 +191,7 @@ protected credential files are required for a safe isolation verdict.
 Health check:
 
 ```sh
-curl --unix-socket /run/brokerkit/github/agent/broker.sock \
+curl --unix-socket /run/unyolo/github/agent/broker.sock \
   http://localhost/healthz
 ```
 
@@ -201,7 +201,7 @@ scoped credential helper:
 
 ```sh
 gh-broker git install
-git ls-remote https://github.com/osolmaz/brokerkit.git
+git ls-remote https://github.com/osolmaz/unyolo.git
 ```
 
 Discrete GitHub operations use the typed Agent V1 CLI. It loads the generated
@@ -209,7 +209,7 @@ private client V1 file automatically:
 
 ```sh
 gh-broker operation submit repo.contents.read \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
   --arguments-json '{"path":"README.md","ref":"main"}' \
   --wait
 ```
@@ -218,7 +218,7 @@ Open a pull request:
 
 ```sh
 gh-broker operation submit pull_request.create \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
   --arguments-json '{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}' \
   --reason "Open the reviewed feature branch" \
   --request-id open-agent-pr \
@@ -239,15 +239,15 @@ token.
 
 ```sh
 gh-broker operation submit pull_request.merge_admin \
-  --target-json '{"kind":"pull_request","owner":"osolmaz","repo":"brokerkit","number":123}' \
+  --target-json '{"kind":"pull_request","owner":"osolmaz","repo":"unyolo","number":123}' \
   --arguments-json '{"merge_method":"squash"}' \
   --reason "Merge the reviewed pull request despite its remaining GitHub requirement" \
-  --request-id admin-merge-brokerkit-123 \
+  --request-id admin-merge-unyolo-123 \
   --wait
 ```
 
 Admin merge is a distinct high-risk, explicit, one-use operation and requests
-operator approval by default. BrokerKit resolves the pull request itself,
+operator approval by default. unYOLO resolves the pull request itself,
 binds approval to the exact pull-request head commit, rechecks it before
 execution, and supplies it to GitHub as the mutation's atomic
 `expectedHeadOid` guard. Administrator
@@ -255,7 +255,7 @@ privileges may bypass review, update, or merge-queue requirements, but do not
 bypass merge conflicts. A changed pull request must be submitted and approved
 again.
 
-BrokerKit parses GitHub's documented error `message` fields, removes control
+unYOLO parses GitHub's documented error `message` fields, removes control
 characters, redacts credential-like values, and limits the text before returning
 it to the requesting client. Raw response bodies, GraphQL paths, and extensions
 are not retained. Sealed operations omit provider messages because GitHub may echo
@@ -277,7 +277,7 @@ gh-broker operations describe repo.visibility.update
 
 ### MCP server
 
-`gh-broker mcp` runs BrokerKit's shared strict stdio MCP server and Agent
+`gh-broker mcp` runs unYOLO's shared strict stdio MCP server and Agent
 Operations bridge, backed by the same catalog and broker credential.
 `tools/list` advertises only the intersection of the client's
 enabled operations, policy-visible operations, runtime capabilities, and the
@@ -357,7 +357,7 @@ POST /api/grants                         Git smart-HTTP protocol grant request
 GET  /api/grants
 GET  /api/grants/{id}
 
-GET  /.well-known/brokerkit-agent
+GET  /.well-known/unyolo-agent
 POST /api/agent/v1/operations
 GET  /api/agent/v1/operations/{id}
 GET  /api/agent/v1/operations/{id}/events
@@ -394,7 +394,7 @@ Authenticate the operator listener with the separate credential from
 is an optional notification view over the same durable request, so a decision
 through either path closes the same state exactly once. GitHub supplies the
 bounded operation, target, risk, warning, and generated projection facts;
-BrokerKit renders the shared Telegram HTML, controls, callback answers, and
+unYOLO renders the shared Telegram HTML, controls, callback answers, and
 terminal states.
 
 ## Security model
@@ -439,7 +439,7 @@ See [.env.example](.env.example) for the full annotated environment.
 
 ## Local development
 
-From a BrokerKit checkout:
+From a unYOLO checkout:
 
 ```sh
 cd brokers/github

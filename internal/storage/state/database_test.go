@@ -144,7 +144,7 @@ func TestOperationalStatsReportOnlyDurableQueueCounts(t *testing.T) {
 
 func testOperationalRecord(id, operationState string, now time.Time) OperationRecord {
 	return OperationRecord{
-		ID: id, APIVersion: "brokerkit.io/agent/v1", Broker: "test", ClientID: "agent-a", IdempotencyKey: id,
+		ID: id, APIVersion: "unyolo.io/agent/v1", Broker: "test", ClientID: "agent-a", IdempotencyKey: id,
 		Operation: "repo.delete", TargetJSON: []byte(`{}`), ArgumentsJSON: []byte(`{}`), State: operationState,
 		Revision: 1, CreatedAt: now, UpdatedAt: now, PresentationJSON: []byte(`{}`),
 	}

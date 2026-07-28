@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/mcp/grant"
-	"github.com/osolmaz/brokerkit/mcp/operation"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/mcp/grant"
+	"github.com/osolmaz/unyolo/mcp/operation"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 const agentClientTestSecret = "abcdefghijklmnopqrstuvwxyz123456"
@@ -367,7 +367,7 @@ func TestBucketObjectWriteCLIUploadsAndBindsLocalSource(t *testing.T) {
 
 func TestRunMCPListsAndCallsTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/.well-known/brokerkit-agent" {
+		if r.URL.Path == "/.well-known/unyolo-agent" {
 			_ = json.NewEncoder(w).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
 				ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.create"},
 				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "fine_grained_user_token", Generation: 1, VerificationState: "valid"}})
@@ -545,7 +545,7 @@ func TestCatalogOperationOptionsAndTerminalOutput(t *testing.T) {
 
 func TestMCPProtocolErrorsAndOperationTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/.well-known/brokerkit-agent" {
+		if r.URL.Path == "/.well-known/unyolo-agent" {
 			_ = json.NewEncoder(w).Encode(agentv1.Descriptor{APIVersion: agentv1.APIVersion,
 				ContractDigest: contract.AgentV1Digest, BuildID: "test", Operations: []string{"repo.create"},
 				Credential: agentv1.CredentialDescriptor{Ready: true, Provider: "huggingface", CredentialKind: "token", Generation: 1, VerificationState: "valid"}})

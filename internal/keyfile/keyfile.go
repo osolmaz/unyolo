@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/osolmaz/brokerkit/internal/securefile"
+	"github.com/osolmaz/unyolo/internal/securefile"
 )
 
 type Encoding int

@@ -12,22 +12,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notification"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/authorization/admission"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorclient"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/internal/config/secretfile"
-	"github.com/osolmaz/brokerkit/internal/slicex"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
-	"github.com/osolmaz/brokerkit/transport/http/server"
+	"github.com/osolmaz/unyolo/approval/notification"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/admission"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorclient"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/hostcheck"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/routes"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
+	"github.com/osolmaz/unyolo/internal/slicex"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 type serveOptions struct {
@@ -140,7 +140,7 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	flags.StringVar(&opts.catalogPath, "catalog", "", "root-owned command catalog")
 	flags.StringVar(&opts.secretsPath, "secrets", "", "named client secret file")
 	flags.StringVar(&opts.operatorSecrets, "operator-secrets", "", "named operator secret file")
-	flags.StringVar(&opts.stateDirectory, "state", "", "BrokerKit state directory")
+	flags.StringVar(&opts.stateDirectory, "state", "", "unYOLO state directory")
 	flags.StringVar(&opts.helperSocket, "helper-socket", "", "privileged helper Unix socket")
 	var agentEndpoint, operatorEndpoint string
 	flags.StringVar(&agentEndpoint, "agent-endpoint", "", "agent endpoint URI")
@@ -294,7 +294,7 @@ func loadOperatorSecrets(path string) (map[string]string, error) {
 	return secretfile.Parse(path)
 }
 
-func loadTelegramNotifier(opts serveOptions) (*bktelegram.Client, error) {
+func loadTelegramNotifier(opts serveOptions) (*unyolotelegram.Client, error) {
 	if opts.telegramToken == "" {
 		return nil, nil
 	}
@@ -302,12 +302,12 @@ func loadTelegramNotifier(opts serveOptions) (*bktelegram.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return bktelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", bktelegram.Options{
-		Route: bktelegram.RouteSudo,
+	return unyolotelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", unyolotelegram.Options{
+		Route: unyolotelegram.RouteSudo,
 	})
 }
 
-func notifierDependencies(notifier *bktelegram.Client) (approvalnotify.Notifier, routes.DecisionPoller) {
+func notifierDependencies(notifier *unyolotelegram.Client) (approvalnotify.Notifier, routes.DecisionPoller) {
 	if notifier == nil {
 		return nil, nil
 	}

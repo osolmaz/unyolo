@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/isolation"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/isolation"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
 )
 
 func runDoctor(ctx context.Context, stdout, stderr io.Writer, args []string) error {

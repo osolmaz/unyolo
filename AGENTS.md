@@ -1,6 +1,6 @@
 # AGENTS.md
 
-These instructions apply to the BrokerKit repository. More specific
+These instructions apply to the unYOLO repository. More specific
 instructions under a component directory may add stricter requirements.
 
 ## Project Rules
@@ -25,7 +25,7 @@ instructions under a component directory may add stricter requirements.
 - Do not add dependencies unless they remove real complexity.
 - Do not add legacy routes, old-state readers, aliases, converters, dual reads,
   or dual writes. This repository uses a fresh-state coordinated cutover.
-- Until the first public release, every BrokerKit-owned wire API, persisted
+- Until the first public release, every unYOLO-owned wire API, persisted
   state format, plan schema, manifest, and protocol stays at version 1. Make
   incompatible pre-release changes by replacing v1 in place through the
   coordinated fresh-state cutover; do not introduce v0, v2, compatibility

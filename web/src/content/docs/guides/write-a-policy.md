@@ -3,7 +3,7 @@ title: Write a policy
 description: Build a working scope.json from a deny-all baseline, one rule at a time.
 ---
 
-Policy is the part of BrokerKit you will spend the most time in, and it is a file you edit by hand.
+Policy is the part of unYOLO you will spend the most time in, and it is a file you edit by hand.
 This page builds one from nothing, adding a rule at a time and explaining what each one buys you.
 The [policy engine](/docs/concepts/policy) page covers the evaluation semantics in full; this one
 is about getting to a file that works.
@@ -70,7 +70,7 @@ branch namespace rather than to whatever branch it likes. That is what attrs are
   "effect": "allow",
   "clients": ["agent-a"],
   "operations": ["git.push.fast_forward"],
-  "targets": [{ "kind": "repo", "owner": "osolmaz", "name": "brokerkit" }],
+  "targets": [{ "kind": "repo", "owner": "osolmaz", "name": "unyolo" }],
   "attrs": { "refs": ["refs/heads/agent-a/**"] }
 }
 ```
@@ -81,7 +81,7 @@ to whatever else the policy says, which by default is nothing.
 
 <div class="callout callout--note">
 <span class="callout__title">Attr names are exact</span>
-<p>BrokerKit applies no aliases. <code>ref</code> and <code>refs</code> are different attrs, as are
+<p>unYOLO applies no aliases. <code>ref</code> and <code>refs</code> are different attrs, as are
 <code>path</code> and <code>paths</code>. Use the name the provider registry declares for that
 operation; the broker normalizes provider input into those names before policy runs.</p>
 </div>

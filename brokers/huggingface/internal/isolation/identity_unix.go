@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func lookupUserIdentity(name string, pid int) (identity, error) {
@@ -20,7 +20,7 @@ func lookupUserIdentity(name string, pid int) (identity, error) {
 }
 
 func userIdentity(account *user.User, pid int) (identity, error) {
-	resolved, err := bkdoctor.IdentityFromUser(account)
+	resolved, err := unyolodoctor.IdentityFromUser(account)
 	if err != nil {
 		return identity{}, err
 	}

@@ -7,9 +7,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 type Client struct {

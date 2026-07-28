@@ -11,9 +11,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/internal/config/client"
 )
 
 // Probe runs one authenticated safe discovery through the normal agent config.

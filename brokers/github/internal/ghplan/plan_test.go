@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/internal/storage/state"
 )
 
 var fixtureTime = time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
@@ -305,13 +305,13 @@ func testAdapterPlan() Plan {
 	return Plan{
 		APIVersion: SchemaV1, Operation: "pull_request.create", OperationRevision: 1,
 		ClientID: "bob", ClientRequestID: "request-1",
-		Target:             json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+		Target:             json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`),
 		Arguments:          json.RawMessage(`{"input":{"title":"work","head":"work","base":"main"}}`),
 		Preconditions:      json.RawMessage(`{"kind":"installation","installation_id":42,"permissions":{"pull_requests":"write"},"api_host":"api.github.com"}`),
 		CredentialSelector: CredentialSelector{Name: "primary", Kind: "installation"},
-		Presentation:       agentv1.Presentation{Title: "Create a pull request", Summary: "pull_request.create on osolmaz/brokerkit"},
+		Presentation:       agentv1.Presentation{Title: "Create a pull request", Summary: "pull_request.create on osolmaz/unyolo"},
 		Authorization: Authorization{Mode: "execution", RequestedDurationSeconds: 300, RequestedMaxUses: 1,
-			Target:       GrantTarget{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"brokerkit"}}},
+			Target:       GrantTarget{Kind: "repo", Fields: map[string][]string{"owner": {"osolmaz"}, "name": {"unyolo"}}},
 			PolicyEffect: "request", PolicyRuleIDs: []string{"request-pr"}},
 		CreatedAt: fixtureTime, ExpiresAt: fixtureTime.Add(10 * time.Minute),
 	}

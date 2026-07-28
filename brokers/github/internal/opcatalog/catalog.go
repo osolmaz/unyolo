@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
-	"github.com/osolmaz/brokerkit/internal/sortedlookup"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
+	"github.com/osolmaz/unyolo/internal/sortedlookup"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 const ExpectedCount = 1436

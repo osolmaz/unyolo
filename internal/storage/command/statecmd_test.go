@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/storage/state"
 )
 
 func TestStateCommandsCheckBackupExportAndRestore(t *testing.T) {
@@ -32,7 +32,7 @@ func TestStateCommandsCheckBackupExportAndRestore(t *testing.T) {
 	backup := filepath.Join(root, "backup")
 	output.Reset()
 	if err := Run(t.Context(), []string{"backup", "--state-dir", directory, "--output", backup}, &output, &stderr); err != nil ||
-		!strings.Contains(output.String(), `"format":"brokerkit.io/state-backup/v1"`) {
+		!strings.Contains(output.String(), `"format":"unyolo.io/state-backup/v1"`) {
 		t.Fatalf("backup output=%s stderr=%s err=%v", output.String(), stderr.String(), err)
 	}
 	export := filepath.Join(root, "export.json")

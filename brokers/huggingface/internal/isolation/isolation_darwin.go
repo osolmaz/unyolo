@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 type aclPathKind int
@@ -22,7 +22,7 @@ type aclPathKind int
 func dialUnixWithTimeout(socket string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	return bkdoctor.DialUnix(ctx, socket)
+	return unyolodoctor.DialUnix(ctx, socket)
 }
 
 const (
@@ -48,7 +48,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	runTokenFileChecks(&report, agent, opts.TokenFile)
 	runSocketChecks(&report, agent, opts.Socket)
 	runActiveProbeChecks(ctx, &report, agent, opts)
-	report.Status = bkdoctor.OverallStatus(report.Checks)
+	report.Status = unyolodoctor.OverallStatus(report.Checks)
 	report.Credentials = credentialStatuses(opts)
 	return report, nil
 }
@@ -203,10 +203,10 @@ func runTokenACLChecks(report *Report, agent identity, path string, stat fileSta
 func tokenACLPaths(path string, stat fileStat) []darwinACLPath {
 	builder := newDarwinACLPathBuilder()
 	builder.addEntryAndParents(path, aclTokenEntry)
-	if bkdoctor.CleanPath(stat.path) != bkdoctor.CleanPath(path) {
+	if unyolodoctor.CleanPath(stat.path) != unyolodoctor.CleanPath(path) {
 		builder.addEntryAndParents(stat.path, aclTokenEntry)
 	}
-	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
+	if resolved, ok := unyolodoctor.ResolvedCleanPath(path); ok && resolved != unyolodoctor.CleanPath(path) {
 		builder.addEntryAndParents(resolved, aclTokenEntry)
 	}
 	return builder.paths
@@ -227,7 +227,7 @@ func runSocketACLChecks(report *Report, agent identity, path string) {
 func socketACLPaths(path string) []darwinACLPath {
 	builder := newDarwinACLPathBuilder()
 	builder.addEntryAndParents(path, aclSocketEntry)
-	if resolved, ok := bkdoctor.ResolvedCleanPath(path); ok && resolved != bkdoctor.CleanPath(path) {
+	if resolved, ok := unyolodoctor.ResolvedCleanPath(path); ok && resolved != unyolodoctor.CleanPath(path) {
 		builder.addEntryAndParents(resolved, aclSocketEntry)
 	}
 	return builder.paths
@@ -244,13 +244,13 @@ func newDarwinACLPathBuilder() darwinACLPathBuilder {
 
 func (b *darwinACLPathBuilder) addEntryAndParents(path string, entryKind aclPathKind) {
 	b.add(path, entryKind)
-	for _, dir := range bkdoctor.ParentDirs(filepath.Dir(bkdoctor.CleanPath(path))) {
+	for _, dir := range unyolodoctor.ParentDirs(filepath.Dir(unyolodoctor.CleanPath(path))) {
 		b.add(dir, aclPathParent)
 	}
 }
 
 func (b *darwinACLPathBuilder) add(path string, kind aclPathKind) {
-	cleaned := bkdoctor.CleanPath(path)
+	cleaned := unyolodoctor.CleanPath(path)
 	key := fmt.Sprintf("%d:%s", kind, cleaned)
 	if b.seen[key] {
 		return
@@ -267,15 +267,15 @@ type darwinACLPath struct {
 func runDarwinACLChecks(report *Report, agent identity, checkName string, paths []darwinACLPath, unsafeMsg, unknownMsg, passMsg string) {
 	var unknown bool
 	for _, candidate := range paths {
-		state := bkdoctor.DarwinACLGrantState(doctorIdentity(agent), bkdoctor.ACLPath{
+		state := unyolodoctor.DarwinACLGrantState(doctorIdentity(agent), unyolodoctor.ACLPath{
 			Path: candidate.path,
-			Kind: bkdoctor.ACLPathKind(candidate.kind),
+			Kind: unyolodoctor.ACLPathKind(candidate.kind),
 		})
 		switch state {
-		case bkdoctor.ACLPresent:
+		case unyolodoctor.ACLPresent:
 			add(report, CheckFail, checkName, unsafeMsg)
 			return
-		case bkdoctor.ACLUnknown:
+		case unyolodoctor.ACLUnknown:
 			unknown = true
 		}
 	}
@@ -303,8 +303,8 @@ func addActiveProbeResult(report *Report, opts Options, result ProbeResult) {
 func RunProbe(tokenFile string, brokerPID int, socket string) ProbeResult {
 	var result ProbeResult
 	if tokenFile != "" {
-		result.TokenFileReadable = bkdoctor.CanOpen(tokenFile)
-		result.TokenFileWritable = bkdoctor.CanOpenForWrite(tokenFile)
+		result.TokenFileReadable = unyolodoctor.CanOpen(tokenFile)
+		result.TokenFileWritable = unyolodoctor.CanOpenForWrite(tokenFile)
 	}
 	if brokerPID > 0 {
 		result.BrokerEnvReadable = false

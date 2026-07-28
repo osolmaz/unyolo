@@ -1,6 +1,6 @@
 # Credential Lifecycle
 
-BrokerKit uses one exact-replacement model for installed credentials. It does
+unYOLO uses one exact-replacement model for installed credentials. It does
 not keep old and new secrets active together. This applies to broker client and
 operator secrets, provider credentials, Telegram bot tokens, GitHub App keys
 and OAuth secrets, and other protected files managed by broker setup.
@@ -45,7 +45,7 @@ separate, deliberate step.
 | Hugging Face user token | Exact protected-file replacement | Manual in Hugging Face token settings after readiness |
 | Telegram bot token | Exact protected-file replacement or retirement | Manual through BotFather after readiness |
 
-BrokerKit automates upstream revocation only where the provider exposes a
+unYOLO automates upstream revocation only where the provider exposes a
 supported API and the broker has the exact authority and identifier needed for
 that credential. It does not call undocumented endpoints or broaden provider
 permissions to automate static-key cleanup. Provider revocation failures are

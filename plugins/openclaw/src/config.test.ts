@@ -43,11 +43,11 @@ describe("parseConfig", () => {
     expect(
       parseConfig({
         mode: "delegated-web",
-        delegatedWeb: { basePath: "/trusted-host/api/brokerkit" },
+        delegatedWeb: { basePath: "/trusted-host/api/unyolo" },
       }),
     ).toEqual({
       mode: "delegated-web",
-      delegatedWeb: { basePath: "/trusted-host/api/brokerkit" },
+      delegatedWeb: { basePath: "/trusted-host/api/unyolo" },
     });
     for (const basePath of [
       "https://example.com/api",
@@ -77,7 +77,7 @@ describe("parseConfig", () => {
     expect(() =>
       parseConfig({
         mode: "delegated-web",
-        delegatedWeb: { basePath: "/api/brokerkit" },
+        delegatedWeb: { basePath: "/api/unyolo" },
         brokers: valid.brokers,
       }),
     ).toThrow();

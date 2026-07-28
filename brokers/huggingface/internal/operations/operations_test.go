@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 func TestRepositoryCreateAndDeleteAdapters(t *testing.T) {

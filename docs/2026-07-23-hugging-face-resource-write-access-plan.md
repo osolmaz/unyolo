@@ -10,11 +10,11 @@ Finish the Hugging Face broker's repository and bucket data workflows so an
 agent can receive narrow, reusable write access without receiving a Hugging
 Face token. An operator must be able to approve access to one exact repository,
 bucket, ref, path pattern, or object-key pattern for a bounded period such as
-24 hours or seven days. BrokerKit must check that grant for every later action
+24 hours or seven days. unYOLO must check that grant for every later action
 and revoke it immediately when requested.
 
 This work extends the grant, policy, Agent V1, Operator V1, MCP, stream, and
-immutable-plan machinery already in BrokerKit. It does not add another access
+immutable-plan machinery already in unYOLO. It does not add another access
 model. The main implementation work belongs to the Hugging Face provider,
 particularly bucket object reads and Xet-backed writes.
 
@@ -23,14 +23,14 @@ catalog and the operations that clients can actually run. Every agent-facing
 catalog entry must identify a registered Agent adapter or a reviewed native
 protocol path. Operations that lack either one cannot be presented as usable.
 
-BrokerKit is still pre-release. Replace changed V1 contracts in place, remove
+unYOLO is still pre-release. Replace changed V1 contracts in place, remove
 superseded paths in the same branch, and coordinate fresh state when a persisted
 format changes. Do not add compatibility aliases, parallel request shapes,
 fallback execution, V2 protocols, or state converters.
 
 ## Current implementation
 
-BrokerKit already provides the control plane needed by this work:
+unYOLO already provides the control plane needed by this work:
 
 - provider-neutral policy matching over classified requests.
 - deny, active-grant, allow, request, and no-match decision ordering.
@@ -127,7 +127,7 @@ grant names an exact owner and bucket name and may restrict recursive object-key
 patterns.
 
 Execution requests contain concrete target selectors. Grant requests may
-contain the provider's existing policy matcher syntax. BrokerKit must validate
+contain the provider's existing policy matcher syntax. unYOLO must validate
 that the concrete execution target is within the approved matcher before it
 reserves a use.
 
@@ -145,14 +145,14 @@ The operator may approve a shorter duration or smaller use budget. Policy may
 also permit unlimited uses until expiry for ordinary repository and bucket
 writes. Existing finite use budgets remain available.
 
-This plan does not add cumulative byte accounting to grants. BrokerKit must
+This plan does not add cumulative byte accounting to grants. unYOLO must
 retain transport size limits, disk quotas, request limits, and upstream
 timeouts because those protect service health. They are operational limits,
 not grant accounting.
 
 ### Data transport
 
-Use BrokerKit stream references for object and file content. Raw file bytes do
+Use unYOLO stream references for object and file content. Raw file bytes do
 not belong in MCP results, operation history, approval records, logs, or model
 transcripts.
 
@@ -163,7 +163,7 @@ chunk retries and content-addressed deduplication must recover interrupted
 upstream work without asking the model to resend content.
 
 Add resumable client-to-broker transfer sessions after the basic path is
-verified with realistic large objects. This remains a shared BrokerKit
+verified with realistic large objects. This remains a shared unYOLO
 capability because GitHub assets and future providers can reuse it. The
 resumable contract must stay under V1 and replace the one-shot-only contract. A parallel stream API would create two transfer paths to maintain.
 
@@ -232,9 +232,9 @@ A bucket request uses the same lifecycle with a bucket target:
 }
 ```
 
-The client uploads content into BrokerKit stream storage, then submits a
+The client uploads content into unYOLO stream storage, then submits a
 `bucket.object.write` operation containing the stream reference and one
-concrete object key. BrokerKit validates ownership and purpose of the stream,
+concrete object key. unYOLO validates ownership and purpose of the stream,
 checks the active grant, uploads through Xet, commits the bucket batch, verifies
 the result, and retires the stream.
 
@@ -252,7 +252,7 @@ must fail on its next policy check. In-flight execution follows the existing
 reservation and ambiguity rules so the broker never reports an unknown write as
 safely absent.
 
-## Shared BrokerKit changes
+## Shared unYOLO changes
 
 ### Operation-aware grant bounds
 
@@ -298,7 +298,7 @@ get, wait, cancel, and revoke behavior. Provider code supplies:
 - the set of operations exposed for deliberate window-grant requests.
 
 Extend `protocol/openapi/mcp-v1.yaml` in place with the closed
-`brokerkit.io/mcp-grant/v1` documents. Grant results must omit decision tokens,
+`unyolo.io/mcp-grant/v1` documents. Grant results must omit decision tokens,
 plan digests, internal metadata, credentials, notification destinations, and
 provider responses.
 
@@ -380,7 +380,7 @@ bytes through MCP.
 
 Register `bucket.object.write` as a window-authorized stream adapter. Its public
 input contains an exact bucket, object key, media type, overwrite intent, and a
-BrokerKit stream reference. The canonical plan binds:
+unYOLO stream reference. The canonical plan binds:
 
 - the client and operation request IDs.
 - bucket owner and name.
@@ -451,7 +451,7 @@ owner and name. The profile and policy manifest record the target and digest so
 
 Expose the setting through a typed `hf-broker policy render` flag. MLClaw uses
 that command at startup to render its deployment-specific policy with the state
-bucket protected. MLClaw must not synthesize BrokerKit policy JSON or maintain
+bucket protected. MLClaw must not synthesize unYOLO policy JSON or maintain
 its own list of bucket operations.
 
 The protected-target feature does not claim to defeat a host administrator who
@@ -512,12 +512,12 @@ plan does not replace Git with file-operation tools.
 
 Keep these protocol identifiers at V1:
 
-- `brokerkit.io/agent/v1`.
-- `brokerkit.io/operator/v1`.
-- `brokerkit.io/mcp-operation/v1`.
-- `brokerkit.io/mcp-grant/v1`.
+- `unyolo.io/agent/v1`.
+- `unyolo.io/operator/v1`.
+- `unyolo.io/mcp-operation/v1`.
+- `unyolo.io/mcp-grant/v1`.
 - `hf-broker.io/plan/v1`.
-- the BrokerKit stream reference and transfer-session V1 formats.
+- the unYOLO stream reference and transfer-session V1 formats.
 
 Extend the canonical OpenAPI and JSON Schema artifacts in place, regenerate Go
 and TypeScript outputs, and update exact contract digests. Mixed old and new
@@ -531,21 +531,21 @@ or converters.
 
 ## MLClaw adoption
 
-BrokerKit owns the provider implementation. MLClaw adopts one exact compatible
+unYOLO owns the provider implementation. MLClaw adopts one exact compatible
 HF Broker release and the matching OpenClaw plugin release when the Operator or
 MCP contract digest changes.
 
 MLClaw must:
 
-- render the HF policy through the BrokerKit CLI with its state bucket as an
+- render the HF policy through the unYOLO CLI with its state bucket as an
   exact protected target.
 - keep the broad Hugging Face token in the trusted broker and state supervisor.
 - expose only the broker client credential to the untrusted OpenClaw process.
 - update the managed Hugging Face skill with grant requests, bounded waits,
   writes, reads, recovery, and revocation.
 - preserve the existing delegated approval boundary.
-- snapshot current BrokerKit state according to the coordinated state contract.
-- release one tested BrokerKit and MLClaw pairing built from exact pins.
+- snapshot current unYOLO state according to the coordinated state contract.
+- release one tested unYOLO and MLClaw pairing built from exact pins.
 
 MLClaw does not implement bucket APIs, Xet, grant matching, policy parsing, or a
 generic forwarding route.
@@ -624,7 +624,7 @@ and bucket batch commit.
 
 ### Coordinated release
 
-Publish no BrokerKit component until shared tests, HF tests, OpenClaw plugin
+Publish no unYOLO component until shared tests, HF tests, OpenClaw plugin
 tests, and the live Hugging Face matrix pass. Tag the exact HF Broker and plugin
 revisions, update MLClaw's release metadata from its package source of truth,
 build the runtime image, and deploy only the designated test Space first.
@@ -742,7 +742,7 @@ Tests and CI support the live validation matrix. They do not replace it.
 
 The implementation is complete when all of the following are true:
 
-- BrokerKit still has one shared authorization and operation lifecycle.
+- unYOLO still has one shared authorization and operation lifecycle.
 - An authenticated agent can deliberately request a reusable window grant for
   `repo.commit.create`, `git.push.append`, or `bucket.object.write`.
 - Policy can permit a 24-hour or seven-day write grant without widening short
@@ -766,7 +766,7 @@ The implementation is complete when all of the following are true:
   which operations are usable.
 - Interrupted operations recover without duplicate writes or lost terminal
   state.
-- The exact BrokerKit and MLClaw candidate passes the live dataset, bucket, and
+- The exact unYOLO and MLClaw candidate passes the live dataset, bucket, and
   restart matrix.
 - No upstream Hugging Face credential or derived Xet credential crosses the
   broker boundary.
@@ -782,6 +782,6 @@ This plan does not add:
 - long-lived grants for destructive or administrative operations.
 - path-level claims for native Git pushes that the Git data plane cannot
   verify.
-- provider behavior in shared BrokerKit packages.
+- provider behavior in shared unYOLO packages.
 - compatibility aliases, legacy state readers, migrations, or a V2 protocol.
 - automatic authorization merely because an operation appears in the catalog.

@@ -26,8 +26,8 @@ never leave the broker, and `git push` prints the reason at the terminal:
 ## Install
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/huggingface/install.sh" | sh
 ```
 
 Pin a release with `VERSION=<version>` or choose a target directory with
@@ -96,7 +96,7 @@ sudo install -o hf-broker -g hf-broker -m 0600 /path/to/hf-token /etc/hf-broker/
 export HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
 ```
 
-BrokerKit defines no default TCP port. Local production setup uses separate permission-restricted
+unYOLO defines no default TCP port. Local production setup uses separate permission-restricted
 agent and operator Unix sockets, while standard Git HTTP and remote clients need an explicit TCP
 listener or an HTTPS reverse proxy.
 
@@ -140,7 +140,7 @@ clone, fetch, pull, and push, and supported LFS routes use it too. Remotes conta
 provider credential.
 
 Basic Git LFS is supported. Xet custom-transfer negotiation fails closed before signed actions are
-returned, because BrokerKit will not export the Hugging Face token to enable it.
+returned, because unYOLO will not export the Hugging Face token to enable it.
 
 ## Inference
 
@@ -188,7 +188,7 @@ requires its own authorization.
 
 The checked-in OpenAPI snapshot is monitored against the official Hub schema without automatic
 updates. See
-[Hugging Face capability maintenance](https://github.com/osolmaz/brokerkit/blob/main/docs/HUGGING_FACE_CAPABILITY_MAINTENANCE.md)
+[Hugging Face capability maintenance](https://github.com/osolmaz/unyolo/blob/main/docs/HUGGING_FACE_CAPABILITY_MAINTENANCE.md)
 for the review and regeneration procedure.
 
 ## MCP
@@ -230,8 +230,8 @@ systemd service and socket units, and the `hf-broker` service user when needed, 
 starts the service. The agent and operator listeners are separate Unix sockets:
 
 ```text
-/run/brokerkit/huggingface/agent/broker.sock
-/run/brokerkit/huggingface/operator/broker.sock
+/run/unyolo/huggingface/agent/broker.sock
+/run/unyolo/huggingface/operator/broker.sock
 ```
 
 It prints the broker endpoint and a secret-safe client setup command, and it never prints the
@@ -257,7 +257,7 @@ Write a client config for an agent account:
 ```sh
 sudo hf-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
+  --endpoint unix:///run/unyolo/huggingface/agent/broker.sock \
   --secret-file /etc/hf-broker/secrets \
   --home-dir /home/agent-a
 ```
@@ -271,7 +271,7 @@ hf-broker doctor \
   --agent-user agent \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/brokerkit/huggingface/agent/broker.sock
+  --socket /run/unyolo/huggingface/agent/broker.sock
 ```
 
 `hf-broker doctor isolation` is the explicit form and behaves identically. With no agent identity
@@ -291,7 +291,7 @@ report shape but is intentionally conservative: facts it cannot establish are re
 
 ## Operator inbox
 
-The separate operator listener exposes BrokerKit's shared inbox at
+The separate operator listener exposes unYOLO's shared inbox at
 `/api/operator/v1/requests` and the related decision routes. Authenticate with a bearer token from
 `/etc/hf-broker/operator-secrets`, and do not give that file to an agent. Lifecycle events use
 durable SSE cursors, so a trusted host can reconnect after a restart without depending on Telegram.

@@ -6,8 +6,8 @@ on:
       - "hf-broker/v*"
       - "gh-broker/v*"
       - "sudo-broker/v*"
-      - "brokerkit-telegram/v*"
-      - "brokerkit/v*"
+      - "unyolo-telegram/v*"
+      - "unyolo/v*"
 
 permissions:
   contents: write
@@ -41,15 +41,15 @@ jobs:
               echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/huggingface" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/hf-broker" >> "$GITHUB_OUTPUT"
-              extra="--extra-command=git-credential-brokerkit=../../cmd/git-credential-brokerkit"
-              path_companions="git-credential-brokerkit"
+              extra="--extra-command=git-credential-unyolo=../../cmd/git-credential-unyolo"
+              path_companions="git-credential-unyolo"
               ;;
             gh-broker/*)
               echo "broker=gh-broker" >> "$GITHUB_OUTPUT"
               echo "directory=brokers/github" >> "$GITHUB_OUTPUT"
               echo "command=./cmd/gh-broker" >> "$GITHUB_OUTPUT"
-              extra="--extra-command=git-credential-brokerkit=../../cmd/git-credential-brokerkit"
-              path_companions="git-credential-brokerkit"
+              extra="--extra-command=git-credential-unyolo=../../cmd/git-credential-unyolo"
+              path_companions="git-credential-unyolo"
               ;;
             sudo-broker/*)
               echo "broker=sudo-broker" >> "$GITHUB_OUTPUT"
@@ -58,17 +58,17 @@ jobs:
               extra="--extra-command=sudo-broker-exec=./cmd/sudo-broker-exec"
               companions="sudo-broker-exec"
               ;;
-            brokerkit-telegram/*)
-              echo "broker=brokerkit-telegram" >> "$GITHUB_OUTPUT"
+            unyolo-telegram/*)
+              echo "broker=unyolo-telegram" >> "$GITHUB_OUTPUT"
               echo "directory=." >> "$GITHUB_OUTPUT"
-              echo "command=./cmd/brokerkit-telegram" >> "$GITHUB_OUTPUT"
+              echo "command=./cmd/unyolo-telegram" >> "$GITHUB_OUTPUT"
               ;;
-            brokerkit/*)
-              echo "broker=brokerkit" >> "$GITHUB_OUTPUT"
+            unyolo/*)
+              echo "broker=unyolo" >> "$GITHUB_OUTPUT"
               echo "directory=." >> "$GITHUB_OUTPUT"
-              echo "command=./cmd/brokerkit" >> "$GITHUB_OUTPUT"
-              extra="--extra-command=openclaw-brokerkit-setup=./plugins/openclaw/deployment/cmd/openclaw-brokerkit-setup"
-              companions="openclaw-brokerkit-setup"
+              echo "command=./cmd/unyolo" >> "$GITHUB_OUTPUT"
+              extra="--extra-command=openclaw-unyolo-setup=./plugins/openclaw/deployment/cmd/openclaw-unyolo-setup"
+              companions="openclaw-unyolo-setup"
               ;;
             *) exit 64 ;;
           esac
@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go run ./cmd/brokerkit-release \
+          go run ./cmd/unyolo-release \
             --broker '${{ needs.prepare.outputs.broker }}' \
             --directory '${{ needs.prepare.outputs.directory }}' \
             --command '${{ needs.prepare.outputs.command }}' \
@@ -127,10 +127,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp install/bootstrap-root.sh dist/brokerkit-bootstrap-root.sh
-          cp install/runtime-release.pub dist/brokerkit-runtime-release.pub
+          cp install/bootstrap-root.sh dist/unyolo-bootstrap-root.sh
+          cp install/runtime-release.pub dist/unyolo-runtime-release.pub
           cd dist
-          sha256sum ./*.tar.gz ./brokerkit-bootstrap-root.sh ./brokerkit-runtime-release.pub | sed 's#  \./#  #' > checksums.txt
+          sha256sum ./*.tar.gz ./unyolo-bootstrap-root.sh ./unyolo-runtime-release.pub | sed 's#  \./#  #' > checksums.txt
       - name: Generate SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
@@ -151,8 +151,8 @@ jobs:
           REPO: ${{ github.repository }}
           TAG_PREFIX: ${{ needs.prepare.outputs.broker }}/
           VERSION: ${{ github.ref_name }}
-          BROKERKIT_VERIFY_ONLY: "true"
-          BROKERKIT_VERIFY_RELEASE_SET: "true"
+          UNYOLO_VERIFY_ONLY: "true"
+          UNYOLO_VERIFY_RELEASE_SET: "true"
           COMPANION_BINARIES: ${{ needs.prepare.outputs.companions }}
           PATH_COMPANION_BINARIES: ${{ needs.prepare.outputs.path_companions }}
           GH_TOKEN: ${{ github.token }}

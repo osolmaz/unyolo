@@ -10,17 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/broker/conformance"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/operator/client"
-	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/broker/conformance"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/operator/client"
+	"github.com/osolmaz/unyolo/operator/v1"
 )
 
-func TestBrokerkitControlPlaneConformance(t *testing.T) {
+func TestUnyoloControlPlaneConformance(t *testing.T) {
 	clientSecret := "client-secret-abcdefghijklmnopqrstuvwxyz"
 	operatorSecret := "operator-secret-abcdefghijklmnopqrstuvwxyz"
 	server, _ := newOperatorTestServer(t, clientSecret, operatorSecret)

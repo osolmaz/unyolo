@@ -3,6 +3,6 @@
 package contract
 
 const (
-	OperatorV1Digest = "sha256:16e0a74cdbd2ca9d97be1b0d7782457108d6143a9197a703867c4e82f8d026c6"
-	AgentV1Digest    = "sha256:dedfef7e6b34e5058302c1c2eb379130b45905cdd9f220298d46ccabd248e876"
+	OperatorV1Digest = "sha256:71ade5d18161f35e4a0b3677e85470c484ef489352b68ca37de9cd3d553bfa8d"
+	AgentV1Digest    = "sha256:bdc7fc2230ea7db9ede54305f2adcb3e3c21451056e58f9467fd5dbcc4a3ddc7"
 )

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 )
 
 func (s *Server) enforceReceivePackBackstops(c echo.Context, authorized []authorizedReceivePackRequest) error {

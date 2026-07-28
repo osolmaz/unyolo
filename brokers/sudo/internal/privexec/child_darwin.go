@@ -6,8 +6,8 @@ import (
 	"errors"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/hostcheck"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
 )
 
 func executePlan(value plan.Plan) error {

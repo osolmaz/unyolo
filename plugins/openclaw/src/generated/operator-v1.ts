@@ -2,9 +2,9 @@
 import type { components } from "./openapi-operator-v1.js";
 
 export const OPERATOR_V1_SCHEMA_SHA256 =
-  "sha256:16e0a74cdbd2ca9d97be1b0d7782457108d6143a9197a703867c4e82f8d026c6";
+  "sha256:71ade5d18161f35e4a0b3677e85470c484ef489352b68ca37de9cd3d553bfa8d";
 export const operatorV1 = {
-  apiVersion: "brokerkit.io/operator/v1",
+  apiVersion: "unyolo.io/operator/v1",
   statuses: [
     "pending",
     "active",

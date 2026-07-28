@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/system-plan/v1/plan.schema.json",
-  "title": "BrokerKit canonical host plan",
+  "$id": "https://unyolo.io/schema/system-plan/v1/plan.schema.json",
+  "title": "unYOLO canonical host plan",
   "type": "object",
   "additionalProperties": false,
   "required": ["api_version", "deployment_name", "deployment_digest", "observed_fingerprint", "runtime_bundle_id", "kind", "actions", "components", "digest"],
   "properties": {
-    "api_version": { "const": "brokerkit.io/system-plan/v1" },
+    "api_version": { "const": "unyolo.io/system-plan/v1" },
     "deployment_name": { "type": "string", "minLength": 1, "maxLength": 64 },
     "deployment_digest": { "$ref": "#/$defs/digest" },
     "observed_fingerprint": { "$ref": "#/$defs/digest" },

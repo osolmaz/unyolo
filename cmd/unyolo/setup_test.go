@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	"github.com/osolmaz/brokerkit/deployment/session"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/session"
 )
 
 func TestSetupSessionStatusAndCancellation(t *testing.T) {
@@ -50,7 +50,7 @@ func TestSetupSessionStatusAndCancellation(t *testing.T) {
 func TestSetupDeploymentDirectory(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	path, err := setupDeploymentDirectory("test-host")
-	if err != nil || !strings.HasSuffix(path, filepath.Join("brokerkit", "deployments", "test-host")) {
+	if err != nil || !strings.HasSuffix(path, filepath.Join("unyolo", "deployments", "test-host")) {
 		t.Fatalf("setupDeploymentDirectory() = %q, %v", path, err)
 	}
 	if _, err := setupDeploymentDirectory("bad name"); err == nil {

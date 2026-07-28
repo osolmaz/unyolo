@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/keyfile"
-	"github.com/osolmaz/brokerkit/internal/securefile"
+	"github.com/osolmaz/unyolo/internal/keyfile"
+	"github.com/osolmaz/unyolo/internal/securefile"
 )
 
 const (

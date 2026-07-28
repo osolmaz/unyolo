@@ -9,22 +9,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/operation/runtime"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/v1"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/credentialauth"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/operation/runtime"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const operationAuthorizationGrace = 30 * time.Second
@@ -68,15 +68,15 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 	})
 }
 
-func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
+func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloauthorization.GrantIntent, error) {
 	adapter, descriptor, err := s.runtimePlanComponents(preparation.DescriptorName)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	mode := runtimeGrantMode(descriptor)
 	duration, pending, maxUses, err := preparationBounds(preparation, adapter, mode)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
@@ -85,23 +85,23 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkautho
 		MaxUses: maxUses, MaxUsesSpecified: true,
 	})
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	ruleIDs := runtimePolicyRuleIDs(preparation)
 	binding, err := runtimeCredentialBinding(s.credential)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	prepared, err := prepareAdapterPlan(preparation.Plan, request, adapter.Present(preparation.Plan),
 		string(preparation.Decision.Effect), ruleIDs, preparation.CreatedAt, binding)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	if !preparation.Direct {
 		hfplan.BindPrepared(&request, prepared)
 		hfplan.BindPresentation(&request, adapter.Present(preparation.Plan))
 	}
-	return bkauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+	return unyoloauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
 }
 
 func runtimeCredentialBinding(credential *providercredential.Service) (providercredential.Binding, error) {

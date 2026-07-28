@@ -9,17 +9,17 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/agent/mcp"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/mcp/operation"
-	"github.com/osolmaz/brokerkit/mcp/server"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/agent/mcp"
+	"github.com/osolmaz/unyolo/brokers/github/internal/mcpcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/mcpprojection"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/internal/storage/stream"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/mcp/operation"
+	"github.com/osolmaz/unyolo/mcp/server"
 )
 
 type mcpOperationInput struct {

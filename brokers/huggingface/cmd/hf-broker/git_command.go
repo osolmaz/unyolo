@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/osolmaz/brokerkit/git/client"
+	"github.com/osolmaz/unyolo/git/client"
 )
 
 func huggingFaceGitProvider() gitclient.Provider {

@@ -114,7 +114,7 @@ type Registry struct {
 }
 ```
 
-The Go API lives in `brokerkit/policy`, and brokers supply the registry values they pass into it.
+The Go API lives in `unyolo/policy`, and brokers supply the registry values they pass into it.
 The evaluator hard-codes no provider vocabulary, which is what keeps the shared core honest.
 
 ## Generated grants

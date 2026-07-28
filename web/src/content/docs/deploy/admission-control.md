@@ -3,7 +3,7 @@ title: Admission control
 description: Submission quotas, the defaults, the configuration file, and what stays available during overload.
 ---
 
-BrokerKit applies one admission controller before creating durable Agent V1 operations or approval
+unYOLO applies one admission controller before creating durable Agent V1 operations or approval
 notifications. It exists so that a looping agent cannot fill the operator inbox with thousands of
 pending approvals or exhaust the durable store.
 
@@ -73,7 +73,7 @@ active limit. Client override keys must exactly match configured authentication 
 
 The file is bounded to 64 KiB, and its path must be absolute and normalized.
 
-Failing startup rather than warning is consistent with how BrokerKit treats policy. A quota file
+Failing startup rather than warning is consistent with how unYOLO treats policy. A quota file
 with a typo in a client name silently applies the default limits to that client, which is exactly
 the surprise you do not want to discover during an incident.
 

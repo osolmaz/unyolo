@@ -34,8 +34,8 @@ func TestBuildSystemdActivationRejectsTCP(t *testing.T) {
 func TestBuildLaunchdActivation(t *testing.T) {
 	opts := SystemdOptions{BrokerName: "test-broker", User: "_test_broker", AgentUser: "bob", OperatorUser: "onur",
 		AgentAccessGroup: "test-agent", OperatorAccessGroup: "test-operator",
-		Endpoint: "unix:///var/run/brokerkit/test/agent/broker.sock"}
-	got, err := BuildLaunchdActivation(opts, "unix:///var/run/brokerkit/test/operator/broker.sock")
+		Endpoint: "unix:///var/run/unyolo/test/agent/broker.sock"}
+	got, err := BuildLaunchdActivation(opts, "unix:///var/run/unyolo/test/operator/broker.sock")
 	if err != nil {
 		t.Fatal(err)
 	}

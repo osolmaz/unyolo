@@ -14,7 +14,7 @@ const staleProbeTimeout = 200 * time.Millisecond
 func HTTPBaseURL(value Endpoint) (string, error) {
 	switch value.scheme {
 	case SchemeUnix:
-		return "http://brokerkit.local", nil
+		return "http://unyolo.local", nil
 	case SchemeTCP:
 		if value.exposure != ExposureLoopback {
 			return "", errors.New("direct TCP clients require a loopback endpoint")

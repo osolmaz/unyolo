@@ -1,4 +1,4 @@
-// Package layout defines the native BrokerKit host release layout.
+// Package layout defines the native unYOLO host release layout.
 package layout
 
 import (
@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	linuxRoot  = "/opt/brokerkit"
-	darwinRoot = "/Library/Application Support/BrokerKit"
+	linuxRoot  = "/opt/unyolo"
+	darwinRoot = "/Library/Application Support/unyolo"
 )
 
 // Root returns the production bundle root for the current operating system.

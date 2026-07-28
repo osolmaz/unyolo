@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/flow"
 )
 
 func TestAccessiblePromptSurface(t *testing.T) {

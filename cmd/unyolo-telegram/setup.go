@@ -14,20 +14,20 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
-	"github.com/osolmaz/brokerkit/internal/validatex"
-	"github.com/osolmaz/brokerkit/operator/client"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/approval/notifier/telegram"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
+	"github.com/osolmaz/unyolo/internal/validatex"
+	"github.com/osolmaz/unyolo/operator/client"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const (
-	ingressName       = "brokerkit-telegram"
-	ingressConfigDir  = "/etc/brokerkit-telegram"
-	ingressStateDir   = "/var/lib/brokerkit-telegram"
+	ingressName       = "unyolo-telegram"
+	ingressConfigDir  = "/etc/unyolo-telegram"
+	ingressStateDir   = "/var/lib/unyolo-telegram"
 	ingressSystemdDir = "/etc/systemd/system"
-	ingressUnitName   = "brokerkit-telegram.service"
+	ingressUnitName   = "unyolo-telegram.service"
 )
 
 type setupOptions struct {
@@ -43,7 +43,7 @@ type setupOptions struct {
 	DryRun               bool
 	NoStart              bool
 	AllowNonRoot         bool
-	Runner               bkservice.CommandRunner
+	Runner               unyoloservice.CommandRunner
 }
 
 type setupRoute struct {
@@ -57,9 +57,9 @@ func defaultSetupOptions() setupOptions {
 		User: ingressName, Group: ingressName, ConfigDir: ingressConfigDir,
 		StateDir: ingressStateDir, SystemdDir: ingressSystemdDir,
 		Routes: map[string]setupRoute{
-			telegram.RouteHuggingFace: {Endpoint: "unix:///run/brokerkit/huggingface/operator/broker.sock", AccessGroup: "hf-broker-operator"},
-			telegram.RouteGitHub:      {Endpoint: "unix:///run/brokerkit/github/operator/broker.sock", AccessGroup: "gh-broker-operator"},
-			telegram.RouteSudo:        {Endpoint: "unix:///run/brokerkit/sudo/operator/broker.sock", AccessGroup: "sudo-broker-operator"},
+			telegram.RouteHuggingFace: {Endpoint: "unix:///run/unyolo/huggingface/operator/broker.sock", AccessGroup: "hf-broker-operator"},
+			telegram.RouteGitHub:      {Endpoint: "unix:///run/unyolo/github/operator/broker.sock", AccessGroup: "gh-broker-operator"},
+			telegram.RouteSudo:        {Endpoint: "unix:///run/unyolo/sudo/operator/broker.sock", AccessGroup: "sudo-broker-operator"},
 		},
 	}
 }
@@ -82,12 +82,12 @@ func runSetup(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 
 func systemdSetupArgs(args []string) ([]string, error) {
 	if len(args) == 0 || args[0] != "systemd" {
-		return nil, errors.New("usage: brokerkit-telegram setup systemd --telegram-bot-token-file <path> --telegram-chat-id <id> [route flags]")
+		return nil, errors.New("usage: unyolo-telegram setup systemd --telegram-bot-token-file <path> --telegram-chat-id <id> [route flags]")
 	}
 	return args[1:], nil
 }
 
-func applyIngressInstall(ctx context.Context, opts setupOptions, plan bkservice.SystemdInstallPlan, stdout io.Writer) error {
+func applyIngressInstall(ctx context.Context, opts setupOptions, plan unyoloservice.SystemdInstallPlan, stdout io.Writer) error {
 	if opts.DryRun {
 		return writeIngressDryRun(opts, plan, stdout)
 	}
@@ -97,15 +97,15 @@ func applyIngressInstall(ctx context.Context, opts setupOptions, plan bkservice.
 	if os.Geteuid() != 0 && !opts.AllowNonRoot {
 		return errors.New("setup systemd must run as root")
 	}
-	if err := bkservice.InstallSystemd(ctx, plan); err != nil {
+	if err := unyoloservice.InstallSystemd(ctx, plan); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintf(stdout, "Installed %s with routes %s\n", ingressUnitName, strings.Join(configuredRoutes(opts), ","))
 	return err
 }
 
-func writeIngressDryRun(opts setupOptions, plan bkservice.SystemdInstallPlan, stdout io.Writer) error {
-	unit, err := bkservice.RenderSystemd(plan.Unit)
+func writeIngressDryRun(opts setupOptions, plan unyoloservice.SystemdInstallPlan, stdout io.Writer) error {
+	unit, err := unyoloservice.RenderSystemd(plan.Unit)
 	if err != nil {
 		return err
 	}
@@ -116,14 +116,14 @@ func writeIngressDryRun(opts setupOptions, plan bkservice.SystemdInstallPlan, st
 //nolint:cyclop // Setup parsing centralizes dependent flag defaults and production-path validation.
 func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	opts := defaultSetupOptions()
-	flags := flag.NewFlagSet("brokerkit-telegram setup systemd", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo-telegram setup systemd", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&opts.User, "user", opts.User, "system service user")
 	flags.StringVar(&opts.Group, "group", opts.Group, "system service group")
 	flags.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "managed configuration directory")
 	flags.StringVar(&opts.StateDir, "state-dir", opts.StateDir, "managed state directory")
 	flags.StringVar(&opts.SystemdDir, "systemd-dir", opts.SystemdDir, "systemd unit directory")
-	flags.StringVar(&opts.BinaryPath, "binary", opts.BinaryPath, "brokerkit-telegram executable")
+	flags.StringVar(&opts.BinaryPath, "binary", opts.BinaryPath, "unyolo-telegram executable")
 	flags.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	flags.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	bindRouteFlags(flags, opts.Routes, telegram.RouteHuggingFace, "hf")
@@ -138,12 +138,12 @@ func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	if flags.NArg() != 0 {
 		return setupOptions{}, errors.New("setup systemd does not accept positional arguments")
 	}
-	resolved, managed, err := bksetup.ResolveServiceExecutable(opts.BinaryPath, filepath.Join("bin", ingressName), opts.AllowNonRoot)
+	resolved, managed, err := unyolosetup.ResolveServiceExecutable(opts.BinaryPath, filepath.Join("bin", ingressName), opts.AllowNonRoot)
 	if err != nil {
 		return setupOptions{}, err
 	}
 	if os.Geteuid() == 0 && !opts.AllowNonRoot && !opts.DryRun && !managed {
-		return setupOptions{}, errors.New("production services must use the BrokerKit managed current release path")
+		return setupOptions{}, errors.New("production services must use the unYOLO managed current release path")
 	}
 	if managed && !opts.NoStart {
 		if _, err := filepath.EvalSymlinks(resolved); err != nil {
@@ -230,10 +230,10 @@ func configuredRoutes(opts setupOptions) []string {
 	return result
 }
 
-func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error) {
+func ingressInstallPlan(opts setupOptions) (unyoloservice.SystemdInstallPlan, error) {
 	botToken, err := readSecretFile(opts.TelegramBotTokenFile)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, fmt.Errorf("read Telegram bot token: %w", err)
+		return unyoloservice.SystemdInstallPlan{}, fmt.Errorf("read Telegram bot token: %w", err)
 	}
 	managedConfig := ingressConfig{
 		TelegramBotTokenFile: filepath.Join(opts.ConfigDir, "telegram-bot-token"),
@@ -244,12 +244,12 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 	}
 	inboxKey, err := existingOrGeneratedInboxKey(filepath.Join(opts.ConfigDir, "inbox-key"), opts.DryRun || opts.AllowNonRoot)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
-	files := []bkservice.ManagedFile{
-		{Area: bkservice.ManagedFileConfig, Name: "telegram-bot-token", Data: []byte(botToken + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"},
-		{Area: bkservice.ManagedFileConfig, Name: "inbox-key", Data: []byte(inboxKey + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-inbox"},
-		{Area: bkservice.ManagedFileConfig, Name: "env", Data: []byte("# managed by brokerkit-telegram\n"), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+	files := []unyoloservice.ManagedFile{
+		{Area: unyoloservice.ManagedFileConfig, Name: "telegram-bot-token", Data: []byte(botToken + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"},
+		{Area: unyoloservice.ManagedFileConfig, Name: "inbox-key", Data: []byte(inboxKey + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "telegram-inbox"},
+		{Area: unyoloservice.ManagedFileConfig, Name: "env", Data: []byte("# managed by unyolo-telegram\n"), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 	}
 	groups := make([]string, 0, len(opts.Routes))
 	readyClients := make([]*operatorclient.Client, 0, len(opts.Routes))
@@ -257,38 +257,38 @@ func ingressInstallPlan(opts setupOptions) (bkservice.SystemdInstallPlan, error)
 		source := opts.Routes[route]
 		token, readErr := readSecretFile(source.TokenFile)
 		if readErr != nil {
-			return bkservice.SystemdInstallPlan{}, fmt.Errorf("read route %q operator token: %w", route, readErr)
+			return unyoloservice.SystemdInstallPlan{}, fmt.Errorf("read route %q operator token: %w", route, readErr)
 		}
 		name := "operator-token-" + route
 		readyClient, clientErr := operatorclient.New(source.Endpoint, token, nil)
 		if clientErr != nil {
-			return bkservice.SystemdInstallPlan{}, fmt.Errorf("configure route %q readiness: %w", route, clientErr)
+			return unyoloservice.SystemdInstallPlan{}, fmt.Errorf("configure route %q readiness: %w", route, clientErr)
 		}
 		readyClients = append(readyClients, readyClient)
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: name, Data: []byte(token + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator-" + route})
+		files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: name, Data: []byte(token + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-operator-" + route})
 		managedConfig.Routes[route] = routeConfig{OperatorEndpoint: source.Endpoint, OperatorTokenFile: filepath.Join(opts.ConfigDir, name)}
 		groups = append(groups, source.AccessGroup)
 	}
 	configData, err := json.MarshalIndent(managedConfig, "", "  ")
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
 	configData = append(configData, '\n')
-	files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: "config.json", Data: configData, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot})
-	pathValidation := bkservice.PathValidationStrict
+	files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: "config.json", Data: configData, Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot})
+	pathValidation := unyoloservice.PathValidationStrict
 	if opts.DryRun || opts.AllowNonRoot {
-		pathValidation = bkservice.PathValidationPreview
+		pathValidation = unyoloservice.PathValidationPreview
 	}
-	unit := bkservice.SystemdUnit{
-		Description: "BrokerKit Telegram approval ingress", User: opts.User, Group: opts.Group,
+	unit := unyoloservice.SystemdUnit{
+		Description: "unYOLO Telegram approval ingress", User: opts.User, Group: opts.Group,
 		SupplementaryGroups: groups,
 		EnvironmentFile:     filepath.Join(opts.ConfigDir, "env"),
 		ExecStart:           opts.BinaryPath + " serve --config " + filepath.Join(opts.ConfigDir, "config.json"),
-		StateDir:            opts.StateDir, ConfigDir: opts.ConfigDir, HomeAccess: bkservice.HomeAccessDeny,
+		StateDir:            opts.StateDir, ConfigDir: opts.ConfigDir, HomeAccess: unyoloservice.HomeAccessDeny,
 		PathValidation:               pathValidation,
-		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, filepath.Join("bin", ingressName)),
+		ManagedExecutableDestination: unyolosetup.ManagedDestination(opts.BinaryPath, filepath.Join("bin", ingressName)),
 	}
-	return bkservice.SystemdInstallPlan{
+	return unyoloservice.SystemdInstallPlan{
 		User: opts.User, Group: opts.Group, AdditionalGroups: groups,
 		ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SystemdDir: opts.SystemdDir,
 		UnitName: ingressUnitName, Files: files, RemoveFiles: retiredRouteCredentials(opts), Unit: unit, NoStart: opts.NoStart,
@@ -305,10 +305,10 @@ func existingOrGeneratedInboxKey(path string, preview bool) (string, error) {
 	if !errors.Is(err, os.ErrNotExist) && !preview {
 		return "", fmt.Errorf("read existing Telegram inbox key: %w", err)
 	}
-	return bksetup.GenerateSecret()
+	return unyolosetup.GenerateSecret()
 }
 
-func ingressReadyCheck(clients []*operatorclient.Client) bkservice.ReadinessCheck {
+func ingressReadyCheck(clients []*operatorclient.Client) unyoloservice.ReadinessCheck {
 	return func(ctx context.Context) error {
 		for _, client := range clients {
 			descriptor, err := client.Discover(ctx)
@@ -320,11 +320,11 @@ func ingressReadyCheck(clients []*operatorclient.Client) bkservice.ReadinessChec
 	}
 }
 
-func retiredRouteCredentials(opts setupOptions) []bkservice.ManagedFileRef {
-	result := make([]bkservice.ManagedFileRef, 0, len(opts.Routes))
+func retiredRouteCredentials(opts setupOptions) []unyoloservice.ManagedFileRef {
+	result := make([]unyoloservice.ManagedFileRef, 0, len(opts.Routes))
 	for _, route := range []string{telegram.RouteHuggingFace, telegram.RouteGitHub, telegram.RouteSudo} {
 		if opts.Routes[route].TokenFile == "" {
-			result = append(result, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig,
+			result = append(result, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig,
 				Name: "operator-token-" + route, CredentialClass: "broker-operator-" + route})
 		}
 	}

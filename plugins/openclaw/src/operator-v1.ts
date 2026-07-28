@@ -80,13 +80,13 @@ export function parseUISnapshotEvent(value: unknown): SnapshotEvent {
 }
 
 export function parseUISummary(value: unknown): {
-  api_version: "brokerkit.io/operator-ui/v1";
+  api_version: "unyolo.io/operator-ui/v1";
   cursor: string;
   pending: number;
   healthy: boolean;
 } {
   return validated(validateUISummary, value) as {
-    api_version: "brokerkit.io/operator-ui/v1";
+    api_version: "unyolo.io/operator-ui/v1";
     cursor: string;
     pending: number;
     healthy: boolean;

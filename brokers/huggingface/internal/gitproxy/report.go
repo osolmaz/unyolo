@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/git/protocol"
+	"github.com/osolmaz/unyolo/git/protocol"
 )
 
 const defaultCascadeReason = "push refused by hf-broker because another ref failed"

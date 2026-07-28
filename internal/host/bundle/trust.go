@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/fsx"
+	"github.com/osolmaz/unyolo/internal/fsx"
 )
 
 const trustedKeyFilename = "trusted-release.pub"

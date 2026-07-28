@@ -14,7 +14,7 @@ Every broker exposes the same offline maintenance surface over its SQLite state:
 
 ## Stopping the service
 
-Maintenance commands acquire the BrokerKit state lease, which the running service holds. That is
+Maintenance commands acquire the unYOLO state lease, which the running service holds. That is
 the mechanism behind the requirement rather than a convention, so a command run against a live
 service fails rather than producing a torn result.
 
@@ -23,7 +23,7 @@ service fails rather than producing a torn result.
 These commands accept only the exact current SQLite schema. They never create, migrate, or convert
 a database while checking, backing up, or exporting it.
 
-That is consistent with how BrokerKit handles state format changes generally. A format change is an
+That is consistent with how unYOLO handles state format changes generally. A format change is an
 explicit replacement performed during bundle activation: the old service stops, its state directory
 is archived beside the original, and the candidate starts with fresh current-format state. Rollback
 restores the archive with the old executable. Runtime compatibility readers and mixed-format state
@@ -89,8 +89,8 @@ records. Retention is bounded, which is why an SSE cursor older than retained hi
 `410 cursor_expired` and the consumer has to refresh its list.
 
 The Telegram ingress keeps its own separate SQLite inbox at
-`/var/lib/brokerkit-telegram/callbacks.db`, encrypted with the key in
-`/etc/brokerkit-telegram/inbox-key`. It is not covered by the broker state commands, and losing the
+`/var/lib/unyolo-telegram/callbacks.db`, encrypted with the key in
+`/etc/unyolo-telegram/inbox-key`. It is not covered by the broker state commands, and losing the
 key while callbacks are pending makes those callbacks unreadable rather than falling back to
 plaintext.
 

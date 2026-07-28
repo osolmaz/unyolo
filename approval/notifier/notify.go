@@ -2,7 +2,7 @@
 package notify
 
 import (
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 // Action is an approval decision action.

@@ -29,7 +29,7 @@ func TestSecretFiles(t *testing.T) {
 func TestRenderClientJSON(t *testing.T) {
 	body, err := Render(Config{
 		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "bob",
-		Endpoint: "unix:///run/brokerkit/github/agent.sock", Secret: "secret-with-'quote'",
+		Endpoint: "unix:///run/unyolo/github/agent.sock", Secret: "secret-with-'quote'",
 	})
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
@@ -52,7 +52,7 @@ func TestWriteClientEnv(t *testing.T) {
 		BrokerName: "hf-broker",
 		EnvPrefix:  "HF_BROKER",
 		ClientID:   "agent-a",
-		Endpoint:   "unix:///run/brokerkit/huggingface/agent.sock",
+		Endpoint:   "unix:///run/unyolo/huggingface/agent.sock",
 		Secret:     "client-secret",
 		HomeDir:    home,
 	})
@@ -75,7 +75,7 @@ func TestWriteClientEnv(t *testing.T) {
 		t.Fatalf("read client env: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, `"agent_endpoint": "unix:///run/brokerkit/huggingface/agent.sock"`) ||
+	if !strings.Contains(text, `"agent_endpoint": "unix:///run/unyolo/huggingface/agent.sock"`) ||
 		!strings.Contains(text, `"shared_secret": "client-secret"`) {
 		t.Fatalf("client JSON is incomplete: %q", text)
 	}
@@ -87,7 +87,7 @@ func TestWriteForHomeOwnerWritesClientEnv(t *testing.T) {
 		BrokerName: "gh-broker",
 		EnvPrefix:  "GH_BROKER",
 		ClientID:   "agent-a",
-		Endpoint:   "unix:///run/brokerkit/github/agent.sock",
+		Endpoint:   "unix:///run/unyolo/github/agent.sock",
 		Secret:     "client-secret",
 		HomeDir:    home,
 	})
@@ -114,7 +114,7 @@ func TestWriteForHomeOwnerRejectsSymlinkedConfigPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := WriteForHomeOwner(Config{
-			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/brokerkit/github/agent.sock",
+			BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/unyolo/github/agent.sock",
 			Secret: "client-secret", HomeDir: home,
 		})
 		if err == nil {
@@ -134,7 +134,7 @@ func TestWriteForHomeOwnerRejectsSymlinkedHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := WriteForHomeOwner(Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/brokerkit/github/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/unyolo/github/agent.sock",
 		Secret: "client-secret", HomeDir: linkedHome,
 	})
 	if err == nil {
@@ -156,7 +156,7 @@ func TestWriteForHomeOwnerReplacesClientFileSymlinkInsideHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := WriteForHomeOwner(Config{
-		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/brokerkit/github/agent.sock",
+		BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", ClientID: "agent-a", Endpoint: "unix:///run/unyolo/github/agent.sock",
 		Secret: "client-secret", HomeDir: home,
 	}); err != nil {
 		t.Fatal(err)
@@ -243,11 +243,11 @@ func TestSecretsFromFileRejectsOversizedInput(t *testing.T) {
 
 func TestValidation(t *testing.T) {
 	cases := map[string]Config{
-		"bad broker":      {BrokerName: "../bad", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock", Secret: "s"},
-		"bad prefix":      {BrokerName: "gh-broker", EnvPrefix: "gh-broker", Endpoint: "unix:///run/brokerkit/github/agent.sock", Secret: "s"},
+		"bad broker":      {BrokerName: "../bad", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/unyolo/github/agent.sock", Secret: "s"},
+		"bad prefix":      {BrokerName: "gh-broker", EnvPrefix: "gh-broker", Endpoint: "unix:///run/unyolo/github/agent.sock", Secret: "s"},
 		"bad endpoint":    {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "http://127.0.0.1", Secret: "s"},
 		"server endpoint": {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "activation://agent", Secret: "s"},
-		"no secret":       {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/brokerkit/github/agent.sock"},
+		"no secret":       {BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", Endpoint: "unix:///run/unyolo/github/agent.sock"},
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {

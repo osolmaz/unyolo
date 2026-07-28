@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/component-deployment/v1/profile.schema.json",
-  "title": "BrokerKit component deployment resources",
+  "$id": "https://unyolo.io/schema/component-deployment/v1/profile.schema.json",
+  "title": "unYOLO component deployment resources",
   "type": "object",
   "additionalProperties": false,
   "required": ["api_version"],
   "properties": {
-    "api_version": { "enum": ["brokerkit.io/github-deployment/v1", "brokerkit.io/huggingface-deployment/v1", "brokerkit.io/sudo-deployment/v1", "brokerkit.io/telegram-deployment/v1", "brokerkit.io/openclaw-deployment/v1"] },
+    "api_version": { "enum": ["unyolo.io/github-deployment/v1", "unyolo.io/huggingface-deployment/v1", "unyolo.io/sudo-deployment/v1", "unyolo.io/telegram-deployment/v1", "unyolo.io/openclaw-deployment/v1"] },
     "accounts": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/account" } },
     "groups": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/group" } },
     "directories": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/directory" } },

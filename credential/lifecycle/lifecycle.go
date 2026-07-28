@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const Operation = "credential.lifecycle"

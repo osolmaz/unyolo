@@ -1,6 +1,6 @@
-# BrokerKit Threat Model
+# unYOLO Threat Model
 
-BrokerKit is a control-plane library for brokers that keep an upstream
+unYOLO is a control-plane library for brokers that keep an upstream
 credential or privilege boundary away from an untrusted client. It does not
 make a provider executor safe. Each broker remains responsible for parsing,
 classifying, validating, and executing its own operations.
@@ -20,7 +20,7 @@ classifying, validating, and executing its own operations.
 - The OpenClaw plugin is a trusted operator client. Its browser and outbound
   messages receive only the safe Operator V1 projection.
 - Provider executors, especially the sudo helper, are separate processes and
-  credential domains. BrokerKit code does not execute provider operations.
+  credential domains. unYOLO code does not execute provider operations.
 
 ## Protected Assets
 
@@ -109,7 +109,7 @@ classifying, validating, and executing its own operations.
 
 ## Explicit Non-Protections
 
-BrokerKit does not protect a machine where the broker account, state files,
+unYOLO does not protect a machine where the broker account, state files,
 operator secret, provider credential, or privileged helper endpoint is already
 compromised. It does not sandbox provider code, validate arbitrary shell
 strings, proxy arbitrary provider APIs, or replace host hardening and secret

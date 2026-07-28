@@ -3,7 +3,7 @@ title: Conformance tests
 description: What a broker must prove before it is trustworthy, and the shared suites that prove it.
 ---
 
-A broker built on BrokerKit inherits the control plane but not a guarantee that it wired it up
+A broker built on unYOLO inherits the control plane but not a guarantee that it wired it up
 correctly. The conformance suite exists to catch the difference. `broker/conformance` runs the
 shared contract against your real HTTP handlers, and every broker invokes it from its own tests.
 
@@ -12,7 +12,7 @@ shared contract against your real HTTP handlers, and every broker invokes it fro
 Seven properties, taken from the shared contract:
 
 - The broker registers only its own provider vocabulary.
-- Valid requests go through BrokerKit decisions rather than around them.
+- Valid requests go through unYOLO decisions rather than around them.
 - Malformed or unclassified requests fail closed before execution.
 - Deny overrides active grants.
 - Active grants match only the approved client, operation, target, attrs, duration, and use budget.
@@ -53,7 +53,7 @@ testable without sleeping.
 
 ## Failure drills
 
-Correct behaviour under normal load is the easy half. BrokerKit keeps deterministic drills beside
+Correct behaviour under normal load is the easy half. unYOLO keeps deterministic drills beside
 the boundary they exercise, and a new broker should expect to be held to the same list:
 
 | Failure class | Required invariant |
@@ -83,7 +83,7 @@ explicit decision re-enables them.
 
 ## Quality and release tooling
 
-`brokerkit-coverage` and `brokerkit-release` provide the common quality and release behaviour, so a
+`unyolo-coverage` and `unyolo-release` provide the common quality and release behaviour, so a
 new broker gets the same coverage gate and release asset conventions as the shipped three.
 
 The release shape is fixed: four platform archives plus `checksums.txt`, each archive containing

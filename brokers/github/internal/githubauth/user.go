@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (

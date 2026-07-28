@@ -4,11 +4,11 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
 )
 
 var baseCatalogAttributeNames = []string{

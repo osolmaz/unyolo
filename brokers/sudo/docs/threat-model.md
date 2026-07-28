@@ -7,7 +7,7 @@ argv as one pinned Unix identity. The agent is untrusted and must not be root or
 belong to a root-equivalent group such as `sudo`, `wheel`, `docker`, `lxd`, or
 `incus`.
 
-The unprivileged frontend is trusted to enforce BrokerKit authentication,
+The unprivileged frontend is trusted to enforce unYOLO authentication,
 policy, approval, plan binding, and reservation settlement. The root helper is
 trusted only for peer authentication, independent plan/catalog/identity/host
 validation, replay prevention, process isolation, and execution. A compromise

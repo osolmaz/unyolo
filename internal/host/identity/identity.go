@@ -1,4 +1,4 @@
-// Package identity inspects and plans safe BrokerKit agent identities.
+// Package identity inspects and plans safe unYOLO agent identities.
 package identity
 
 import (
@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/profile"
 )
 
 var (

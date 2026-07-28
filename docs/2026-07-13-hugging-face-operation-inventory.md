@@ -303,9 +303,9 @@ paths, content digests, and other operation-specific values.
 | `sandbox.pool.delete`  | `E/X`       | Close the pool and cancel its exact backing hosts.                                                |
 
 The CLI's interactive Sandbox shell, Job SSH, and Space SSH are not raw-token
-tools. BrokerKit may provide a bounded proxied session only through a dedicated
+tools. unYOLO may provide a bounded proxied session only through a dedicated
 session operation that keeps derived credentials inside the broker. Until that
-session adapter exists, these workflows are operator-only. BrokerKit does not
+session adapter exists, these workflows are operator-only. unYOLO does not
 expose arbitrary sandbox command execution through Agent V1, CLI, or MCP
 because command output could disclose sealed sandbox secrets.
 
@@ -470,7 +470,7 @@ agent tools.
 | Space application-specific HTTP/Gradio API                                   | `O` by default | May be enabled only through an operator-installed, versioned schema adapter for that exact Space. |
 
 Approval does not make credential exfiltration safe. Any future use case that
-needs a short-lived credential must consume it inside BrokerKit or place it into
+needs a short-lived credential must consume it inside unYOLO or place it into
 a sealed credential slot; it must not add a `token.get` operation.
 
 ## Official `HfApi` Coverage Ledger
@@ -530,7 +530,7 @@ operations. It is a transport style, not a second capability family.
 | `SandboxFiles`    | `read`, `read_text`, `write`, `upload`, `download`, `list`, `stat`, `exists`, `delete`, `mkdir`                                                                                           | Sandbox file operations.                                                                                                                                              |
 | `SandboxProcess`  | `kill`                                                                                                                                                                                    | `sandbox.process.kill`.                                                                                                                                               |
 | `HfFileSystem`    | `cp_file`, `exists`, `find`, `get_file`, `glob`, `info`, `isdir`, `isfile`, `ls`, `modified`, `resolve_path`, `rm`, `start_transaction`, `transaction`, `url`, `walk`, `invalidate_cache` | Repository/bucket read, copy, delete, and commit operations; cache invalidation and transaction objects are local helpers.                                            |
-| `CommitScheduler` | `push_to_hub`, `trigger`, `stop`                                                                                                                                                          | Repeated local composition over exact repository commit plans. Enabling a persistent schedule is operator-only until BrokerKit owns a durable typed schedule adapter. |
+| `CommitScheduler` | `push_to_hub`, `trigger`, `stop`                                                                                                                                                          | Repeated local composition over exact repository commit plans. Enabling a persistent schedule is operator-only until unYOLO owns a durable typed schedule adapter. |
 | Login/OIDC        | `login`, `logout`, `auth_switch`, `auth_list`, `interpreter_login`, `notebook_login`, `oidc_login`, `get_oidc_token`, `exchange_oidc_token`                                               | Local/operator-only credential bootstrap and sealed credential slots.                                                                                                 |
 | Webhook server    | `webhook_endpoint` and OAuth callback helpers                                                                                                                                             | Inbound application framework helpers, not remote Hugging Face operations.                                                                                            |
 

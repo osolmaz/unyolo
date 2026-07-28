@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	APIVersion    = "brokerkit.io/setup-flow/v1"
+	APIVersion    = "unyolo.io/setup-flow/v1"
 	MaxSteps      = 256
 	MaxOptions    = 512
 	MaxTextBytes  = 16 * 1024

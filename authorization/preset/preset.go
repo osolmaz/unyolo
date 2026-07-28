@@ -13,9 +13,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/slicex"
+	"github.com/osolmaz/unyolo/internal/slicex"
 
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 const (

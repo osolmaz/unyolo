@@ -1,6 +1,6 @@
 # Admission Control
 
-BrokerKit applies one admission controller before creating durable Agent V1
+unYOLO applies one admission controller before creating durable Agent V1
 operations or approval notifications. The defaults allow 60 submissions per
 client per minute, 25 active and 10 pending operations per client, 512 active
 operations globally, and 64 executing operations globally. Stream, sealed

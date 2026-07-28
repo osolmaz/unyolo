@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/deployment/profile"
 )
 
-const APIVersion = "brokerkit.io/system-plan/v1"
+const APIVersion = "unyolo.io/system-plan/v1"
 
 // Kind is the overall deployment result.
 type Kind string

@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 )
 
 const (

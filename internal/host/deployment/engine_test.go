@@ -17,14 +17,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/deployment/plan"
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
-	"github.com/osolmaz/brokerkit/deployment/transaction"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/internal/host/identity"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/deployment/plan"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/deployment/transaction"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/internal/host/identity"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 type fakeManager struct{}
@@ -38,16 +38,16 @@ func (fakeManager) Status(context.Context, string) (bundle.ServiceStatus, error)
 
 func TestBuildIdentityPlanCreatesOnlyMissingManagedAgents(t *testing.T) {
 	snapshot := profile.Snapshot{Deployment: profile.Deployment{
-		Agents: []profile.Agent{{ID: "agent", AccountMode: "managed", UnixUser: "brokerkit-agent", Home: "/var/lib/brokerkit-agent", Shell: "/usr/sbin/nologin"}},
+		Agents: []profile.Agent{{ID: "agent", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}},
 	}}
 	response, err := buildIdentityPlan(snapshot, map[string]identity.Account{"agent:agent": {Missing: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Actions) != 1 || response.Actions[0].Resource.Kind != "account" || response.Actions[0].Resource.ID != "brokerkit-agent" {
+	if len(response.Actions) != 1 || response.Actions[0].Resource.Kind != "account" || response.Actions[0].Resource.ID != "unyolo-agent" {
 		t.Fatalf("actions = %#v", response.Actions)
 	}
-	response, err = buildIdentityPlan(snapshot, map[string]identity.Account{"agent:agent": {Name: "brokerkit-agent"}})
+	response, err = buildIdentityPlan(snapshot, map[string]identity.Account{"agent:agent": {Name: "unyolo-agent"}})
 	if err != nil || len(response.Actions) != 0 {
 		t.Fatalf("existing account plan = %#v, %v", response.Actions, err)
 	}
@@ -268,7 +268,7 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 	planned := Planned{
 		Snapshot: profile.Snapshot{
 			Deployment: profile.Deployment{
-				Agents:     []profile.Agent{{ID: "agent", UnixUser: "brokerkit-agent", AccountMode: "managed", Home: "/var/lib/brokerkit-agent", Shell: "/usr/sbin/nologin"}},
+				Agents:     []profile.Agent{{ID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}},
 				Components: []profile.Component{{ID: "github"}},
 			},
 			Manifest: bundle.Manifest{Components: []bundle.Component{{Name: "github", Services: []string{"gh-broker.service"}}}},
@@ -316,7 +316,7 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 }
 
 func TestDeleteManagedAgentRejectsUnknownHandle(t *testing.T) {
-	agent := profile.Agent{UnixUser: "missing-brokerkit-agent", Home: "/home/missing-brokerkit-agent", Shell: "/usr/sbin/nologin"}
+	agent := profile.Agent{UnixUser: "missing-unyolo-agent", Home: "/home/missing-unyolo-agent", Shell: "/usr/sbin/nologin"}
 	if err := deleteManagedAgent(t.Context(), agent, "retained"); err == nil {
 		t.Fatal("unknown managed-agent rollback handle was accepted")
 	}
@@ -399,10 +399,10 @@ func engineTestPack(t *testing.T) string {
 	writeEngineFile(t, filepath.Join(pack, "runtime", "manifest.json"), manifestData)
 	writeEngineFile(t, filepath.Join(pack, "runtime", "manifest.sig"), []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(private, manifestData))))
 	writeEngineFile(t, filepath.Join(pack, "runtime", "release.pub"), []byte(base64.StdEncoding.EncodeToString(public)))
-	writeEngineFile(t, filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"brokerkit.io/fake-deployment/v1"}`))
+	writeEngineFile(t, filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"unyolo.io/fake-deployment/v1"}`))
 
 	deployment := map[string]any{
-		"api_version": "brokerkit.io/host-deployment/v1", "name": "engine-host",
+		"api_version": "unyolo.io/host-deployment/v1", "name": "engine-host",
 		"runtime": map[string]any{
 			"manifest":   engineRef("runtime/manifest.json", manifestData),
 			"signature":  engineRefFile(t, pack, "runtime/manifest.sig"),

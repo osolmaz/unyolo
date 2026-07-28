@@ -88,7 +88,7 @@ megabytes at a time":
 
 Two rules about attrs cause most of the confusion, so they are worth stating plainly.
 
-**Attr names are exact.** BrokerKit applies no aliases. `ref` and `refs` are different attrs, and
+**Attr names are exact.** unYOLO applies no aliases. `ref` and `refs` are different attrs, and
 so are `path` and `paths`. A broker must classify and normalize provider input into the names it
 registered before calling the policy core.
 
@@ -143,7 +143,7 @@ A GitHub push to a feature branch becomes this tuple:
 ```text
 client:    agent-a
 operation: git.push.fast_forward
-target:    {"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}
+target:    {"kind": "repo", "owner": "osolmaz", "name": "unyolo"}
 attrs:     {"refs": ["refs/heads/agent-a/parser-fix"]}
 ```
 

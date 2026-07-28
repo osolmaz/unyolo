@@ -7,12 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/authorization/decision"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/broker/controlplane"
-	"github.com/osolmaz/brokerkit/operator/api"
-	"github.com/osolmaz/brokerkit/operator/client"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/decision"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/broker/controlplane"
+	"github.com/osolmaz/unyolo/operator/api"
+	"github.com/osolmaz/unyolo/operator/client"
 )
 
 // Options configures a fake server with production handlers and storage behavior.

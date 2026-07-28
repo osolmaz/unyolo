@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
 )
 
 func TestParseOptions(t *testing.T) {

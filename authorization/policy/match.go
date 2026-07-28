@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/copyx"
+	"github.com/osolmaz/unyolo/internal/copyx"
 )
 
 const (

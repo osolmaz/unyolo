@@ -62,10 +62,10 @@ GitHub operations must be replaced during this cutover. Those actions are not
 categorically unsupported. They are separately typed, explicit-only, one-use,
 high- or critical-risk operations that require matching policy and approval.
 
-## Shared BrokerKit Extraction
+## Shared unYOLO Extraction
 
 Do not copy HF Broker's generic operation machinery into GH Broker. Before the
-GitHub catalog lands, extract the provider-neutral parts into root BrokerKit
+GitHub catalog lands, extract the provider-neutral parts into root unYOLO
 packages and migrate HF Broker to them without changing behavior.
 
 The shared boundary owns:
@@ -115,7 +115,7 @@ to compile, test, or validate a release.
    945 of which declare `x-github.enabledForGitHubApps: true`.
 2. Use the stable OpenAPI 3.0 bundle as the upstream fidelity artifact because
    GitHub describes `descriptions-next` OpenAPI 3.1 as subject to breaking
-   changes. Generate BrokerKit-owned closed JSON Schema 2020-12/OpenAPI 3.1
+   changes. Generate unYOLO-owned closed JSON Schema 2020-12/OpenAPI 3.1
    operation schemas from the pinned stable input.
 3. Pin a full GitHub GraphQL introspection result and schema fingerprint. The
    2026-07-14 live schema exposes 32 root query fields and 252 root mutation
@@ -127,7 +127,7 @@ to compile, test, or validate a release.
    [GitHub App endpoint-permission matrix](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps)
    and API-version documentation used to classify app JWT, installation access
    token, and user access token support. GitHub App permissions remain an
-   upstream ceiling; BrokerKit policy can only narrow them.
+   upstream ceiling; unYOLO policy can only narrow them.
 5. Pin webhook event schemas used for installation changes, authorization
    revocation, repository transfers/deletion, workflow completion, and other
    reconciliation signals.
@@ -176,7 +176,7 @@ of a cataloged read operation, not counted as separate agent operations.
 
 ## Canonical Operation Catalog
 
-Add `brokers/github/internal/opcatalog` using the shared BrokerKit descriptor
+Add `brokers/github/internal/opcatalog` using the shared unYOLO descriptor
 and registry validation extracted from HF. One sorted `catalog.json` is the
 provider-owned source for policy, Agent V1, MCP, CLI, operator presentation,
 documentation, and runtime dispatch.
@@ -290,7 +290,7 @@ Default policy behavior remains fail-closed:
   secret, credential-vending, and organization/enterprise administration
   operations are explicit-only and one-use;
 - explicit-only operations cannot match `*` or family globs; and
-- an upstream GitHub permission never substitutes for BrokerKit policy.
+- an upstream GitHub permission never substitutes for unYOLO policy.
 
 GitHub rulesets, branch protection, required reviews, environments, and other
 native controls remain an independent upstream enforcement layer. GH Broker
@@ -325,7 +325,7 @@ validation/parsing, and API error classification. Wrap it behind GH-owned
 interfaces with deadlines, response limits, redirect policy, redaction,
 deterministic clocks, and GitHub Enterprise base-URL validation. The SDK does
 not define operation coverage and must not leak its types into policy or shared
-BrokerKit packages.
+unYOLO packages.
 
 Delete the replaced JWT, installation-token, pagination, and narrow REST code
 in `internal/githubapp` and `internal/githubapi` in the same cutover. Do not
@@ -452,7 +452,7 @@ credentials and are never vendable agent operations.
 
 ## Generic Agent Lifecycle
 
-Register GH adapters with the extracted BrokerKit operation runtime. Use the
+Register GH adapters with the extracted unYOLO operation runtime. Use the
 same lifecycle as HF for allow, request, deny, cancellation, approval,
 execution, reconciliation, restart recovery, idempotency, outbox notification,
 and audit. Delete `pullRequest*` submission, authorization, worker, and result
@@ -524,7 +524,7 @@ advertised as an MCP tool.
 Operator presentation must show the exact GitHub resource, operation, risk,
 meaningful argument changes, immutable preconditions, credential attribution,
 expiry, and one-use semantics. Secrets, raw request bodies, diffs beyond strict
-bounds, tokens, and upstream headers remain hidden. Telegram and the BrokerKit
+bounds, tokens, and upstream headers remain hidden. Telegram and the unYOLO
 web inbox decide the same durable request.
 
 ## GitHub App Permission Profiles
@@ -802,7 +802,7 @@ The implementation now provides:
 
 - generated closed schemas, CLI commands, MCP tools, capability documents, and
   runtime bindings from one provider-owned catalog;
-- the shared BrokerKit operation lifecycle for GH and HF, including SQLite
+- the shared unYOLO operation lifecycle for GH and HF, including SQLite
   durability, Telegram and operator-inbox decisions, use budgets, sealed
   inputs, credential outputs, streams, restart recovery, and reconciliation;
 - narrowed `ghinstallation` transports and typed `go-github` operations with
@@ -827,5 +827,5 @@ The complete local Go, race, aggregate coverage, static analysis,
 vulnerability, secret, Slophammer, OpenClaw unit, build, packed-install, and
 cross-browser Playwright gates pass. Successful destructive-operation testing
 still requires a deployment credential that GitHub has granted the
-corresponding destructive permission; BrokerKit correctly treats that
+corresponding destructive permission; unYOLO correctly treats that
 upstream permission as a ceiling rather than bypassing it.
