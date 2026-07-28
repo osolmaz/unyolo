@@ -20,9 +20,6 @@ const (
 	defaultMaxGrantMinutes  = 60
 	absoluteMaxGrantMinutes = 7 * 24 * 60
 	defaultRequestTTL       = 5
-	defaultGrantUses        = 1
-	defaultMaxGrantUses     = 25
-	absoluteMaxGrantUses    = 1_000_000
 )
 
 type rawPolicy struct {
@@ -366,14 +363,17 @@ func defaultGrantPolicy(grantPolicy *GrantPolicy, defaultUsesSpecified, maxUsesS
 	if grantPolicy.RequestTTLMinutes == 0 {
 		grantPolicy.RequestTTLMinutes = defaultRequestTTL
 	}
-	if !defaultUsesSpecified {
-		grantPolicy.DefaultMaxUses = defaultGrantUses
+	maximumUses := maximumFiniteGrantUses(operations, registry)
+	if GrantMode(grantPolicy.Mode) == GrantModeExecution {
+		maximumUses = usebudget.SingleUse
 	}
 	if !maxUsesSpecified {
-		if GrantMode(grantPolicy.Mode) == GrantModeExecution {
-			grantPolicy.MaxUses = defaultGrantUses
-		} else {
-			grantPolicy.MaxUses = min(usebudget.Limit(defaultMaxGrantUses), maximumFiniteGrantUses(operations, registry))
+		grantPolicy.MaxUses = maximumUses
+	}
+	if !defaultUsesSpecified {
+		grantPolicy.DefaultMaxUses = grantPolicy.MaxUses
+		if grantPolicy.DefaultMaxUses.IsUnlimited() {
+			grantPolicy.DefaultMaxUses = maximumUses
 		}
 	}
 }
@@ -406,14 +406,14 @@ func validateGrantPolicyMinutes(grantPolicy GrantPolicy) error {
 
 func validateGrantPolicyUses(grantPolicy GrantPolicy) error {
 	if grantPolicy.MaxUses.IsUnlimited() {
-		if !grantPolicy.DefaultMaxUses.IsFinite() || grantPolicy.DefaultMaxUses > defaultMaxGrantUses {
-			return fmt.Errorf("default_max_uses must be between 1 and %d", defaultMaxGrantUses)
+		if !grantPolicy.DefaultMaxUses.IsFinite() || grantPolicy.DefaultMaxUses > usebudget.MaxFiniteUses {
+			return fmt.Errorf("default_max_uses must be between 1 and %d", usebudget.MaxFiniteUses)
 		}
 		return nil
 	}
 	return validateDefaultWithinMax(
 		"default_max_uses", int(grantPolicy.DefaultMaxUses),
-		"max_uses", int(grantPolicy.MaxUses), absoluteMaxGrantUses,
+		"max_uses", int(grantPolicy.MaxUses), int(usebudget.MaxFiniteUses),
 	)
 }
 
@@ -445,7 +445,7 @@ func maximumGrantMinutes(operations []string, registry Registry) int {
 }
 
 func maximumFiniteGrantUses(operations []string, registry Registry) usebudget.Limit {
-	maximum := usebudget.Limit(absoluteMaxGrantUses)
+	maximum := usebudget.MaxFiniteUses
 	for _, operation := range operations {
 		maximum = min(maximum, effectiveMaxGrantUses(registry.Operations[operation]))
 	}
@@ -466,7 +466,7 @@ func effectiveMaxGrantUses(spec OperationSpec) usebudget.Limit {
 	if spec.MaxGrantUses > 0 {
 		return spec.MaxGrantUses
 	}
-	return defaultMaxGrantUses
+	return usebudget.MaxFiniteUses
 }
 
 func validateDefaultWithinMax(defaultName string, defaultValue int, maxName string, maxValue int, maxLimit int) error {

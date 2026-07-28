@@ -26,6 +26,14 @@ would otherwise be allow or request. Catalog validation also prevents
 high-risk, critical, execution-scoped, explicit-only, or sealed operations from
 defaulting to `allow`.
 
+Reusable window grants in this preset default to their catalog ceiling. Routine
+repository and bucket operations allow up to `1000000` uses for up to seven
+days, which avoids repeated approval during large uploads and artifact runs.
+`git.push.force`, `git.ref.delete`, and `git.tag.update` remain capped at 25
+uses for one hour. Execution-scoped operations remain single-use. Every grant
+keeps the exact client, operation, target, and attribute scope that was
+approved.
+
 An operator can hard-deny additional exact operations:
 
 ```sh

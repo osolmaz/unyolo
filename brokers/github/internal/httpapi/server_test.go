@@ -1655,7 +1655,7 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planGrantCreate() error = %v", err)
 	}
-	if plan.request.Client != "bob" || plan.maxUses != 1 || plan.duration != 5*time.Minute {
+	if plan.request.Client != "bob" || plan.maxUses != 25 || plan.duration != 5*time.Minute {
 		t.Fatalf("plan = %+v, want requestable bob grant", plan)
 	}
 	notRequestable := `{"client_request_id":"request-2","operation":"git.fetch","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"reason":"fetch"}`

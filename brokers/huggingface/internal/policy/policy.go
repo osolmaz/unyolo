@@ -24,8 +24,7 @@ const (
 	DefaultGrantMinutes    = 5
 	MaxGrantMinutes        = 7 * 24 * 60
 	MaxRequestTTLMinutes   = 60
-	DefaultGrantUses       = 1
-	MaxGrantUses           = 25
+	MaxGrantUses           = usebudget.MaxFiniteUses
 	DefaultRequestTTL      = 5
 	MaxRules               = 1000
 	MaxTargetsPerRule      = 50
@@ -1318,7 +1317,7 @@ func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode, operations
 		return GrantPolicy{}, err
 	}
 	assignGrantPolicyInts(&policy, raw)
-	defaultGrantMaxUses(&policy, raw)
+	defaultGrantMaxUses(&policy, raw, operations)
 	if err := validateGrantDurationPolicy(policy, operations); err != nil {
 		return GrantPolicy{}, err
 	}
@@ -1329,13 +1328,17 @@ func normalizeGrantPolicy(raw *rawGrantPolicy, defaultMode GrantMode, operations
 }
 
 func defaultGrantPolicy(mode GrantMode, operations []Operation) GrantPolicy {
+	maxUses := maxGrantUsesForOperations(operations)
+	if mode == GrantModeExecution {
+		maxUses = usebudget.SingleUse
+	}
 	return GrantPolicy{
 		Mode:              mode,
 		DefaultMinutes:    DefaultGrantMinutes,
 		MaxMinutes:        maxGrantMinutesForOperations(operations),
 		RequestTTLMinutes: DefaultRequestTTL,
-		DefaultMaxUses:    DefaultGrantUses,
-		MaxUses:           DefaultGrantUses,
+		DefaultMaxUses:    maxUses,
+		MaxUses:           maxUses,
 	}
 }
 
@@ -1364,9 +1367,13 @@ func assignGrantPolicyInts(policy *GrantPolicy, raw *rawGrantPolicy) {
 	}
 }
 
-func defaultGrantMaxUses(policy *GrantPolicy, raw *rawGrantPolicy) {
-	if !raw.MaxUses.Specified {
-		policy.MaxUses = policy.DefaultMaxUses
+func defaultGrantMaxUses(policy *GrantPolicy, raw *rawGrantPolicy, operations []Operation) {
+	if raw.DefaultMaxUses.Specified {
+		return
+	}
+	policy.DefaultMaxUses = policy.MaxUses
+	if policy.DefaultMaxUses.IsUnlimited() {
+		policy.DefaultMaxUses = maxGrantUsesForOperations(operations)
 	}
 }
 
@@ -1391,9 +1398,19 @@ func maxGrantMinutesForOperations(operations []Operation) int {
 }
 
 func executionGrantPolicy(policy GrantPolicy) GrantPolicy {
-	policy.DefaultMaxUses = 1
-	policy.MaxUses = 1
+	policy.DefaultMaxUses = usebudget.SingleUse
+	policy.MaxUses = usebudget.SingleUse
 	return policy
+}
+
+func maxGrantUsesForOperations(operations []Operation) usebudget.Limit {
+	maximum := usebudget.MaxFiniteUses
+	for _, operation := range operations {
+		if descriptor, found := opcatalog.ByName(string(operation)); found {
+			maximum = min(maximum, usebudget.Limit(descriptor.MaxUses))
+		}
+	}
+	return maximum
 }
 
 func validateGrantUsePolicy(policy GrantPolicy) error {
@@ -1404,8 +1421,8 @@ func validateGrantUsePolicy(policy GrantPolicy) error {
 		return nil
 	}
 	return validateGrantPolicyBounds([]grantPolicyBound{
-		{value: int(policy.DefaultMaxUses), min: 1, max: MaxGrantUses, message: "default_max_uses must be between 1 and %d"},
-		{value: int(policy.MaxUses), min: int(policy.DefaultMaxUses), max: MaxGrantUses, message: "max_uses must be between default_max_uses and %d"},
+		{value: int(policy.DefaultMaxUses), min: 1, max: int(MaxGrantUses), message: "default_max_uses must be between 1 and %d"},
+		{value: int(policy.MaxUses), min: int(policy.DefaultMaxUses), max: int(MaxGrantUses), message: "max_uses must be between default_max_uses and %d"},
 	})
 }
 

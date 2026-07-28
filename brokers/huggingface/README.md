@@ -282,7 +282,13 @@ use budget against the exact matched policy rule before creating an approval.
 Grantable git capabilities are `git.push.force` for history rewrites,
 `git.ref.delete` for non-tag branch/ref deletion, and `git.tag.update` for
 moving or deleting tags. Each one must be enabled separately with a
-`"effect": "request"` rule in `scope.json`:
+`"effect": "request"` rule in `scope.json`.
+
+The default preset gives routine reusable repository and bucket operations a
+`1000000`-use, seven-day ceiling and uses that ceiling as the default. This
+supports large uploads without widening the approved operation, target, or
+attrs. Force pushes, ref deletions, and tag updates stay capped at 25 uses for
+one hour. Execution grants stay single-use.
 
 ```json
 {

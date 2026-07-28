@@ -60,7 +60,7 @@ func TestGrantSnapshotPersistsCompleteLifecycle(t *testing.T) {
 			Operation: "repo.create", TargetJSON: []byte(`{"kind":"hf"}`), AttrsJSON: []byte(`{}`), MetadataJSON: []byte(`{}`),
 			PlanDigest: plan.Digest, Reason: "test", Status: "pending", Revision: 1, CreatedAt: now,
 			PendingExpiresAt: now.Add(time.Minute), Duration: 5 * time.Minute, RequestedDuration: 10 * time.Minute,
-			PendingTimeout: time.Minute, MaxUses: testIntPointer(2), RequestedMaxUses: testIntPointer(3), NotificationJSON: []byte(`{"chat_id":1}`),
+			PendingTimeout: time.Minute, MaxUses: testIntPointer(1_000_000), RequestedMaxUses: testIntPointer(1_000_000), NotificationJSON: []byte(`{"chat_id":1}`),
 			NotificationStatus: "pending",
 		}},
 		Events: []GrantLifecycleRecord{
@@ -80,7 +80,7 @@ func TestGrantSnapshotPersistsCompleteLifecycle(t *testing.T) {
 	if err != nil || len(stored.Grants) != 1 || len(stored.Events) != 2 || len(stored.Decisions) != 1 || len(stored.Outbox) != 1 {
 		t.Fatalf("GrantSnapshot() = %+v, %v", stored, err)
 	}
-	if stored.Outbox[0].ID < 1 || stored.Grants[0].PlanDigest != plan.Digest {
+	if stored.Outbox[0].ID < 1 || stored.Grants[0].PlanDigest != plan.Digest || *stored.Grants[0].MaxUses != 1_000_000 || *stored.Grants[0].RequestedMaxUses != 1_000_000 {
 		t.Fatalf("stored grant/outbox = %+v / %+v", stored.Grants[0], stored.Outbox[0])
 	}
 

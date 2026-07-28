@@ -22,8 +22,8 @@ const (
 	DefaultPendingTimeout     = 10 * time.Minute
 	DefaultDuration           = 5 * time.Minute
 	MaxDuration               = 7 * 24 * time.Hour
-	DefaultMaxUses            = 1
-	MaxUses                   = 25
+	DefaultMaxUses            = int(usebudget.MaxFiniteUses)
+	MaxUses                   = int(usebudget.MaxFiniteUses)
 	DefaultReservationTimeout = 5 * time.Minute
 
 	ModeWindow    = "window"
@@ -202,7 +202,7 @@ func normalizeGrant(input Input) (string, time.Duration, usebudget.Limit, error)
 	if err != nil {
 		return "", 0, 0, err
 	}
-	maxUses, err := normalizeMaxUses(input.MaxUses, input.MaxUsesSpecified)
+	maxUses, err := normalizeMaxUses(input.MaxUses, input.MaxUsesSpecified, mode)
 	if err != nil {
 		return "", 0, 0, err
 	}
@@ -235,12 +235,15 @@ func normalizeDuration(duration time.Duration) (time.Duration, error) {
 	return duration, nil
 }
 
-func normalizeMaxUses(maxUses int, specified bool) (usebudget.Limit, error) {
+func normalizeMaxUses(maxUses int, specified bool, mode string) (usebudget.Limit, error) {
 	if maxUses < 0 {
 		return 0, errors.New("grant max uses must be positive")
 	}
 	if maxUses == 0 && !specified {
-		return DefaultMaxUses, nil
+		if mode == ModeExecution {
+			return usebudget.SingleUse, nil
+		}
+		return usebudget.Limit(DefaultMaxUses), nil
 	}
 	if maxUses > MaxUses {
 		return 0, fmt.Errorf("grant max uses exceeds %d", MaxUses)

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestParseValidatesRegistryVocabulary(t *testing.T) {
@@ -973,6 +975,54 @@ func TestRejectsGeneratedGrantWildcardByConstruction(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsMaximumFiniteReusableGrant(t *testing.T) {
+	policy, err := Parse([]byte(`{"rules":[{
+		"id":"high-volume","effect":"request","clients":["agent"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"mode":"window","default_max_uses":1,"max_uses":1000000}
+	}]}`), testRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := policy.Decide(Request{Client: "agent", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.MaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("decision = %+v", decision)
+	}
+	grant := Grant{ID: "million", Client: "agent", Operation: "session.shell",
+		Target:    Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
+		ExpiresAt: time.Now().Add(time.Hour), UsesLeft: int(usebudget.MaxFiniteUses)}
+	matching := Request{Client: "agent", Operation: "session.shell", Target: grant.Target}
+	if allowed := policy.Decide(matching, DecisionOptions{ActiveGrants: []Grant{grant}}); !allowed.Allowed || allowed.GrantID != grant.ID {
+		t.Fatalf("matching decision = %+v", allowed)
+	}
+	otherTarget := matching
+	otherTarget.Target = Target{Kind: "user", Fields: map[string][]string{"name": {"production"}}}
+	if widened := policy.Decide(otherTarget, DecisionOptions{ActiveGrants: []Grant{grant}}); widened.Allowed {
+		t.Fatalf("million-use grant widened target scope: %+v", widened)
+	}
+	otherOperation := matching
+	otherOperation.Operation = "git.fetch"
+	otherOperation.Target = Target{Kind: "repo", Fields: map[string][]string{"owner": {"acme"}, "name": {"repo"}}}
+	if widened := policy.Decide(otherOperation, DecisionOptions{ActiveGrants: []Grant{grant}}); widened.Allowed {
+		t.Fatalf("million-use grant widened operation scope: %+v", widened)
+	}
+}
+
+func TestParseDefaultsReusableGrantToOperationCeiling(t *testing.T) {
+	policy, err := Parse([]byte(`{"rules":[{
+		"id":"default-high-volume","effect":"request","clients":["agent"],
+		"operations":["session.shell"],"targets":[{"kind":"user","name":"deploy"}],
+		"grant_policy":{"mode":"window"}
+	}]}`), testRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := policy.Decide(Request{Client: "agent", Operation: "session.shell", Target: Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}}}, DecisionOptions{ForGrantRequest: true})
+	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != usebudget.MaxFiniteUses || decision.GrantPolicy.MaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("decision = %+v", decision)
+	}
+}
+
 func TestParseRejectsInvalidGrantPolicies(t *testing.T) {
 	cases := []struct {
 		name string
@@ -986,7 +1036,7 @@ func TestParseRejectsInvalidGrantPolicies(t *testing.T) {
 		{name: "bad request ttl", body: `"effect":"request","grant_policy":{"request_ttl_minutes":-1}`},
 		{name: "too much request ttl", body: `"effect":"request","grant_policy":{"request_ttl_minutes":61}`},
 		{name: "bad uses", body: `"effect":"request","grant_policy":{"default_max_uses":2,"max_uses":1}`},
-		{name: "too many uses", body: `"effect":"request","grant_policy":{"default_max_uses":25,"max_uses":26}`},
+		{name: "too many uses", body: `"effect":"request","grant_policy":{"default_max_uses":1000000,"max_uses":1000001}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

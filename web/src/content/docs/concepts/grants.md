@@ -55,9 +55,12 @@ bounded time and a use budget:
 ```
 
 `default_max_uses` is always a positive finite default. `max_uses` is either a positive finite
-ceiling or `null`. Setting it to `null` permits a caller to request unlimited uses, which are still
-bounded by the required expiry, so "unlimited" means unlimited within the window rather than
-unlimited full stop. Omitting a requested `max_uses` selects the finite default.
+ceiling no greater than `1000000`, or `null`. Providers may impose a lower operation-specific
+limit. Setting it to `null` permits a caller to request unlimited uses, which are still bounded by
+the required expiry, so "unlimited" means unlimited within the window rather than unlimited full
+stop. Omitting a requested `max_uses` selects the finite default. When a reusable policy omits
+both use fields, they default to the lowest provider ceiling among its operations. Execution
+grants always default to and require one use.
 
 ## Execution grants
 

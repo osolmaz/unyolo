@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 )
 
@@ -380,7 +381,7 @@ func TestPolicyDeduplicatesRepeatedOperations(t *testing.T) {
 	}
 }
 
-func TestRequestGrantPolicyIsSingleUse(t *testing.T) {
+func TestRoutineRepositoryWriteUsesHighVolumeGrantBounds(t *testing.T) {
 	t.Parallel()
 	data, err := corePolicyJSON(Scope{Rules: []Rule{
 		{
@@ -402,8 +403,27 @@ func TestRequestGrantPolicyIsSingleUse(t *testing.T) {
 		t.Fatalf("core rules = %+v, want one request rule with grant policy", doc.Rules)
 	}
 	grantPolicy := doc.Rules[0].GrantPolicy
-	if grantPolicy.DefaultMaxUses != 1 || grantPolicy.MaxUses != 1 {
-		t.Fatalf("grant uses = default %d max %d, want 1/1", grantPolicy.DefaultMaxUses, grantPolicy.MaxUses)
+	if grantPolicy.DefaultMaxUses != usebudget.MaxFiniteUses || grantPolicy.MaxUses != usebudget.MaxFiniteUses || grantPolicy.MaxMinutes != routineWindowMaxMinutes {
+		t.Fatalf("grant policy = %+v, want routine repository bounds", grantPolicy)
+	}
+}
+
+func TestSensitiveRepositoryWriteKeepsNarrowGrantBounds(t *testing.T) {
+	t.Parallel()
+	data, err := corePolicyJSON(Scope{Rules: []Rule{{
+		ID: "request-force-push", Effect: EffectRequest, Clients: []string{"agent"}, Operations: []Operation{OperationGitPushForce},
+		Targets: []Target{{Kind: "repo", Owner: "acme", Name: "repo"}}, Attrs: map[string][]string{"refs": {"refs/heads/main"}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc coreDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	grantPolicy := doc.Rules[0].GrantPolicy
+	if grantPolicy == nil || grantPolicy.DefaultMaxUses != sensitiveWindowMaxUses || grantPolicy.MaxUses != sensitiveWindowMaxUses || grantPolicy.MaxMinutes != sensitiveWindowMaxMinutes {
+		t.Fatalf("grant policy = %+v, want sensitive repository bounds", grantPolicy)
 	}
 }
 

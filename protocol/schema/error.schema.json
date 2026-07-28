@@ -119,7 +119,7 @@
             "null"
           ],
           "minimum": 1,
-          "maximum": 9007199254740991
+          "maximum": 1000000
         },
         "granted_max_uses": {
           "type": [
@@ -127,7 +127,7 @@
             "null"
           ],
           "minimum": 1,
-          "maximum": 9007199254740991
+          "maximum": 1000000
         },
         "used_count": {
           "type": "integer",
@@ -195,7 +195,7 @@
             "null"
           ],
           "minimum": 1,
-          "maximum": 9007199254740991
+          "maximum": 1000000
         }
       }
     },

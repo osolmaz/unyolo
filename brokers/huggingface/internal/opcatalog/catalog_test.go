@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
@@ -37,6 +39,25 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 	read, ok := ByName("repo.contents.read")
 	if !ok || read.DefaultPolicyEffect != DefaultEffectAllow {
 		t.Fatalf("repo.contents.read = %+v, %v", read, ok)
+	}
+	bucketWrite, ok := ByName("bucket.object.write")
+	if !ok || bucketWrite.MaxUses != int(usebudget.MaxFiniteUses) || bucketWrite.ApprovalTTLSeconds != 7*24*60*60 {
+		t.Fatalf("bucket.object.write = %+v, %v", bucketWrite, ok)
+	}
+	for _, descriptor := range values {
+		if descriptor.AuthorizationMode != ModeWindow {
+			continue
+		}
+		sensitive := descriptor.Name == "git.push.force" || descriptor.Name == "git.ref.delete" || descriptor.Name == "git.tag.update"
+		if sensitive {
+			if descriptor.MaxUses != 25 || descriptor.ApprovalTTLSeconds != 60*60 {
+				t.Fatalf("sensitive window operation %s = %+v", descriptor.Name, descriptor)
+			}
+			continue
+		}
+		if descriptor.MaxUses != int(usebudget.MaxFiniteUses) || descriptor.ApprovalTTLSeconds != 7*24*60*60 {
+			t.Fatalf("routine window operation %s = %+v", descriptor.Name, descriptor)
+		}
 	}
 }
 

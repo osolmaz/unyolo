@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestParseRejectsLegacyScopeFormat(t *testing.T) {
@@ -1126,8 +1128,8 @@ func TestGrantPolicyDefaultsAndGrantability(t *testing.T) {
 	if decision.Effect != EffectRequest || decision.GrantPolicy == nil {
 		t.Fatalf("Decide() = %+v, want request decision", decision)
 	}
-	if decision.GrantPolicy.DefaultMaxUses != 5 || decision.GrantPolicy.MaxUses != 5 {
-		t.Fatalf("grant policy = %+v, want max_uses defaulted from default_max_uses", decision.GrantPolicy)
+	if decision.GrantPolicy.DefaultMaxUses != 5 || decision.GrantPolicy.MaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("grant policy = %+v, want operation maximum with finite default", decision.GrantPolicy)
 	}
 
 	for _, body := range []string{

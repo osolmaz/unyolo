@@ -253,10 +253,13 @@ Minimal example:
 
 The shared `window` grant mode is a short time window with a use budget.
 `default_max_uses` is always a positive finite default. `max_uses` is either
-a positive finite ceiling or `null`, which permits callers to request
-unlimited uses only until the required expiry. Omitting a requested
-`max_uses` selects the finite default; an explicit request `null` selects
-unlimited use. Execution grants remain exactly single-use.
+a positive finite ceiling no greater than `1000000`, or `null`, which permits
+callers to request unlimited uses only until the required expiry. Omitting a
+requested `max_uses` selects the finite default; an explicit request `null`
+selects unlimited use. When a reusable policy omits the use fields, both
+default to the lowest provider ceiling among its operations. Providers may
+impose lower operation-specific limits. Execution grants remain exactly
+single-use.
 
 Grant mode is authorization metadata, not a transport selector. Agent-facing
 MCP and CLI operation calls always submit through Agent Operations V1. During

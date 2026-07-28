@@ -429,6 +429,37 @@ func TestValidateGrantTargetForOperation(t *testing.T) {
 	}
 }
 
+func TestMillionWriteBucketGrantRequest(t *testing.T) {
+	policyJSON := []byte(`{"rules":[{
+		"id":"high-volume-bucket-write","effect":"request","clients":["agent"],
+		"operations":["bucket.object.write"],
+		"targets":[{"kind":"bucket","owner":"acme","name":"artifacts"}],
+		"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":10080,"request_ttl_minutes":5,"default_max_uses":1000000,"max_uses":1000000}
+	}]}`)
+	scp, err := policy.Parse(policyJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: &captureGrantNotifier{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := httptest.NewServer(handler)
+	defer broker.Close()
+	response, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(
+		`{"operation":"bucket.object.write","target":{"kind":"bucket","owner":"acme","name":"artifacts"},"minutes":1440,"reason":"publish autoresearch artifacts","client_request_id":"million-bucket-writes"}`))
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("grant request = %d %s", response.StatusCode, body)
+	}
+	stored := decodeAPIGrantResponse(t, body)
+	grant, err := handler.grants.Get(stored.ID)
+	if err != nil || grant.MaxUses != usebudget.MaxFiniteUses || grant.RequestedMaxUses != usebudget.MaxFiniteUses || !grant.RequestedMaxUsesDefaulted || grant.Duration != 24*time.Hour {
+		t.Fatalf("stored grant = %+v, err=%v", grant, err)
+	}
+}
+
 func TestBucketWindowGrantPersistsExactKeyScope(t *testing.T) {
 	policyJSON, _ := json.Marshal(map[string]any{"rules": []any{map[string]any{
 		"id": "read-result", "effect": "request", "clients": []string{"agent"}, "operations": []string{"bucket.object.read"},

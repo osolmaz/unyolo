@@ -134,10 +134,11 @@ attribute is unconstrained; when present its exact or `GrantMatch` constraint ap
 | `default_minutes` | Duration used when the caller does not ask for one. |
 | `max_minutes` | Ceiling on requested duration. |
 | `default_max_uses` | Always a positive finite default. |
-| `max_uses` | A positive finite ceiling, or `null` to permit unlimited uses within the window. |
+| `max_uses` | A positive finite ceiling no greater than `1000000`, or `null` to permit unlimited uses within the window. |
 
-A `window` grant authorizes an exact classified request for a bounded time and use budget. An
-`execution` grant approves one exact provider-built action and is always single-use.
+A `window` grant authorizes an exact classified request for a bounded time and use budget. A
+provider may impose a lower operation-specific ceiling. An `execution` grant approves one exact
+provider-built action and is always single-use.
 
 A rule may list several operations only when they resolve to one mode that every listed operation
 allows.

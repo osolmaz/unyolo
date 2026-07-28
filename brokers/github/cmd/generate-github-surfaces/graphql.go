@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/unyolo/operation/capability"
 )
@@ -78,7 +79,7 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	}
 	mutation := root == "mutation"
 	sealedInputPaths := sensitiveTopLevelPaths(variables)
-	mode, flags, maxUses := capability.ModeWindow, "W", 100
+	mode, flags, maxUses := capability.ModeWindow, "W", int(usebudget.MaxFiniteUses)
 	if mutation {
 		mode, flags, maxUses = capability.ModeExecution, "E", 1
 	}
@@ -87,6 +88,10 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	sealed := len(sealedInputPaths) > 0
 	if sealed {
 		mode, flags, maxUses = capability.ModeExecution, "E", 1
+	}
+	approvalTTLSeconds := 10 * 60
+	if mode == capability.ModeWindow {
+		approvalTTLSeconds = 7 * 24 * 60 * 60
 	}
 	if explicit {
 		flags += "/X"
@@ -111,7 +116,7 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: name, OperationRevision: 1, Summary: nonEmpty(field.Description, "GitHub GraphQL "+field.Name),
 		Disposition: flags, AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed,
 		Implementation: map[bool]capability.ImplementationStatus{true: capability.StatusInternal, false: capability.StatusOperatorOnly}[internal], Risk: riskFor(classes, map[bool]string{true: "POST", false: "GET"}[mutation]),
-		TargetKind: target, MaxUses: maxUses, RequestTTLSeconds: 300, ApprovalTTLSeconds: 600,
+		TargetKind: target, MaxUses: maxUses, RequestTTLSeconds: 300, ApprovalTTLSeconds: approvalTTLSeconds,
 		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
 		CredentialKind: "user", SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"graphql:" + digest},

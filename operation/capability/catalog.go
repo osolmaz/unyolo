@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 type AuthorizationMode string
@@ -194,10 +196,10 @@ func validLifecycle(value Descriptor) bool {
 
 func validateAuthorization(value Descriptor) error {
 	if value.AuthorizationMode == ModeExecution {
-		if value.MaxUses != 1 || !strings.Contains(value.Disposition, "E") {
+		if value.MaxUses != int(usebudget.SingleUse) || !strings.Contains(value.Disposition, "E") {
 			return fmt.Errorf("execution operation %q must be one-use E", value.Name)
 		}
-	} else if value.AuthorizationMode != ModeWindow || value.MaxUses < 1 || !strings.Contains(value.Disposition, "W") {
+	} else if value.AuthorizationMode != ModeWindow || value.MaxUses < int(usebudget.SingleUse) || value.MaxUses > int(usebudget.MaxFiniteUses) || !strings.Contains(value.Disposition, "W") {
 		return fmt.Errorf("window operation %q has invalid use semantics", value.Name)
 	}
 	return nil
