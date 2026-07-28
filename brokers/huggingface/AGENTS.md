@@ -1,7 +1,7 @@
 # AGENTS.md
 
-These instructions apply to the Hugging Face broker subtree in the BrokerKit
-monorepo. Root `AGENTS.md` and root quality gates also apply.
+These instructions apply to the Hugging Face broker subtree of the BrokerKit
+repository. Root `AGENTS.md` and root quality gates also apply.
 
 ## Project Rules
 

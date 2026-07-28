@@ -17,7 +17,7 @@ Install an exact release from
 openclaw plugins install npm:openclaw-brokerkit@<version>
 ```
 
-For a local monorepo checkout, build and link the package explicitly:
+From a local checkout, build and link the package explicitly:
 
 ```sh
 pnpm --filter openclaw-brokerkit build

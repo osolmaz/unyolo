@@ -1,0 +1,78 @@
+---
+import { getCollection, render } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import TableOfContents from "../../components/TableOfContents.astro";
+import { GITHUB_EDIT_BASE, neighbours, sectionOf } from "../../config/nav";
+
+export async function getStaticPaths() {
+  const docs = await getCollection("docs");
+  return docs.map((doc) => ({ params: { slug: doc.id }, props: { doc } }));
+}
+
+const { doc } = Astro.props;
+const { Content, headings } = await render(doc);
+const { prev, next } = neighbours(doc.id);
+const section = sectionOf(doc.id);
+---
+
+<BaseLayout title={doc.data.title} description={doc.data.description} section="docs">
+  <div class="docs-shell">
+    <Sidebar current={doc.id} />
+
+    <main class="docs-main" id="main">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="/docs/get-started/overview">Docs</a>
+        <span aria-hidden="true">/</span>
+        {section && <span>{section}</span>}
+      </nav>
+
+      {/* `description` stays in frontmatter for meta tags and the search index,
+          but it is not rendered as a subtitle under the title. */}
+      <div class="doc-header">
+        <h1>{doc.data.title}</h1>
+      </div>
+
+      <article class="prose">
+        <Content />
+      </article>
+
+      <div class="page-footer">
+        <div class="page-meta">
+          <a href={`${GITHUB_EDIT_BASE}/${doc.id}.md`} rel="noopener">Edit this page on GitHub</a>
+        </div>
+        <nav class="pager" aria-label="Pagination">
+          {
+            prev && (
+              <a class="pager__link pager__link--prev" href={`/docs/${prev.slug}`}>
+                <span class="pager__dir">Previous</span>
+                <span class="pager__title">{prev.label}</span>
+              </a>
+            )
+          }
+          {
+            next && (
+              <a class="pager__link pager__link--next" href={`/docs/${next.slug}`}>
+                <span class="pager__dir">Next</span>
+                <span class="pager__title">{next.label}</span>
+              </a>
+            )
+          }
+        </nav>
+      </div>
+    </main>
+
+    <TableOfContents headings={headings} />
+  </div>
+</BaseLayout>
+
+<script>
+  // Markdown tables need a scroll container so a wide table never scrolls the page.
+  document.querySelectorAll<HTMLTableElement>(".prose table").forEach((table) => {
+    if (table.parentElement?.classList.contains("table-wrap")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    table.parentNode?.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+</script>

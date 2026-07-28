@@ -1,0 +1,110 @@
+---
+import "../styles/global.css";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import SearchDialog from "../components/SearchDialog.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Adds the docs-shell class hooks and marks the Docs nav item active. */
+  section?: "home" | "docs";
+}
+
+const { title, description, section = "docs" } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://brokerkit.dev");
+const fullTitle = title === "BrokerKit" ? title : `${title} · BrokerKit`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical.href} />
+    <meta name="twitter:card" content="summary" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 368'%3E%3Cg transform='translate(0,368) scale(0.1,-0.1)' fill='%230f263d'%3E%3Cpath d='M278 3433 l-28 -4 0 -1589 c0 -874 3 -1591 8 -1593 11 -8 616 240 650 266 9 7 12 209 12 946 0 735 3 941 13 953 6 9 89 55 182 103 94 48 290 150 437 226 147 77 273 139 280 139 38 0 38 15 38 -1310 0 -797 4 -1290 9 -1296 15 -14 266 1 346 21 39 10 113 38 165 63 81 40 108 59 190 142 103 102 156 187 198 320 107 331 3 730 -241 928 -78 63 -184 115 -282 138 l-74 17 90 44 c196 96 344 304 395 554 22 110 15 284 -16 384 -69 222 -194 373 -385 465 -181 87 -125 83 -1100 86 -473 1 -872 0 -887 -3z'/%3E%3C/g%3E%3Cg transform='translate(0,368) scale(0.1,-0.1)' fill='%2305b6af'%3E%3Cpath d='M1417 2454 c-154 -73 -285 -138 -293 -145 -12 -10 -14 -129 -12 -787 l3 -776 270 -114 c149 -63 284 -115 300 -116 l30 -1 3 1026 c2 814 -1 1029 -10 1036 -9 8 -93 -28 -291 -123z'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <script is:inline>
+      // Applied before first paint so a dark-theme reader never sees a flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem("brokerkit-theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme =
+            stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <Header section={section} />
+    <slot />
+    <Footer />
+    <SearchDialog />
+
+    <script>
+      // Theme toggle. Persisted per browser; the inline head script reads it back.
+      const root = document.documentElement;
+      document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const next = root.dataset.theme === "dark" ? "light" : "dark";
+          root.dataset.theme = next;
+          try {
+            localStorage.setItem("brokerkit-theme", next);
+          } catch {
+            /* private mode: the choice simply does not persist */
+          }
+        });
+      });
+    </script>
+
+    <script>
+      // Copy buttons for code blocks, added client-side so the markup stays clean.
+      const label = (text: string) => {
+        const span = document.createElement("span");
+        span.textContent = text;
+        return span;
+      };
+
+      document.querySelectorAll<HTMLPreElement>(".prose pre").forEach((pre) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-block";
+        pre.parentNode?.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "copy-button";
+        button.setAttribute("aria-label", "Copy code to clipboard");
+        button.appendChild(label("Copy"));
+        wrapper.appendChild(button);
+
+        button.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(pre.innerText);
+            button.dataset.copied = "true";
+            button.replaceChildren(label("Copied"));
+            setTimeout(() => {
+              delete button.dataset.copied;
+              button.replaceChildren(label("Copy"));
+            }, 1600);
+          } catch {
+            button.replaceChildren(label("Press Ctrl+C"));
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

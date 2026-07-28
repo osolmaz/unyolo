@@ -1,0 +1,71 @@
+---
+import Logo from "./Logo.astro";
+import Icon from "./Icon.astro";
+import { GITHUB_REPO } from "../config/nav";
+
+interface Props {
+  section: "home" | "docs";
+}
+const { section } = Astro.props;
+const path = Astro.url.pathname;
+
+const links = [
+  { href: "/docs/get-started/overview", label: "Docs", match: "/docs/get-started" },
+  { href: "/docs/concepts/architecture", label: "Concepts", match: "/docs/concepts" },
+  { href: "/docs/guides/write-a-policy", label: "Guides", match: "/docs/guides" },
+  { href: "/docs/brokers/github", label: "Brokers", match: "/docs/brokers" },
+  { href: "/docs/reference/cli", label: "Reference", match: "/docs/reference" },
+];
+---
+
+<header class="site-header">
+  <div class="site-header__inner">
+    {
+      section === "docs" && (
+        <button
+          class="icon-button sidebar-toggle"
+          type="button"
+          data-sidebar-toggle
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          <Icon name="menu" />
+        </button>
+      )
+    }
+
+    <a class="brand" href="/">
+      <Logo class="brand__mark" />
+      BrokerKit
+    </a>
+
+    <nav class="site-nav" aria-label="Main">
+      {
+        links.map((link) => (
+          <a href={link.href} aria-current={path.startsWith(link.match) ? "true" : undefined}>
+            {link.label}
+          </a>
+        ))
+      }
+    </nav>
+
+    <div class="site-header__spacer"></div>
+
+    <div class="site-header__actions">
+      <button class="search-trigger" type="button" data-search-open aria-label="Search docs">
+        <Icon name="search" />
+        <span class="search-trigger__label">Search</span>
+        <kbd>⌘K</kbd>
+      </button>
+
+      <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle colour theme">
+        <Icon name="sun" class="theme-toggle__sun" />
+        <Icon name="moon" class="theme-toggle__moon" />
+      </button>
+
+      <a class="icon-button" href={GITHUB_REPO} rel="noopener" aria-label="BrokerKit on GitHub">
+        <Icon name="github" />
+      </a>
+    </div>
+  </div>
+</header>

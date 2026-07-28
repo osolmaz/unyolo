@@ -1,0 +1,67 @@
+---
+import { sidebar } from "../config/nav";
+
+interface Props {
+  current: string;
+}
+const { current } = Astro.props;
+---
+
+<nav class="sidebar" aria-label="Documentation" data-sidebar>
+  {
+    sidebar.map((section) => (
+      <div class="sidebar__section">
+        <p class="sidebar__heading">{section.title}</p>
+        <ul class="sidebar__list">
+          {section.entries.map((entry) => (
+            <li>
+              <a
+                href={`/docs/${entry.slug}`}
+                aria-current={entry.slug === current ? "page" : undefined}
+              >
+                {entry.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+</nav>
+
+<script>
+  const sidebarEl = document.querySelector<HTMLElement>("[data-sidebar]");
+  const toggle = document.querySelector<HTMLButtonElement>("[data-sidebar-toggle]");
+  let backdrop: HTMLDivElement | null = null;
+
+  function close() {
+    if (!sidebarEl || !toggle) return;
+    sidebarEl.dataset.open = "false";
+    toggle.setAttribute("aria-expanded", "false");
+    backdrop?.remove();
+    backdrop = null;
+  }
+
+  if (sidebarEl && toggle) {
+    toggle.addEventListener("click", () => {
+      const open = sidebarEl.dataset.open === "true";
+      if (open) {
+        close();
+        return;
+      }
+      sidebarEl.dataset.open = "true";
+      toggle.setAttribute("aria-expanded", "true");
+      backdrop = document.createElement("div");
+      backdrop.className = "sidebar-backdrop";
+      backdrop.addEventListener("click", close);
+      document.body.appendChild(backdrop);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") close();
+    });
+
+    // Keep the active entry visible when a deep page loads.
+    sidebarEl.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "center" });
+  }
+</script>

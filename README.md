@@ -1,109 +1,123 @@
-<p align="center">
-  <img src="assets/logo-wordmark.svg" alt="BrokerKit" width="520">
-</p>
+![BrokerKit](assets/logo-wordmark.svg)
 
 # BrokerKit
 
-BrokerKit is a Go toolkit and monorepo of brokered access-control services.
-It keeps protected credentials and Unix privilege boundaries inside dedicated
-broker processes, so untrusted clients such as coding agents receive only a
-narrowly scoped, revocable broker credential instead of the real one.
+BrokerKit is a Go framework for building credential brokers. A broker holds a
+real credential and hands an untrusted client a separate one that works only
+for the operations you allowed.
 
-The repository ships three separate broker executables, one host command, one
-UI plugin, and the shared protocol they speak:
+The point is to let a coding agent work in your accounts without holding the
+credential that would let it destroy something. It can push branches and open
+pull requests without being able to force-push over `main` or delete a
+repository.
 
-- [hf-broker](brokers/huggingface/README.md) brokers Hugging Face credentials
-  for Git, LFS, Hub, and inference operations.
-- [gh-broker](brokers/github/README.md) brokers GitHub App credentials for
-  repository reads, Git operations, pull requests, and the wider GitHub API.
-- [sudo-broker](brokers/sudo/README.md) runs approved exact commands as
-  another Unix user through a root helper.
-- [openclaw-brokerkit](plugins/openclaw/README.md) adds a provider-neutral
-  approvals tab and `/brokerkit` commands to OpenClaw.
-- [`brokerkit`](docs/HOST_DEPLOYMENT.md) guides a trusted operator through a
-  locked host deployment, activates signed immutable runtime bundles, and
-  verifies the real agent path.
-- [protocol](protocol/README.md) holds the canonical Operator V1 and
-  Agent V1 wire artifacts and MCP operation documents shared by all of the
-  above.
+Three brokers ship ready to run, covering GitHub, Hugging Face, and Unix
+privilege.
 
-Each broker remains a separate process with its own listener, credential
-domain, state directory, release artifact, and audit stream. Persistent
-production services are activated together through a signed host bundle so a
-partial upgrade cannot mix incompatible processes. User-local clients remain
-independent. Every broker README covers its provider-specific configuration
-and day-to-day workflows.
+## Example
 
-## How a broker works
+Policy is a JSON file you edit by hand. This lets one agent work on one
+repository, in its own branch namespace:
+
+```json
+{
+  "rules": [
+    {
+      "id": "agent-a-branches",
+      "effect": "allow",
+      "clients": ["agent-a"],
+      "operations": ["contents.read", "git.fetch", "git.push.fast_forward"],
+      "targets": [{ "kind": "repo", "owner": "acme", "name": "api" }],
+      "attrs": { "refs": ["refs/heads/agent-a/**"] }
+    }
+  ]
+}
+```
+
+Nothing names `refs/heads/main` or `git.push.force`, so both are denied. Git
+remotes stay ordinary GitHub URLs and hold no credential:
+
+```console
+$ git push origin agent-a/parser-fix
+   4d1e07c..9f2c1ab  agent-a/parser-fix -> agent-a/parser-fix
+
+$ git push --force origin main
+ ! [remote rejected] main -> main
+   (gh-broker: no rule allows git.push.force on refs/heads/main)
+```
+
+Change `allow` to `request` and the broker holds the push open, notifies an
+operator, and resumes it once approved.
+
+## Request path
 
 Every broker handles a request the same way:
 
 ```text
-client request
-        ↓
-authenticate broker client
-        ↓
-classify request into client + operation + target + attrs
-        ↓
+authenticate client
+classify into client + operation + target + attrs
 policy decision: deny / active grant / allow / request / no_match
-        ↓
-optional operator approval grant
-        ↓
-provider-specific executor
-        ↓
+optional operator approval
+provider executor
 audit log
 ```
 
-Policy lives in a manually edited rules file (`scope.json` or
-`policy.json`) that the broker loads at startup. Requests the policy engine
-cannot classify are refused: brokers fail closed. Dangerous operations can be
-marked `request`, which parks them until an operator approves a short-lived
-grant through the protected operator inbox or an optional Telegram
-notification.
+Requests the policy cannot classify are refused. `deny` beats an approved
+grant, so adding a deny rule immediately neuters every grant it covers.
 
-When Telegram is enabled, one host-level `brokerkit-telegram` process owns
-inbound updates for the shared bot and dispatches decisions to provider
-Operator V1 sockets. Provider brokers only send messages and durable status
-updates. See [Telegram approval ingress](docs/TELEGRAM_INGRESS.md).
+Only classification and execution know anything about the provider. The rest is
+shared code.
 
-## Security model
+## Components
 
-- Secret material is write-only inside a broker. No API, log line, error, or
-  helper returns the upstream credential, and audit logs never contain
-  secrets, request bodies, or pack contents.
-- Agent and operator credentials are separate. The operator inbox runs on its
-  own listener with its own secret file; agent credentials cannot approve
-  requests.
-- Network reachability is not authorization. Every endpoint except
-  `GET /healthz` requires authentication.
-- Run a broker where its clients cannot inspect its process or credential
-  files. Each broker ships a `doctor` command that verifies this isolation
-  and fails closed.
+| Directory | What it is |
+| --- | --- |
+| [brokers/github](brokers/github/README.md) | `gh-broker`: GitHub App credentials, Git, pull requests, REST and GraphQL |
+| [brokers/huggingface](brokers/huggingface/README.md) | `hf-broker`: Hugging Face token, Git, LFS, Hub, inference |
+| [brokers/sudo](brokers/sudo/README.md) | `sudo-broker`: one exact command as another Unix user |
+| [plugins/openclaw](plugins/openclaw/README.md) | Approvals tab and client skills for OpenClaw |
+| [protocol](protocol/README.md) | Agent V1 and Operator V1 wire contracts |
 
-The full boundary and fail-closed behavior are in
-[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md). The shared
-install, setup, policy, grant, approval, audit, and doctor contract that all
-brokers follow is in
-[docs/UNIFIED_BROKER_CONTRACT.md](docs/UNIFIED_BROKER_CONTRACT.md).
-The canonical package layout and placement rules are in
-[docs/DIRECTORY_STRUCTURE.md](docs/DIRECTORY_STRUCTURE.md).
+Each broker is its own process with its own listener, credentials, state
+directory, and audit stream.
 
-## Building from source
+## Build
 
-The monorepo is one Go module. Build any broker with the Go version declared
-in [go.mod](go.mod):
+One Go module, built with the version in [go.mod](go.mod):
 
 ```sh
-go build ./brokers/huggingface/cmd/hf-broker
 go build ./brokers/github/cmd/gh-broker
+go build ./brokers/huggingface/cmd/hf-broker
 go build ./brokers/sudo/cmd/sudo-broker ./brokers/sudo/cmd/sudo-broker-exec
 go build ./cmd/brokerkit ./cmd/brokerkit-telegram
 ```
 
-Use the provider setup commands for credentials, policy, accounts, and native
-service definitions. Use `brokerkit system install` and `upgrade` for
-persistent production binaries; see
-[Operations runtime](docs/OPERATIONS_RUNTIME.md).
+Each broker's `setup` command writes credentials, policy, and service files.
+For a production host, `brokerkit system install` activates every service as
+one signed bundle. See [docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
+
+## Building your own broker
+
+You write a classifier, a registry, an executor, and the approval wording.
+Authentication, policy, grants, the operator inbox, audit, installers, and
+doctor checks come from the framework. `scripts/check-architecture.sh` fails a
+build where shared code imports a provider. Start at
+[docs/OWNERSHIP.md](docs/OWNERSHIP.md).
+
+## Security
+
+Credentials are write-only inside a broker. No API, log line, or error path
+returns one. Agent and operator credentials are separate, and every endpoint
+except `GET /healthz` requires authentication.
+
+Run a broker where its clients cannot read its process or its files, and use
+`<broker> doctor` to check that they cannot. The full boundary is in
+[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md).
+
+## Documentation
+
+[docs/](docs/README.md) holds the maintained contracts. [web/](web/README.md)
+builds the same material into a documentation site.
 
 ## License
 

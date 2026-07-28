@@ -1,0 +1,30 @@
+---
+/**
+ * BrokerKit logo mark, traced from assets/logo.svg in the repository root.
+ * The navy shape follows `currentColor` so the mark inherits header text
+ * colour in both themes; the counter keeps the brand teal.
+ */
+interface Props {
+  class?: string;
+}
+const { class: className } = Astro.props;
+---
+
+<svg
+  class={className}
+  viewBox="0 0 320 368"
+  role="img"
+  aria-label="BrokerKit"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <g transform="translate(0,368) scale(0.1,-0.1)" fill="currentColor" stroke="none">
+    <path
+      d="M278 3433 l-28 -4 0 -1589 c0 -874 3 -1591 8 -1593 11 -8 616 240 650 266 9 7 12 209 12 946 0 735 3 941 13 953 6 9 89 55 182 103 94 48 290 150 437 226 147 77 273 139 280 139 38 0 38 15 38 -1310 0 -797 4 -1290 9 -1296 15 -14 266 1 346 21 39 10 113 38 165 63 81 40 108 59 190 142 103 102 156 187 198 320 107 331 3 730 -241 928 -78 63 -184 115 -282 138 l-74 17 90 44 c196 96 344 304 395 554 22 110 15 284 -16 384 -69 222 -194 373 -385 465 -181 87 -125 83 -1100 86 -473 1 -872 0 -887 -3z"
+    ></path>
+  </g>
+  <g transform="translate(0,368) scale(0.1,-0.1)" fill="#05b6af" stroke="none">
+    <path
+      d="M1417 2454 c-154 -73 -285 -138 -293 -145 -12 -10 -14 -129 -12 -787 l3 -776 270 -114 c149 -63 284 -115 300 -116 l30 -1 3 1026 c2 814 -1 1029 -10 1036 -9 8 -93 -28 -291 -123z"
+    ></path>
+  </g>
+</svg>

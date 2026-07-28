@@ -1,0 +1,636 @@
+/* =========================================================================
+   Landing page. Loaded only by src/pages/index.astro.
+
+   Flat surfaces throughout: sections are separated by a 1px rule and an
+   alternating background tint. No gradients.
+   ========================================================================= */
+
+.landing {
+  --landing-max: 70rem;
+}
+
+.wrap {
+  max-width: var(--landing-max);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.section {
+  padding: 5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.section--tinted {
+  background: var(--bg-subtle);
+}
+
+@media (max-width: 50rem) {
+  .section {
+    padding: 3.25rem 0;
+  }
+}
+
+/* One heading per section. */
+.section h2 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.6rem, 1.3rem + 1.2vw, 2.05rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+}
+
+.section__intro {
+  max-width: 42rem;
+  margin-bottom: 2.75rem;
+}
+
+.section__intro p {
+  margin: 0 0 1rem;
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.section__intro p:last-child {
+  margin-bottom: 0;
+}
+
+/* ----------------------------------------------------------------- hero -- */
+
+.hero {
+  padding: 5.5rem 0 5rem;
+  background: var(--bg);
+}
+
+.hero__inner {
+  display: grid;
+  /* The right column is wider so the transcript is not clipped mid-line. */
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+  gap: 3rem;
+  align-items: center;
+}
+
+@media (max-width: 62rem) {
+  .hero__inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+  .hero {
+    padding: 3.25rem 0;
+  }
+}
+
+.hero h1 {
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.25rem);
+  font-weight: 750;
+  line-height: 1.1;
+  letter-spacing: -0.034em;
+  color: var(--text-strong);
+}
+
+.hero p {
+  margin: 0 0 1.1rem;
+  max-width: 34rem;
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.hero p:first-of-type {
+  font-size: 1.1875rem;
+  line-height: 1.65;
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+/* ------------------------------------------------------------- terminal -- */
+
+.terminal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.terminal__bar {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.terminal__body {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
+  line-height: 1.75;
+  color: var(--text);
+  white-space: pre;
+}
+
+/* Terminal output uses conventional shell colours, kept desaturated. */
+.terminal__body .t-prompt {
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.terminal__body .t-comment,
+.terminal__body .t-dim {
+  color: var(--text-faint);
+}
+
+.terminal__body .t-ok {
+  color: #2f7a4d;
+}
+
+.terminal__body .t-warn {
+  color: #97690e;
+}
+
+.terminal__body .t-deny {
+  color: #a93a3a;
+}
+
+html[data-theme="dark"] .terminal__body .t-ok {
+  color: #7fc79b;
+}
+
+html[data-theme="dark"] .terminal__body .t-warn {
+  color: #d4b071;
+}
+
+html[data-theme="dark"] .terminal__body .t-deny {
+  color: #e59a9a;
+}
+
+/* -------------------------------------------------------------- compare -- */
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1.25rem;
+}
+
+.compare__card {
+  padding: 1.35rem 1.5rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.compare__card--risk {
+  border-color: var(--danger-border);
+}
+
+.compare__label {
+  margin: 0 0 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.compare__card--risk .compare__label {
+  color: var(--danger-text);
+}
+
+.compare__path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+}
+
+.compare__path code {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-strong);
+}
+
+.compare__path span {
+  color: var(--text-faint);
+  font-size: 0.9375rem;
+}
+
+.compare__holds {
+  margin: 0.85rem 0 0;
+  /* Reserve exactly two line boxes (2 x 1.55 line-height) so the rows below
+     start at the same y in both cards regardless of how the text wraps. */
+  min-height: 3.1em;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.compare__rows {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+}
+
+.compare__rows li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+
+.compare__action {
+  color: var(--text);
+}
+
+.compare__action code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.compare__outcome {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+}
+
+.compare__outcome--danger {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------- flow -- */
+
+/* One column. An earlier two-column version put the tallest content in the
+   narrow side and left a hole beside it. */
+.flow__steps {
+  list-style: none;
+  margin: 0 0 2.5rem;
+  padding: 0;
+  max-width: 42rem;
+  position: relative;
+}
+
+.flow__steps::before {
+  content: "";
+  position: absolute;
+  left: 0.9375rem;
+  top: 1.1rem;
+  bottom: 1.1rem;
+  width: 1px;
+  background: var(--border);
+}
+
+.flow__step {
+  position: relative;
+  padding: 0 0 1.15rem 3rem;
+}
+
+.flow__step:last-child {
+  padding-bottom: 0;
+}
+
+.flow__marker {
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+
+
+.flow__title {
+  display: block;
+  font-weight: 640;
+  font-size: 0.9375rem;
+  color: var(--text-strong);
+  line-height: 1.9;
+}
+
+.flow__body {
+  margin: 0.05rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------- decision order -- */
+
+.decision {
+  max-width: 42rem;
+  margin-bottom: 1.75rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.decision__label {
+  margin: 0 0 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.decision__chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+}
+
+.decision__chain code {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-strong);
+}
+
+.decision__chain span {
+  color: var(--text-faint);
+  font-size: 0.9375rem;
+}
+
+.decision__note {
+  margin: 0.85rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- split -- */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 3.5rem;
+  align-items: start;
+}
+
+.split--reverse .split__media {
+  order: -1;
+}
+
+@media (max-width: 62rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+  .split--reverse .split__media {
+    order: 0;
+  }
+}
+
+.split__text p {
+  margin: 0 0 1.05rem;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--text-muted);
+}
+
+.split__text p:last-of-type {
+  margin-bottom: 1.5rem;
+}
+
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.text-link svg {
+  width: 15px;
+  height: 15px;
+  transition: transform var(--transition);
+}
+
+.text-link:hover svg {
+  transform: translateX(3px);
+}
+
+.code-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.code-panel__tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.code-panel__tab {
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.code-panel__tab:hover {
+  color: var(--text-strong);
+}
+
+.code-panel__tab[aria-selected="true"] {
+  color: var(--text-strong);
+  border-bottom-color: var(--text-strong);
+}
+
+.code-panel__pane[hidden] {
+  display: none;
+}
+
+.code-panel pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  max-height: 25rem;
+  overflow: auto;
+  background: var(--bg-raised) !important;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+
+/* -------------------------------------------------------------- brokers -- */
+
+.broker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.broker-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  text-decoration: none;
+  transition: border-color var(--transition);
+}
+
+.broker-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-inset);
+}
+
+.broker-card h3 {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 640;
+  color: var(--text-strong);
+}
+
+.broker-card p {
+  margin: 0 0 1.1rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.broker-card__ops {
+  margin: 0 0 1.1rem;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.broker-card__ops li {
+  padding: 0.12rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.broker-card__more {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.broker-card__more svg {
+  width: 15px;
+  height: 15px;
+  transition: transform var(--transition);
+}
+
+.broker-card:hover .broker-card__more svg {
+  transform: translateX(3px);
+}
+
+/* ------------------------------------------------------------ two-column -- */
+
+.owns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 2rem 3rem;
+  margin-top: 2rem;
+}
+
+.owns h3 {
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+  font-weight: 660;
+  color: var(--text-strong);
+}
+
+.owns ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.owns li {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ cta -- */
+
+.cta {
+  padding: 4.5rem 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.cta h2 {
+  margin: 0 0 0.85rem;
+  font-size: clamp(1.5rem, 1.25rem + 1.1vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-strong);
+}
+
+.cta p {
+  max-width: 36rem;
+  margin: 0 0 1.75rem;
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}

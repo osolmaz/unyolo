@@ -1,0 +1,63 @@
+---
+import type { MarkdownHeading } from "astro";
+
+interface Props {
+  headings: MarkdownHeading[];
+}
+
+// Only h2 and h3 land in the rail; deeper levels make it unreadable at 15rem.
+// The autolink plugin appends a "#" text node to each heading, which Astro
+// includes in `text`, so strip it before rendering.
+const entries = Astro.props.headings
+  .filter((heading) => heading.depth === 2 || heading.depth === 3)
+  .map((heading) => ({ ...heading, text: heading.text.replace(/#\s*$/, "").trim() }));
+---
+
+{
+  entries.length > 1 && (
+    <aside class="toc-column" aria-label="On this page">
+      <p class="toc__heading">On this page</p>
+      <ul class="toc__list" data-toc>
+        {entries.map((heading) => (
+          <li>
+            <a href={`#${heading.slug}`} data-depth={heading.depth}>
+              {heading.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  )
+}
+
+<script>
+  const rail = document.querySelector<HTMLElement>("[data-toc]");
+  if (rail) {
+    const links = new Map<string, HTMLAnchorElement>();
+    rail.querySelectorAll("a").forEach((anchor) => {
+      links.set(decodeURIComponent(anchor.hash.slice(1)), anchor);
+    });
+
+    const visible = new Set<string>();
+    const order = [...links.keys()];
+
+    const observer = new IntersectionObserver(
+      (records) => {
+        for (const record of records) {
+          const id = record.target.id;
+          if (record.isIntersecting) visible.add(id);
+          else visible.delete(id);
+        }
+        // Highlight the topmost heading currently on screen.
+        const active = order.find((id) => visible.has(id));
+        links.forEach((anchor, id) => anchor.classList.toggle("is-active", id === active));
+      },
+      { rootMargin: "-80px 0px -70% 0px", threshold: 0 },
+    );
+
+    links.forEach((_, id) => {
+      const heading = document.getElementById(id);
+      if (heading) observer.observe(heading);
+    });
+  }
+</script>
