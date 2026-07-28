@@ -42,11 +42,13 @@ const personIcon = `
 
 const agentIcon = `
   <ellipse class="iso-shadow" cx="0" cy="35" rx="29" ry="7"/>
-  <line x1="0" y1="-28" x2="0" y2="-43" class="iso-antenna"/>
-  <circle class="iso-mark" cx="0" cy="-46" r="3.5"/>
   <polygon fill="url(#gTop)"   points="-28,-14 0,-28 28,-14 0,0"/>
   <polygon fill="url(#gLeft)"  points="-28,-14 0,0 0,30 -28,16"/>
   <polygon fill="url(#gRight)" points="28,-14 28,16 0,30 0,0"/>
+  <!-- Antenna rises from the centre of the top face, so it is drawn after the
+       faces rather than behind them. -->
+  <line x1="0" y1="-14" x2="0" y2="-34" class="iso-antenna"/>
+  <circle class="iso-mark" cx="0" cy="-37" r="3.2"/>
   <g transform="translate(14 8) ${SKEW_RIGHT}">
     <rect class="iso-screen" x="-9.5" y="-9" width="19" height="15" rx="2.5"/>
     <circle class="iso-eye" cx="-4.2" cy="-2.2" r="2.3"/>
