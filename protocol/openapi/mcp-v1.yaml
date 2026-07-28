@@ -20,7 +20,7 @@
           "attrs": {"type": "object", "maxProperties": 32},
           "mode": {"type": "string", "enum": ["window", "execution"]},
           "minutes": {"type": "integer", "minimum": 1, "maximum": 10080},
-          "max_uses": {"type": ["integer", "null"], "minimum": 1, "maximum": 25},
+          "max_uses": {"type": ["integer", "null"], "minimum": 1, "maximum": 1000000},
           "uses_remaining": {"type": "integer", "minimum": -1},
           "used_count": {"type": "integer", "minimum": 0},
           "pending_until": {"type": ["string", "null"], "format": "date-time"},

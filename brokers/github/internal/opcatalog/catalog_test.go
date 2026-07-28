@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/operation/capability"
 )
 
@@ -28,6 +29,11 @@ func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {
 			if !value.ExplicitOnly || value.Risk != RiskHigh || value.MaxUses != 1 {
 				t.Fatalf("high-risk descriptor=%+v", value)
 			}
+		}
+	}
+	for _, descriptor := range values {
+		if descriptor.AuthorizationMode == ModeWindow && (descriptor.MaxUses != int(usebudget.MaxFiniteUses) || descriptor.ApprovalTTLSeconds != 7*24*60*60) {
+			t.Fatalf("routine window operation %s = %+v", descriptor.Name, descriptor)
 		}
 	}
 	for _, removed := range []string{"pr.create", "pr.update", "pr.merge", "contents.read", "checks.read", "http.request", "graphql.execute"} {

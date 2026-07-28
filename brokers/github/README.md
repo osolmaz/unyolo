@@ -343,6 +343,12 @@ repeating the same push while it is pending reuses the same request. Approval
 creates a short-lived grant evaluated by the same policy path, and the next
 identical push consumes it. Deny rules still win over approved grants.
 
+Routine reusable repository operations default to a `1000000`-use grant and
+allow up to seven days. Force pushes, ref deletions, and tag updates stay
+capped at 25 uses for one hour. Execution grants stay single-use. These larger
+use budgets never widen the approved client, operation, repository, ref, path,
+or other attrs.
+
 `POST /api/grants` remains the explicit protocol endpoint for clients that
 need to request a Git grant before attempting a push.
 

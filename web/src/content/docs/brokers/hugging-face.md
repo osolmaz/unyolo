@@ -125,6 +125,11 @@ Grantable Git capabilities are `git.push.force` for history rewrites, `git.ref.d
 branch and ref deletion, and `git.tag.update` for moving or deleting tags. Each must be enabled
 separately with its own `"effect": "request"` rule.
 
+The default preset gives routine reusable repository and bucket operations a `1000000`-use,
+seven-day ceiling and uses that ceiling as the default. This supports large uploads without
+broadening the approved operation, target, or attrs. Force pushes, ref deletions, and tag updates
+stay capped at 25 uses for one hour. Execution grants stay single-use.
+
 ## Configure Git
 
 Give the service a deployment-selected loopback TCP listener with `--git-endpoint`, include the

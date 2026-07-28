@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/mcp/operation"
 )
 
@@ -154,7 +155,7 @@ func addProtectedToolProperties(properties map[string]any, required []string, de
 func addWindowToolProperties(properties map[string]any, attributeNames []string, projection Projection) {
 	properties["attrs"] = projectedMCPSchema(attributeSchema(attributeNames), projection)
 	properties["minutes"] = map[string]any{"type": "integer", "minimum": 0}
-	properties["max_uses"] = map[string]any{"type": []string{"integer", "null"}, "minimum": 1}
+	properties["max_uses"] = map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": int(usebudget.MaxFiniteUses)}
 }
 
 func projectedMCPSchema(schema map[string]any, projection Projection) map[string]any {

@@ -158,7 +158,7 @@ func mcpGrantRequestSchema() map[string]any {
 			"target":       target,
 			"attrs":        map[string]any{"type": "object", "maxProperties": 32},
 			"minutes":      map[string]any{"type": "integer", "minimum": 1, "maximum": 7 * 24 * 60},
-			"max_uses":     map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": 25},
+			"max_uses":     map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": int(usebudget.MaxFiniteUses)},
 			"reason":       map[string]any{"type": "string", "minLength": 1, "maxLength": 2000},
 			"request_id":   map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": mcpoperation.MaxWaitSeconds, "default": mcpoperation.DefaultWaitSeconds},

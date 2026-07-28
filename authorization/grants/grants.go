@@ -26,8 +26,8 @@ const (
 	defaultPendingTimeout      = 5 * time.Minute
 	defaultDuration            = 5 * time.Minute
 	defaultMaxDuration         = time.Hour
-	defaultMaxUses             = 1
-	maxMaxUses                 = 25
+	defaultMaxUses             = usebudget.SingleUse
+	maxMaxUses                 = usebudget.MaxFiniteUses
 	defaultReservationTimeout  = 5 * time.Minute
 	defaultMaxPendingPerClient = 10
 	defaultMaxPendingGlobal    = 512

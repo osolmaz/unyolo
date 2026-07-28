@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	shared "github.com/osolmaz/unyolo/authorization/preset"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -21,7 +22,8 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if artifacts.Manifest.OperationCounts != (OperationCounts{Total: 258, Allow: 8, Request: 141, Deny: 109}) {
 		t.Fatalf("operation counts = %+v", artifacts.Manifest.OperationCounts)
 	}
-	if _, err := policy.Parse(artifacts.PolicyJSON); err != nil {
+	rendered, err := policy.Parse(artifacts.PolicyJSON)
+	if err != nil {
 		t.Fatalf("rendered policy is invalid: %v", err)
 	}
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.contents.read", "allow")
@@ -31,6 +33,18 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	assertRuleEffect(t, artifacts.PolicyJSON, "service_account.token.create", "deny")
 	assertRuleEffect(t, artifacts.PolicyJSON, "sandbox.port.proxy", "deny")
 	assertRuleEffect(t, artifacts.PolicyJSON, "auth.permission.check", "deny")
+	bucketWrite := policy.Request{Client: "agent", Operation: policy.OpBucketObjectWrite,
+		Target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/one"}}}
+	decision := rendered.Decide(bucketWrite, nil, time.Now(), true)
+	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != usebudget.MaxFiniteUses || decision.GrantPolicy.MaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("bucket write grant policy = %+v", decision.GrantPolicy)
+	}
+	forcePush := policy.Request{Client: "agent", Operation: policy.OpGitPushForce,
+		Target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}}
+	decision = rendered.Decide(forcePush, nil, time.Now(), true)
+	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != 25 || decision.GrantPolicy.MaxUses != 25 {
+		t.Fatalf("force push grant policy = %+v", decision.GrantPolicy)
+	}
 }
 
 func TestRenderProtectedTargetsAsOverridingExactDenies(t *testing.T) {

@@ -11,6 +11,12 @@ import (
 	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
 )
 
+const (
+	routineWindowMaxMinutes   = 7 * 24 * 60
+	sensitiveWindowMaxMinutes = 60
+	sensitiveWindowMaxUses    = usebudget.Limit(25)
+)
+
 var baseCatalogAttributeNames = []string{
 	"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method",
 	"path", "permission", "ref", "release_state", "resource_id", "resource_name", "resource_owner", "role", "visibility", "workflow", "workflow_ref",
@@ -92,14 +98,19 @@ func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
 
 func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 	return map[Operation]corepolicy.OperationSpec{
-		OperationGitFetch:             {TargetKinds: []string{"repo"}},
-		OperationGitLFSWrite:          {TargetKinds: []string{"repo"}},
-		OperationGitPushAdvertise:     {TargetKinds: []string{"repo"}},
-		OperationGitPushBranchCreate:  {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
-		OperationGitPushFastForward:   {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
-		OperationGitPushForce:         {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
-		OperationGitRefDelete:         {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
-		OperationGitTagUpdate:         {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow},
+		OperationGitFetch:         {TargetKinds: []string{"repo"}},
+		OperationGitLFSWrite:      {TargetKinds: []string{"repo"}},
+		OperationGitPushAdvertise: {TargetKinds: []string{"repo"}},
+		OperationGitPushBranchCreate: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
+			MaxGrantMinutes: routineWindowMaxMinutes, MaxGrantUses: usebudget.MaxFiniteUses},
+		OperationGitPushFastForward: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
+			MaxGrantMinutes: routineWindowMaxMinutes, MaxGrantUses: usebudget.MaxFiniteUses},
+		OperationGitPushForce: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
+			MaxGrantMinutes: sensitiveWindowMaxMinutes, MaxGrantUses: sensitiveWindowMaxUses},
+		OperationGitRefDelete: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
+			MaxGrantMinutes: sensitiveWindowMaxMinutes, MaxGrantUses: sensitiveWindowMaxUses},
+		OperationGitTagUpdate: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
+			MaxGrantMinutes: sensitiveWindowMaxMinutes, MaxGrantUses: sensitiveWindowMaxUses},
 		OperationWebhookGitHubReceive: {TargetKinds: []string{"repo"}},
 	}
 }

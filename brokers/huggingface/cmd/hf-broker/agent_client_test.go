@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/unyolo/mcp/grant"
@@ -251,6 +252,21 @@ func TestDecodeMCPGrantRequestPreservesUnlimitedScopedWrite(t *testing.T) {
 		t.Fatalf("decodeMCPGrantRequest() error = %v", err)
 	}
 	if !input.MaxUses.Specified || !input.MaxUses.Limit.IsUnlimited() || input.Minutes != 10080 || !slices.Equal(input.Target.Keys, []string{"runs/**"}) {
+		t.Fatalf("input = %+v", input)
+	}
+}
+
+func TestDecodeMCPGrantRequestPreservesMillionWriteBudget(t *testing.T) {
+	t.Parallel()
+	input, err := decodeMCPGrantRequest(json.RawMessage(`{
+		"operation":"bucket.object.write",
+		"target":{"kind":"bucket","owner":"acme","name":"artifacts"},
+		"minutes":1440,"max_uses":1000000,"reason":"publish artifacts","request_id":"million-writes"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !input.MaxUses.Specified || input.MaxUses.Limit != usebudget.MaxFiniteUses || input.Minutes != 1440 {
 		t.Fatalf("input = %+v", input)
 	}
 }

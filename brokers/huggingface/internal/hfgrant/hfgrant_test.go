@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
 	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -55,6 +56,19 @@ func TestCanonicalRequestPreservesGrantPrefixTarget(t *testing.T) {
 	decoded, err := PolicyTarget(grants.Grant{Operation: "bucket.object.write", Target: request.Target})
 	if err != nil || len(decoded.Keys) != 1 || decoded.Keys[0] != "runs/**" {
 		t.Fatalf("prefix target round trip = %#v, %v", decoded, err)
+	}
+}
+
+func TestCanonicalRequestUsesModeSpecificDefaultBudget(t *testing.T) {
+	base := Input{Client: "bob", ClientRequestID: "request-1", Operation: "bucket.object.write", Target: "bucket/acme/artifacts", Reason: "publish artifacts"}
+	window, err := CanonicalRequest(base)
+	if err != nil || window.MaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("window request = %+v, %v", window, err)
+	}
+	base.Mode = ModeExecution
+	execution, err := CanonicalRequest(base)
+	if err != nil || execution.MaxUses != usebudget.SingleUse {
+		t.Fatalf("execution request = %+v, %v", execution, err)
 	}
 }
 

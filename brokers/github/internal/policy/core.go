@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 )
 
@@ -194,17 +195,19 @@ func grantPolicyForEffect(effect Effect, operation Operation) *corepolicy.GrantP
 	if effect != EffectRequest {
 		return nil
 	}
-	mode := corepolicy.GrantModeWindow
-	if operationInfos()[canonicalOperation(operation)].spec.GrantMode == corepolicy.GrantModeExecution {
-		mode = corepolicy.GrantModeExecution
+	spec := operationInfos()[canonicalOperation(operation)].spec
+	mode := spec.GrantMode
+	maxMinutes, maxUses := spec.MaxGrantMinutes, spec.MaxGrantUses
+	if mode == corepolicy.GrantModeExecution {
+		maxUses = usebudget.SingleUse
 	}
 	return &corepolicy.GrantPolicy{
 		Mode:              string(mode),
-		DefaultMinutes:    5,
-		MaxMinutes:        10,
+		DefaultMinutes:    min(5, maxMinutes),
+		MaxMinutes:        maxMinutes,
 		RequestTTLMinutes: 5,
-		DefaultMaxUses:    1,
-		MaxUses:           1,
+		DefaultMaxUses:    maxUses,
+		MaxUses:           maxUses,
 	}
 }
 

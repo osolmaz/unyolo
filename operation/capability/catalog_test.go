@@ -3,6 +3,8 @@ package capability
 import (
 	"strings"
 	"testing"
+
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestValidateAcceptsProviderCatalog(t *testing.T) {
@@ -55,6 +57,21 @@ func TestValidateRejectsStructuralDrift(t *testing.T) {
 				t.Fatal("Validate accepted drift")
 			}
 		})
+	}
+}
+
+func TestValidateAcceptsMaximumFiniteWindowBudget(t *testing.T) {
+	tool, command := "hf_bucket_write", "bucket write"
+	value := Descriptor{Name: "bucket.write", OperationRevision: 1, Disposition: "W", AuthorizationMode: ModeWindow,
+		Implementation: StatusImplemented, Risk: RiskHigh, TargetKind: "bucket", MaxUses: int(usebudget.MaxFiniteUses),
+		RequestTTLSeconds: 300, ApprovalTTLSeconds: 604800, AgentFacing: true, MCPTool: &tool, CLICommand: &command}
+	options := ValidationOptions{Provider: "HF", ExpectedCount: 1, MCPToolPrefix: "hf_"}
+	if err := Validate([]Descriptor{value}, options); err != nil {
+		t.Fatal(err)
+	}
+	value.MaxUses++
+	if err := Validate([]Descriptor{value}, options); err == nil {
+		t.Fatal("Validate accepted a window budget above the global maximum")
 	}
 }
 

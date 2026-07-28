@@ -261,7 +261,7 @@ func coreGrantPolicyForView(value *GrantPolicy, operation Operation, view coreVi
 		DefaultMinutes:    min(DefaultGrantMinutes, maxMinutes),
 		MaxMinutes:        maxMinutes,
 		RequestTTLMinutes: DefaultRequestTTL,
-		DefaultMaxUses:    1,
+		DefaultMaxUses:    usebudget.Limit(maxUses),
 		MaxUses:           usebudget.Limit(maxUses),
 	}
 }

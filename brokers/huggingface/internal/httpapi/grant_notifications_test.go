@@ -74,7 +74,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 		Mode:              hfgrant.ModeWindow,
 		RequestedDuration: 5 * time.Minute,
 		PendingTimeout:    5 * time.Minute,
-		MaxUses:           1,
+		MaxUses:           25,
 	}); err != nil {
 		t.Fatalf("preseed Request() error = %v", err)
 	}

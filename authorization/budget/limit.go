@@ -4,14 +4,21 @@ package usebudget
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
+	"fmt"
 )
 
 // Limit is either a positive finite use count or Unlimited.
 type Limit int
 
-// Unlimited represents a grant that remains usable until its time limit.
-const Unlimited Limit = 0
+const (
+	// Unlimited represents a grant that remains usable until its time limit.
+	Unlimited Limit = 0
+	// SingleUse is the required budget for execution-bound grants.
+	SingleUse Limit = 1
+	// MaxFiniteUses is the largest finite reusable grant budget accepted across
+	// policy, storage, and wire surfaces.
+	MaxFiniteUses Limit = 1_000_000
+)
 
 // IsUnlimited reports whether the limit has no use-count ceiling.
 func (l Limit) IsUnlimited() bool { return l == Unlimited }
@@ -55,8 +62,8 @@ func (l *Limit) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	if value < 1 {
-		return errors.New("use limit must be a positive integer or null")
+	if value < int(SingleUse) || value > int(MaxFiniteUses) {
+		return fmt.Errorf("use limit must be between %d and %d or null", SingleUse, MaxFiniteUses)
 	}
 	*l = Limit(value)
 	return nil

@@ -90,9 +90,11 @@ request rule may list several operations only when they resolve to one mode that
 operation allows.
 
 `default_max_uses` is always a positive finite default. `max_uses` is either a positive finite
-ceiling or `null`, and `null` lets callers request unlimited uses bounded only by the required
-expiry. Omitting a requested `max_uses` selects the finite default; explicitly requesting `null`
-selects unlimited use within the window.
+ceiling no greater than `1000000`, or `null`. Providers may impose a lower operation-specific
+ceiling. `null` lets callers request unlimited uses bounded only by the required expiry. Omitting a
+requested `max_uses` selects the finite default; explicitly requesting `null` selects unlimited use
+within the window. When a reusable policy omits both use fields, they default to the lowest
+provider ceiling among its operations. Execution grants always default to and require one use.
 
 Grant mode is authorization metadata rather than a transport selector. Agent-facing MCP and CLI
 calls always submit through Agent Operations V1 regardless of mode, and a matching active window

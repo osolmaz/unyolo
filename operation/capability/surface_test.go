@@ -3,6 +3,8 @@ package capability
 import (
 	"slices"
 	"testing"
+
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestDescriptorDrivenSurfaces(t *testing.T) {
@@ -58,6 +60,10 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 	}
 	if windowProperties["attrs"] == nil || windowProperties["minutes"] == nil || windowProperties["max_uses"] == nil {
 		t.Fatalf("window schema = %#v", window)
+	}
+	maxUses := windowProperties["max_uses"].(map[string]any)
+	if maxUses["maximum"] != int(usebudget.MaxFiniteUses) {
+		t.Fatalf("max_uses schema = %#v", maxUses)
 	}
 	operationWindowOptions := options
 	operationWindowOptions.WindowSubmitsOperation = true

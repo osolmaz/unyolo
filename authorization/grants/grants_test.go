@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/policy"
 )
 
@@ -484,6 +485,22 @@ func TestGetExpiresPendingGrant(t *testing.T) {
 	}
 }
 
+func TestRequestPersistsMaximumFiniteUseBudget(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	result, created, err := store.Request(Request{
+		Client: "agent", ClientRequestID: "million-writes", Operation: "bucket.object.write",
+		Target: policy.Target{Kind: "bucket", Fields: map[string][]string{"owner": {"acme"}, "name": {"artifacts"}}},
+		Reason: "publish a large run", MaxUses: usebudget.MaxFiniteUses, MaxUsesSpecified: true,
+	})
+	if err != nil || !created || result.Grant.MaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("Request() = %+v, created=%v, err=%v", result, created, err)
+	}
+	stored, err := store.Get(result.Grant.ID)
+	if err != nil || stored.RequestedMaxUses != usebudget.MaxFiniteUses {
+		t.Fatalf("Get() = %+v, err=%v", stored, err)
+	}
+}
+
 func TestRequestValidation(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	_, _, err := store.Request(Request{Client: "bob", Operation: "op", Reason: "missing target"})
@@ -495,7 +512,7 @@ func TestRequestValidation(t *testing.T) {
 		Operation: "session.shell",
 		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
 		Reason:    "too many uses",
-		MaxUses:   26,
+		MaxUses:   usebudget.MaxFiniteUses + 1,
 	})
 	if err == nil {
 		t.Fatal("Request(too many uses) error = nil, want error")

@@ -14,6 +14,7 @@ func TestLimitJSONAndBudgetSemantics(t *testing.T) {
 		unlimited bool
 	}{
 		{name: "finite", input: "3", want: 3},
+		{name: "maximum finite", input: "1000000", want: MaxFiniteUses},
 		{name: "unlimited", input: "null", want: Unlimited, unlimited: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -29,6 +30,12 @@ func TestLimitJSONAndBudgetSemantics(t *testing.T) {
 				t.Fatalf("Marshal() = %s, %v", encoded, err)
 			}
 		})
+	}
+	for _, input := range []string{"0", "1000001"} {
+		var limit Limit
+		if err := json.Unmarshal([]byte(input), &limit); err == nil {
+			t.Fatalf("Unmarshal(%s) succeeded", input)
+		}
 	}
 	if !Unlimited.Allows(10_000, 20) || Unlimited.Exhausted(10_000) {
 		t.Fatal("unlimited budget was exhausted")

@@ -218,6 +218,6 @@ func grantPolicy(descriptor opcatalog.Descriptor) *ruleGrantPolicy {
 	}
 	return &ruleGrantPolicy{
 		Mode: mode, DefaultMinutes: min(policy.DefaultGrantMinutes, maxMinutes), MaxMinutes: maxMinutes,
-		RequestTTLMinutes: descriptor.RequestTTLSeconds / 60, DefaultMaxUses: 1, MaxUses: maxUses,
+		RequestTTLMinutes: descriptor.RequestTTLSeconds / 60, DefaultMaxUses: maxUses, MaxUses: maxUses,
 	}
 }

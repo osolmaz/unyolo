@@ -179,7 +179,7 @@ func validateOperationGrantDuration(name string, minutes int) error {
 }
 
 func validateOperationGrantUses(name string, uses usebudget.Limit) error {
-	if uses < 0 || uses > absoluteMaxGrantUses {
+	if uses < 0 || uses > usebudget.MaxFiniteUses {
 		return fmt.Errorf("registry operation %q has invalid maximum grant uses", name)
 	}
 	return nil

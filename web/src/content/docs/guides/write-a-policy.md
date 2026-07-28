@@ -89,7 +89,8 @@ operation; the broker normalizes provider input into those names before policy r
 ## Require approval for the dangerous ones
 
 A `request` rule does not permit execution. It permits the creation of a pending grant, and it must
-carry `grant_policy` bounds saying how long an approval may last and how many times it may be used:
+carry `grant_policy` bounds saying how long an approval may last and how many times it may be used.
+A finite use budget cannot exceed `1000000`, and a provider operation may impose a lower ceiling:
 
 ```json
 {

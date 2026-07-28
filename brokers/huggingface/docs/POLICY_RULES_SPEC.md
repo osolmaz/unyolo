@@ -405,8 +405,12 @@ Normalization fills `grant_policy` defaults before comparison:
 - `default_minutes` defaults to `5`.
 - `max_minutes` defaults to `60`.
 - `request_ttl_minutes` defaults to `5`.
-- `default_max_uses` defaults to `1` for window grants.
-- `max_uses` defaults to `default_max_uses`.
+- `default_max_uses` defaults to the lowest catalog ceiling among the listed
+  operations.
+- `max_uses` defaults to the same operation ceiling.
+
+Finite use budgets cannot exceed `1000000`. A provider operation may set a
+lower ceiling. Execution operations always default to and require one use.
 
 The broker does not intersect or merge different grant policies. Requiring
 identical request policies keeps operator prompts predictable and avoids
@@ -635,7 +639,7 @@ Fields:
 | `max_minutes` | no | integer | Maximum approved access duration in minutes. Default `60`, min `1`, max `60`. |
 | `request_ttl_minutes` | no | integer | How long a pending approval request stays actionable. Default `5`, min `1`, max `60`. |
 | `default_max_uses` | no | integer | Default use budget for window grants. Default `1`, min `1`. |
-| `max_uses` | no | integer | Maximum use budget. Default `default_max_uses`, min `1`, max `25`. |
+| `max_uses` | no | integer | Maximum use budget. Defaults to the operation ceiling, min `1`, global max `1,000,000`. |
 
 Execution grants ignore multi-use budgets and are single-use plans.
 Window grants require a use budget. Git push use accounting remains one

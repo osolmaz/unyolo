@@ -73,16 +73,16 @@ func TestScopedCredentialAllowsReusableGrantActivation(t *testing.T) {
 	requested, _, err := hfgrant.Request(server.grants, server.plans, hfgrant.Input{
 		Client: "agent", ClientRequestID: "bucket-week", Operation: "bucket.object.write", Mode: hfgrant.ModeWindow,
 		PolicyTarget: &hfpolicy.Target{Kind: hfpolicy.KindBucket, Owner: "alice", Name: "artifacts", Keys: []string{"validation/**"}},
-		Reason:       "publish artifacts", RequestedDuration: 7 * 24 * time.Hour, MaxUses: 25, MaxUsesSpecified: true,
+		Reason:       "publish artifacts", RequestedDuration: 7 * 24 * time.Hour, MaxUses: int(usebudget.MaxFiniteUses), MaxUsesSpecified: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	approved, err := server.control.Decisions.Decide(t.Context(), requested.Grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
 		ExpectedRevision: requested.Grant.Revision, IdempotencyKey: "approve-bucket-week",
-		Constraints: &operatorv1.Constraints{DurationSeconds: int64((7 * 24 * time.Hour) / time.Second), MaxUses: usebudget.Finite(25)},
+		Constraints: &operatorv1.Constraints{DurationSeconds: int64((7 * 24 * time.Hour) / time.Second), MaxUses: usebudget.Finite(int(usebudget.MaxFiniteUses))},
 	})
-	if err != nil || approved.Grant.Status != grants.StatusActive {
+	if err != nil || approved.Grant.Status != grants.StatusActive || approved.Grant.MaxUses != usebudget.MaxFiniteUses {
 		t.Fatalf("approval = %+v, %v", approved, err)
 	}
 }
