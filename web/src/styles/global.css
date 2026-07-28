@@ -2,10 +2,10 @@
    unYOLO documentation — design tokens and base styles.
 
    The palette is mostly monochrome. Greys are neutral rather than tinted
-   toward the brand navy, solid UI (primary buttons, active markers) is
-   near-black, and the one accent colour is reserved for links and the
-   active item in a navigation rail. The logo keeps the brand teal; nothing
-   else uses it.
+   toward the brand charcoal, solid UI (primary buttons, active markers) is
+   near-black, and the one accent colour — a warm rust drawn from the brand
+   ember — is reserved for links and the active item in a navigation rail.
+   The prohibition red stays inside the logo; nothing else uses it.
    ========================================================================= */
 
 :root {
@@ -16,8 +16,9 @@
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  --navy: #0f263d;
-  --teal: #05b6af;
+  --charcoal: #211a16;
+  --ember: #c94f0a;
+  --prohibition-red: #d92d20;
 
   --radius-sm: 4px;
   --radius: 8px;
@@ -62,11 +63,11 @@ html[data-theme="light"] {
   --solid-contrast: #ffffff;
 
   /* Links and the active item in a nav rail. Nothing else. */
-  --accent: #1a5091;
-  --accent-hover: #123a6b;
+  --accent: #b02e0c;
+  --accent-hover: #8f2f10;
   --accent-contrast: #ffffff;
-  --accent-subtle: #eef3f9;
-  --accent-border: #bcd0e6;
+  --accent-subtle: #faeee8;
+  --accent-border: #e8c7b6;
 
   /* Diagram solids. Each face runs from its own tone to a slightly darker
      one, which gives the shapes volume without washing the page in colour. */
@@ -125,11 +126,11 @@ html[data-theme="dark"] {
   --solid-hover: #ffffff;
   --solid-contrast: #111113;
 
-  --accent: #7fb2eb;
-  --accent-hover: #a6cbf4;
-  --accent-contrast: #0d1a2a;
-  --accent-subtle: #16202c;
-  --accent-border: #2b4360;
+  --accent: #f0955f;
+  --accent-hover: #f5b183;
+  --accent-contrast: #2a130a;
+  --accent-subtle: #2a1b12;
+  --accent-border: #5f3a24;
 
   --iso-hi: #55565f;
   --iso-top: #44454d;
@@ -310,7 +311,7 @@ samp {
 }
 
 .brand__mark {
-  width: 22px;
+  width: 25px;
   height: 25px;
   display: block;
 }
@@ -617,7 +618,7 @@ html[data-theme="dark"] .theme-toggle__moon {
   .sidebar-backdrop {
     position: fixed;
     inset: var(--header-height) 0 0 0;
-    background: rgb(7 23 38 / 0.4);
+    background: rgb(24 16 12 / 0.4);
     z-index: 50;
   }
 }
@@ -1104,7 +1105,7 @@ html[data-theme="dark"] .callout code {
 }
 
 .search-dialog::backdrop {
-  background: rgb(7 23 38 / 0.45);
+  background: rgb(24 16 12 / 0.45);
   backdrop-filter: blur(2px);
 }
 

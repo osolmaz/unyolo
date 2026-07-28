@@ -84,9 +84,10 @@ rewriting them.
 
 ## Design tokens
 
-Colours derive from the two values in `assets/logo.svg`: the navy `#0f263d` and the teal `#05b6af`.
-Accents are darkened for light mode and lightened for dark mode so text keeps a WCAG AA contrast
-ratio. Both themes are defined at the top of `src/styles/global.css`; the theme is chosen from
+Colours derive from `assets/logo.svg`: warm charcoal `#211a16`, ember `#c94f0a`, and prohibition
+red `#d92d20`. The brand palette contains no blue and no green. Accents are darkened for light mode
+(`#b02e0c`) and lightened for dark mode (`#f0955f`) so text keeps a WCAG AA contrast ratio. Both
+themes are defined at the top of `src/styles/global.css`; the theme is chosen from
 `prefers-color-scheme` and overridden by an inline script before first paint so a dark-mode reader
 never sees a flash.
 
