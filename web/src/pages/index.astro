@@ -2,7 +2,7 @@
 import { Code } from "astro:components";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Icon from "../components/Icon.astro";
-import AccessDemo from "../components/AccessDemo.astro";
+import AccessDiagram from "../components/AccessDiagram.astro";
 import { GITHUB_REPO } from "../config/nav";
 import "../styles/landing.css";
 
@@ -217,12 +217,11 @@ const description =
           </p>
           <p>
             A broker moves the limit onto the credential itself. The agent still runs flat out, and
-            the operations you never authorized fail before they reach GitHub. Send a request below,
-            then turn the broker on and send the same one again.
+            the operations you never authorized fail before they reach GitHub.
           </p>
         </div>
 
-        <AccessDemo />
+        <AccessDiagram />
       </div>
     </section>
 
