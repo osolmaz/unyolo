@@ -280,7 +280,7 @@ func effectiveUID() uint32 {
 }
 
 func listenerFromFD(fd int) (net.Listener, error) {
-	file := os.NewFile(uintptr(fd), "brokerkit-listener-"+strconv.Itoa(fd))
+	file := os.NewFile(uintptr(fd), "unyolo-listener-"+strconv.Itoa(fd))
 	if file == nil {
 		return nil, errors.New("inherited listener descriptor is invalid")
 	}

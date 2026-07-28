@@ -14,11 +14,11 @@ import (
 	"strconv"
 	"strings"
 
-	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
-	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	sharedpreset "github.com/osolmaz/unyolo/authorization/preset"
+	ghpolicy "github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policypreset"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 const (
@@ -62,7 +62,7 @@ type githubCredentialSource struct {
 	label string
 	name  string
 	mode  os.FileMode
-	owner bkservice.ManagedFileOwner
+	owner unyoloservice.ManagedFileOwner
 	class string
 }
 
@@ -81,18 +81,18 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 	if err != nil {
 		return err
 	}
-	if err := bkservice.InstallSystemd(ctx, installPlan); err != nil {
+	if err := unyoloservice.InstallSystemd(ctx, installPlan); err != nil {
 		return err
 	}
 	printSystemdSummary(stdout, plan)
 	return nil
 }
 
-func replacementCheckedSystemdInstallPlan(stdout io.Writer, plan systemdPlan) (bkservice.SystemdInstallPlan, error) {
+func replacementCheckedSystemdInstallPlan(stdout io.Writer, plan systemdPlan) (unyoloservice.SystemdInstallPlan, error) {
 	if err := checkGitHubPolicyReplacement(stdout, plan); err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
-	return brokerkitSystemdInstallPlan(plan)
+	return unyoloSystemdInstallPlan(plan)
 }
 
 func requireRootForSystemd(opts setupSystemdOptions) error {
@@ -125,18 +125,18 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	}
 }
 
-func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan, error) {
+func unyoloSystemdInstallPlan(plan systemdPlan) (unyoloservice.SystemdInstallPlan, error) {
 	files, err := githubManagedFiles(plan)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
-	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, ghUnitFileName)
+	activation, err := unyolosetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, ghUnitFileName)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
 	removeFiles := githubRetiredManagedFiles(plan)
 	readyCheck := githubInstallReadyCheck(plan, removeFiles)
-	return bkservice.SystemdInstallPlan{
+	return unyoloservice.SystemdInstallPlan{
 		User:             plan.opts.User,
 		Group:            plan.opts.Group,
 		AdditionalGroups: activation.Groups,
@@ -158,55 +158,55 @@ func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan
 	}, nil
 }
 
-func githubRetiredManagedFiles(plan systemdPlan) []bkservice.ManagedFileRef {
+func githubRetiredManagedFiles(plan systemdPlan) []unyoloservice.ManagedFileRef {
 	removeFiles := retiredPolicyFiles(plan)
 	removeFiles = append(removeFiles, retiredCredentialFiles(plan)...)
 	if plan.opts.TelegramBotTokenFile == "" {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, CredentialClass: "telegram-bot"})
+		removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: ghTelegramTokenFileName, CredentialClass: "telegram-bot"})
 	}
 	return removeFiles
 }
 
-func retiredPolicyFiles(plan systemdPlan) []bkservice.ManagedFileRef {
+func retiredPolicyFiles(plan systemdPlan) []unyoloservice.ManagedFileRef {
 	if plan.opts.ScopeFile == "" {
 		return nil
 	}
-	return []bkservice.ManagedFileRef{
-		{Area: bkservice.ManagedFileConfig, Name: ghPolicyProfileFileName},
-		{Area: bkservice.ManagedFileConfig, Name: ghPolicyManifestFileName},
+	return []unyoloservice.ManagedFileRef{
+		{Area: unyoloservice.ManagedFileConfig, Name: ghPolicyProfileFileName},
+		{Area: unyoloservice.ManagedFileConfig, Name: ghPolicyManifestFileName},
 	}
 }
 
-func retiredCredentialFiles(plan systemdPlan) []bkservice.ManagedFileRef {
+func retiredCredentialFiles(plan systemdPlan) []unyoloservice.ManagedFileRef {
 	if plan.opts.DevTokenFallback {
 		// #nosec G101 -- these are credential-class labels and managed filenames, not credential values.
-		return []bkservice.ManagedFileRef{
-			{Area: bkservice.ManagedFileConfig, Name: githubAppIDFileName},
-			{Area: bkservice.ManagedFileConfig, Name: githubAppPrivateKeyFileName, CredentialClass: "github-app-private-key"},
-			{Area: bkservice.ManagedFileConfig, Name: githubAppClientIDFileName},
-			{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
-			{Area: bkservice.ManagedFileConfig, Name: githubWebhookSecretFileName, CredentialClass: "github-webhook"},
+		return []unyoloservice.ManagedFileRef{
+			{Area: unyoloservice.ManagedFileConfig, Name: githubAppIDFileName},
+			{Area: unyoloservice.ManagedFileConfig, Name: githubAppPrivateKeyFileName, CredentialClass: "github-app-private-key"},
+			{Area: unyoloservice.ManagedFileConfig, Name: githubAppClientIDFileName},
+			{Area: unyoloservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
+			{Area: unyoloservice.ManagedFileConfig, Name: githubWebhookSecretFileName, CredentialClass: "github-webhook"},
 		}
 	}
-	removeFiles := []bkservice.ManagedFileRef{{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, CredentialClass: "github-development"}}
+	removeFiles := []unyoloservice.ManagedFileRef{{Area: unyoloservice.ManagedFileConfig, Name: githubTokenFileName, CredentialClass: "github-development"}}
 	if plan.opts.GitHubAppClientIDFile == "" {
 		// #nosec G101 -- these are credential-class labels and managed filenames, not credential values.
 		removeFiles = append(removeFiles,
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientIDFileName},
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
+			unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: githubAppClientIDFileName},
+			unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: githubAppClientSecretFileName, CredentialClass: "github-app-client-secret"},
 		)
 	}
 	return removeFiles
 }
 
-func githubInstallReadyCheck(plan systemdPlan, removeFiles []bkservice.ManagedFileRef) bkservice.ReadinessCheck {
+func githubInstallReadyCheck(plan systemdPlan, removeFiles []unyoloservice.ManagedFileRef) unyoloservice.ReadinessCheck {
 	if len(removeFiles) == 0 {
 		return nil
 	}
-	return bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
+	return unyoloservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
 }
 
-func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
+func githubManagedFiles(plan systemdPlan) ([]unyoloservice.ManagedFile, error) {
 	credentials, err := githubCredentialFiles(plan)
 	if err != nil {
 		return nil, err
@@ -216,21 +216,21 @@ func githubManagedFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
 		return nil, err
 	}
 	files := append(credentials,
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghOperatorSecretsFileName, Data: []byte(plan.opts.OperatorID + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghScopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghSecretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
+		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghOperatorSecretsFileName, Data: []byte(plan.opts.OperatorID + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
+		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghScopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
+		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghEnvFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 	)
 	if policyFiles.managedPreset {
 		files = append(files,
-			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghPolicyProfileFileName, Data: policyFiles.profile, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
-			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghPolicyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+			unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghPolicyProfileFileName, Data: policyFiles.profile, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
+			unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghPolicyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
 		)
 	}
 	return appendTelegramCredentialFile(files, plan)
 }
 
-func appendTelegramCredentialFile(files []bkservice.ManagedFile, plan systemdPlan) ([]bkservice.ManagedFile, error) {
+func appendTelegramCredentialFile(files []unyoloservice.ManagedFile, plan systemdPlan) ([]unyoloservice.ManagedFile, error) {
 	if plan.opts.TelegramBotTokenFile == "" {
 		return files, nil
 	}
@@ -238,7 +238,7 @@ func appendTelegramCredentialFile(files []bkservice.ManagedFile, plan systemdPla
 	if err != nil {
 		return nil, err
 	}
-	return append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"}), nil
+	return append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"}), nil
 }
 
 type githubSetupPolicyFiles struct {
@@ -364,36 +364,36 @@ func mergeGitHubDeniedOperations(installed, requested []string) []string {
 	return slices.Compact(values)
 }
 
-func githubCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
+func githubCredentialFiles(plan systemdPlan) ([]unyoloservice.ManagedFile, error) {
 	if plan.opts.DevTokenFallback {
 		data, err := readRequiredSetupFile(plan.opts.GitHubTokenFile, "--github-token-file")
 		if err != nil {
 			return nil, err
 		}
-		return []bkservice.ManagedFile{{Area: bkservice.ManagedFileConfig, Name: githubTokenFileName, Data: data, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "github-development"}}, nil
+		return []unyoloservice.ManagedFile{{Area: unyoloservice.ManagedFileConfig, Name: githubTokenFileName, Data: data, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "github-development"}}, nil
 	}
 	return githubAppCredentialFiles(plan)
 }
 
-func githubAppCredentialFiles(plan systemdPlan) ([]bkservice.ManagedFile, error) {
+func githubAppCredentialFiles(plan systemdPlan) ([]unyoloservice.ManagedFile, error) {
 	sources := []githubCredentialSource{
-		{path: plan.opts.GitHubAppIDFile, label: "--github-app-id-file", name: githubAppIDFileName, mode: 0o640, owner: bkservice.ManagedFileOwnerRoot},
-		{path: plan.opts.GitHubAppPrivateKeyFile, label: "--github-app-private-key-file", name: githubAppPrivateKeyFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService, class: "github-app-private-key"},
-		{path: plan.opts.GitHubWebhookSecretFile, label: "--github-webhook-secret-file", name: githubWebhookSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService, class: "github-webhook"},
+		{path: plan.opts.GitHubAppIDFile, label: "--github-app-id-file", name: githubAppIDFileName, mode: 0o640, owner: unyoloservice.ManagedFileOwnerRoot},
+		{path: plan.opts.GitHubAppPrivateKeyFile, label: "--github-app-private-key-file", name: githubAppPrivateKeyFileName, mode: 0o600, owner: unyoloservice.ManagedFileOwnerService, class: "github-app-private-key"},
+		{path: plan.opts.GitHubWebhookSecretFile, label: "--github-webhook-secret-file", name: githubWebhookSecretFileName, mode: 0o600, owner: unyoloservice.ManagedFileOwnerService, class: "github-webhook"},
 	}
 	if plan.opts.GitHubAppClientIDFile != "" {
 		sources = append(sources,
-			githubCredentialSource{path: plan.opts.GitHubAppClientIDFile, label: "--github-app-client-id-file", name: githubAppClientIDFileName, mode: 0o640, owner: bkservice.ManagedFileOwnerRoot},
-			githubCredentialSource{path: plan.opts.GitHubAppClientSecretFile, label: "--github-app-client-secret-file", name: githubAppClientSecretFileName, mode: 0o600, owner: bkservice.ManagedFileOwnerService, class: "github-app-client-secret"},
+			githubCredentialSource{path: plan.opts.GitHubAppClientIDFile, label: "--github-app-client-id-file", name: githubAppClientIDFileName, mode: 0o640, owner: unyoloservice.ManagedFileOwnerRoot},
+			githubCredentialSource{path: plan.opts.GitHubAppClientSecretFile, label: "--github-app-client-secret-file", name: githubAppClientSecretFileName, mode: 0o600, owner: unyoloservice.ManagedFileOwnerService, class: "github-app-client-secret"},
 		)
 	}
-	files := make([]bkservice.ManagedFile, 0, len(sources))
+	files := make([]unyoloservice.ManagedFile, 0, len(sources))
 	for _, source := range sources {
 		data, err := readRequiredSetupFile(source.path, source.label)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: source.name, Data: data, Mode: source.mode, Owner: source.owner, CredentialClass: source.class})
+		files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: source.name, Data: data, Mode: source.mode, Owner: source.owner, CredentialClass: source.class})
 	}
 	return files, nil
 }
@@ -460,8 +460,8 @@ func optionalAppClientEnv(plan systemdPlan) string {
 		"GH_BROKER_GITHUB_APP_CLIENT_SECRET_FILE=" + plan.appClientSecretPath + "\n"
 }
 
-func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
-	return bkservice.SystemdUnit{
+func systemdUnit(plan systemdPlan) unyoloservice.SystemdUnit {
+	return unyoloservice.SystemdUnit{
 		Description:                  "gh-broker GitHub credential broker",
 		User:                         plan.opts.User,
 		Group:                        plan.opts.Group,
@@ -469,16 +469,16 @@ func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
 		ExecStart:                    plan.opts.BinaryPath,
 		StateDir:                     plan.opts.StateDir,
 		ConfigDir:                    plan.opts.ConfigDir,
-		HomeAccess:                   bkservice.HomeAccessDeny,
+		HomeAccess:                   unyoloservice.HomeAccessDeny,
 		PathValidation:               setupPathValidation(plan.opts),
-		ManagedExecutableDestination: bksetup.ManagedDestination(plan.opts.BinaryPath, plan.opts.ManagedDestination),
+		ManagedExecutableDestination: unyolosetup.ManagedDestination(plan.opts.BinaryPath, plan.opts.ManagedDestination),
 	}
 }
 
 func validateSystemdSetupPlan(plan systemdPlan) error {
 	unit := systemdUnit(plan)
-	unit.PathValidation = bkservice.PathValidationPreview
-	_, err := bkservice.RenderSystemd(unit)
+	unit.PathValidation = unyoloservice.PathValidationPreview
+	_, err := unyoloservice.RenderSystemd(unit)
 	return err
 }
 
@@ -582,19 +582,19 @@ func writeGitHubOperationCountPreview(stdout io.Writer, current, candidate *poli
 	return err
 }
 
-func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
+func setupPathValidation(opts setupSystemdOptions) unyoloservice.PathValidation {
 	if opts.DryRun || opts.AllowNonRoot {
-		return bkservice.PathValidationPreview
+		return unyoloservice.PathValidationPreview
 	}
-	return bkservice.PathValidationStrict
+	return unyoloservice.PathValidationStrict
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
-	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, ghUnitFileName)
+	activation, err := unyolosetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, ghUnitFileName)
 	if err != nil {
 		return err
 	}
-	sockets, err := bkservice.RenderSystemdSockets(activation.Sockets)
+	sockets, err := unyoloservice.RenderSystemdSockets(activation.Sockets)
 	if err != nil {
 		return err
 	}

@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  printf '%s\n' 'usage: bootstrap.sh --release brokerkit/vX.Y.Z [setup arguments...]' >&2
+  printf '%s\n' 'usage: bootstrap.sh --release unyolo/vX.Y.Z [setup arguments...]' >&2
   exit 64
 }
 
@@ -26,7 +26,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$release" ] || usage
 command -v grep >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: grep is required' >&2; exit 1; }
-printf '%s\n' "$release" | grep -Eq '^brokerkit/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || usage
+printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || usage
 
 command -v curl >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: curl is required' >&2; exit 1; }
 command -v gh >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: GitHub CLI is required for attestation verification' >&2; exit 1; }
@@ -43,9 +43,9 @@ case "$(uname -m)" in
   *) printf '%s\n' 'bootstrap: unsupported architecture' >&2; exit 1 ;;
 esac
 
-asset="brokerkit_${os}_${arch}.tar.gz"
-base="https://github.com/osolmaz/brokerkit/releases/download/${release}"
-temporary=$(mktemp -d "${TMPDIR:-/tmp}/brokerkit-bootstrap.XXXXXX")
+asset="unyolo_${os}_${arch}.tar.gz"
+base="https://github.com/osolmaz/unyolo/releases/download/${release}"
+temporary=$(mktemp -d "${TMPDIR:-/tmp}/unyolo-bootstrap.XXXXXX")
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
 
 curl -fL --proto '=https' --tlsv1.2 "$base/$asset" -o "$temporary/$asset"
@@ -58,18 +58,18 @@ curl -fL --proto '=https' --tlsv1.2 "$base/checksums.txt" -o "$temporary/checksu
   [ "$actual" = "$expected" ] || { printf '%s\n' 'bootstrap: release checksum mismatch' >&2; exit 1; }
 )
 gh attestation verify "$temporary/$asset" \
-  --repo osolmaz/brokerkit \
-  --signer-workflow osolmaz/brokerkit/.github/workflows/release.yml \
+  --repo osolmaz/unyolo \
+  --signer-workflow osolmaz/unyolo/.github/workflows/release.yml \
   --source-ref "refs/tags/$release" \
   --deny-self-hosted-runners >/dev/null
 
-tar -xzf "$temporary/$asset" -C "$temporary" brokerkit
-[ -f "$temporary/brokerkit" ] && [ ! -L "$temporary/brokerkit" ] || { printf '%s\n' 'bootstrap: release archive is invalid' >&2; exit 1; }
+tar -xzf "$temporary/$asset" -C "$temporary" unyolo
+[ -f "$temporary/unyolo" ] && [ ! -L "$temporary/unyolo" ] || { printf '%s\n' 'bootstrap: release archive is invalid' >&2; exit 1; }
 install_dir=${XDG_BIN_HOME:-"$HOME/.local/bin"}
 umask 077
 mkdir -p "$install_dir"
-install -m 0755 "$temporary/brokerkit" "$install_dir/brokerkit.new"
-mv -f "$install_dir/brokerkit.new" "$install_dir/brokerkit"
+install -m 0755 "$temporary/unyolo" "$install_dir/unyolo.new"
+mv -f "$install_dir/unyolo.new" "$install_dir/unyolo"
 
 [ -r /dev/tty ] && [ -w /dev/tty ] || { printf '%s\n' 'bootstrap: an interactive terminal is required' >&2; exit 1; }
 if [ "$#" -eq 0 ]; then
@@ -77,4 +77,4 @@ if [ "$#" -eq 0 ]; then
 elif [ "$1" != setup ]; then
   set -- setup "$@"
 fi
-exec "$install_dir/brokerkit" "$@" </dev/tty >/dev/tty
+exec "$install_dir/unyolo" "$@" </dev/tty >/dev/tty

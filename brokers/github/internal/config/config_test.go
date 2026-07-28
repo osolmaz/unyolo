@@ -99,7 +99,7 @@ func TestLoadRejectsPlaintextProductionUpstream(t *testing.T) {
 		t.Fatalf("development loopback upstream: %v", err)
 	}
 	values["GH_BROKER_DEVELOPMENT"] = "false"
-	values["GH_BROKER_AGENT_ENDPOINT"] = "unix:///run/brokerkit/github/agent/broker.sock"
+	values["GH_BROKER_AGENT_ENDPOINT"] = "unix:///run/unyolo/github/agent/broker.sock"
 	values["GH_BROKER_SCOPE_FILE"] = "/etc/gh-broker/scope.json"
 	values["GH_BROKER_STATE_DIR"] = "/var/lib/gh-broker"
 	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "GITHUB_API_URL") {

@@ -2,7 +2,7 @@
 
 Status: implemented.
 
-Brokerkit owns the privileged, provider-neutral host changes required to install
+unYOLO owns the privileged, provider-neutral host changes required to install
 a broker as a Linux systemd service. Consumers provide provider-specific file
 contents and the already typed `SystemdUnit`; they do not create accounts,
 resolve numeric ids, write or chown files, or invoke `systemctl` themselves.
@@ -10,22 +10,22 @@ resolve numeric ids, write or chown files, or invoke `systemctl` themselves.
 Single-service setup remains the configuration and account bootstrap boundary.
 Production binary upgrades use the host bundle transaction described in
 `OPERATIONS_RUNTIME.md`; independently replacing a running executable is not a
-service upgrade. Bundle activation stops `brokerkit-telegram.service` first,
+service upgrade. Bundle activation stops `unyolo-telegram.service` first,
 then provider services, switches the immutable release pointer, reloads
 systemd, starts and verifies providers, and starts Telegram last. A candidate
 failure restores the previous complete service set.
 
 Production units execute the exact component destination below
-`/opt/brokerkit/current`. Setup preserves that root-controlled pointer instead
+`/opt/unyolo/current`. Setup preserves that root-controlled pointer instead
 of resolving it into the release active at setup time. It also normalizes a
-binary invoked from `/opt/brokerkit/releases/<bundle-id>` back to the matching
+binary invoked from `/opt/unyolo/releases/<bundle-id>` back to the matching
 `current` path. A first installation may configure units with `--no-start` and
 the managed path before the bundle is activated; service startup occurs only
 after activation publishes and verifies the target.
 
 ## Boundary
 
-Brokerkit owns:
+unYOLO owns:
 
 - creating the configured system group and non-login service account;
 - resolving and verifying the configured user and group ids;
@@ -48,8 +48,8 @@ Consumers own:
 - selecting whether each opaque file belongs in config or state;
 - selecting root-owned or service-owned file semantics;
 - provider-specific dry-run and summary text;
-- provider-specific service hardening choices exposed by typed Brokerkit APIs.
-- selecting and persisting any explicit loopback TCP Git listener; BrokerKit
+- provider-specific service hardening choices exposed by typed unYOLO APIs.
+- selecting and persisting any explicit loopback TCP Git listener; unYOLO
   assigns no fixed Git port.
 
 Git-speaking services may bind one explicit loopback TCP endpoint from their
@@ -65,7 +65,7 @@ explicitly select `HostFilesystemAccessAllow`, which renders
 account's normal filesystem permissions. This is an opt-in capability; it does
 not change the default for credential brokers.
 
-Brokerkit never parses, logs, returns, or adds provider meaning to managed file
+unYOLO never parses, logs, returns, or adds provider meaning to managed file
 contents.
 
 ## Typed Plan
@@ -100,7 +100,7 @@ restricted to the root-owned config directory so the service cannot race the
 cleanup. The environment file must always be written and cannot be removed. A
 plan cannot write and remove the same path.
 
-An activated plan with removals must provide a readiness check. Brokerkit polls
+An activated plan with removals must provide a readiness check. unYOLO polls
 it with bounded timeout and interval settings after `systemctl restart`; only a
 successful check permits credential retirement. `HTTPReadyCheck` provides the
 common loopback health-endpoint implementation.
@@ -114,7 +114,7 @@ use `<service-user>:<service-group>`. The unit is always `root:root` and mode
 `0644`. The config directory is `root:<service-group>` mode `0750`; the state
 directory is `<service-user>:<service-group>` mode `0750`.
 When two cooperating units keep separate state beneath one parent, the plan may
-declare that shared state directory explicitly. Brokerkit then installs it as
+declare that shared state directory explicitly. unYOLO then installs it as
 `root:<service-group>` mode `0750`, allowing both units to traverse to their
 separately owned state roots without making the parent writable.
 
@@ -163,7 +163,7 @@ An install plan is rejected when:
 - the final executable is not a regular file, an ancestor is not searchable,
   or the file cannot be executed by the configured service identity including
   its supplementary groups;
-- a production service points outside its exact BrokerKit `current` component
+- a production service points outside its exact unYOLO `current` component
   destination, or an existing `current` link leaves the immutable release root;
 - non-root test mode is requested while service activation is enabled.
 
@@ -194,6 +194,6 @@ re-enables it.
 
 ## Ownership Rule
 
-BrokerKit owns account creation, UID/GID lookup, directory creation, file
+unYOLO owns account creation, UID/GID lookup, directory creation, file
 installation, unit installation, and systemctl execution. Provider-specific
 payload rendering remains local.

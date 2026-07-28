@@ -4,7 +4,7 @@ description: Brokered Git, covering URL rewrites, the route-gated listener, LFS 
 ---
 
 Git is the surface where brokering has to be invisible. An agent that has to learn a special remote
-URL or a wrapper command will get it wrong, so BrokerKit makes ordinary `git clone`, `git fetch`,
+URL or a wrapper command will get it wrong, so unYOLO makes ordinary `git clone`, `git fetch`,
 and `git push` route through the broker while remotes keep their normal provider URLs.
 
 ## Installing the integration
@@ -48,7 +48,7 @@ configuration alone.
 
 ## The Git listener
 
-The Git data plane is a separate, explicitly deployment-selected TCP endpoint. BrokerKit defines no
+The Git data plane is a separate, explicitly deployment-selected TCP endpoint. unYOLO defines no
 default port, and the deployment persists the one it chose. Standard Git clients need TCP, which is
 why this listener cannot be a Unix socket like the agent and operator listeners.
 
@@ -143,7 +143,7 @@ fast-forward pushes there, and require approval or deny outright for the default
   "effect": "allow",
   "clients": ["agent-a"],
   "operations": ["git.push.fast_forward"],
-  "targets": [{ "kind": "repo", "owner": "osolmaz", "name": "brokerkit" }],
+  "targets": [{ "kind": "repo", "owner": "osolmaz", "name": "unyolo" }],
   "attrs": { "refs": ["refs/heads/agent-a/**"] }
 }
 ```

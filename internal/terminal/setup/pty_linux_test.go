@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/flow"
 	"golang.org/x/sys/unix"
 )
 

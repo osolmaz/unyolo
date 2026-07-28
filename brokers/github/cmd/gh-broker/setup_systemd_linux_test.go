@@ -12,14 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policypreset"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 const (
-	testGHAgentEndpoint    = "unix:///run/brokerkit/github/agent/broker.sock"
-	testGHOperatorEndpoint = "unix:///run/brokerkit/github/operator/broker.sock"
+	testGHAgentEndpoint    = "unix:///run/unyolo/github/agent/broker.sock"
+	testGHOperatorEndpoint = "unix:///run/unyolo/github/operator/broker.sock"
 )
 
 func requiredGHSetupArgs(args ...string) []string {
@@ -104,7 +104,7 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 	var stdout bytes.Buffer
 	configDir := t.TempDir()
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: configDir, StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
@@ -134,7 +134,7 @@ func TestSetupSystemdDryRunForDevTokenFallback(t *testing.T) {
 func TestSetupSystemdDryRunValidatesInstallPlan(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- generated test secrets are not credentials.
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: t.TempDir(), StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "relative/gh-broker",
@@ -154,7 +154,7 @@ func TestSetupSystemdDryRunForGitHubAppFiles(t *testing.T) {
 	var stdout bytes.Buffer
 	configDir := t.TempDir()
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{ // #nosec G101 -- test fixture paths and generated secrets are not credentials.
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: configDir, StateDir: "/var/lib/gh-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",
@@ -191,7 +191,7 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	var stdout bytes.Buffer
 	runner := &recordingRunner{}
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "gh-broker", User: currentUser.Username, Group: currentGroup.Name,
 			ConfigDir: filepath.Join(dir, "etc", "gh-broker"), StateDir: filepath.Join(dir, "var", "lib", "gh-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
@@ -265,9 +265,9 @@ func TestManagedPresetArtifactsPreserveInstalledDenies(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := systemdSetupPlan(setupSystemdOptions{
-		SystemdOptions:   bksetup.SystemdOptions{ConfigDir: configDir, ClientName: "agent-a"},
+		SystemdOptions:   unyolosetup.SystemdOptions{ConfigDir: configDir, ClientName: "agent-a"},
 		PolicyPreset:     policypreset.RequestAllAgentOperations,
-		DeniedOperations: bksetup.StringListFlag{"repo.delete"},
+		DeniedOperations: unyolosetup.StringListFlag{"repo.delete"},
 	})
 	first, err := renderGitHubSetupPolicy(plan)
 	if err != nil {
@@ -283,7 +283,7 @@ func TestManagedPresetArtifactsPreserveInstalledDenies(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	plan.opts.DeniedOperations = bksetup.StringListFlag{"pull_request.create"}
+	plan.opts.DeniedOperations = unyolosetup.StringListFlag{"pull_request.create"}
 	second, err := renderGitHubSetupPolicy(plan)
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +311,7 @@ func TestInstalledPolicyArtifactsRejectIncompleteManagedPair(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: bksetup.SystemdOptions{ConfigDir: configDir}})
+	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: unyolosetup.SystemdOptions{ConfigDir: configDir}})
 	if err := os.WriteFile(plan.policyProfilePath, []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestCheckGitHubPolicyReplacementRequiresExplicitFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := systemdSetupPlan(setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{ConfigDir: configDir, ClientName: "agent-a"},
+		SystemdOptions: unyolosetup.SystemdOptions{ConfigDir: configDir, ClientName: "agent-a"},
 		PolicyPreset:   policypreset.RequestAllAgentOperations,
 	})
 	if err := os.WriteFile(plan.scopePath, []byte(minimalScopeJSON()), 0o600); err != nil {
@@ -349,7 +349,7 @@ func TestCheckGitHubPolicyReplacementRequiresExplicitFlag(t *testing.T) {
 func TestCustomScopeRemovesManagedPresetEvidence(t *testing.T) {
 	dir := t.TempDir()
 	plan := systemdSetupPlan(setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			ConfigDir: filepath.Join(dir, "config"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"),
 			User: "service", Group: "service", ClientName: "agent-a", Endpoint: testGHAgentEndpoint, BinaryPath: "/usr/local/bin/gh-broker",
 		},
@@ -357,12 +357,12 @@ func TestCustomScopeRemovesManagedPresetEvidence(t *testing.T) {
 		GitHubTokenFile: writeFixture(t, dir, "token", "token\n"), DevTokenFallback: true,
 		SharedSecret: strings.Repeat("s", 32), OperatorID: "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testGHOperatorEndpoint,
 	})
-	installPlan, err := brokerkitSystemdInstallPlan(plan)
+	installPlan, err := unyoloSystemdInstallPlan(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{ghPolicyProfileFileName, ghPolicyManifestFileName} {
-		if !slices.ContainsFunc(installPlan.RemoveFiles, func(file bkservice.ManagedFileRef) bool { return file.Name == name }) {
+		if !slices.ContainsFunc(installPlan.RemoveFiles, func(file unyoloservice.ManagedFileRef) bool { return file.Name == name }) {
 			t.Fatalf("managed preset evidence %s is not retired", name)
 		}
 	}
@@ -375,7 +375,7 @@ func assertTextExcludes(t *testing.T, text string, value string) {
 	}
 }
 
-func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
+func TestUnyoloSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	dir := t.TempDir()
 	appIDFile := writeFixture(t, dir, "app-id", "12345\n")
 	privateKeyFile := writeFixture(t, dir, "private-key.pem", "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n")
@@ -383,7 +383,7 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 	clientSecretFile := writeFixture(t, dir, "client-secret", "oauth-client-fixture\n")
 	webhookSecretFile := writeFixture(t, dir, "webhook-secret", "webhook-fixture\n")
 	plan := systemdSetupPlan(setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 			ConfigDir: filepath.Join(dir, "etc", "gh-broker"), StateDir: filepath.Join(dir, "var", "lib", "gh-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/gh-broker",
@@ -401,23 +401,23 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 		OperatorSecret:            strings.Repeat("o", 32),
 		OperatorEndpoint:          testGHOperatorEndpoint,
 	})
-	installPlan, err := brokerkitSystemdInstallPlan(plan)
+	installPlan, err := unyoloSystemdInstallPlan(plan)
 	if err != nil {
-		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
+		t.Fatalf("unyoloSystemdInstallPlan() error = %v", err)
 	}
 	if installPlan.ReadyCheck == nil {
 		t.Fatal("Telegram credential retirement requires a readiness check")
 	}
-	wantOwners := map[string]bkservice.ManagedFileOwner{
-		githubAppIDFileName:           bkservice.ManagedFileOwnerRoot,
-		githubAppPrivateKeyFileName:   bkservice.ManagedFileOwnerService,
-		githubAppClientIDFileName:     bkservice.ManagedFileOwnerRoot,
-		githubAppClientSecretFileName: bkservice.ManagedFileOwnerService,
-		githubWebhookSecretFileName:   bkservice.ManagedFileOwnerService,
-		ghSecretsFileName:             bkservice.ManagedFileOwnerService,
-		ghOperatorSecretsFileName:     bkservice.ManagedFileOwnerService,
-		ghScopeFileName:               bkservice.ManagedFileOwnerRoot,
-		ghEnvFileName:                 bkservice.ManagedFileOwnerRoot,
+	wantOwners := map[string]unyoloservice.ManagedFileOwner{
+		githubAppIDFileName:           unyoloservice.ManagedFileOwnerRoot,
+		githubAppPrivateKeyFileName:   unyoloservice.ManagedFileOwnerService,
+		githubAppClientIDFileName:     unyoloservice.ManagedFileOwnerRoot,
+		githubAppClientSecretFileName: unyoloservice.ManagedFileOwnerService,
+		githubWebhookSecretFileName:   unyoloservice.ManagedFileOwnerService,
+		ghSecretsFileName:             unyoloservice.ManagedFileOwnerService,
+		ghOperatorSecretsFileName:     unyoloservice.ManagedFileOwnerService,
+		ghScopeFileName:               unyoloservice.ManagedFileOwnerRoot,
+		ghEnvFileName:                 unyoloservice.ManagedFileOwnerRoot,
 	}
 	for _, file := range installPlan.Files {
 		if file.Owner != wantOwners[file.Name] {
@@ -443,10 +443,10 @@ func TestBrokerkitSystemdPlanMapsGitHubAppCredentials(t *testing.T) {
 
 func TestGitHubInstallReadinessFollowsManagedRetirements(t *testing.T) {
 	plan := systemdPlan{opts: setupSystemdOptions{
-		SystemdOptions:       bksetup.SystemdOptions{Endpoint: testGHAgentEndpoint},
+		SystemdOptions:       unyolosetup.SystemdOptions{Endpoint: testGHAgentEndpoint},
 		TelegramBotTokenFile: "/tmp/telegram-token",
 	}}
-	if check := githubInstallReadyCheck(plan, []bkservice.ManagedFileRef{{Name: githubTokenFileName}}); check == nil {
+	if check := githubInstallReadyCheck(plan, []unyoloservice.ManagedFileRef{{Name: githubTokenFileName}}); check == nil {
 		t.Fatal("managed retirement with Telegram configured requires a readiness check")
 	}
 	if check := githubInstallReadyCheck(plan, nil); check != nil {
@@ -455,7 +455,7 @@ func TestGitHubInstallReadinessFollowsManagedRetirements(t *testing.T) {
 }
 
 func TestValidateSetupSystemdOptions(t *testing.T) {
-	base := bksetup.SystemdOptions{
+	base := unyolosetup.SystemdOptions{
 		BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
 		ConfigDir: "/etc/gh-broker", StateDir: "/var/lib/gh-broker",
 		SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/gh-broker",

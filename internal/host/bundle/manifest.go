@@ -1,4 +1,4 @@
-// Package bundle owns atomic BrokerKit host release activation.
+// Package bundle owns atomic unYOLO host release activation.
 package bundle
 
 import (
@@ -15,11 +15,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
-const APIVersion = "brokerkit.io/runtime-bundle/v1"
+const APIVersion = "unyolo.io/runtime-bundle/v1"
 
 var (
 	identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
@@ -27,7 +27,7 @@ var (
 	commitPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
 )
 
-// Manifest pins one complete platform-specific BrokerKit host release.
+// Manifest pins one complete platform-specific unYOLO host release.
 type Manifest struct {
 	APIVersion             string      `json:"api_version"`
 	BundleID               string      `json:"bundle_id"`
@@ -280,7 +280,7 @@ func (c Component) validateSetup() error {
 	if c.Setup == nil {
 		return nil
 	}
-	if c.Setup.Protocol != "brokerkit.io/setup-component/v1" || len(c.Setup.Arguments) == 0 || len(c.Setup.Arguments) > 16 {
+	if c.Setup.Protocol != "unyolo.io/setup-component/v1" || len(c.Setup.Arguments) == 0 || len(c.Setup.Arguments) > 16 {
 		return errors.New("setup adapter protocol or arguments are invalid")
 	}
 	for _, argument := range c.Setup.Arguments {

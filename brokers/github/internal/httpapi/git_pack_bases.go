@@ -12,11 +12,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	gitx "github.com/osolmaz/brokerkit/git/protocol"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	httpx "github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	gitx "github.com/osolmaz/unyolo/git/protocol"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	httpx "github.com/osolmaz/unyolo/transport/http"
 )
 
 const githubPackBaseResponseLimit = maxGitHubPushObjectBytes

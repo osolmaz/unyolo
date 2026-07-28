@@ -3,7 +3,7 @@ title: Failure drills
 description: The maintained qualification matrix pairing each failure class with its required invariant and automated coverage.
 ---
 
-BrokerKit keeps deterministic failure drills beside the boundary they exercise. The matrix below is
+unYOLO keeps deterministic failure drills beside the boundary they exercise. The matrix below is
 the maintained qualification set. Provider suites add operation-specific cases without replacing
 these shared drills.
 
@@ -25,7 +25,7 @@ matrix but are never the only evidence for a failure invariant.
 | Interrupted credential or file replacement | Previous files and service definition restored before reactivation | `internal/host/service/install_linux_test.go`, `internal/host/service/install_darwin_test.go` |
 | Submission overload | New work receives stable `429`; replay, cancellation, approval, and readiness stay available | `authorization/admission/admission_test.go`, `operation/runtime/runtime_test.go` |
 | Shutdown with a live parent context | Owned workers stop before SQLite closes | GH, HF, and sudo server shutdown tests |
-| Stale or deleted BrokerKit executable | Exact contract drift stops Telegram before polling; host doctor fails | `operator/client/client_test.go`, `approval/notifier/telegram/dispatcher_test.go`, `internal/host/bundle/bundle_test.go` |
+| Stale or deleted unYOLO executable | Exact contract drift stops Telegram before polling; host doctor fails | `operator/client/client_test.go`, `approval/notifier/telegram/dispatcher_test.go`, `internal/host/bundle/bundle_test.go` |
 | Partial multi-service upgrade | Providers start before consumers; any failure restores the previous release and state | `internal/host/bundle/bundle_test.go` |
 | Host process exits during activation | The private transaction journal restores the prior release and activation record before another lifecycle command proceeds | `internal/host/bundle/bundle_test.go` |
 

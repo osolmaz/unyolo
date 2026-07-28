@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {

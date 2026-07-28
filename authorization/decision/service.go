@@ -1,4 +1,4 @@
-// Package decision owns the single BrokerKit decision path used by every transport.
+// Package decision owns the single unYOLO decision path used by every transport.
 package decision
 
 import (
@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 // ActivationValidator is the provider-owned fail-closed approval check.

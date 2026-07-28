@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func runActiveProbeChecks(ctx context.Context, report *Report, agent identity, opts Options) {
@@ -49,7 +49,7 @@ func runTokenFileChecks(report *Report, agent identity, path string) {
 	}
 	runTokenACLChecks(report, agent, path, stat)
 	runPathEntryReplaceCheck(report, agent, path, "token_file_entry_not_replaceable")
-	runParentWriteChecks(report, agent, filepath.Dir(bkdoctor.CleanPath(path)), "token_file_parent_not_writable")
+	runParentWriteChecks(report, agent, filepath.Dir(unyolodoctor.CleanPath(path)), "token_file_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "token_file_resolved")
 }
 
@@ -95,6 +95,6 @@ func runSocketChecks(report *Report, agent identity, path string) {
 		add(report, CheckPass, "socket_not_agent_writable", fmt.Sprintf("agent cannot write Unix socket %s by Unix mode bits", path))
 	}
 	runSocketACLChecks(report, agent, path)
-	runParentWriteChecks(report, agent, filepath.Dir(bkdoctor.CleanPath(path)), "socket_parent_not_writable")
+	runParentWriteChecks(report, agent, filepath.Dir(unyolodoctor.CleanPath(path)), "socket_parent_not_writable")
 	runResolvedPathChecks(report, agent, path, "socket_resolved")
 }

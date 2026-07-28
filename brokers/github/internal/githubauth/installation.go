@@ -15,8 +15,8 @@ import (
 	"time"
 
 	github "github.com/google/go-github/v88/github"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
 	"golang.org/x/sync/singleflight"
 )
 

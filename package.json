@@ -1,14 +1,14 @@
 {
-  "name": "brokerkit",
+  "name": "unyolo",
   "private": true,
   "packageManager": "pnpm@11.11.0",
   "engines": {
     "node": ">=24.18.0 <25"
   },
   "scripts": {
-    "build": "pnpm --filter openclaw-brokerkit build",
-    "check": "pnpm --filter openclaw-brokerkit check",
-    "test": "pnpm --filter openclaw-brokerkit test"
+    "build": "pnpm --filter openclaw-unyolo build",
+    "check": "pnpm --filter openclaw-unyolo check",
+    "test": "pnpm --filter openclaw-unyolo test"
   },
   "devDependencies": {
     "openapi-typescript": "7.10.1",

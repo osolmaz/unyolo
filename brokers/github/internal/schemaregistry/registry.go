@@ -12,12 +12,12 @@ import (
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
-	"github.com/osolmaz/brokerkit/internal/copyx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
+	"github.com/osolmaz/unyolo/internal/copyx"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 type Operation struct {
@@ -396,7 +396,7 @@ func validateRaw(raw json.RawMessage, schema map[string]any) error {
 		return errors.New("is invalid JSON")
 	}
 	compiler := jsonschema.NewCompiler()
-	location := "https://brokerkit.local/github/input.json"
+	location := "https://unyolo.local/github/input.json"
 	if err := compiler.AddResource(location, schema); err != nil {
 		return errors.New("schema is invalid")
 	}

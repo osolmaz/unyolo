@@ -1,6 +1,6 @@
 ---
 name: sudo-broker
-description: Use BrokerKit for approved Unix privilege and identity transitions when sudo-broker is installed. Use for privileged, sudo, root, run-as-user, or cataloged host command requests instead of invoking sudo, su, doas, pkexec, or unrestricted shell escalation directly.
+description: Use unYOLO for approved Unix privilege and identity transitions when sudo-broker is installed. Use for privileged, sudo, root, run-as-user, or cataloged host command requests instead of invoking sudo, su, doas, pkexec, or unrestricted shell escalation directly.
 metadata:
   { "openclaw": { "emoji": "🛡️", "requires": { "bins": ["sudo-broker"] } } }
 ---
@@ -14,14 +14,14 @@ working directory, target user, timeout, and output.
 Do not invoke `sudo`, `su`, `doas`, `pkexec`, setuid helpers, or container-based
 privilege escalation as a fallback.
 
-## Authenticate to BrokerKit
+## Authenticate to unYOLO
 
 `sudo-broker` loads its private client V1 document directly from
 `~/.config/sudo-broker/client.json`. Do not source it or copy its credential
 into the environment. Environment configuration is only for isolated
 development.
 
-The BrokerKit secret authenticates the enrolled client; it is not a Unix
+The unYOLO secret authenticates the enrolled client; it is not a Unix
 password. Never print or persist it elsewhere.
 
 ## Run a cataloged command

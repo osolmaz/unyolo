@@ -14,20 +14,20 @@ agent does. The client config file is always needed. Git integration matters if 
 ```sh
 sudo hf-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
+  --endpoint unix:///run/unyolo/huggingface/agent/broker.sock \
   --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/hf-broker/secrets \
   --home-dir /home/agent-a
 ```
 
 That produces `/home/agent-a/.config/hf-broker/client.json`, owner-readable only, using the closed
-`brokerkit.io/client/v1` schema:
+`unyolo.io/client/v1` schema:
 
 ```json
 {
-  "api_version": "brokerkit.io/client/v1",
+  "api_version": "unyolo.io/client/v1",
   "client_id": "agent-a",
-  "agent_endpoint": "unix:///run/brokerkit/huggingface/agent/broker.sock",
+  "agent_endpoint": "unix:///run/unyolo/huggingface/agent/broker.sock",
   "git_endpoint": "tcp://127.0.0.1:38471",
   "shared_secret": "broker-client-secret"
 }
@@ -84,7 +84,7 @@ config automatically:
 
 ```sh
 gh-broker operation submit pull_request.create \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
   --arguments-json '{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}' \
   --reason "Open the reviewed feature branch" \
   --request-id open-agent-pr \
@@ -156,7 +156,7 @@ hf-broker doctor \
   --agent-user agent-a \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/brokerkit/huggingface/agent/broker.sock
+  --socket /run/unyolo/huggingface/agent/broker.sock
 ```
 
 The doctor fails closed when the agent account is root, is root-equivalent through a group such as

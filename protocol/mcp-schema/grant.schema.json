@@ -1,7 +1,7 @@
 {
   "$comment": "Generated from protocol/openapi/mcp-v1.yaml; do not edit.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/mcp/v1/grant.schema.json",
+  "$id": "https://unyolo.io/schema/mcp/v1/grant.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
   "properties": {
     "api_version": {
       "type": "string",
-      "const": "brokerkit.io/mcp-grant/v1"
+      "const": "unyolo.io/mcp-grant/v1"
     },
     "id": {
       "type": "string",

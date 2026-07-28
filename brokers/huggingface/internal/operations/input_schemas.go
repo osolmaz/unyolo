@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 // InputSchemas describes the requester-visible shape of a custom adapter.

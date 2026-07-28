@@ -18,32 +18,32 @@
       "targets": [{"kind": "repo", "owner": "*", "name": "*"}]
     },
     {
-      "id": "agent-a-read-brokerkit",
+      "id": "agent-a-read-unyolo",
       "effect": "allow",
       "clients": ["agent-a"],
       "operations": ["git.fetch", "repo.metadata.read", "repo.contents.read"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}]
     },
     {
       "id": "agent-a-advertise-push",
       "effect": "allow",
       "clients": ["agent-a"],
       "operations": ["git.push.advertise"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}]
     },
     {
       "id": "agent-a-write-lfs",
       "effect": "allow",
       "clients": ["agent-a"],
       "operations": ["git.lfs.write"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}]
     },
     {
       "id": "agent-a-push-feature-branches",
       "effect": "allow",
       "clients": ["agent-a"],
       "operations": ["git.push.branch_create", "git.push.fast_forward", "git.push.force"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}],
       "attrs": {
         "refs": ["refs/heads/agent-a/*"]
       }
@@ -53,7 +53,7 @@
       "effect": "request",
       "clients": ["agent-a"],
       "operations": ["pull_request.create"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}],
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}],
       "attrs": {
         "refs": ["refs/heads/agent-a/*"],
         "base_refs": ["refs/heads/main"]
@@ -64,7 +64,7 @@
       "effect": "request",
       "clients": ["agent-a"],
       "operations": ["pull_request.merge_admin"],
-      "targets": [{"kind": "pull_request", "owner": "osolmaz", "repo": "brokerkit"}],
+      "targets": [{"kind": "pull_request", "owner": "osolmaz", "repo": "unyolo"}],
       "attrs": {"merge_method": ["merge", "squash", "rebase"]}
     },
     {
@@ -72,21 +72,21 @@
       "effect": "request",
       "clients": ["agent-a"],
       "operations": ["repo.delete"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit-e2e-*"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo-e2e-*"}]
     },
     {
       "id": "approve-repository-secret",
       "effect": "request",
       "clients": ["agent-a"],
       "operations": ["agent_task.create_or_update_repo_secret"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}]
     },
     {
       "id": "approve-collaborator-administration",
       "effect": "request",
       "clients": ["agent-a"],
       "operations": ["collaborator.repos_add_collaborator", "collaborator.repos_remove_collaborator"],
-      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "brokerkit"}]
+      "targets": [{"kind": "repo", "owner": "osolmaz", "name": "unyolo"}]
     }
   ]
 }

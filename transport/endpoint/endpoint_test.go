@@ -19,7 +19,7 @@ func TestParseCanonicalEndpoints(t *testing.T) {
 		want  string
 		class Exposure
 	}{
-		{"unix:///run/brokerkit/github/agent.sock", ParseOptions{}, "unix:///run/brokerkit/github/agent.sock", ExposureLocal},
+		{"unix:///run/unyolo/github/agent.sock", ParseOptions{}, "unix:///run/unyolo/github/agent.sock", ExposureLocal},
 		{"tcp://127.0.0.1:52147", ParseOptions{}, "tcp://127.0.0.1:52147", ExposureLoopback},
 		{"tcp://[::1]:52147", ParseOptions{}, "tcp://[::1]:52147", ExposureLoopback},
 		{"tcp://192.0.2.4:443", ParseOptions{AllowNetworkTCP: true}, "tcp://192.0.2.4:443", ExposureNetwork},

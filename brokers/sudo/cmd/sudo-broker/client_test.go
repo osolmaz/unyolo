@@ -16,7 +16,7 @@ func TestRunCommandUsesAgentLifecycle(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/api/agent/v1/operations" {
 			submissions++
-			_, _ = w.Write([]byte(`{"api_version":"brokerkit.io/agent/v1","id":"op","broker":"sudo-broker","client_id":"bob","idempotency_key":"test","operation":"exec.command","target":{},"arguments":{},"reason":"release","state":"succeeded","revision":2,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:01Z","terminal_at":"2026-01-01T00:00:01Z","presentation":{"title":"run"},"result":{"exit_code":0,"stdout_base64":"c2NhbGVk","stderr_base64":""}}`))
+			_, _ = w.Write([]byte(`{"api_version":"unyolo.io/agent/v1","id":"op","broker":"sudo-broker","client_id":"bob","idempotency_key":"test","operation":"exec.command","target":{},"arguments":{},"reason":"release","state":"succeeded","revision":2,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:01Z","terminal_at":"2026-01-01T00:00:01Z","presentation":{"title":"run"},"result":{"exit_code":0,"stdout_base64":"c2NhbGVk","stderr_base64":""}}`))
 			return
 		}
 		http.NotFound(w, r)

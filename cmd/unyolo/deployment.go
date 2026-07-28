@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	hostdeployment "github.com/osolmaz/brokerkit/internal/host/deployment"
+	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	hostdeployment "github.com/osolmaz/unyolo/internal/host/deployment"
 )
 
 type deploymentFlags struct {
@@ -28,8 +28,8 @@ type deploymentFlags struct {
 func bindDeploymentFlags(flags *flag.FlagSet, values *deploymentFlags) {
 	defaults := bundle.DefaultPaths()
 	flags.StringVar(&values.profile, "profile", "", "deployment pack directory")
-	flags.StringVar(&values.root, "root", defaults.Root, "immutable BrokerKit release root")
-	flags.StringVar(&values.state, "state-dir", defaults.StateDir, "BrokerKit host state directory")
+	flags.StringVar(&values.root, "root", defaults.Root, "immutable unYOLO release root")
+	flags.StringVar(&values.state, "state-dir", defaults.StateDir, "unYOLO host state directory")
 	flags.BoolVar(&values.development, "development", false, "use isolated nonproduction host paths")
 	flags.BoolVar(&values.jsonOutput, "json", false, "write closed JSON output")
 }
@@ -58,9 +58,9 @@ func (values deploymentFlags) engine() (*hostdeployment.Engine, error) {
 
 func runProfileCommand(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 || args[0] != "lock" {
-		return errors.New("usage: brokerkit system profile lock --profile DIR [--check]")
+		return errors.New("usage: unyolo system profile lock --profile DIR [--check]")
 	}
-	flags := flag.NewFlagSet("brokerkit system profile lock", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo system profile lock", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	path := flags.String("profile", "", "deployment pack directory")
 	check := flags.Bool("check", false, "fail if locking would change files")
@@ -100,7 +100,7 @@ func runDeploymentValidate(ctx context.Context, args []string, stdout, stderr io
 		Digest     string   `json:"digest"`
 		BundleID   string   `json:"bundle_id"`
 		Components []string `json:"components"`
-	}{"brokerkit.io/host-validation/v1", snapshot.Deployment.Name, snapshot.Digest, snapshot.Manifest.BundleID, componentIDs(snapshot)}
+	}{"unyolo.io/host-validation/v1", snapshot.Deployment.Name, snapshot.Digest, snapshot.Manifest.BundleID, componentIDs(snapshot)}
 	return writeDeploymentResult(stdout, values.jsonOutput, result,
 		fmt.Sprintf("Validated deployment %s\nDigest: %s\nRuntime: %s\nComponents: %s\n", result.Name, result.Digest, result.BundleID, strings.Join(result.Components, ", ")))
 }
@@ -189,7 +189,7 @@ func runDeploymentExport(ctx context.Context, args []string, stdout, stderr io.W
 }
 
 func parseDeploymentFlags(action string, args []string, stderr io.Writer) (deploymentFlags, error) {
-	flags := flag.NewFlagSet("brokerkit system "+action, flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo system "+action, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var values deploymentFlags
 	bindDeploymentFlags(flags, &values)
@@ -203,7 +203,7 @@ func parseDeploymentFlags(action string, args []string, stderr io.Writer) (deplo
 }
 
 func parsePlanFlags(args []string, stderr io.Writer) (deploymentFlags, string, error) {
-	flags := flag.NewFlagSet("brokerkit system plan", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo system plan", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var values deploymentFlags
 	bindDeploymentFlags(flags, &values)
@@ -235,7 +235,7 @@ func (values *secretFlags) Set(raw string) error {
 }
 
 func parseApplyFlags(args []string, stderr io.Writer) (deploymentFlags, string, []hostdeployment.SecretSource, error) {
-	flags := flag.NewFlagSet("brokerkit system apply", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo system apply", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var values deploymentFlags
 	bindDeploymentFlags(flags, &values)

@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/unyolo/auth"
 )
 
 const clientContextKey = "gh-broker.client"
@@ -14,7 +14,7 @@ type TokenAuth struct {
 	authenticator *auth.Authenticator
 }
 
-// FromAuthenticator adapts the shared Brokerkit client authenticator to Echo middleware.
+// FromAuthenticator adapts the shared unYOLO client authenticator to Echo middleware.
 func FromAuthenticator(authenticator *auth.Authenticator) (TokenAuth, error) {
 	if authenticator == nil {
 		return TokenAuth{}, errors.New("client authenticator is required")

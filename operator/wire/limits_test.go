@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/oapi-codegen/nullable"
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestUseLimitWireRoundTrip(t *testing.T) {

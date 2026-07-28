@@ -11,7 +11,7 @@ describe("RevisionPublisher", () => {
 
     const changed = revisions.publish({ ...empty, delivery_failures: 1 });
     await expect(revisions.wait(first.cursor, 25)).resolves.toEqual({
-      api_version: "brokerkit.io/operator-ui/v1",
+      api_version: "unyolo.io/operator-ui/v1",
       cursor: changed.cursor,
       changed: true,
     });

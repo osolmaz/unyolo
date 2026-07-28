@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
-	hostdeployment "github.com/osolmaz/brokerkit/internal/host/deployment"
+	"github.com/osolmaz/unyolo/deployment/api"
+	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	hostdeployment "github.com/osolmaz/unyolo/internal/host/deployment"
 )
 
 type fakeDeploymentEngine struct {

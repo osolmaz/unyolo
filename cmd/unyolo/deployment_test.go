@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/profile"
 )
 
 func TestDeploymentFlagParsing(t *testing.T) {

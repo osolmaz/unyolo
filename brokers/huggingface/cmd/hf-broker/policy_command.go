@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
+	sharedpreset "github.com/osolmaz/unyolo/authorization/preset"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
 )
 
 const policyUsage = `usage:

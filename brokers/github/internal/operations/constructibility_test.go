@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/internal/storage/stream"
 )
 
 func TestEveryAdvertisedOperationAcceptsConstructibleInput(t *testing.T) {

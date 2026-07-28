@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/unyolo/auth"
 )
 
 func TestHandlerExposesOnlyIdentityAndAllowedGitRoutes(t *testing.T) {
@@ -24,7 +24,7 @@ func TestHandlerExposesOnlyIdentityAndAllowedGitRoutes(t *testing.T) {
 	}
 
 	identity := httptest.NewRequest(http.MethodGet, IdentityPath, nil)
-	identity.SetBasicAuth("brokerkit", strings.Repeat("s", 32))
+	identity.SetBasicAuth("unyolo", strings.Repeat("s", 32))
 	identityResponse := httptest.NewRecorder()
 	handler.ServeHTTP(identityResponse, identity)
 	if identityResponse.Code != http.StatusOK || !strings.Contains(identityResponse.Body.String(), `"provider":"github"`) {
@@ -45,7 +45,7 @@ func TestHandlerExposesOnlyIdentityAndAllowedGitRoutes(t *testing.T) {
 	gitRequest := httptest.NewRequest(http.MethodPost, "/owner/repo.git/git-upload-pack", nil)
 	gitResponse := httptest.NewRecorder()
 	handler.ServeHTTP(gitResponse, gitRequest)
-	if gitResponse.Code != http.StatusUnauthorized || gitResponse.Header().Get("WWW-Authenticate") != `Basic realm="brokerkit-git"` {
+	if gitResponse.Code != http.StatusUnauthorized || gitResponse.Header().Get("WWW-Authenticate") != `Basic realm="unyolo-git"` {
 		t.Fatalf("unauthenticated Git response = %d, challenge %q", gitResponse.Code, gitResponse.Header().Get("WWW-Authenticate"))
 	}
 

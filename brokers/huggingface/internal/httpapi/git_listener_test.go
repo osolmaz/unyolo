@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/git/server"
+	"github.com/osolmaz/unyolo/git/server"
 )
 
 func TestGitHandlerHidesAgentAndInferenceRoutes(t *testing.T) {
@@ -19,7 +19,7 @@ func TestGitHandlerHidesAgentAndInferenceRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := httptest.NewRequest(http.MethodGet, gitserver.IdentityPath, nil)
-	identity.SetBasicAuth("brokerkit", testSecret)
+	identity.SetBasicAuth("unyolo", testSecret)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, identity)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"provider":"huggingface"`) {

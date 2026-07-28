@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
 
 type operationInfo struct {

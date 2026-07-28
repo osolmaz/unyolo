@@ -5,10 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/unyolo/credential/provider"
 )
 
-// Adapter projects Hugging Face fine-grained tokens into BrokerKit's shared model.
+// Adapter projects Hugging Face fine-grained tokens into unYOLO's shared model.
 type Adapter struct {
 	Inspector  Inspector
 	Generation uint64

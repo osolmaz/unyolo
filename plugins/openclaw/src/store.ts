@@ -16,7 +16,7 @@ const SCHEMA_VERSION = 2;
 export class StateStore {
   private readonly db: DatabaseSync;
   constructor(stateDir: string) {
-    const directory = path.join(stateDir, "plugins", "brokerkit");
+    const directory = path.join(stateDir, "plugins", "unyolo");
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     assertPrivateDirectory(directory);
     const databasePath = path.join(directory, "state.sqlite");
@@ -31,7 +31,7 @@ export class StateStore {
     };
     if (version.user_version !== 0 && version.user_version !== SCHEMA_VERSION)
       throw new Error(
-        `unsupported BrokerKit state version ${version.user_version}`,
+        `unsupported unYOLO state version ${version.user_version}`,
       );
     if (version.user_version === 0) this.createSchema();
   }
@@ -143,7 +143,7 @@ export class StateStore {
       value.threadId ?? "",
     ].join("\0");
     const id = createHash("sha256")
-      .update("brokerkit-subscription\0")
+      .update("unyolo-subscription\0")
       .update(normalized)
       .digest("hex");
     this.db
@@ -301,21 +301,21 @@ export class StateStore {
 function assertPrivateDirectory(directory: string): void {
   const stat = lstatSync(directory);
   if (stat.isSymbolicLink() || !stat.isDirectory())
-    throw new Error("BrokerKit state directory must be a real directory");
+    throw new Error("unYOLO state directory must be a real directory");
   if (typeof process.getuid === "function" && stat.uid !== process.getuid())
-    throw new Error("BrokerKit state directory has an unsafe owner");
+    throw new Error("unYOLO state directory has an unsafe owner");
   if ((stat.mode & 0o077) !== 0)
-    throw new Error("BrokerKit state directory permissions must be 0700");
+    throw new Error("unYOLO state directory permissions must be 0700");
 }
 
 function assertPrivateDatabase(databasePath: string): void {
   const stat = lstatSync(databasePath);
   if (stat.isSymbolicLink())
-    throw new Error("BrokerKit state database must not be a symlink");
+    throw new Error("unYOLO state database must not be a symlink");
   if (!stat.isFile())
-    throw new Error("BrokerKit state database must be a regular file");
+    throw new Error("unYOLO state database must be a regular file");
   if (typeof process.getuid === "function" && stat.uid !== process.getuid())
-    throw new Error("BrokerKit state database has an unsafe owner");
+    throw new Error("unYOLO state database has an unsafe owner");
   if ((stat.mode & 0o177) !== 0)
-    throw new Error("BrokerKit state database permissions must be 0600");
+    throw new Error("unYOLO state database permissions must be 0600");
 }

@@ -1,15 +1,15 @@
 {
-  "name": "openclaw-brokerkit",
-  "version": "0.4.1",
-  "description": "Provider-neutral BrokerKit approvals for OpenClaw",
+  "name": "openclaw-unyolo",
+  "version": "0.5.0",
+  "description": "Provider-neutral unYOLO approvals for OpenClaw",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/osolmaz/brokerkit.git",
+    "url": "git+https://github.com/osolmaz/unyolo.git",
     "directory": "plugins/openclaw"
   },
-  "homepage": "https://github.com/osolmaz/brokerkit/tree/main/plugins/openclaw#readme",
+  "homepage": "https://github.com/osolmaz/unyolo/tree/main/plugins/openclaw#readme",
   "bugs": {
-    "url": "https://github.com/osolmaz/brokerkit/issues"
+    "url": "https://github.com/osolmaz/unyolo/issues"
   },
   "type": "module",
   "engines": {
@@ -91,7 +91,7 @@
       "./dist/index.js"
     ],
     "install": {
-      "npmSpec": "openclaw-brokerkit",
+      "npmSpec": "openclaw-unyolo",
       "defaultChoice": "npm",
       "minHostVersion": ">=2026.7.1"
     },

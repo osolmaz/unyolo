@@ -1,4 +1,4 @@
-// Package profile loads immutable, digest-bound BrokerKit deployment packs.
+// Package profile loads immutable, digest-bound unYOLO deployment packs.
 package profile
 
 import (
@@ -14,12 +14,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (
-	APIVersion      = "brokerkit.io/host-deployment/v1"
+	APIVersion      = "unyolo.io/host-deployment/v1"
 	EntryFilename   = "deployment.json"
 	MaxEntryBytes   = 1024 * 1024
 	MaxReferenced   = 16 * 1024 * 1024
@@ -48,7 +48,7 @@ type Runtime struct {
 	PublicKey Reference `json:"public_key"`
 }
 
-// Agent binds a BrokerKit client identity to one Unix account.
+// Agent binds a unYOLO client identity to one Unix account.
 type Agent struct {
 	ID           string   `json:"id"`
 	ClientID     string   `json:"client_id"`

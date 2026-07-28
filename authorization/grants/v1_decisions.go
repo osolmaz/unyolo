@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 // DecisionAction is one Operator V1 lifecycle transition.

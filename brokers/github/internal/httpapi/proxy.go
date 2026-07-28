@@ -6,7 +6,7 @@ import (
 	"net/url"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*http.Request) error) error {

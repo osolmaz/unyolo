@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 func (s *Server) upstreamRequestURL(r *http.Request, rt route) string {

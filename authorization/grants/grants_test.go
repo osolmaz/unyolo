@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/unyolo/authorization/policy"
 )
 
 func TestLifecycleIdempotencyAndUseBudget(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
 )
 
 func escapePathParameter(value string) string {

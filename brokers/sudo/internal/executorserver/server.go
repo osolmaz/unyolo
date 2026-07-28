@@ -7,12 +7,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/internal/clockx"
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/hostcheck"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/internal/clockx"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 const defaultMaxConnections = 32

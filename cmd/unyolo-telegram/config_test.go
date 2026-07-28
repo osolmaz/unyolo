@@ -7,18 +7,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/approval/notifier/telegram"
 )
 
 func TestLoadIngressConfigStrictly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	writeTestFile(t, path, `{
-  "telegram_bot_token_file": "/etc/brokerkit-telegram/telegram-bot-token",
+  "telegram_bot_token_file": "/etc/unyolo-telegram/telegram-bot-token",
   "telegram_chat_id": 42,
-  "inbox_path": "/var/lib/brokerkit-telegram/callbacks.db",
-  "inbox_key_file": "/etc/brokerkit-telegram/inbox-key",
-  "routes": {"h": {"operator_endpoint": "unix:///run/hf/operator.sock", "operator_token_file": "/etc/brokerkit-telegram/operator-token-h"}}
+  "inbox_path": "/var/lib/unyolo-telegram/callbacks.db",
+  "inbox_key_file": "/etc/unyolo-telegram/inbox-key",
+  "routes": {"h": {"operator_endpoint": "unix:///run/hf/operator.sock", "operator_token_file": "/etc/unyolo-telegram/operator-token-h"}}
 }`)
 	cfg, err := loadIngressConfig(path)
 	if err != nil {

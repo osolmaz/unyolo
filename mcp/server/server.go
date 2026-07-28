@@ -8,7 +8,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (

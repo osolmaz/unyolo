@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/notifier"
 )
 
 func TestInboxPersistsEncryptedCallbackAndClearsAuthority(t *testing.T) {

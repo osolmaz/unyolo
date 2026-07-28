@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +76,7 @@ func (s *Server) serveAuthenticated(w http.ResponseWriter, r *http.Request, clie
 	s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, decision.Reason, 0, decision)
 }
 
-func (s *Server) writeForwardAuthorizationResponse(w http.ResponseWriter, client string, operation policy.Operation, target string, result bkauthorization.Result, decision policy.Decision, err error) bool {
+func (s *Server) writeForwardAuthorizationResponse(w http.ResponseWriter, client string, operation policy.Operation, target string, result unyoloauthorization.Result, decision policy.Decision, err error) bool {
 	if err != nil {
 		return s.writeForwardAuthorizationError(w, client, operation, target, result, decision)
 	}
@@ -89,7 +89,7 @@ func (s *Server) writeForwardAuthorizationResponse(w http.ResponseWriter, client
 	return true
 }
 
-func (s *Server) writeForwardAuthorizationError(w http.ResponseWriter, client string, operation policy.Operation, target string, result bkauthorization.Result, decision policy.Decision) bool {
+func (s *Server) writeForwardAuthorizationError(w http.ResponseWriter, client string, operation policy.Operation, target string, result unyoloauthorization.Result, decision policy.Decision) bool {
 	if result.Decision.Effect == "" {
 		s.writeGrantStoreError(w, client, string(operation), target)
 		return true
@@ -217,29 +217,29 @@ func (s *Server) decideRepo(client string, operation policy.Operation, rt route,
 	return s.decideRepoWithOptions(client, operation, rt, refs, attrs, grantRequest, false)
 }
 
-func (s *Server) authorizeForwardRepo(client string, r *http.Request, classified classifiedRequest, target string) (bkauthorization.Result, policy.Decision, error) {
+func (s *Server) authorizeForwardRepo(client string, r *http.Request, classified classifiedRequest, target string) (unyoloauthorization.Result, policy.Decision, error) {
 	if lfsUploadRequest(r, classified) {
 		decision, err := s.decideRepoWithOptions(client, classified.operation, classified.route, nil, classified.attrs, false, true)
-		return bkauthorization.Result{}, decision, err
+		return unyoloauthorization.Result{}, decision, err
 	}
 	providerRequest := policy.Request{
 		Client: client, Operation: classified.operation, Target: routeTarget(classified.route, nil), Attrs: classified.attrs,
 	}
 	authorizationRequest := policy.AuthorizationRequest(providerRequest)
-	result, err := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+	result, err := s.authorization.Authorize(authorizationRequest, func(decision corepolicy.Decision) (unyoloauthorization.GrantIntent, error) {
 		return s.prepareForwardIntent(client, classified.operation, target, classified.attrs, authorizationRequest, decision)
 	})
 	return result, s.policy.AuthorizationDecision(result.Decision), err
 }
 
-func (s *Server) prepareForwardIntent(client string, operation policy.Operation, target string, attrs map[string]any, authorizationRequest corepolicy.Request, decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+func (s *Server) prepareForwardIntent(client string, operation policy.Operation, target string, attrs map[string]any, authorizationRequest corepolicy.Request, decision corepolicy.Decision) (unyoloauthorization.GrantIntent, error) {
 	bounds, err := s.forwardApprovalBounds(operation, decision.GrantPolicy)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	id, err := approvalRequestID("http", authorizationRequest, decision.MatchedRequestRuleIDs)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client: client, ClientRequestID: id, Operation: string(operation), Mode: hfgrant.ModeWindow,
@@ -249,9 +249,9 @@ func (s *Server) prepareForwardIntent(client string, operation policy.Operation,
 		MaxUses:           int(bounds.DefaultMaxUses), MaxUsesSpecified: true,
 	})
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
-	return bkauthorization.GrantIntent{
+	return unyoloauthorization.GrantIntent{
 		Mode: corepolicy.GrantModeWindow, Authorization: authorizationRequest, Request: request, Plan: plan,
 	}, nil
 }
@@ -459,7 +459,7 @@ func (s *Server) recordForwardError(w http.ResponseWriter, client string, classi
 		return true
 	}
 	if errors.Is(err, errUnsupportedXet) {
-		writePlain(w, http.StatusNotImplemented, "hf-broker: Xet transfer is not supported; use basic Git LFS through BrokerKit\n")
+		writePlain(w, http.StatusNotImplemented, "hf-broker: Xet transfer is not supported; use basic Git LFS through unYOLO\n")
 		s.recordPolicyDecision(client, string(classified.operation), target, audit.DecisionRefused, errUnsupportedXet.Error(), statusCode, decision)
 		return true
 	}

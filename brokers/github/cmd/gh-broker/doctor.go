@@ -7,10 +7,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubdoctor"
-	"github.com/osolmaz/brokerkit/internal/config/envfile"
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubdoctor"
+	"github.com/osolmaz/unyolo/internal/config/envfile"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func runDoctor(ctx context.Context, stdout io.Writer, stderr io.Writer, args []string) error {
@@ -48,10 +48,10 @@ func executeGitHubDoctor(ctx context.Context, stdout io.Writer, command doctorGi
 	return emitDoctorReport(stdout, report, command.jsonOutput)
 }
 
-func loadGitHubDoctorReport(ctx context.Context, options githubdoctor.Options, environmentFile string) (bkdoctor.Report, error) {
+func loadGitHubDoctorReport(ctx context.Context, options githubdoctor.Options, environmentFile string) (unyolodoctor.Report, error) {
 	cfg, err := loadGitHubDoctorConfig(environmentFile)
 	if err != nil {
-		return bkdoctor.Report{}, err
+		return unyolodoctor.Report{}, err
 	}
 	return githubdoctor.Run(ctx, cfg, options)
 }
@@ -70,7 +70,7 @@ func loadGitHubDoctorConfig(environmentFile string) (config.Config, error) {
 	})
 }
 
-func emitDoctorReport(stdout io.Writer, report bkdoctor.Report, jsonOutput bool) error {
+func emitDoctorReport(stdout io.Writer, report unyolodoctor.Report, jsonOutput bool) error {
 	err := writeDoctorReport(stdout, report, jsonOutput)
 	if err != nil {
 		return err
@@ -78,18 +78,18 @@ func emitDoctorReport(stdout io.Writer, report bkdoctor.Report, jsonOutput bool)
 	return doctorStatusError(report)
 }
 
-func doctorStatusError(report bkdoctor.Report) error {
-	if code := bkdoctor.ExitCode(report.Status); code != 0 {
+func doctorStatusError(report unyolodoctor.Report) error {
+	if code := unyolodoctor.ExitCode(report.Status); code != 0 {
 		return exitError{code: code}
 	}
 	return nil
 }
 
-func writeDoctorReport(stdout io.Writer, report bkdoctor.Report, jsonOutput bool) error {
+func writeDoctorReport(stdout io.Writer, report unyolodoctor.Report, jsonOutput bool) error {
 	if jsonOutput {
-		return bkdoctor.WriteJSON(stdout, report)
+		return unyolodoctor.WriteJSON(stdout, report)
 	}
-	return bkdoctor.WriteText(stdout, report)
+	return unyolodoctor.WriteText(stdout, report)
 }
 
 func parseDoctorGitHub(stderr io.Writer, args []string) (doctorGitHubCommand, error) {

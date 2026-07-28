@@ -35,7 +35,7 @@ func parseCommandOptions(provider Provider, args []string, stderr io.Writer) (st
 	jsonOutput := false
 	flags.StringVar(&options.HomeDir, "home-dir", "", "home directory to configure")
 	flags.StringVar(&options.Repository, "repository", "", "repository to inspect for transport overrides")
-	flags.BoolVar(&options.Replace, "replace", false, "replace an existing BrokerKit-owned installation")
+	flags.BoolVar(&options.Replace, "replace", false, "replace an existing unYOLO-owned installation")
 	flags.BoolVar(&jsonOutput, "json", false, "print machine-readable status")
 	if err := flags.Parse(args[1:]); err != nil {
 		return "", Options{}, false, err
@@ -84,7 +84,7 @@ func writeCommandStatus(stdout io.Writer, provider Provider, status Status, json
 	return err
 }
 
-// ParseCredentialArgs parses git-credential-brokerkit's provider and action.
+// ParseCredentialArgs parses git-credential-unyolo's provider and action.
 func ParseCredentialArgs(args []string) (string, string, error) {
 	provider := ""
 	action := ""

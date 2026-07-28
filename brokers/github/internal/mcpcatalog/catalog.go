@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/mcpprojection"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/mcpprojection"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	ghpolicy "github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 type Exposure struct {

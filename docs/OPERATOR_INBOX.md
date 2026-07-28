@@ -1,6 +1,6 @@
 # Operator Inbox
 
-Brokerkit provides the durable backend contract for operator approval inboxes.
+unYOLO provides the durable backend contract for operator approval inboxes.
 It is provider-neutral and does not render a web application. A broker mounts
 the shared handler behind an operator-only transport; a trusted host calls that
 backend and presents the resulting safe records in its own UI.
@@ -105,7 +105,7 @@ browser session
     -> trusted web backend
     -> operator/client using a server-held operator credential
     -> broker operator API
-    -> canonical Brokerkit grant store
+    -> canonical unYOLO grant store
 ```
 
 The browser authenticates only to the trusted host. Broker operator credentials

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
 //nolint:cyclop // Staging verifies source and destination metadata around one atomic copy.

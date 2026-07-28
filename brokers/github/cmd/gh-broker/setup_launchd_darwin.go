@@ -12,14 +12,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const (
-	ghLaunchdLabel = "dev.brokerkit.github"
+	ghLaunchdLabel = "io.unyolo.github"
 	ghLaunchdPlist = ghLaunchdLabel + ".plist"
 )
 
@@ -42,11 +42,11 @@ func runSetupLaunchdCommand(ctx context.Context, stdout, stderr io.Writer, stdin
 	if err := checkGitHubPolicyReplacement(stdout, plan); err != nil {
 		return err
 	}
-	installPlan, err := brokerkitLaunchdInstallPlan(plan)
+	installPlan, err := unyoloLaunchdInstallPlan(plan)
 	if err != nil {
 		return err
 	}
-	if err := bkservice.InstallLaunchd(ctx, installPlan); err != nil {
+	if err := unyoloservice.InstallLaunchd(ctx, installPlan); err != nil {
 		return err
 	}
 	return printLaunchdSummary(stdout, plan)
@@ -55,11 +55,11 @@ func runSetupLaunchdCommand(ctx context.Context, stdout, stderr io.Writer, stdin
 func parseSetupLaunchd(stderr io.Writer, stdin io.Reader, args []string) (setupSystemdOptions, bool, error) {
 	defaults := []string{
 		"--user", "_gh_broker", "--group", "_gh_broker",
-		"--config-dir", "/Library/Application Support/BrokerKit/gh-broker/config",
-		"--state-dir", "/Library/Application Support/BrokerKit/gh-broker/state",
+		"--config-dir", "/Library/Application Support/unyolo/gh-broker/config",
+		"--state-dir", "/Library/Application Support/unyolo/gh-broker/state",
 		"--systemd-dir", "/Library/LaunchDaemons",
-		"--endpoint", "unix:///var/run/brokerkit/github/agent/broker.sock",
-		"--operator-endpoint", "unix:///var/run/brokerkit/github/operator/broker.sock",
+		"--endpoint", "unix:///var/run/unyolo/github/agent/broker.sock",
+		"--operator-endpoint", "unix:///var/run/unyolo/github/operator/broker.sock",
 	}
 	return parseSetupSystemdCommand(stderr, stdin, append(defaults, rewriteGHLaunchdFlags(args)...))
 }
@@ -76,16 +76,16 @@ func rewriteGHLaunchdFlags(args []string) []string {
 	return result
 }
 
-func brokerkitLaunchdInstallPlan(plan systemdPlan) (bkservice.LaunchdInstallPlan, error) {
-	base, err := brokerkitSystemdInstallPlan(plan)
+func unyoloLaunchdInstallPlan(plan systemdPlan) (unyoloservice.LaunchdInstallPlan, error) {
+	base, err := unyoloSystemdInstallPlan(plan)
 	if err != nil {
-		return bkservice.LaunchdInstallPlan{}, err
+		return unyoloservice.LaunchdInstallPlan{}, err
 	}
-	activation, err := bksetup.BuildLaunchdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint)
+	activation, err := unyolosetup.BuildLaunchdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint)
 	if err != nil {
-		return bkservice.LaunchdInstallPlan{}, err
+		return unyoloservice.LaunchdInstallPlan{}, err
 	}
-	return bkservice.LaunchdInstallPlan{
+	return unyoloservice.LaunchdInstallPlan{
 		User: plan.opts.User, Group: plan.opts.Group, AdditionalGroups: activation.Groups,
 		GroupMembers: activation.GroupMembers, ConfigDir: plan.opts.ConfigDir, StateDir: plan.opts.StateDir,
 		LaunchdDir: plan.opts.SystemdDir, PlistName: ghLaunchdPlist,
@@ -96,8 +96,8 @@ func brokerkitLaunchdInstallPlan(plan systemdPlan) (bkservice.LaunchdInstallPlan
 	}, nil
 }
 
-func withoutGHLaunchdEnvironment(files []bkservice.ManagedFile) []bkservice.ManagedFile {
-	result := make([]bkservice.ManagedFile, 0, len(files))
+func withoutGHLaunchdEnvironment(files []unyoloservice.ManagedFile) []unyoloservice.ManagedFile {
+	result := make([]unyoloservice.ManagedFile, 0, len(files))
 	for _, file := range files {
 		if file.Name != ghEnvFileName {
 			result = append(result, file)
@@ -106,8 +106,8 @@ func withoutGHLaunchdEnvironment(files []bkservice.ManagedFile) []bkservice.Mana
 	return result
 }
 
-func ghLaunchdUnit(plan systemdPlan, sockets []bkservice.LaunchdSocket) bkservice.LaunchdUnit {
-	return bkservice.LaunchdUnit{
+func ghLaunchdUnit(plan systemdPlan, sockets []unyoloservice.LaunchdSocket) unyoloservice.LaunchdUnit {
+	return unyoloservice.LaunchdUnit{
 		Label: ghLaunchdLabel, ProgramArguments: []string{plan.opts.BinaryPath},
 		UserName: plan.opts.User, GroupName: plan.opts.Group, KeepAlive: true,
 		ProcessType: "Background", Environment: ghLaunchdEnvironment(plan), Sockets: sockets,
@@ -150,11 +150,11 @@ func addGHLaunchdCredentials(values map[string]string, plan systemdPlan) {
 }
 
 func printLaunchdDryRun(stdout io.Writer, plan systemdPlan) error {
-	activation, err := bksetup.BuildLaunchdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint)
+	activation, err := unyolosetup.BuildLaunchdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint)
 	if err != nil {
 		return err
 	}
-	body, err := bkservice.RenderLaunchd(ghLaunchdUnit(plan, activation.Sockets))
+	body, err := unyoloservice.RenderLaunchd(ghLaunchdUnit(plan, activation.Sockets))
 	if err != nil {
 		return err
 	}

@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/mcp"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/mcp/operation"
-	"github.com/osolmaz/brokerkit/mcp/server"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/agent/mcp"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/mcp/operation"
+	"github.com/osolmaz/unyolo/mcp/server"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 func mcpTestEnv(values map[string]string) func(string) string {
@@ -73,7 +73,7 @@ func TestMCPRejectsUnknownOrUnadvertisedTool(t *testing.T) {
 func TestPrepareMCPArgumentModes(t *testing.T) {
 	streamDescriptor, _ := opcatalog.ByName("release.repos_upload_release_asset")
 	streamInput := mcpOperationInput{
-		Target: json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), Arguments: json.RawMessage(`{"name":"asset.bin"}`),
+		Target: json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"unyolo"}`), Arguments: json.RawMessage(`{"name":"asset.bin"}`),
 		StreamInput: &mcpStreamReference{ID: "stream_012345678901234567890123"},
 	}
 	if err := prepareMCPArguments(t.Context(), streamDescriptor, &streamInput, operationConnection{}); err != nil || !bytes.Contains(streamInput.Arguments, []byte("stream_input")) {
@@ -85,7 +85,7 @@ func TestPrepareMCPArgumentModes(t *testing.T) {
 	}
 
 	readDescriptor, _ := opcatalog.ByName("repo.metadata.read")
-	readInput := mcpOperationInput{Target: json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), Arguments: json.RawMessage(`{}`)}
+	readInput := mcpOperationInput{Target: json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), Arguments: json.RawMessage(`{}`)}
 	if err := prepareMCPArguments(t.Context(), readDescriptor, &readInput, operationConnection{}); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestMCPToolSignatureChangesWithLivePolicyExposure(t *testing.T) {
 
 func TestMCPToolsRequireAndIntersectAgentDiscovery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/.well-known/brokerkit-agent" {
+		if request.URL.Path != "/.well-known/unyolo-agent" {
 			http.NotFound(writer, request)
 			return
 		}
@@ -151,7 +151,7 @@ func TestMCPToolsRequireAndIntersectAgentDiscovery(t *testing.T) {
 
 func TestRunMCPAndJSONRPCDispatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/.well-known/brokerkit-agent" {
+		if request.URL.Path != "/.well-known/unyolo-agent" {
 			http.NotFound(writer, request)
 			return
 		}
@@ -209,7 +209,7 @@ func TestMCPTypedToolSubmission(t *testing.T) {
 	}
 	value, err := callGitHubMCP(t.Context(), mcpTestEnv(env), mcpserver.ToolCall{
 		Name:      "gh_repo_metadata_read",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect metadata","request_id":"request-1"}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"unyolo"},"arguments":{},"reason":"inspect metadata","request_id":"request-1"}`),
 	})
 	operation, ok := value.(mcpoperation.Operation)
 	if err != nil || !ok || operation.Operation != "repo.metadata.read" {
@@ -247,7 +247,7 @@ func TestMCPRequestConflictAndRecoveryTools(t *testing.T) {
 	}
 	_, err := callGitHubMCP(t.Context(), mcpTestEnv(env), mcpserver.ToolCall{
 		Name:      "gh_repo_metadata_read",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"reason":"inspect","request_id":"same-request"}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"unyolo"},"arguments":{},"reason":"inspect","request_id":"same-request"}`),
 	})
 	var conflict *mcpoperation.RequestIDConflictError
 	if !errors.As(err, &conflict) || conflict.Existing.ID != operation.ID || conflict.Existing.RequestID != "same-request" {
@@ -315,7 +315,7 @@ func TestMCPSealedToolUsesOneTimePayloadBoundary(t *testing.T) {
 	}
 	_, err := callGitHubMCP(t.Context(), mcpTestEnv(env), mcpserver.ToolCall{
 		Name:      "gh_workflow_actions_create_or_update_repo_secret",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{"secret_name":"DEPLOY_TOKEN"},"sealed_arguments":{"input":{"encrypted_value":"Y2FuYXJ5","key_id":"key-1"}},"reason":"rotate secret","request_id":"mcp-secret"}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"unyolo"},"arguments":{"secret_name":"DEPLOY_TOKEN"},"sealed_arguments":{"input":{"encrypted_value":"Y2FuYXJ5","key_id":"key-1"}},"reason":"rotate secret","request_id":"mcp-secret"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -375,7 +375,7 @@ func TestMCPCredentialOutputUsesNamedSlot(t *testing.T) {
 	}
 	_, err := callGitHubMCP(t.Context(), mcpTestEnv(env), mcpserver.ToolCall{
 		Name:      "gh_runner_actions_create_registration_token_for_repo",
-		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"brokerkit"},"arguments":{},"credential_slot":"ci-runner","reason":"enroll runner","request_id":"runner-token"}`),
+		Arguments: json.RawMessage(`{"target":{"kind":"repo","owner":"osolmaz","name":"unyolo"},"arguments":{},"credential_slot":"ci-runner","reason":"enroll runner","request_id":"runner-token"}`),
 	})
 	if err != nil {
 		t.Fatal(err)

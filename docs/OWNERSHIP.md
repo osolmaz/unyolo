@@ -1,22 +1,22 @@
-# brokerkit Ownership
+# unyolo Ownership
 
-brokerkit owns the generic broker control plane. A consuming broker owns only
+unyolo owns the generic broker control plane. A consuming broker owns only
 the platform adapter: request classification, upstream execution, platform
 credentials, and platform-specific user-facing wording.
 
 The rule is:
 
 ```text
-brokerkit decides who may do what, on which target, under which grant, with
+unyolo decides who may do what, on which target, under which grant, with
 which audit trail.
 
 the broker decides how a Hugging Face, GitHub, or Unix action is classified and
 executed.
 ```
 
-## Owned By brokerkit
+## Owned By unyolo
 
-brokerkit should provide these reusable packages.
+unyolo should provide these reusable packages.
 
 ### Identity And Auth
 
@@ -29,7 +29,7 @@ brokerkit should provide these reusable packages.
 - secret validation
 - auth error types that brokers can map to their own HTTP response shape
 
-brokerkit should not depend on Echo or another HTTP framework. Brokers wrap the
+unyolo should not depend on Echo or another HTTP framework. Brokers wrap the
 auth primitives in their own middleware.
 
 ### Policy
@@ -51,7 +51,7 @@ deny > active generated grant > allow > request > no_match
 - rejection of unknown operations, target kinds, attrs, and fields
 - audit-safe decision metadata
 
-brokerkit should not ship Hugging Face, GitHub, or Unix operation semantics as
+unyolo should not ship Hugging Face, GitHub, or Unix operation semantics as
 global built-ins. Brokers register their own vocabulary.
 
 ### Operation And Target Registry
@@ -84,7 +84,7 @@ files or filesystem plan stores.
 
 ### Agent Tool Compatibility
 
-BrokerKit owns the MCP request-ID contract, secure generated IDs, immediate
+unYOLO owns the MCP request-ID contract, secure generated IDs, immediate
 submission, transcript-safe operation/page documents, bounded get/wait/list
 recovery, structured request-ID conflicts, and host compatibility profile.
 Shared code must not branch on provider names.
@@ -123,7 +123,7 @@ catalogs. Future Sudo Broker MCP surfaces must consume these shared contracts.
 - default local durable store
 - clock injection for tests
 - bounded opaque provider metadata that is persisted and included in
-  idempotency, but never interpreted by brokerkit policy or lifecycle code;
+  idempotency, but never interpreted by unyolo policy or lifecycle code;
   metadata must not contain credentials, decision tokens, or other secrets
 
 Generated grants must never use wildcard clients.
@@ -154,7 +154,7 @@ Generated grants must never use wildcard clients.
 
 The consuming broker supplies provider wording and exposes the handler on a
 protected operator transport. A trusted web host keeps the operator credential
-server-side and renders the safe projection. BrokerKit does not own
+server-side and renders the safe projection. unYOLO does not own
 browser sessions, frontend components, or provider execution plans.
 
 ### Notifications
@@ -173,9 +173,9 @@ labels, callback answers, layout, or terminal prose.
 
 Telegram is a shared approval channel for `hf-broker`, `gh-broker`, and
 `sudo-broker`, so the reusable implementation and single inbound poller belong
-in brokerkit.
+in unyolo.
 
-brokerkit should own:
+unyolo should own:
 
 - Bot API client
 - canonical bounded HTML rendering and strict dynamic-value escaping
@@ -196,7 +196,7 @@ brokerkit should own:
 - transport errors
 - shared tests for callback and token safety
 
-Status: brokerkit owns the reusable Telegram client and renderer, inline
+Status: unyolo owns the reusable Telegram client and renderer, inline
 callback data, long polling, configured-chat filtering, callback answering,
 and typed status edits. The single ingress owns the bot update offset. After
 the owning broker durably commits a callback decision through Operator V1, the
@@ -223,12 +223,12 @@ named client and operator credential files. Raw single-secret operator files
 are not part of the broker-family contract.
 
 The `broker/conformance` package runs the shared contract against real HTTP handlers.
-Every broker invokes it in its own tests. `brokerkit-coverage` and
-`brokerkit-release` provide common quality and release behavior. Mutation
+Every broker invokes it in its own tests. `unyolo-coverage` and
+`unyolo-release` provide common quality and release behavior. Mutation
 targets remain broker-local and checked in, but are disabled and non-blocking
 until a later explicit decision re-enables them.
 
-brokerkit should not own text such as "approve this force-push" or "approve
+unyolo should not own text such as "approve this force-push" or "approve
 this shell as deploy." Brokers compose those summaries.
 
 ### Audit
@@ -290,9 +290,9 @@ Broker-specific config fields stay in the broker.
 ### Generic Git Helpers
 
 `hf-broker` and `gh-broker` both speak Git smart HTTP. Generic Git parsing and
-safety helpers should move to brokerkit when the API is clear.
+safety helpers should move to unyolo when the API is clear.
 
-brokerkit may own:
+unyolo may own:
 
 - pkt-line parsing
 - receive-pack command parsing
@@ -303,7 +303,7 @@ brokerkit may own:
 - pack/body redaction helpers
 - shared Git operation naming conventions where both brokers agree
 
-brokerkit must not own:
+unyolo must not own:
 
 - Hugging Face mirror management
 - Hugging Face ancestry checks
@@ -366,7 +366,7 @@ argv/environment input, or a launchd installer.
 Each broker should prove:
 
 - the broker registers only its provider vocabulary
-- valid requests go through brokerkit decisions
+- valid requests go through unyolo decisions
 - malformed or unclassified requests fail closed before execution
 - deny overrides active grants
 - active grants match only the approved client, operation, target, attrs,

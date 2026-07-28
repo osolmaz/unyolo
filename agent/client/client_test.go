@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 const testCredential = "agent-credential-with-enough-entropy"
@@ -51,7 +51,7 @@ func TestClientSubmitGetAndWait(t *testing.T) {
 
 func TestClientDiscoversCredentialCeiling(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/.well-known/brokerkit-agent" || request.Header.Get("Authorization") != "Bearer "+testCredential {
+		if request.URL.Path != "/.well-known/unyolo-agent" || request.Header.Get("Authorization") != "Bearer "+testCredential {
 			http.NotFound(writer, request)
 			return
 		}

@@ -1,10 +1,10 @@
 ---
 title: OpenClaw plugin
-description: The openclaw-brokerkit package, its approvals tab and client skills, and the three trust modes.
+description: The openclaw-unyolo package, its approvals tab and client skills, and the three trust modes.
 ---
 
-`openclaw-brokerkit` is an OpenClaw plugin that adds a provider-neutral Approvals tab and
-`/brokerkit` commands to OpenClaw. It connects to one or more BrokerKit Operator V1 sources. The
+`openclaw-unyolo` is an OpenClaw plugin that adds a provider-neutral Approvals tab and
+`/unyolo` commands to OpenClaw. It connects to one or more unYOLO Operator V1 sources. The
 brokers remain authoritative and keep all provider credentials and executable plans.
 
 The minimum supported host is `openclaw@2026.7.1`, the first stable SDK the package uses that
@@ -13,13 +13,13 @@ includes public tab descriptors.
 ## Install
 
 ```sh
-openclaw plugins install npm:openclaw-brokerkit@<version>
+openclaw plugins install npm:openclaw-unyolo@<version>
 ```
 
 From a local checkout, build and link the package explicitly:
 
 ```sh
-pnpm --filter openclaw-brokerkit build
+pnpm --filter openclaw-unyolo build
 openclaw plugins install --link ./plugins/openclaw
 ```
 
@@ -45,7 +45,7 @@ The plugin has three modes, and the default is the least trusting one.
 registers no approval UI, routes, commands, or background service.
 
 `direct` trusts the OpenClaw process with operator SecretRefs. It enables the Approvals tab,
-background reconciliation, `/brokerkit` commands, and channel delivery.
+background reconciliation, `/unyolo` commands, and channel delivery.
 
 `delegated-web` packages only the tab UI and delegates authenticated browser requests to a
 same-origin trusted backend. OpenClaw receives no broker credential and registers no command or
@@ -61,7 +61,7 @@ your backend and OpenClaw only renders.
 {
   plugins: {
     entries: {
-      brokerkit: {
+      unyolo: {
         enabled: true,
         config: {
           mode: "direct",
@@ -91,12 +91,12 @@ plugin, without installing OpenClaw:
 import {
   parseRequestPage,
   type RequestPage,
-} from "openclaw-brokerkit/operator-v1";
+} from "openclaw-unyolo/operator-v1";
 
 const page: RequestPage = parseRequestPage(await response.json());
 ```
 
-The subpath is generated from BrokerKit's canonical OpenAPI document. Its standalone validators use
+The subpath is generated from unYOLO's canonical OpenAPI document. Its standalone validators use
 no runtime code generation and reject unknown fields, invalid bounds, unsafe integers, and protocol
 drift.
 

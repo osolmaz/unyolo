@@ -8,10 +8,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/auth"
+	"github.com/osolmaz/unyolo/auth"
 )
 
-const IdentityPath = "/_brokerkit/git/v1"
+const IdentityPath = "/_unyolo/git/v1"
 
 // AllowRoute classifies one provider-owned Git, LFS, or Xet route.
 type AllowRoute func(method, requestPath string) bool
@@ -70,7 +70,7 @@ func (h gitHandler) authenticate(response http.ResponseWriter, request *http.Req
 		return true
 	}
 	if errors.Is(err, auth.ErrMissing) {
-		response.Header().Set("WWW-Authenticate", `Basic realm="brokerkit-git"`)
+		response.Header().Set("WWW-Authenticate", `Basic realm="unyolo-git"`)
 		http.Error(response, "authentication required", http.StatusUnauthorized)
 		return false
 	}

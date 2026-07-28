@@ -12,8 +12,8 @@ interface Props {
 }
 
 const { title, description, section = "docs" } = Astro.props;
-const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://brokerkit.dev");
-const fullTitle = title === "BrokerKit" ? title : `${title} · BrokerKit`;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://unyolo.io");
+const fullTitle = title === "unYOLO" ? title : `${title} · unYOLO`;
 ---
 
 <!doctype html>
@@ -37,7 +37,7 @@ const fullTitle = title === "BrokerKit" ? title : `${title} · BrokerKit`;
       // Applied before first paint so a dark-theme reader never sees a flash.
       (function () {
         try {
-          var stored = localStorage.getItem("brokerkit-theme");
+          var stored = localStorage.getItem("unyolo-theme");
           var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           document.documentElement.dataset.theme =
             stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
@@ -62,7 +62,7 @@ const fullTitle = title === "BrokerKit" ? title : `${title} · BrokerKit`;
           const next = root.dataset.theme === "dark" ? "light" : "dark";
           root.dataset.theme = next;
           try {
-            localStorage.setItem("brokerkit-theme", next);
+            localStorage.setItem("unyolo-theme", next);
           } catch {
             /* private mode: the choice simply does not persist */
           }

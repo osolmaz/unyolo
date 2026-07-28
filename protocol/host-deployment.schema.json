@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/host-deployment/v1/deployment.schema.json",
-  "title": "BrokerKit host deployment",
+  "$id": "https://unyolo.io/schema/host-deployment/v1/deployment.schema.json",
+  "title": "unYOLO host deployment",
   "type": "object",
   "additionalProperties": false,
   "required": ["api_version", "name", "runtime", "agents", "operators", "components"],
   "properties": {
-    "api_version": { "const": "brokerkit.io/host-deployment/v1" },
+    "api_version": { "const": "unyolo.io/host-deployment/v1" },
     "name": { "$ref": "#/$defs/name" },
     "runtime": {
       "type": "object",

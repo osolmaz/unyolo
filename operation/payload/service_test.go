@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 func TestUploadBindsPayloadToDescriptorAndRequester(t *testing.T) {

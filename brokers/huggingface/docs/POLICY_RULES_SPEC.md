@@ -9,12 +9,12 @@ and generated temporary grants.
 `scope.json` contains one top-level `rules` field. Unknown fields and unsupported
 record shapes fail validation.
 
-The generic policy engine lives in `github.com/osolmaz/brokerkit/authorization/policy`.
+The generic policy engine lives in `github.com/osolmaz/unyolo/authorization/policy`.
 hf-broker keeps only the Hugging Face-specific rules-file parser, operation
 registry, target definitions, attrs, request classification, and adapters into
 the shared engine. Generic grant lifecycle, approval workflow, Telegram
 transport, audit helpers, storage helpers, and provider-neutral Git parsing
-belong in brokerkit instead of remaining duplicated in hf-broker.
+belong in unyolo instead of remaining duplicated in hf-broker.
 
 ## Smallest Valid File
 
@@ -1041,7 +1041,7 @@ rule ids per category plus a count:
 
 ## Runtime Ownership
 
-`internal/policy` now wraps the brokerkit policy core with the hf-broker parser,
+`internal/policy` now wraps the unyolo policy core with the hf-broker parser,
 provider registry, and typed request classifiers. It must not contain a second
 generic matcher, precedence implementation, ambiguity checker, or grant
 overlay engine.

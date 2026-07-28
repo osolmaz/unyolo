@@ -1,8 +1,8 @@
 {
-  "name": "brokerkit-web",
+  "name": "unyolo-web",
   "version": "0.1.0",
   "private": true,
-  "description": "BrokerKit documentation site and landing page",
+  "description": "unYOLO documentation site and landing page",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"

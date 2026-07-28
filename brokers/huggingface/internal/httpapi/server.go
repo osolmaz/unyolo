@@ -13,38 +13,38 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	bkapprovalnotify "github.com/osolmaz/brokerkit/approval/notification"
-	bknotify "github.com/osolmaz/brokerkit/approval/notifier"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	bkauth "github.com/osolmaz/brokerkit/auth"
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/admission"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/broker/controlplane"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mirror"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xetuploader"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/git/server"
-	"github.com/osolmaz/brokerkit/internal/slicex"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
-	"github.com/osolmaz/brokerkit/operation/payload"
-	"github.com/osolmaz/brokerkit/operator/api"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	unyoloapprovalnotify "github.com/osolmaz/unyolo/approval/notification"
+	unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	unyoloauth "github.com/osolmaz/unyolo/auth"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/admission"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/broker/controlplane"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/approval"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/credentialauth"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/mirror"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/xetuploader"
+	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/git/server"
+	"github.com/osolmaz/unyolo/internal/slicex"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/storage/stream"
+	"github.com/osolmaz/unyolo/operation/payload"
+	"github.com/osolmaz/unyolo/operator/api"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const (
@@ -64,7 +64,7 @@ const maxReceivePackReportBytes = 4 << 20
 
 var (
 	errInvalidLFSAction             = errors.New("LFS action is no longer valid")
-	errUnsupportedXet               = errors.New("Xet transfer is not supported by the BrokerKit Git listener") //nolint:staticcheck // Xet is a proper name.
+	errUnsupportedXet               = errors.New("Xet transfer is not supported by the unYOLO Git listener") //nolint:staticcheck // Xet is a proper name.
 	errGrantStoreUnavailable        = errors.New("grant store unavailable")
 	errGrantNotificationStillQueued = errors.New("grant notification is still being created")
 	errGrantNotificationCanceled    = errors.New("grant notification was canceled")
@@ -79,7 +79,7 @@ type Options struct {
 	UpstreamBaseURL       string
 	UpstreamRouterBaseURL string
 	Context               context.Context
-	GrantNotifier         bkapprovalnotify.Notifier
+	GrantNotifier         unyoloapprovalnotify.Notifier
 	TelegramBaseURL       string
 	OperatorAudit         operatorapi.AuditRecorder
 	Now                   func() time.Time
@@ -92,7 +92,7 @@ type Server struct {
 	router *echo.Echo
 
 	control             *controlplane.Runtime
-	authorization       *bkauthorization.Coordinator
+	authorization       *unyoloauthorization.Coordinator
 	policy              policy.Policy
 	audit               audit.Recorder
 	mirrors             *mirror.Manager
@@ -117,7 +117,7 @@ type Server struct {
 	database            *state.Database
 	planValidator       hfplan.Validator
 	credential          *providercredential.Service
-	notifier            bkapprovalnotify.Notifier
+	notifier            unyoloapprovalnotify.Notifier
 	operatorConfigured  bool
 	lifecycleContext    context.Context
 	lifecycleCancel     context.CancelFunc
@@ -579,7 +579,7 @@ func (s *Server) attachServices(opts Options, resources *serverResources) error 
 		Now: opts.Now,
 	})
 	s.sealedPayloads = sealedPayloadService
-	authorization, authorizationErr := bkauthorization.New(bkauthorization.Options{
+	authorization, authorizationErr := unyoloauthorization.New(unyoloauthorization.Options{
 		Registry: policy.AuthorizationRegistry(), Decide: s.policy.DecideAuthorization,
 		Grants: resources.grantStore, ActiveGrants: s.activeAuthorizationGrants, Now: opts.Now,
 	})
@@ -651,8 +651,8 @@ func (s *Server) startTelegram(_ context.Context, opts Options) error {
 	if opts.Config.TelegramBotToken == "" {
 		return nil
 	}
-	telegram, err := bktelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, bktelegram.Options{
-		Route: bktelegram.RouteHuggingFace,
+	telegram, err := unyolotelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, unyolotelegram.Options{
+		Route: unyolotelegram.RouteHuggingFace,
 	})
 	if err != nil {
 		return fmt.Errorf("configure Telegram notifier: %w", err)
@@ -661,7 +661,7 @@ func (s *Server) startTelegram(_ context.Context, opts Options) error {
 	return nil
 }
 
-func (s *Server) handleTelegramDecision(ctx context.Context, decision bknotify.Decision) bknotify.DecisionResult {
+func (s *Server) handleTelegramDecision(ctx context.Context, decision unyolonotify.Decision) unyolonotify.DecisionResult {
 	return s.control.HandleDecision(ctx, decision)
 }
 
@@ -683,13 +683,13 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (string, b
 	if err == nil {
 		return client, true
 	}
-	if errors.Is(err, bkauth.ErrMissing) {
+	if errors.Is(err, unyoloauth.ErrMissing) {
 		if client, handled := s.authenticateLFSAction(w, r); handled {
 			return client, client != ""
 		}
 	}
 	status := http.StatusForbidden
-	if errors.Is(err, bkauth.ErrMissing) {
+	if errors.Is(err, unyoloauth.ErrMissing) {
 		status = http.StatusUnauthorized
 		w.Header().Set("WWW-Authenticate", `Basic realm="hf-broker"`)
 	}
@@ -721,7 +721,7 @@ func (s *Server) authenticateAPI(w http.ResponseWriter, r *http.Request) (string
 	status := http.StatusForbidden
 	reason := "bad_auth"
 	message := "Authentication failed"
-	if errors.Is(err, bkauth.ErrMissing) {
+	if errors.Is(err, unyoloauth.ErrMissing) {
 		status = http.StatusUnauthorized
 		reason = "missing_auth"
 		message = "Authentication required"

@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policypreset"
 )
 
 type doctorPolicyCommand struct {

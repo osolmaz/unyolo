@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/config/client"
 )
 
 func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
@@ -57,7 +57,7 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(config), "brokerkit --provider github") || !strings.Contains(string(config), "https://github.com/") {
+	if !strings.Contains(string(config), "unyolo --provider github") || !strings.Contains(string(config), "https://github.com/") {
 		t.Fatalf("git config = %s", config)
 	}
 	proxy, err := runner.Run(t.Context(), "config", "--get-urlmatch", "http.proxy", server.URL+"/owner/repo.git")
@@ -76,7 +76,7 @@ func TestInstallCredentialAndUninstallWithRealGit(t *testing.T) {
 	if err := Credential(provider, home, "get", strings.NewReader(input), &credential); err != nil {
 		t.Fatal(err)
 	}
-	if credential.String() != "username=brokerkit\npassword="+secret+"\n" {
+	if credential.String() != "username=unyolo\npassword="+secret+"\n" {
 		t.Fatalf("credential response = %q", credential.String())
 	}
 	if err := os.Remove(filepath.Join(home, ".config", "gh-broker", "client.json")); err != nil {
@@ -736,7 +736,7 @@ func (r *failOnceRunner) Run(ctx context.Context, args ...string) ([]byte, error
 func installTestCredentialHelper(t *testing.T) {
 	t.Helper()
 	bin := t.TempDir()
-	helper := filepath.Join(bin, "git-credential-brokerkit")
+	helper := filepath.Join(bin, "git-credential-unyolo")
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}

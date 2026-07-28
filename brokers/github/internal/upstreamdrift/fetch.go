@@ -22,7 +22,7 @@ import (
 const (
 	githubAPI          = "https://api.github.com"
 	maxMetadataBytes   = 32 << 20
-	metadataUserAgent  = "brokerkit-github-capability-monitor"
+	metadataUserAgent  = "unyolo-github-capability-monitor"
 	restDirectory      = "descriptions/api.github.com"
 	permissionRoot     = "src/github-apps/data"
 	apiVersionsPath    = "data/tables/rest-api-versions.yml"

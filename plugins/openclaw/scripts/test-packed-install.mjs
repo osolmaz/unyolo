@@ -18,14 +18,14 @@ const packageDir = path.resolve(
   "..",
 );
 const temporary = mkdtempSync(
-  path.join(os.tmpdir(), "openclaw-brokerkit-pack-"),
+  path.join(os.tmpdir(), "openclaw-unyolo-pack-"),
 );
 run("npm", ["pack", "--pack-destination", temporary], packageDir);
 const tarball = readdirSync(temporary).find((file) => file.endsWith(".tgz"));
 if (!tarball) throw new Error("npm pack did not produce a tarball");
 const packageTarball = path.join(temporary, tarball);
 const contractTemporary = mkdtempSync(
-  path.join(os.tmpdir(), "openclaw-brokerkit-contract-pack-"),
+  path.join(os.tmpdir(), "openclaw-unyolo-contract-pack-"),
 );
 writeFileSync(
   path.join(contractTemporary, "package.json"),
@@ -42,8 +42,8 @@ run(
     "--input-type=module",
     "--eval",
     [
-      'const contract = await import("openclaw-brokerkit/operator-v1");',
-      'if (contract.operatorV1.apiVersion !== "brokerkit.io/operator/v1") throw new Error("contract metadata missing");',
+      'const contract = await import("openclaw-unyolo/operator-v1");',
+      'if (contract.operatorV1.apiVersion !== "unyolo.io/operator/v1") throw new Error("contract metadata missing");',
       'const request = {id:"request-1",revision:1,requester:"bob",operation:"repo.read",status:"pending",requested_at:"2026-07-19T00:00:00Z",requested_duration_seconds:300,requested_max_uses:1,granted_max_uses:null,used_count:0,presentation:{risk:"low",title:"Read repository",target:"example/project",warnings:[],plan_hash:"sha256:test"},allowed_actions:["approve","deny"]};',
       'if (contract.parseRequest(request).presentation.target !== "example/project") throw new Error("contract parser rejected canonical request");',
       'try { contract.parseRequest({...request, revision: Number.MAX_SAFE_INTEGER + 1}); throw new Error("unsafe integer accepted"); } catch (error) { if (error.message === "unsafe integer accepted") throw error; }',
@@ -74,12 +74,12 @@ run(
   [
     "--input-type=module",
     "--eval",
-    'const plugin = await import("openclaw-brokerkit"); if (!plugin.default) throw new Error("plugin entry missing");',
+    'const plugin = await import("openclaw-unyolo"); if (!plugin.default) throw new Error("plugin entry missing");',
   ],
   temporary,
 );
 const openClawHome = mkdtempSync(
-  path.join(os.tmpdir(), "openclaw-brokerkit-host-"),
+  path.join(os.tmpdir(), "openclaw-unyolo-host-"),
 );
 const openClawCli = path.join(
   temporary,
@@ -103,7 +103,7 @@ run(
 );
 const installed = JSON.parse(
   readFileSync(
-    path.join(temporary, "node_modules", "openclaw-brokerkit", "package.json"),
+    path.join(temporary, "node_modules", "openclaw-unyolo", "package.json"),
     "utf8",
   ),
 );
@@ -122,7 +122,7 @@ if (installed.peerDependenciesMeta?.openclaw?.optional !== true)
 const installedRoot = path.join(
   temporary,
   "node_modules",
-  "openclaw-brokerkit",
+  "openclaw-unyolo",
 );
 const pluginManifest = JSON.parse(
   readFileSync(path.join(installedRoot, "openclaw.plugin.json"), "utf8"),
@@ -183,7 +183,7 @@ const uiIndex = readFileSync(
 if (uiIndex.includes('type="module"'))
   throw new Error("packed UI must not require a module entrypoint");
 if (
-  !/<script defer src="\/plugins\/brokerkit\/ui\/assets\/index-[^"]+\.js"><\/script>/u.test(
+  !/<script defer src="\/plugins\/unyolo\/ui\/assets\/index-[^"]+\.js"><\/script>/u.test(
     uiIndex,
   )
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/flow"
 )
 
 func TestRendererHelpers(t *testing.T) {
@@ -36,8 +36,8 @@ func TestRendererHelpers(t *testing.T) {
 			t.Fatalf("value %q was accepted", value)
 		}
 	}
-	_ = brokerKitTheme(false).Theme(true)
-	_ = brokerKitTheme(true).Theme(false)
+	_ = unyoloTheme(false).Theme(true)
+	_ = unyoloTheme(true).Theme(false)
 }
 
 func TestColorAndWidthEnvironment(t *testing.T) {

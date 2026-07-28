@@ -104,7 +104,7 @@ must not report callback data, decision tokens, rendered messages, usernames, or
 
 ## Host diagnostics
 
-`brokerkit system status --json` and `brokerkit system doctor --json` emit a closed host-level
+`unyolo system status --json` and `unyolo system doctor --json` emit a closed host-level
 report: bundle IDs, release build IDs, artifact digest results, native service names, PIDs,
 executable paths, active state, and recovery-required state. Neither contains credentials, Telegram
 destinations, decision authority, reasons, or provider payloads.

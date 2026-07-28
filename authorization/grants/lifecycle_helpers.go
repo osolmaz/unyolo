@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/internal/copyx"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/internal/copyx"
 )
 
 func (s *Store) prepareLifecycle(data *fileData) bool {

@@ -258,7 +258,7 @@ func writeLaunchdInstallation(plan LaunchdInstallPlan, uid, gid int) error {
 
 func writeAtomicLaunchdFile(path string, data []byte, mode os.FileMode, uid, gid int, preview bool) error {
 	parent := filepath.Dir(path)
-	temporary, err := os.CreateTemp(parent, ".brokerkit-*.tmp")
+	temporary, err := os.CreateTemp(parent, ".unyolo-*.tmp")
 	if err != nil {
 		return err
 	}

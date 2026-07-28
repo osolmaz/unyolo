@@ -4,7 +4,7 @@ Date: 2026-07-14
 
 Status: complete
 
-Implemented by BrokerKit commit
+Implemented by unYOLO commit
 `88d7135` (`feat(mcp): add resumable agent tool compatibility`, PR #41).
 MLClaw pinned the resulting contract and completed the live test-space matrix
 documented in
@@ -12,7 +12,7 @@ documented in
 
 ## Objective
 
-Make every BrokerKit MCP surface safe for agents whose hosts redact sensitive
+Make every unYOLO MCP surface safe for agents whose hosts redact sensitive
 tool arguments before replaying conversation history. Preserve durable
 idempotency, provider-native behavior, and secret isolation without requiring
 an agent to remember a field that its host deliberately masks.
@@ -116,7 +116,7 @@ Every immediate submission result contains:
 
 ```json
 {
-  "api_version": "brokerkit.io/mcp-operation/v1",
+  "api_version": "unyolo.io/mcp-operation/v1",
   "id": "op_...",
   "request_id": "req_...",
   "operation": "repo.create",
@@ -132,7 +132,7 @@ Every immediate submission result contains:
 ```
 
 The MCP projection must not expose the internal `idempotency_key` alongside
-`request_id`. `brokerkit.io/mcp-operation/v1` is a closed version 1 MCP
+`request_id`. `unyolo.io/mcp-operation/v1` is a closed version 1 MCP
 document, not an Agent V1 document with one silently renamed field. Operation
 JSON returned by Agent V1 remains governed by Agent V1; MCP tools return the
 transcript-safe projection.
@@ -202,13 +202,13 @@ The list result is a closed page:
 
 ```json
 {
-  "api_version": "brokerkit.io/mcp-operation-page/v1",
+  "api_version": "unyolo.io/mcp-operation-page/v1",
   "operations": [],
   "next_cursor": null
 }
 ```
 
-`operations` contains only `brokerkit.io/mcp-operation/v1` documents.
+`operations` contains only `unyolo.io/mcp-operation/v1` documents.
 `next_cursor` is either an opaque string or `null`. Empty pages use an empty
 array and `null`; they do not omit fields or return a different shape.
 
@@ -522,9 +522,9 @@ Implement and ship the change as one coordinated branch:
 3. regenerate and audit every provider schema and document;
 4. complete root and provider conformance, including the pinned OpenClaw
    replay fixture;
-5. merge BrokerKit only when all required checks pass;
+5. merge unYOLO only when all required checks pass;
 6. let MLClaw pin the exact merged commit and rebuild its image;
-7. recreate the test deployment's BrokerKit state; and
+7. recreate the test deployment's unYOLO state; and
 8. publish no package release until the MLClaw live matrix passes.
 
 Do not merge a state where one broker still advertises required

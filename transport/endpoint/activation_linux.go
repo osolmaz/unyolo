@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/setx"
+	"github.com/osolmaz/unyolo/internal/setx"
 )
 
 func activationListeners(expected []string) (map[string]net.Listener, error) {

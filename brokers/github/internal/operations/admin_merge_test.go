@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 )
 
 const (

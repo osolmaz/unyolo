@@ -15,13 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/internal/storage/stream"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 func TestGeneratedRegistryCoversAgentFacingOperations(t *testing.T) {
@@ -49,21 +49,21 @@ func TestGeneratedRegistryCoversAgentFacingOperations(t *testing.T) {
 
 func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/repos/osolmaz/brokerkit" || r.Header.Get("Authorization") != "Bearer dev-canary" {
+		if r.Method != http.MethodGet || r.URL.Path != "/repos/osolmaz/unyolo" || r.Header.Get("Authorization") != "Bearer dev-canary" {
 			t.Fatalf("request = %s %s headers=%+v", r.Method, r.URL.String(), r.Header)
 		}
-		_, _ = w.Write([]byte(`{"id":1,"node_id":"R_1","name":"brokerkit","private":true}`))
+		_, _ = w.Write([]byte(`{"id":1,"node_id":"R_1","name":"unyolo","private":true}`))
 	}))
 	t.Cleanup(server.Close)
 	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.metadata.read")
-	if _, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"headers":{"x-test":"1"}}`)); err == nil {
+	if _, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), json.RawMessage(`{"headers":{"x-test":"1"}}`)); err == nil {
 		t.Fatal("raw escape hatch was accepted")
 	}
 	contents := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.contents.read")
-	if _, err := contents.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"path":"README.md"}`)); err != nil {
+	if _, err := contents.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), json.RawMessage(`{"path":"README.md"}`)); err != nil {
 		t.Fatalf("argument-owned path parameter was rejected: %v", err)
 	}
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{}`))
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestRESTAdapterRejectsEscapeHatchesAndExecutes(t *testing.T) {
 	if err != nil || !outcome.Proven || outcome.UpstreamStatus != http.StatusOK {
 		t.Fatalf("execute = %+v err=%v", outcome, err)
 	}
-	assertJSONEqual(t, outcome.Result, `{"id":1,"node_id":"R_1","name":"brokerkit"}`)
+	assertJSONEqual(t, outcome.Result, `{"id":1,"node_id":"R_1","name":"unyolo"}`)
 }
 
 func TestRepositoryContentsPreservesBoundedFileAndDirectoryResults(t *testing.T) {
@@ -85,14 +85,14 @@ func TestRepositoryContentsPreservesBoundedFileAndDirectoryResults(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-				if request.URL.Path != "/repos/osolmaz/brokerkit/contents/README.md" {
+				if request.URL.Path != "/repos/osolmaz/unyolo/contents/README.md" {
 					t.Fatalf("path = %q", request.URL.Path)
 				}
 				_, _ = w.Write([]byte(response))
 			}))
 			t.Cleanup(server.Close)
 			adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "repo.contents.read")
-			input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"path":"README.md"}`))
+			input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), json.RawMessage(`{"path":"README.md"}`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,7 +160,7 @@ func TestGeneratedUserIdentityValidationAppliesOnlyToSelfTargets(t *testing.T) {
 
 func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 	adapter := mustLookupGenerated(t, newOperationsManager(t, "http://127.0.0.1"), "pull_request.create")
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`),
 		json.RawMessage(`{"input":{"title":"Cutover","head":"agent/work","base":"main"}}`))
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 	if got := adapter.Authorize(plan); got.Operation != "pull_request.create" || got.CredentialKind != string(githubauth.KindInstallation) {
 		t.Fatalf("derived authorization = %+v", got)
 	}
-	if got := adapter.Present(plan); got.Title == "" || !strings.Contains(got.Summary, "osolmaz/brokerkit") {
+	if got := adapter.Present(plan); got.Title == "" || !strings.Contains(got.Summary, "osolmaz/unyolo") {
 		t.Fatalf("derived presentation = %+v", got)
 	}
 	metadata, err := CredentialFromPreconditions(plan.Preconditions)
@@ -203,7 +203,7 @@ func TestGeneratedAdapterLifecycleMetadata(t *testing.T) {
 func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 	descriptor := opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: "test.operation", Summary: "Test operation", TargetKind: "issue",
 		CredentialKind: string(githubauth.KindInstallation), AgentFacing: true, Implementation: capability.StatusImplemented, ExecutorKind: "rest-binding"}}
-	if summary := targetSummary("repo", map[string]any{"owner": "osolmaz", "name": "brokerkit"}); summary != "osolmaz/brokerkit" {
+	if summary := targetSummary("repo", map[string]any{"owner": "osolmaz", "name": "unyolo"}); summary != "osolmaz/unyolo" {
 		t.Fatalf("repo summary = %q", summary)
 	}
 	for _, test := range []struct {
@@ -216,7 +216,7 @@ func TestGeneratedAdapterHelpersFailClosed(t *testing.T) {
 		}
 	}
 	presentation := presentDescriptor(descriptor, map[string]any{"number": float64(7)})
-	authorization := authorizeDescriptor(descriptor, nil, map[string]any{"owner": "osolmaz", "name": "brokerkit", "id": float64(3)},
+	authorization := authorizeDescriptor(descriptor, nil, map[string]any{"owner": "osolmaz", "name": "unyolo", "id": float64(3)},
 		map[string]any{"ref": "main", "input": map[string]any{"base": "main", "head": "feature", "merge_method": "squash",
 			"labels": []any{"bug", "urgent"}, "permission": "maintain"}}, githubauth.Metadata{})
 	if presentation.Title != "Test operation" || !slices.Equal(authorization.TargetFields["id"], []string{"3"}) ||
@@ -282,7 +282,7 @@ func TestSealedOperationSuppressesProviderDiagnosticMessage(t *testing.T) {
 func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 	attrs := authorizationAttrs(map[string]any{"input": map[string]any{
 		"actorId": json.Number("1"), "actorLogin": "alice", "base": "main", "environmentName": "production", "head": "feature",
-		"branch": "release", "name": "brokerkit-next", "owner": "osolmaz",
+		"branch": "release", "name": "unyolo-next", "owner": "osolmaz",
 		"labels": []any{"bug", "urgent"}, "mergeMethod": "squash", "paths": []any{"README.md", "docs/guide.md"},
 		"permission": "maintain", "ref": "refs/heads/main", "releaseState": "draft", "resourceId": "R_1", "role": "admin",
 		"visibility": "private", "workflow": "ci", "workflowRef": "ci.yml@main",
@@ -292,7 +292,7 @@ func TestAuthorizationAttrsCoverClosedPolicyVocabulary(t *testing.T) {
 		"head_ref": {"feature"}, "label": {"bug", "urgent"}, "merge_method": {"squash"},
 		"path": {"README.md", "docs/guide.md"}, "permission": {"maintain"}, "ref": {"refs/heads/main", "refs/heads/release"},
 		"release_state": {"draft"}, "resource_id": {"R_1"}, "role": {"admin"}, "visibility": {"private"},
-		"workflow": {"ci"}, "workflow_ref": {"ci.yml@main"}, "resource_name": {"brokerkit-next"}, "resource_owner": {"osolmaz"},
+		"workflow": {"ci"}, "workflow_ref": {"ci.yml@main"}, "resource_name": {"unyolo-next"}, "resource_owner": {"osolmaz"},
 	}
 	if !maps.EqualFunc(attrs, want, slices.Equal) {
 		t.Fatalf("authorization attrs = %+v, want %+v", attrs, want)
@@ -312,7 +312,7 @@ func TestGeneratedFileWriteAuthorizationBindsBranch(t *testing.T) {
 		t.Fatalf("file-write bindings = %d", len(bindings))
 	}
 	authorization := authorizeDescriptor(descriptor, &bindings[0], map[string]any{
-		"kind": "repo", "owner": "osolmaz", "name": "brokerkit",
+		"kind": "repo", "owner": "osolmaz", "name": "unyolo",
 	}, map[string]any{"path": "README.md", "input": map[string]any{"branch": "main"}}, githubauth.Metadata{})
 	if !slices.Equal(authorization.Attrs["ref"], []string{"refs/heads/main"}) ||
 		!slices.Equal(authorization.Attrs["path"], []string{"README.md"}) {
@@ -342,10 +342,10 @@ func TestAuthorizationUsesOnlyExecutionBoundTargetFields(t *testing.T) {
 		t.Fatal("issue lock binding is unavailable")
 	}
 	authorization := authorizeDescriptor(descriptor, &binding[0], map[string]any{
-		"owner": "osolmaz", "repo": "brokerkit", "number": json.Number("7"), "name": "spoofed",
+		"owner": "osolmaz", "repo": "unyolo", "number": json.Number("7"), "name": "spoofed",
 	}, map[string]any{}, githubauth.Metadata{InstallationID: 42})
 	if authorization.TargetFields["name"] != nil || !slices.Equal(authorization.TargetFields["owner"], []string{"osolmaz"}) ||
-		!slices.Equal(authorization.TargetFields["repo"], []string{"brokerkit"}) ||
+		!slices.Equal(authorization.TargetFields["repo"], []string{"unyolo"}) ||
 		!slices.Equal(authorization.TargetFields["number"], []string{"7"}) ||
 		!slices.Equal(authorization.TargetFields["installation_id"], []string{"42"}) {
 		t.Fatalf("authorization target fields = %+v", authorization.TargetFields)
@@ -427,7 +427,7 @@ func TestGeneratedAdapterCleanupAndInvalidStoredPlans(t *testing.T) {
 	}
 	sealedAdapter, _ := registry.Lookup("workflow.actions_create_or_update_repo_secret")
 	sealedWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"secret_name":"TOKEN"}`), "sealed_payload": sealedReference})
-	sealedInput, err := sealedAdapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), sealedWrapper)
+	sealedInput, err := sealedAdapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), sealedWrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestGeneratedAdapterCleanupAndInvalidStoredPlans(t *testing.T) {
 	}
 	streamAdapter, _ := registry.Lookup("release.repos_upload_release_asset")
 	streamWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"asset.bin"}`), "stream_input": streamReference})
-	streamInput, err := streamAdapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), streamWrapper)
+	streamInput, err := streamAdapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"unyolo"}`), streamWrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestGeneratedAdapterCleanupAndInvalidStoredPlans(t *testing.T) {
 
 func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/repos/osolmaz/brokerkit/pulls" {
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/osolmaz/unyolo/pulls" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.String())
 		}
 		http.Error(w, "upstream failure", http.StatusBadGateway)
@@ -484,7 +484,7 @@ func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 	t.Cleanup(server.Close)
 	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "pull_request.create")
 	input, err := adapter.Decode(
-		json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+		json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`),
 		json.RawMessage(`{"input":{"title":"Agent cutover","head":"feature","base":"main"}}`),
 	)
 	if err != nil {
@@ -505,7 +505,7 @@ func TestMutationExecuteClassifiesAmbiguousFailuresWithoutRetry(t *testing.T) {
 func TestResolveVerifiesUnboundImmutableTargetIdentity(t *testing.T) {
 	var mutations int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/repos/osolmaz/brokerkit/issues/7" {
+		if request.URL.Path != "/repos/osolmaz/unyolo/issues/7" {
 			t.Fatalf("request path = %s", request.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -522,14 +522,14 @@ func TestResolveVerifiesUnboundImmutableTargetIdentity(t *testing.T) {
 	t.Cleanup(server.Close)
 	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "issue.issues_update")
 	arguments := json.RawMessage(`{"input":{"state":"closed"}}`)
-	spoofed, err := adapter.Decode(json.RawMessage(`{"kind":"issue","owner":"osolmaz","repo":"brokerkit","number":7,"id":98,"node_id":"I_99"}`), arguments)
+	spoofed, err := adapter.Decode(json.RawMessage(`{"kind":"issue","owner":"osolmaz","repo":"unyolo","number":7,"id":98,"node_id":"I_99"}`), arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.Resolve(t.Context(), spoofed); err == nil {
 		t.Fatal("spoofed immutable target identity was authorized")
 	}
-	verified, err := adapter.Decode(json.RawMessage(`{"kind":"issue","owner":"osolmaz","repo":"brokerkit","number":7,"id":99,"node_id":"I_99"}`), arguments)
+	verified, err := adapter.Decode(json.RawMessage(`{"kind":"issue","owner":"osolmaz","repo":"unyolo","number":7,"id":99,"node_id":"I_99"}`), arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,7 +608,7 @@ func TestOptionalSealedArgumentsExecuteWithoutPayloadReference(t *testing.T) {
 
 func TestDocumentedAcceptedMutationIsSuccessful(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/repos/osolmaz/brokerkit/deployments" {
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/osolmaz/unyolo/deployments" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		w.WriteHeader(http.StatusAccepted)
@@ -616,7 +616,7 @@ func TestDocumentedAcceptedMutationIsSuccessful(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	adapter := mustLookupGenerated(t, newOperationsManager(t, server.URL), "deployment.repos_create_deployment")
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"input":{"ref":"main"}}`))
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), json.RawMessage(`{"input":{"ref":"main"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -707,7 +707,7 @@ func TestRepositoryDeletionReconcilesByAbsenceWithoutReplay(t *testing.T) {
 func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) {
 	const secret = "ZW5jcnlwdGVkLWNhbmFyeS12YWx1ZQ=="
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPut || request.URL.Path != "/repos/osolmaz/brokerkit/actions/secrets/DEPLOY_TOKEN" {
+		if request.Method != http.MethodPut || request.URL.Path != "/repos/osolmaz/unyolo/actions/secrets/DEPLOY_TOKEN" {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
 		body, err := io.ReadAll(request.Body)
@@ -744,7 +744,7 @@ func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) 
 		"public":         json.RawMessage(`{"secret_name":"DEPLOY_TOKEN"}`),
 		"sealed_payload": reference,
 	})
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), wrapper)
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), wrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -777,7 +777,7 @@ func TestSealedAdapterConsumesBoundPayloadWithoutPersistingSecret(t *testing.T) 
 func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 	const token = "runner-token-canary"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/brokerkit/actions/runners/registration-token" {
+		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/unyolo/actions/runners/registration-token" {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
 		w.WriteHeader(http.StatusCreated)
@@ -799,7 +799,7 @@ func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 	if !found {
 		t.Fatal("runner token adapter not found")
 	}
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`),
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`),
 		json.RawMessage(`{"public":{},"credential_slot":"ci-runner"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -821,7 +821,7 @@ func TestCredentialOutputAdapterStoresRunnerTokenWithoutReadback(t *testing.T) {
 func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 	const content = "release-asset-canary"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/brokerkit/releases/9/assets" ||
+		if request.Method != http.MethodPost || request.URL.Path != "/repos/osolmaz/unyolo/releases/9/assets" ||
 			request.Header.Get("Content-Type") != "application/octet-stream" {
 			t.Fatalf("request = %s %s query=%s headers=%v", request.Method, request.URL.Path, request.URL.RawQuery, request.Header)
 		}
@@ -859,7 +859,7 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 		t.Fatal("invalid stream upload plan executed")
 	}
 	wrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"artifact.bin"}`), "stream_input": reference})
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), wrapper)
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"unyolo"}`), wrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -892,7 +892,7 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	invalidWrapper, _ := json.Marshal(map[string]any{"public": json.RawMessage(`{"name":"malformed.bin"}`), "stream_input": invalidReference})
-	invalidInput, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"brokerkit"}`), invalidWrapper)
+	invalidInput, err := adapter.Decode(json.RawMessage(`{"kind":"release","id":9,"owner":"osolmaz","repo":"unyolo"}`), invalidWrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -908,7 +908,7 @@ func TestStreamUploadExecutesFromBoundPrivateFile(t *testing.T) {
 func TestStreamDownloadStoresBoundedResultForOwner(t *testing.T) {
 	content := bytes.Repeat([]byte("archive-canary"), 64)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet || request.URL.Path != "/repos/osolmaz/brokerkit/zipball/main" || request.Header.Get("Accept") != "application/octet-stream" {
+		if request.Method != http.MethodGet || request.URL.Path != "/repos/osolmaz/unyolo/zipball/main" || request.Header.Get("Accept") != "application/octet-stream" {
 			t.Fatalf("request = %s %s headers=%v", request.Method, request.URL.Path, request.Header)
 		}
 		w.Header().Set("Content-Type", "application/zip")
@@ -921,7 +921,7 @@ func TestStreamDownloadStoresBoundedResultForOwner(t *testing.T) {
 	adapters, _ := NewGeneratedAdapters(newOperationsManager(t, server.URL), options)
 	registry, _ := NewRegistry(adapters...)
 	adapter, _ := registry.Lookup("repo.download_zipball_archive")
-	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"brokerkit"}`), json.RawMessage(`{"ref":"main"}`))
+	input, err := adapter.Decode(json.RawMessage(`{"kind":"repo","owner":"osolmaz","name":"unyolo"}`), json.RawMessage(`{"ref":"main"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/internal/pathutil"
-	"github.com/osolmaz/brokerkit/internal/validatex"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/internal/pathutil"
+	"github.com/osolmaz/unyolo/internal/validatex"
 )
 
 // LaunchdInstallPlan describes one complete system LaunchDaemon installation.

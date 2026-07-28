@@ -11,12 +11,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 const (

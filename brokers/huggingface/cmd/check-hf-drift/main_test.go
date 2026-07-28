@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/upstreamdrift"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/upstreamdrift"
 )
 
 func TestRunWithWritesDriftOutputs(t *testing.T) {

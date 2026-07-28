@@ -22,7 +22,7 @@ type DelegatedBootstrap = {
   basePath: string;
 };
 
-export function registerBrokerKit(api: OpenClawPluginApi): void {
+export function registerunYOLO(api: OpenClawPluginApi): void {
   const config = parseConfig(api.pluginConfig);
   if (config.mode === "skills-only") return;
   const capability =
@@ -43,22 +43,22 @@ export function registerBrokerKit(api: OpenClawPluginApi): void {
         };
   let runtime: BrokerRuntime | undefined;
   const requireRuntime = () => {
-    if (!runtime) throw new Error("BrokerKit runtime is not running");
+    if (!runtime) throw new Error("unYOLO runtime is not running");
     return runtime;
   };
   api.session.controls.registerControlUiDescriptor({
     surface: "tab",
-    id: "brokerkit",
+    id: "unyolo",
     label: "Approvals",
-    description: "Review pending BrokerKit requests.",
+    description: "Review pending unYOLO requests.",
     icon: "shield-check",
     group: "control",
     requiredScopes: ["operator.approvals"],
-    path: `/plugins/brokerkit/ui/#${encodeUiBootstrap(bootstrap)}`,
+    path: `/plugins/unyolo/ui/#${encodeUiBootstrap(bootstrap)}`,
   });
   if (config.mode === "direct") {
     api.registerService({
-      id: "brokerkit",
+      id: "unyolo",
       start: async (ctx) => {
         runtime = new BrokerRuntime(config, {
           resolveCredential: (source) => resolveCredential(api, source),
@@ -90,8 +90,8 @@ export function registerBrokerKit(api: OpenClawPluginApi): void {
       },
     });
     api.registerCommand({
-      name: "brokerkit",
-      description: "Review and decide BrokerKit approval requests.",
+      name: "unyolo",
+      description: "Review and decide unYOLO approval requests.",
       acceptsArgs: true,
       requireAuth: true,
       requiredScopes: ["operator.approvals"],
@@ -99,7 +99,7 @@ export function registerBrokerKit(api: OpenClawPluginApi): void {
     });
   }
   api.registerHttpRoute({
-    path: "/plugins/brokerkit",
+    path: "/plugins/unyolo",
     auth: "plugin",
     match: "prefix",
     handler: createHttpHandler(
@@ -117,7 +117,7 @@ function encodeUiBootstrap(
 }
 
 function requiredCapability(value: string | undefined): string {
-  if (!value) throw new Error("BrokerKit UI capability was not initialized");
+  if (!value) throw new Error("unYOLO UI capability was not initialized");
   return value;
 }
 
@@ -129,7 +129,7 @@ async function resolveCredential(
     config: api.config,
     env: process.env,
     value: source.operatorCredential,
-    path: `plugins.entries.brokerkit.config.brokers.${source.id}.operatorCredential`,
+    path: `plugins.entries.unyolo.config.brokers.${source.id}.operatorCredential`,
   });
   if (!resolved.value)
     throw new Error(`operator credential unavailable for ${source.id}`);
@@ -137,9 +137,9 @@ async function resolveCredential(
 }
 
 export default definePluginEntry({
-  id: "brokerkit",
-  name: "BrokerKit",
-  description: "Provider-neutral BrokerKit approvals",
+  id: "unyolo",
+  name: "unYOLO",
+  description: "Provider-neutral unYOLO approvals",
   configSchema,
-  register: registerBrokerKit,
+  register: registerunYOLO,
 });

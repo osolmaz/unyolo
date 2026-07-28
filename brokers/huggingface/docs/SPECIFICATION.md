@@ -23,15 +23,15 @@ operations. The broker is a boundary the agent cannot cross: it withholds the
 upstream credential and rejects non-fast-forward Git updates unless a matching
 grant is active.
 
-## BrokerKit Boundary
+## unYOLO Boundary
 
-`github.com/osolmaz/brokerkit` is the shared base for the broker family:
+`github.com/osolmaz/unyolo` is the shared base for the broker family:
 `hf-broker`, `gh-broker`, and `sudo-broker`.
 
 hf-broker keeps Hugging Face-specific behavior local: Git/LFS/Xet routing,
 commits-only mirrors, append-only enforcement, inference request
 classification, Hub token forwarding, and HF-specific approval wording.
-BrokerKit owns:
+unYOLO owns:
 
 - auth
 - policy core
@@ -320,7 +320,7 @@ Never grantable through hf-broker:
 Grant requests must include `client_request_id`. The tuple
 `client + client_request_id` is idempotent: retrying the same request
 returns the original pending, active, denied, expired, consumed, or revoked
-grant instead of creating a duplicate brokerkit notification prompt.
+grant instead of creating a duplicate unyolo notification prompt.
 
 The broker locks the relevant target while validating and executing a
 grant use. Window grants are durably reserved, with a `reserved_at`
@@ -343,12 +343,12 @@ operation until the ambiguous result is resolved.
 
 Notifier message metadata (`chat_id`, `message_id`, notifier kind) is stored
 with the grant so restarts can still update operator messages. The generic
-approval, notifier metadata, and Telegram transport belong in BrokerKit;
+approval, notifier metadata, and Telegram transport belong in unYOLO;
 hf-broker keeps the HF-specific message summary. Telegram messages are
 updated when a request is approved, denied, used, expired, revoked, or fails
 during execution. A verified callback can atomically recover missing notifier
 metadata after an ambiguous send in the same durable transaction as the grant
-decision. The BrokerKit Telegram ingress commits callbacks through Operator V1.
+decision. The unYOLO Telegram ingress commits callbacks through Operator V1.
 A durable write failure leaves the callback unanswered and its Telegram update
 pending for retry. After a successful transaction, the ingress acknowledges the
 callback and removes the buttons; restart-safe broker status delivery writes the
@@ -399,7 +399,7 @@ adjacent to) the agent's secret is disqualified by construction.
 
 Two operator surfaces are supported:
 
-1. **Operator API.** The shared BrokerKit operator API runs on a separate
+1. **Operator API.** The shared unYOLO operator API runs on a separate
    listener and accepts only credentials from the operator secret file. Trusted
    hosts use this API for bounded lists, durable event streams, and
    revision-checked approve, deny, and revoke decisions. Requesters cancel their
@@ -415,13 +415,13 @@ Two operator surfaces are supported:
    ingress accepts a decision only from that chat id, and nothing about the
    flow travels over a URL the agent could forge. Telegram gives two-way
    interaction with
-   a single bot token and no server-side callback to host. One BrokerKit-owned
+   a single bot token and no server-side callback to host. One unYOLO-owned
    ingress long-polls the Bot API and dispatches over authenticated Operator V1,
    so it works from behind the Tailnet with no
    inbound exposure. Deny requires no action: unapproved requests expire
    on their own.
 
-The reusable operator API and Telegram transport belong in BrokerKit. hf-broker
+The reusable operator API and Telegram transport belong in unYOLO. hf-broker
 owns only the HF-specific prompt text and safe presentation fields.
 
 ## Audit
@@ -440,8 +440,8 @@ git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped
 
 ## Repository Layout
 
-Go package tree `github.com/osolmaz/brokerkit/brokers/huggingface`, using the
-root BrokerKit module and toolchain `go1.26.5`. One binary
+Go package tree `github.com/osolmaz/unyolo/brokers/huggingface`, using the
+root unYOLO module and toolchain `go1.26.5`. One binary
 (`cmd/hf-broker`), business logic in
 `internal/` so nothing but the command is importable.
 
@@ -449,11 +449,11 @@ root BrokerKit module and toolchain `go1.26.5`. One binary
 cmd/hf-broker/main.go            wiring, flag/env parsing, signal handling
 internal/config/                 HF env loading and validation
 internal/isolation/              local runtime isolation checks
-internal/policy/                 HF classifiers over brokerkit/authorization/policy
+internal/policy/                 HF classifiers over unyolo/authorization/policy
 internal/gitproxy/               HF enforcement and upstream forwarding
-internal/gitproxy/               provider adapter over brokerkit/git/protocol
+internal/gitproxy/               provider adapter over unyolo/git/protocol
 internal/mirror/                 commits-only mirror lifecycle + ancestry check
-internal/hfgrant/                HF target and attr mapping to brokerkit/authorization/grants
+internal/hfgrant/                HF target and attr mapping to unyolo/authorization/grants
 internal/hfplan/                 immutable grant-plan storage and validation
 internal/approval/               HF-specific operator approval wording
 internal/jsend/                  JSON API response envelopes
@@ -509,7 +509,7 @@ hf-broker doctor \
   --agent-user agent \
   --broker-pid 12345 \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/brokerkit/huggingface/agent/broker.sock
+  --socket /run/unyolo/huggingface/agent/broker.sock
 ```
 
 `hf-broker doctor isolation` is equivalent and remains the explicit

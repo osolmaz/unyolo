@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/graphqlmanifest"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/inventory"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/schemaregistry"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/targetregistry"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/upstream"
-	"github.com/osolmaz/brokerkit/internal/schemautil"
+	"github.com/osolmaz/unyolo/brokers/github/internal/graphqlmanifest"
+	"github.com/osolmaz/unyolo/brokers/github/internal/inventory"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
+	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
+	"github.com/osolmaz/unyolo/brokers/github/internal/upstream"
+	"github.com/osolmaz/unyolo/internal/schemautil"
 )
 
 type surfaceArtifacts struct {

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
+	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 )
 
 type bufferCloser struct{ bytes.Buffer }
@@ -118,7 +118,7 @@ func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
 	if err != nil || string(token) != "configured-value" {
 		t.Fatalf("configured token = %q, %v", token, err)
 	}
-	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), "0.4.1", "brokerkit/v0.4.1", token)
+	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), "0.4.1", "unyolo/v0.4.1", token)
 	for _, argument := range command.Args {
 		if strings.Contains(argument, string(token)) {
 			t.Fatal("GitHub token was included in a process argument")

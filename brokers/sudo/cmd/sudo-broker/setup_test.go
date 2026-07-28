@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 func TestSetupSystemdDryRunBuildsSeparatedUnits(t *testing.T) {
@@ -98,7 +98,7 @@ func TestSetupPathAndOptionHelpers(t *testing.T) {
 	if got := defaultHelperBinary(frontend); got != helper {
 		t.Fatalf("default helper = %q", got)
 	}
-	opts := sudoSystemdOptions{SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
+	opts := sudoSystemdOptions{SystemdOptions: unyolosetup.DefaultSystemdOptions(unyolosetup.SystemdDefaults{
 		BrokerName: "sudo-broker", User: "sudo-broker", Group: "sudo-broker", ClientName: "agent-a", Endpoint: "unix:///run/sudo-broker/agent.sock",
 	}), HelperBinary: helper, HelperStateDir: "/var/lib/sudo/helper", HelperSocket: "/run/sudo/helper.sock",
 		PolicyFile: "/policy", CatalogFile: "/catalog", SharedSecret: strings.Repeat("s", 32), OperatorID: "operator-a",
@@ -184,18 +184,18 @@ func TestSetupFileAndTelegramBranches(t *testing.T) {
 func TestFrontendSecretsRemainRootOwned(t *testing.T) {
 	t.Parallel()
 	file := frontendSecretFile("secrets", []byte("secret"))
-	if file.Owner != bkservice.ManagedFileOwnerRoot || file.Mode != 0o640 {
+	if file.Owner != unyoloservice.ManagedFileOwnerRoot || file.Mode != 0o640 {
 		t.Fatalf("frontend secret ownership = owner %q mode %04o", file.Owner, file.Mode)
 	}
 }
 
 func TestInstallSudoSystemdStopsAtFirstFailure(t *testing.T) {
 	t.Parallel()
-	helper := bkservice.SystemdInstallPlan{UnitName: "sudo-broker-exec.service"}
-	frontend := bkservice.SystemdInstallPlan{UnitName: "sudo-broker.service"}
+	helper := unyoloservice.SystemdInstallPlan{UnitName: "sudo-broker-exec.service"}
+	frontend := unyoloservice.SystemdInstallPlan{UnitName: "sudo-broker.service"}
 	want := errors.New("install failed")
 	var installed []string
-	install := func(_ context.Context, plan bkservice.SystemdInstallPlan) error {
+	install := func(_ context.Context, plan unyoloservice.SystemdInstallPlan) error {
 		installed = append(installed, plan.UnitName)
 		if plan.UnitName == helper.UnitName {
 			return want
@@ -210,7 +210,7 @@ func TestInstallSudoSystemdStopsAtFirstFailure(t *testing.T) {
 	}
 
 	installed = nil
-	install = func(_ context.Context, plan bkservice.SystemdInstallPlan) error {
+	install = func(_ context.Context, plan unyoloservice.SystemdInstallPlan) error {
 		installed = append(installed, plan.UnitName)
 		if plan.UnitName == frontend.UnitName {
 			return want
@@ -225,7 +225,7 @@ func TestInstallSudoSystemdStopsAtFirstFailure(t *testing.T) {
 	}
 
 	installed = nil
-	if err := installSudoSystemdWith(t.Context(), helper, frontend, func(_ context.Context, plan bkservice.SystemdInstallPlan) error {
+	if err := installSudoSystemdWith(t.Context(), helper, frontend, func(_ context.Context, plan unyoloservice.SystemdInstallPlan) error {
 		installed = append(installed, plan.UnitName)
 		return nil
 	}); err != nil {

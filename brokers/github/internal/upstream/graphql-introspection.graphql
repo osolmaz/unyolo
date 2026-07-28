@@ -1,4 +1,4 @@
-query BrokerKitPinnedIntrospection {
+query unYOLOPinnedIntrospection {
   __schema {
     description
     queryType { name }

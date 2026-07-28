@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/securefile"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/securefile"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (
-	APIVersion      = "brokerkit.io/setup-session/v1"
+	APIVersion      = "unyolo.io/setup-session/v1"
 	MaxSessionBytes = 1024 * 1024
 )
 
@@ -84,7 +84,7 @@ func DefaultDirectory() (string, error) {
 		}
 		state = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Join(state, "brokerkit", "setup"), nil
+	return filepath.Join(state, "unyolo", "setup"), nil
 }
 
 // New creates an in-memory session with a random identity.

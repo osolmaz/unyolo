@@ -1,4 +1,4 @@
-// Package state owns BrokerKit's local transactional database and process lease.
+// Package state owns unYOLO's local transactional database and process lease.
 package state
 
 import (
@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state/internal/dbsql"
+	"github.com/osolmaz/unyolo/internal/storage/state/internal/dbsql"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )

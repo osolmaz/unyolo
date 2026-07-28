@@ -3,7 +3,7 @@ package credentialauth
 import (
 	"strings"
 
-	"github.com/osolmaz/brokerkit/credential/provider"
+	"github.com/osolmaz/unyolo/credential/provider"
 )
 
 func operationRequirement(operation string) (providercredential.Requirement, bool) {

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/schemautil"
+	"github.com/osolmaz/unyolo/internal/schemautil"
 )
 
 func splitSealedArgumentsSchema(schema map[string]any, paths []string) (map[string]any, map[string]any) {

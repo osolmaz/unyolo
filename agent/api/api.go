@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/agent/wire"
-	bkauth "github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/internal/buildinfo"
-	"github.com/osolmaz/brokerkit/protocol/agentwire"
-	"github.com/osolmaz/brokerkit/protocol/contract"
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/agent/wire"
+	unyoloauth "github.com/osolmaz/unyolo/auth"
+	"github.com/osolmaz/unyolo/internal/buildinfo"
+	"github.com/osolmaz/unyolo/protocol/agentwire"
+	"github.com/osolmaz/unyolo/protocol/contract"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 const maxSubmitBytes = 2 * 1024 * 1024
@@ -83,7 +83,7 @@ func New(options Options) (*Handler, error) {
 		return nil, errors.New("agent store, authenticator, submitter, and canceler are required")
 	}
 	if strings.TrimSpace(options.Realm) == "" {
-		options.Realm = "brokerkit-agent"
+		options.Realm = "unyolo-agent"
 	}
 	return &Handler{
 		store: options.Store, authenticate: options.Authenticate, submit: options.Submit,
@@ -209,7 +209,7 @@ func (h *Handler) authenticateRequest(c echo.Context) (string, bool) {
 		return client, true
 	}
 	status := http.StatusForbidden
-	if header == "" || errors.Is(err, bkauth.ErrMissing) {
+	if header == "" || errors.Is(err, unyoloauth.ErrMissing) {
 		status = http.StatusUnauthorized
 		c.Response().Header().Set("WWW-Authenticate", `Bearer realm="`+h.realm+`"`)
 	}

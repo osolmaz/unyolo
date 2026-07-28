@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/osolmaz/brokerkit/deployment/component"
-	"github.com/osolmaz/brokerkit/internal/buildinfo"
-	clientconfig "github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/internal/buildinfo"
+	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
 )
 
 func main() {
@@ -26,11 +26,11 @@ func main() {
 		os.Exit(64)
 	}
 	config := component.Config{
-		ComponentID: "fake", ProfileAPI: "brokerkit.io/fake-deployment/v1",
-		AllowedPaths:    []string{"/etc/brokerkit-e2e", "/var/lib/brokerkit-e2e", "/proc/brokerkit-e2e"},
-		AllowedAccounts: []string{"brokerkit-e2e"},
-		AllowedGroups:   []string{"brokerkit-e2e", "brokerkit-e2e-agent"},
-		BackupDirectory: "/var/lib/brokerkit-e2e/backups",
+		ComponentID: "fake", ProfileAPI: "unyolo.io/fake-deployment/v1",
+		AllowedPaths:    []string{"/etc/unyolo-e2e", "/var/lib/unyolo-e2e", "/proc/unyolo-e2e"},
+		AllowedAccounts: []string{"unyolo-e2e"},
+		AllowedGroups:   []string{"unyolo-e2e", "unyolo-e2e-agent"},
+		BackupDirectory: "/var/lib/unyolo-e2e/backups",
 	}
 	if err := component.Serve(context.Background(), os.Stdin, os.Stdout, config); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

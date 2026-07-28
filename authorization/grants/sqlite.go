@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 func fileDataFromSQLite(snapshot state.GrantSnapshot) (fileData, error) {

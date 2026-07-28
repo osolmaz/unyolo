@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-  "/.well-known/brokerkit-agent": {
+  "/.well-known/unyolo-agent": {
     parameters: {
       query?: never;
       header?: never;
@@ -90,7 +90,7 @@ export interface components {
   schemas: {
     Descriptor: {
       /** @constant */
-      api_version: "brokerkit.io/agent/v1";
+      api_version: "unyolo.io/agent/v1";
       contract_digest: string;
       build_id: string;
       operations: string[];
@@ -131,7 +131,7 @@ export interface components {
     };
     Operation: {
       /** @constant */
-      api_version: "brokerkit.io/agent/v1";
+      api_version: "unyolo.io/agent/v1";
       id: string;
       broker: string;
       client_id: string;
@@ -156,13 +156,13 @@ export interface components {
     };
     OperationPage: {
       /** @constant */
-      api_version: "brokerkit.io/agent/v1";
+      api_version: "unyolo.io/agent/v1";
       operations: components["schemas"]["OperationSummary"][];
       next_cursor: string | null;
     };
     OperationSummary: {
       /** @constant */
-      api_version: "brokerkit.io/agent/v1";
+      api_version: "unyolo.io/agent/v1";
       id: string;
       broker: string;
       client_id: string;

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/osolmaz/brokerkit/internal/pathutil"
+	"github.com/osolmaz/unyolo/internal/pathutil"
 )
 
 // Materialize copies one verified deployment kit into an operator-owned pack.
@@ -36,7 +36,7 @@ func Materialize(snapshot Snapshot, destination string) (string, error) {
 	if err := ensureMaterializationParent(parent); err != nil {
 		return "", err
 	}
-	staging, err := os.MkdirTemp(parent, ".brokerkit-deployment-*")
+	staging, err := os.MkdirTemp(parent, ".unyolo-deployment-*")
 	if err != nil {
 		return "", err
 	}

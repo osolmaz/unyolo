@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	"github.com/osolmaz/brokerkit/internal/validatex"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/validatex"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 // SystemdDefaults configures shared Linux service setup flags.
@@ -109,7 +109,7 @@ func validateFinalizedExecutable(opts SystemdOptions, resolved string, managed b
 
 func validateManagedSelection(opts SystemdOptions, managed bool) error {
 	if requiresManagedExecutable(opts) && !managed {
-		return errors.New("production services must use the BrokerKit managed current release path")
+		return errors.New("production services must use the unYOLO managed current release path")
 	}
 	return nil
 }

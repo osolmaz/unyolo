@@ -13,11 +13,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/securefile"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/securefile"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
-const APIVersion = "brokerkit.io/host-transaction/v1"
+const APIVersion = "unyolo.io/host-transaction/v1"
 
 // Step is one durable host mutation with a secret-safe rollback handle.
 type Step struct {

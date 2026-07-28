@@ -20,7 +20,7 @@ export const sidebar: NavSection[] = [
     title: "Get started",
     entries: [
       { slug: "get-started/overview", label: "Overview" },
-      { slug: "get-started/why-brokerkit", label: "Why BrokerKit" },
+      { slug: "get-started/why-unyolo", label: "Why unYOLO" },
       { slug: "get-started/quickstart", label: "Quickstart" },
       { slug: "get-started/installation", label: "Installation" },
     ],
@@ -126,7 +126,7 @@ export function sectionOf(slug: string): string | undefined {
   return readingOrder.find((entry) => entry.slug === slug)?.section;
 }
 
-export const GITHUB_REPO = "https://github.com/osolmaz/brokerkit";
+export const GITHUB_REPO = "https://github.com/osolmaz/unyolo";
 // Swap for a personal site if you would rather the credit point there.
 export const AUTHOR_URL = "https://github.com/osolmaz";
 export const GITHUB_EDIT_BASE = `${GITHUB_REPO}/edit/main/web/src/content/docs`;

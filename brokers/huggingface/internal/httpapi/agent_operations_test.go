@@ -14,20 +14,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/conformance"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	bkapprovalnotify "github.com/osolmaz/brokerkit/approval/notification"
-	bknotify "github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/agent/conformance"
+	"github.com/osolmaz/unyolo/agent/v1"
+	unyoloapprovalnotify "github.com/osolmaz/unyolo/approval/notification"
+	unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const (
-	agentDiscoveryPath  = "/.well-known/brokerkit-agent"
+	agentDiscoveryPath  = "/.well-known/unyolo-agent"
 	agentOperationsPath = "/api/agent/v1/operations"
 )
 
@@ -385,7 +385,7 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	notifier := &bkapprovalnotify.Memory{}
+	notifier := &unyoloapprovalnotify.Memory{}
 	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
 	defer cancel()
 	defer server.Close()
@@ -410,7 +410,7 @@ func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
 func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, &bkapprovalnotify.Memory{})
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, &unyoloapprovalnotify.Memory{})
 	defer cancel()
 	defer server.Close()
 	body := `{"idempotency_key":"cancel-pending","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"cancel this request"}`
@@ -490,15 +490,15 @@ func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
 
 type contextCheckingNotifier struct{ sent bool }
 
-func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ bkapprovalnotify.Approval) (bknotify.MessageRef, error) {
+func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ unyoloapprovalnotify.Approval) (unyolonotify.MessageRef, error) {
 	if err := ctx.Err(); err != nil {
-		return bknotify.MessageRef{}, err
+		return unyolonotify.MessageRef{}, err
 	}
 	n.sent = true
-	return bknotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
+	return unyolonotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
 }
 
-func (*contextCheckingNotifier) UpdateStatus(context.Context, bknotify.MessageRef, bknotify.Status) error {
+func (*contextCheckingNotifier) UpdateStatus(context.Context, unyolonotify.MessageRef, unyolonotify.Status) error {
 	return nil
 }
 
@@ -624,17 +624,17 @@ type blockingApprovalNotifier struct {
 	release chan struct{}
 }
 
-func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ bkapprovalnotify.Approval) (bknotify.MessageRef, error) {
+func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ unyoloapprovalnotify.Approval) (unyolonotify.MessageRef, error) {
 	close(n.entered)
 	select {
 	case <-n.release:
-		return bknotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
+		return unyolonotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
 	case <-ctx.Done():
-		return bknotify.MessageRef{}, ctx.Err()
+		return unyolonotify.MessageRef{}, ctx.Err()
 	}
 }
 
-func (*blockingApprovalNotifier) UpdateStatus(context.Context, bknotify.MessageRef, bknotify.Status) error {
+func (*blockingApprovalNotifier) UpdateStatus(context.Context, unyolonotify.MessageRef, unyolonotify.Status) error {
 	return nil
 }
 
@@ -819,7 +819,7 @@ func TestAgentRepoCreateUpstreamFailures(t *testing.T) {
 	}
 }
 
-func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, notifiers ...bkapprovalnotify.Notifier) (*httptest.Server, *Server, context.CancelFunc) {
+func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, notifiers ...unyoloapprovalnotify.Notifier) (*httptest.Server, *Server, context.CancelFunc) {
 	t.Helper()
 	scope, err := policy.Parse([]byte(scopeJSON))
 	if err != nil {
@@ -827,7 +827,7 @@ func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, no
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	operators := []config.Client{{Name: "operator", Secret: testOtherSecret}}
-	var notifier bkapprovalnotify.Notifier
+	var notifier unyoloapprovalnotify.Notifier
 	if len(notifiers) > 0 {
 		notifier = notifiers[0]
 		operators = nil

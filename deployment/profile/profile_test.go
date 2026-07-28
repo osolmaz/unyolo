@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/protocol/contract"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
 func TestLockAndLoadDeploymentPack(t *testing.T) {
@@ -144,7 +144,7 @@ func TestDeploymentValidationRejectsUnsafeIdentities(t *testing.T) {
 }
 
 func TestRuntimeComponentAndNestedReferenceValidation(t *testing.T) {
-	setup := &bundle.SetupAdapter{Protocol: "brokerkit.io/setup-component/v1", Arguments: []string{"setup-component"}}
+	setup := &bundle.SetupAdapter{Protocol: "unyolo.io/setup-component/v1", Arguments: []string{"setup-component"}}
 	deployment := Deployment{Components: []Component{{ID: "github"}}}
 	if err := deployment.validateRuntimeComponents(bundle.Manifest{Components: []bundle.Component{{Name: "github", Setup: setup}}}); err != nil {
 		t.Fatal(err)
@@ -219,8 +219,8 @@ func testPack(t *testing.T) string {
 			SHA256: "sha256:" + fmtHex(artifactDigest[:]), BuildID: "test", Role: bundle.RoleCompanion,
 			StateFormatDigest: "sha256:" + strings.Repeat("0", 64), Required: false,
 			Setup: &bundle.SetupAdapter{
-				Protocol: "brokerkit.io/setup-component/v1", Arguments: []string{"setup-component"},
-				Ownership: bundle.OwnershipEnvelope{Paths: []string{"/tmp/brokerkit-fake"}},
+				Protocol: "unyolo.io/setup-component/v1", Arguments: []string{"setup-component"},
+				Ownership: bundle.OwnershipEnvelope{Paths: []string{"/tmp/unyolo-fake"}},
 			},
 		}},
 	}
@@ -236,7 +236,7 @@ func testPack(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "runtime", "manifest.sig"), []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(private, manifestData))+"\n"), 0o600)
 	writeTestFile(t, filepath.Join(root, "runtime", "release.pub"), []byte(base64.StdEncoding.EncodeToString(public)+"\n"), 0o600)
 	writeTestFile(t, filepath.Join(root, "policies", "fake.json"), []byte("{}\n"), 0o600)
-	component := `{"api_version":"brokerkit.io/fake-deployment/v1","policy":{"path":"policies/fake.json","sha256":"sha256:` + strings.Repeat("0", 64) + `"}}` + "\n"
+	component := `{"api_version":"unyolo.io/fake-deployment/v1","policy":{"path":"policies/fake.json","sha256":"sha256:` + strings.Repeat("0", 64) + `"}}` + "\n"
 	writeTestFile(t, filepath.Join(root, "components", "fake.json"), []byte(component), 0o600)
 	deployment := Deployment{
 		APIVersion: APIVersion, Name: "test-host",

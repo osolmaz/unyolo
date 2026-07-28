@@ -11,14 +11,14 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubsurface"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/httpapi"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/deployment/component"
-	"github.com/osolmaz/brokerkit/internal/storage/command"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
-	"github.com/osolmaz/brokerkit/transport/http/server"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubsurface"
+	"github.com/osolmaz/unyolo/brokers/github/internal/httpapi"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/internal/storage/command"
+	"github.com/osolmaz/unyolo/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 var version = "dev"
@@ -98,7 +98,7 @@ func namedCommands() map[string]cliCommand {
 				return errors.New("setup-component does not accept arguments")
 			}
 			return component.Serve(ctx, os.Stdin, stdout, component.Config{
-				ComponentID: "github", ProfileAPI: "brokerkit.io/github-deployment/v1",
+				ComponentID: "github", ProfileAPI: "unyolo.io/github-deployment/v1",
 				AllowedPaths:    []string{"/etc/gh-broker", "/var/lib/gh-broker", "/etc/systemd/system/gh-broker.service"},
 				AllowedServices: []string{"gh-broker.service"}, AllowedAccounts: []string{"gh-broker"},
 				AllowedGroups: []string{"gh-broker", "gh-broker-agent", "gh-broker-operator"}, BackupDirectory: "/var/lib/gh-broker/deployment-backups",

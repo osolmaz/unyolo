@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
 )
 
 const credentialRollbackRestartTimeout = 30 * time.Second

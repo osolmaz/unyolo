@@ -3,7 +3,7 @@ package gitproxy
 import (
 	"context"
 
-	"github.com/osolmaz/brokerkit/git/protocol"
+	"github.com/osolmaz/unyolo/git/protocol"
 )
 
 const (
@@ -24,7 +24,7 @@ type GitObject struct {
 type BaseObjectReader func(string) (GitObject, bool, error)
 
 // ExtractCommitAndTagObjects extracts bounded commit and tag objects through
-// BrokerKit's shared go-git adapter.
+// unYOLO's shared go-git adapter.
 func ExtractCommitAndTagObjects(
 	ctx context.Context,
 	pack []byte,

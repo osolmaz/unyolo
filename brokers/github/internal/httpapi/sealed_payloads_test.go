@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
 )
 
 func TestSealedPayloadUploadBindsAuthenticatedRequest(t *testing.T) {

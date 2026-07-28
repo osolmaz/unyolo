@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	gitx "github.com/osolmaz/brokerkit/git/protocol"
-	"github.com/osolmaz/brokerkit/git/server"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	gitx "github.com/osolmaz/unyolo/git/protocol"
+	"github.com/osolmaz/unyolo/git/server"
 )
 
 func TestGitHandlerHidesAgentAndWebhookRoutes(t *testing.T) {
@@ -24,7 +24,7 @@ func TestGitHandlerHidesAgentAndWebhookRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := httptest.NewRequest(http.MethodGet, gitserver.IdentityPath, nil)
-	identity.SetBasicAuth("brokerkit", testSharedSecret)
+	identity.SetBasicAuth("unyolo", testSharedSecret)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, identity)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"provider":"github"`) {

@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/catalog"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorserver"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/hostcheck"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/privexec"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorserver"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/hostcheck"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/privexec"
 )
 
 var version = "dev"

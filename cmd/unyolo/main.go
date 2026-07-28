@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/buildinfo"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/internal/host/privilege"
+	"github.com/osolmaz/unyolo/internal/buildinfo"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/internal/host/privilege"
 )
 
 var version = "dev"
@@ -64,11 +64,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 func systemUsageError() error {
-	return errors.New("usage: brokerkit setup | brokerkit system <profile|validate|plan|apply|verify|export|install|upgrade|status|doctor|rollback>")
+	return errors.New("usage: unyolo setup | unyolo system <profile|validate|plan|apply|verify|export|install|upgrade|status|doctor|rollback>")
 }
 
 func runSetupWorker(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("brokerkit system setup-worker", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo system setup-worker", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	protocolStdio := flags.Bool("protocol-stdio", false, "serve the bounded setup worker protocol")
 	if err := flags.Parse(args); err != nil {
@@ -93,8 +93,8 @@ type hostFlags struct {
 
 func bindHostFlags(flags *flag.FlagSet, values *hostFlags) {
 	defaults := bundle.DefaultPaths()
-	flags.StringVar(&values.root, "root", defaults.Root, "immutable BrokerKit release root")
-	flags.StringVar(&values.state, "state-dir", defaults.StateDir, "BrokerKit host state directory")
+	flags.StringVar(&values.root, "root", defaults.Root, "immutable unYOLO release root")
+	flags.StringVar(&values.state, "state-dir", defaults.StateDir, "unYOLO host state directory")
 	flags.BoolVar(&values.json, "json", false, "write closed JSON output")
 }
 
@@ -139,12 +139,12 @@ func activateBundle(ctx context.Context, stdout io.Writer, options activationOpt
 	if err := options.host.installer(options.development).Activate(ctx, manifest, data, options.artifacts); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(stdout, "Activated BrokerKit bundle %s\n", manifest.BundleID)
+	_, err := fmt.Fprintf(stdout, "Activated unYOLO bundle %s\n", manifest.BundleID)
 	return err
 }
 
 func parseActivationOptions(action string, args []string, stderr io.Writer) (activationOptions, error) {
-	flags := flag.NewFlagSet("brokerkit system "+action, flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo system "+action, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var options activationOptions
 	bindHostFlags(flags, &options.host)
@@ -231,7 +231,7 @@ func writePlan(writer io.Writer, asJSON bool, manifest bundle.Manifest, artifact
 }
 
 func runStatus(ctx context.Context, action string, args []string, stdout, stderr io.Writer) error {
-	host, err := parseHostOptions("brokerkit system "+action, args, stderr, "status")
+	host, err := parseHostOptions("unyolo system "+action, args, stderr, "status")
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func runStatus(ctx context.Context, action string, args []string, stdout, stderr
 		return err
 	}
 	if action == "doctor" && !report.Healthy {
-		return errors.New("BrokerKit host requires repair")
+		return errors.New("unYOLO host requires repair")
 	}
 	return nil
 }
@@ -270,7 +270,7 @@ func writeStatus(stdout io.Writer, asJSON bool, report bundle.Report) error {
 	if !report.Healthy {
 		status = "unhealthy"
 	}
-	if _, err := fmt.Fprintf(stdout, "BrokerKit host: %s\nActive bundle: %s\n", status, report.Activation.ActiveBundleID); err != nil {
+	if _, err := fmt.Fprintf(stdout, "unYOLO host: %s\nActive bundle: %s\n", status, report.Activation.ActiveBundleID); err != nil {
 		return err
 	}
 	for _, problem := range report.Problems {
@@ -282,13 +282,13 @@ func writeStatus(stdout io.Writer, asJSON bool, report bundle.Report) error {
 }
 
 func runRollback(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	host, err := parseHostOptions("brokerkit system rollback", args, stderr, "rollback")
+	host, err := parseHostOptions("unyolo system rollback", args, stderr, "rollback")
 	if err != nil {
 		return err
 	}
 	if err := host.installer(false).Rollback(ctx); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(stdout, "Rolled back the BrokerKit host bundle")
+	_, err = fmt.Fprintln(stdout, "Rolled back the unYOLO host bundle")
 	return err
 }

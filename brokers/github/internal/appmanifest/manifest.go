@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
 
 type Profiles struct {

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 )
 
 func TestTelegramLiveSendApproval(t *testing.T) {
@@ -23,7 +23,7 @@ func TestTelegramLiveSendApproval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HF_BROKER_TELEGRAM_CHAT_ID is invalid: %v", err)
 	}
-	client, err := bktelegram.New(token, chatID, &http.Client{Timeout: 10 * time.Second}, "")
+	client, err := unyolotelegram.New(token, chatID, &http.Client{Timeout: 10 * time.Second}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

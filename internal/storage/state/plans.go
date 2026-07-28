@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state/internal/dbsql"
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/internal/storage/state/internal/dbsql"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 type PlanRecord struct {

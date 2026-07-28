@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
 
 func TestPresenter(t *testing.T) {
@@ -29,7 +29,7 @@ func TestPresenterShowsConcreteGeneratedTargetsAndSecurityAttributes(t *testing.
 	grant := grants.Grant{
 		ID: "grant-2", Operation: "action_run.actions_cancel_workflow_run",
 		Target: policy.Target{Kind: "run", Fields: map[string][]string{
-			"owner": {"osolmaz"}, "repo": {"brokerkit"}, "id": {"123"},
+			"owner": {"osolmaz"}, "repo": {"unyolo"}, "id": {"123"},
 		}},
 		Attrs: map[string][]string{"workflow_ref": {"deploy.yml@main"}, "environment": {"production"}},
 	}
@@ -37,10 +37,10 @@ func TestPresenterShowsConcreteGeneratedTargetsAndSecurityAttributes(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presentation.Target != "run osolmaz/brokerkit 123" {
+	if presentation.Target != "run osolmaz/unyolo 123" {
 		t.Fatalf("target = %q", presentation.Target)
 	}
-	want := map[string]string{"Target": presentation.Target, "Target owner": "osolmaz", "Target repository": "brokerkit", "Target ID": "123",
+	want := map[string]string{"Target": presentation.Target, "Target owner": "osolmaz", "Target repository": "unyolo", "Target ID": "123",
 		"Environment": "production", "Workflow ref": "deploy.yml@main"}
 	for _, field := range presentation.Facts {
 		if expected, found := want[field.Label]; found {
@@ -76,12 +76,12 @@ func TestPresenterShowsInstallationAndCreatedResourceSelectors(t *testing.T) {
 	presentation, err := (Presenter{}).Present(t.Context(), grants.Grant{
 		ID: "grant-installation", Operation: "repo.create_using_template",
 		Target: policy.Target{Kind: "installation", Fields: map[string][]string{"installation_id": {"42"}}},
-		Attrs:  map[string][]string{"resource_owner": {"osolmaz"}, "resource_name": {"brokerkit-next"}},
+		Attrs:  map[string][]string{"resource_owner": {"osolmaz"}, "resource_name": {"unyolo-next"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"Installation ID": "42", "Resource owner": "osolmaz", "Resource name": "brokerkit-next"}
+	want := map[string]string{"Installation ID": "42", "Resource owner": "osolmaz", "Resource name": "unyolo-next"}
 	for _, field := range presentation.Facts {
 		if expected, found := want[field.Label]; found && field.Value == expected {
 			delete(want, field.Label)
@@ -101,8 +101,8 @@ func TestTargetSummaryRejectsKindOnlyAndFormatsNamedTargets(t *testing.T) {
 		t.Fatalf("user target = %q", got)
 	}
 	if got := TargetSummary(policy.Target{Kind: "issue", Fields: map[string][]string{
-		"owner": {"osolmaz"}, "repo": {"brokerkit"}, "number": {"38"},
-	}}); got != "issue osolmaz/brokerkit #38" {
+		"owner": {"osolmaz"}, "repo": {"unyolo"}, "number": {"38"},
+	}}); got != "issue osolmaz/unyolo #38" {
 		t.Fatalf("issue target = %q", got)
 	}
 }

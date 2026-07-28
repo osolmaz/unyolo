@@ -3,7 +3,7 @@ title: Agent V1 API
 description: Routes, handles, lifecycle states, and error behaviour for the authenticated agent surface.
 ---
 
-Agent Operations V1 (`brokerkit.io/agent/v1`) is the authenticated surface agents use to submit and
+Agent Operations V1 (`unyolo.io/agent/v1`) is the authenticated surface agents use to submit and
 resume typed provider operations without receiving the provider credential. The canonical contract
 is `protocol/openapi/agent-v1.yaml`, with generated Go clients and Echo interfaces under
 `protocol/agentwire/`.
@@ -16,7 +16,7 @@ own target, argument, execution, and result validation.
 ```text
 GET  /healthz
 
-GET  /.well-known/brokerkit-agent
+GET  /.well-known/unyolo-agent
 POST /api/agent/v1/operations
 GET  /api/agent/v1/operations/{id}
 GET  /api/agent/v1/operations/{id}/events
@@ -40,7 +40,7 @@ repository-list or contents proxy routes.
 
 ## Discovery
 
-`GET /.well-known/brokerkit-agent` returns the exact generated contract digest and build identity.
+`GET /.well-known/unyolo-agent` returns the exact generated contract digest and build identity.
 Clients compare that digest to detect protocol drift without logging response bodies.
 
 A version label alone is never treated as compatibility evidence.
@@ -154,7 +154,7 @@ ordinary operation creates approval state that nobody needed.
 
 ## MCP projection
 
-MCP returns a closed `brokerkit.io/mcp-operation/v1` projection defined in
+MCP returns a closed `unyolo.io/mcp-operation/v1` projection defined in
 `protocol/openapi/mcp-v1.yaml`. It excludes clients, canonical arguments, approval linkage, and
 plan data.
 

@@ -12,10 +12,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/sudopolicy"
-	"github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/sudopolicy"
+	"github.com/osolmaz/unyolo/internal/config/client"
 )
 
 type commandFlags struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 func TestPlanRepositoryIsContentAddressed(t *testing.T) {

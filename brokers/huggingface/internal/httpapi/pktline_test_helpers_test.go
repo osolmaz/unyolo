@@ -1,6 +1,6 @@
 package httpapi
 
-import "github.com/osolmaz/brokerkit/git/protocol"
+import "github.com/osolmaz/unyolo/git/protocol"
 
 func appendTestPkt(dst, payload []byte) []byte {
 	encoded, err := gitx.AppendPktLine(dst, payload)

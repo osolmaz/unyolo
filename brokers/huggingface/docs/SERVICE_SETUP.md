@@ -16,11 +16,11 @@ only know a broker client secret.
 
 ## Install the Binary
 
-Install from a reviewed BrokerKit commit:
+Install from a reviewed unYOLO commit:
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/huggingface/install.sh" | sh
 ```
 
 ## Configure systemd
@@ -69,7 +69,7 @@ The setup command creates:
 /etc/systemd/system/hf-broker-operator.socket
 ```
 
-Brokerkit performs the privileged host installation. hf-broker supplies the
+unYOLO performs the privileged host installation. hf-broker supplies the
 Hugging Face-specific file contents and service definition; it does not keep a
 second account, ownership, file-install, or systemctl implementation.
 
@@ -118,7 +118,7 @@ requested.
 
 The operator inbox credential is generated independently at
 `/etc/hf-broker/operator-secrets`, also mode `0600`. Systemd owns separate
-agent and operator sockets under `/run/brokerkit/huggingface/`, with access
+agent and operator sockets under `/run/unyolo/huggingface/`, with access
 controlled by distinct groups. Agents receive neither the operator credential
 nor access to the operator socket through their client configuration.
 
@@ -153,12 +153,12 @@ Write the protected client configuration directly into the agent account:
 ```sh
 sudo hf-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
+  --endpoint unix:///run/unyolo/huggingface/agent/broker.sock \
   --secret-file /etc/hf-broker/secrets \
   --home-dir /home/agent-a
 ```
 
-The BrokerKit CLI, MCP adapter, and Git helper load the owner-only
+The unYOLO CLI, MCP adapter, and Git helper load the owner-only
 `~/.config/hf-broker/client.json` file directly. Do not source it or copy its
 credential into shell startup files.
 
@@ -172,7 +172,7 @@ Check the service:
 
 ```sh
 systemctl status hf-broker
-curl --unix-socket /run/brokerkit/huggingface/agent/broker.sock \
+curl --unix-socket /run/unyolo/huggingface/agent/broker.sock \
   -fsS http://localhost/healthz
 ```
 

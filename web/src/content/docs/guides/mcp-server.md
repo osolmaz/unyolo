@@ -28,7 +28,7 @@ catalog that a client cannot see is usually invisible for a policy reason, not a
 ## Submission and handles
 
 Every ordinary operation tool submits one durable Agent V1 operation and returns immediately with a
-closed `brokerkit.io/mcp-operation/v1` projection. That projection deliberately excludes clients,
+closed `unyolo.io/mcp-operation/v1` projection. That projection deliberately excludes clients,
 canonical arguments, approval linkage, and plan data.
 
 Submissions accept an optional `request_id`. Omit it and the broker generates a cryptographically

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/runtime-bundle/v1/manifest.schema.json",
-  "title": "BrokerKit runtime bundle manifest",
+  "$id": "https://unyolo.io/schema/runtime-bundle/v1/manifest.schema.json",
+  "title": "unYOLO runtime bundle manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,7 +15,7 @@
     "components"
   ],
   "properties": {
-    "api_version": { "const": "brokerkit.io/runtime-bundle/v1" },
+    "api_version": { "const": "unyolo.io/runtime-bundle/v1" },
     "bundle_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" },
     "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "operating_system": { "enum": ["linux", "darwin"] },
@@ -74,7 +74,7 @@
       "additionalProperties": false,
       "required": ["protocol", "arguments", "ownership"],
       "properties": {
-        "protocol": { "const": "brokerkit.io/setup-component/v1" },
+        "protocol": { "const": "unyolo.io/setup-component/v1" },
         "arguments": {
           "type": "array",
           "minItems": 1,

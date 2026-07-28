@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 func TestRefChangeForClassUsesPolicyVocabulary(t *testing.T) {

@@ -18,7 +18,7 @@ func Run(ctx context.Context, directory string, minimum float64) (float64, error
 	if minimum < 0 || minimum > 100 {
 		return 0, errors.New("minimum coverage must be between 0 and 100")
 	}
-	profile, err := os.CreateTemp("", "brokerkit-cover-*.out")
+	profile, err := os.CreateTemp("", "unyolo-cover-*.out")
 	if err != nil {
 		return 0, err
 	}

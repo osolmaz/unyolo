@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
+	"github.com/osolmaz/unyolo/deployment/api"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )

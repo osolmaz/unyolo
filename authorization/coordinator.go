@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
 )
 
 var (

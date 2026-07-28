@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 func TestSendApprovalAndUpdateStatus(t *testing.T) {

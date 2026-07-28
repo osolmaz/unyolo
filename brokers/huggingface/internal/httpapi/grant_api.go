@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/http"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 type apiGrantRequestBody struct {
@@ -231,19 +231,19 @@ func grantRefFromTarget(target policy.Target) (string, error) {
 func (s *Server) requestAPIGrant(client string, req apiGrantRequestBody) (grants.Grant, bool, error) {
 	providerRequest := policy.Request{Client: client, Operation: req.Operation, Target: req.Target, Attrs: req.Attrs}
 	authorizationRequest := policy.AuthorizationRequest(providerRequest)
-	result, err := s.authorization.RequestApproval(authorizationRequest, func(decision corepolicy.Decision) (bkauthorization.GrantIntent, error) {
+	result, err := s.authorization.RequestApproval(authorizationRequest, func(decision corepolicy.Decision) (unyoloauthorization.GrantIntent, error) {
 		return s.prepareAPIGrantIntent(client, req, authorizationRequest, decision.GrantPolicy)
 	})
 	return result.Request.Grant, result.Created, err
 }
 
-func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, authorizationRequest corepolicy.Request, bounds *corepolicy.GrantPolicy) (bkauthorization.GrantIntent, error) {
+func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, authorizationRequest corepolicy.Request, bounds *corepolicy.GrantPolicy) (unyoloauthorization.GrantIntent, error) {
 	if bounds == nil {
-		return bkauthorization.GrantIntent{}, errors.New("no policy rule allows requesting this operation")
+		return unyoloauthorization.GrantIntent{}, errors.New("no policy rule allows requesting this operation")
 	}
 	minutes, maxUses, err := resolveAPIGrantBounds(req, bounds)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
 		Client:            client,
@@ -259,9 +259,9 @@ func (s *Server) prepareAPIGrantIntent(client string, req apiGrantRequestBody, a
 		MaxUsesSpecified:  req.MaxUses.Specified,
 	})
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
-	return bkauthorization.GrantIntent{
+	return unyoloauthorization.GrantIntent{
 		Mode: corepolicy.GrantMode(bounds.Mode), Authorization: authorizationRequest, Request: request, Plan: plan,
 	}, nil
 }
@@ -310,7 +310,7 @@ func grantRequestError(err error) (int, string, string) {
 	if errors.Is(err, grants.ErrCapacity) {
 		return http.StatusTooManyRequests, "pending_approval_limit", "Pending approval limit reached"
 	}
-	if errors.Is(err, bkauthorization.ErrDenied) || errors.Is(err, bkauthorization.ErrNoMatch) {
+	if errors.Is(err, unyoloauthorization.ErrDenied) || errors.Is(err, unyoloauthorization.ErrNoMatch) {
 		return http.StatusForbidden, "not_requestable", "No policy rule allows requesting this operation"
 	}
 	return http.StatusBadRequest, "validation_failed", err.Error()

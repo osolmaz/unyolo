@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/flow"
 )
 
 func TestAccessibleRendererNeverEchoesSecret(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var output bytes.Buffer
 	prompter := New(Options{Input: strings.NewReader("credential-canary\n"), Output: &output, Accessible: true, Width: 60})
-	if err := prompter.Intro(context.Background(), "BrokerKit setup"); err != nil {
+	if err := prompter.Intro(context.Background(), "unYOLO setup"); err != nil {
 		t.Fatal(err)
 	}
 	secret, err := prompter.Secret(context.Background(), flow.Prompt{Message: "Provider token", Required: true})
@@ -39,7 +39,7 @@ func TestPlainProgressIsStable(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	var output bytes.Buffer
 	prompter := New(Options{Output: &output, Accessible: true, Width: 24})
-	progress := prompter.Progress("Downloading the signed BrokerKit runtime bundle")
+	progress := prompter.Progress("Downloading the signed unYOLO runtime bundle")
 	progress.Update("Verifying bundle")
 	progress.Stop("Verified bundle")
 	if err := prompter.Close(); err != nil {

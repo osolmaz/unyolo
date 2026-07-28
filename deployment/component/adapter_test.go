@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
-	"github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/deployment/api"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/internal/config/client"
 )
 
 func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
@@ -33,7 +33,7 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	}
 	policy := []byte("{\"rules\":[]}\n")
 	profile := Profile{
-		APIVersion:  "brokerkit.io/test-deployment/v1",
+		APIVersion:  "unyolo.io/test-deployment/v1",
 		Directories: []Directory{{ID: "config", Destination: filepath.Join(root, "config"), Mode: 0o700, Owner: current.Username, Group: group.Name}},
 		Files:       []ManagedFile{{ID: "policy", Source: Reference{Path: "policy.json", SHA256: digest(policy)}, Destination: filepath.Join(root, "config", "policy.json"), Mode: 0o600, Owner: current.Username, Group: group.Name}},
 		Credentials: []Credential{{Slot: "client-secret", Destination: filepath.Join(root, "config", "secrets"), Mode: 0o600, Owner: current.Username, Group: group.Name, Encoding: "client_secret_file", ClientID: "agent"}},
@@ -166,7 +166,7 @@ func TestPlanDigestBindsCredentialState(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := Profile{
-		APIVersion: "brokerkit.io/test-deployment/v1",
+		APIVersion: "unyolo.io/test-deployment/v1",
 		Credentials: []Credential{{
 			Slot: "credential", Destination: destination, Mode: 0o600,
 			Owner: current.Username, Group: group.Name, Encoding: "raw",
@@ -204,7 +204,7 @@ func TestPlanDigestBindsCredentialState(t *testing.T) {
 
 func TestProfileRejectsDuplicateGroupMembers(t *testing.T) {
 	profile := Profile{
-		APIVersion: "brokerkit.io/test-deployment/v1",
+		APIVersion: "unyolo.io/test-deployment/v1",
 		Groups:     []Group{{Name: "test", Members: []string{"agent", "agent"}}},
 	}
 	config := Config{
@@ -219,7 +219,7 @@ func TestProfileRejectsDuplicateGroupMembers(t *testing.T) {
 func TestValidateProfileRejectsUnsafeResources(t *testing.T) {
 	root := t.TempDir()
 	config := Config{
-		ComponentID: "test", ProfileAPI: "brokerkit.io/test-deployment/v1",
+		ComponentID: "test", ProfileAPI: "unyolo.io/test-deployment/v1",
 		AllowedPaths: []string{root}, AllowedServices: []string{"test.service"},
 		AllowedAccounts: []string{"service"}, AllowedGroups: []string{"service"}, BackupDirectory: filepath.Join(root, "backups"),
 	}
@@ -362,7 +362,7 @@ func TestFilesystemApplyHelpers(t *testing.T) {
 	if err != nil || fileDigest(managed.Destination) != managed.Source.SHA256 || info.Mode().Perm() != os.FileMode(managed.Mode) || !matchesOwner(info, managed.Owner, managed.Group) {
 		t.Fatal("applied file does not match")
 	}
-	if _, _, err := resolveOwner("missing-brokerkit-test-user", group.Name); err == nil {
+	if _, _, err := resolveOwner("missing-unyolo-test-user", group.Name); err == nil {
 		t.Fatal("missing owner was accepted")
 	}
 	large := filepath.Join(root, "large")
@@ -444,7 +444,7 @@ func TestHostInspectionHelpers(t *testing.T) {
 }
 
 func TestProbeFailures(t *testing.T) {
-	if err := runClientProbe(t.Context(), api.AgentBinding{UnixUser: "missing-brokerkit-test-user"}, Client{}, "/bin/false"); err == nil {
+	if err := runClientProbe(t.Context(), api.AgentBinding{UnixUser: "missing-unyolo-test-user"}, Client{}, "/bin/false"); err == nil {
 		t.Fatal("missing probe user was accepted")
 	}
 	for _, args := range [][]string{nil, {"relative", "broker", "PREFIX"}, {t.TempDir(), "missing", "PREFIX"}} {

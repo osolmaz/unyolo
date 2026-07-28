@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/notifier"
 	_ "modernc.org/sqlite"
 )
 
@@ -250,12 +250,12 @@ func (i *Inbox) seal(decision notify.Decision, updateID int64) ([]byte, []byte, 
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, nil, fmt.Errorf("generate telegram inbox nonce: %w", err)
 	}
-	aad := []byte(fmt.Sprintf("brokerkit-telegram:%d", updateID))
+	aad := []byte(fmt.Sprintf("unyolo-telegram:%d", updateID))
 	return nonce, i.aead.Seal(nil, nonce, plaintext, aad), nil
 }
 
 func (i *Inbox) open(updateID int64, nonce, ciphertext []byte) (notify.Decision, error) {
-	aad := []byte(fmt.Sprintf("brokerkit-telegram:%d", updateID))
+	aad := []byte(fmt.Sprintf("unyolo-telegram:%d", updateID))
 	plaintext, err := i.aead.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		return notify.Decision{}, errors.New("telegram callback authority cannot be decrypted")

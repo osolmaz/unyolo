@@ -1,10 +1,10 @@
 # Policy Core
 
-This document defines BrokerKit's shared policy model.
+This document defines unYOLO's shared policy model.
 Provider-specific brokers register their own operations, target kinds, attrs,
 and validation rules. Brokers use this core directly and do not keep local
 compatibility policy engines. See [OWNERSHIP.md](OWNERSHIP.md) for the broader
-BrokerKit versus broker boundary.
+unYOLO versus broker boundary.
 
 ## Minimal Policy File
 
@@ -108,7 +108,7 @@ type Registry struct {
 }
 ```
 
-The initial Go API is implemented in `brokerkit/policy`. Brokers own the
+The initial Go API is implemented in `unyolo/policy`. Brokers own the
 registry values they pass into that package.
 
 The registry is the only place provider vocabulary belongs. The shared policy
@@ -204,9 +204,9 @@ knows whether an unconstrained runtime value changes the approved authority.
 This keeps typed provider parsing in the broker while making the decision
 semantics reusable. For example, hf-broker parses a JSON byte count, validates
 it as an integer, and passes a one-element list containing its canonical
-base-10 form to brokerkit. Each operation lists the attrs it supports.
+base-10 form to unyolo. Each operation lists the attrs it supports.
 
-Attrs match by exact registry name. brokerkit does not apply provider aliases
+Attrs match by exact registry name. unyolo does not apply provider aliases
 such as `ref` versus `refs` or `path` versus `paths`. A broker must classify
 and normalize provider input into the attr names it registered before it calls
 the policy core.
@@ -300,7 +300,7 @@ The policy core does not:
 - write audit logs by itself
 - project provider-specific approval semantics for the shared presentation model
 
-Those responsibilities stay with the broker using brokerkit.
+Those responsibilities stay with the broker using unyolo.
 
 ## Native Git Transactions
 

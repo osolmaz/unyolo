@@ -3,7 +3,7 @@ package operatorv1wire
 
 import (
 	"github.com/oapi-codegen/nullable"
-	"github.com/osolmaz/brokerkit/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 // UseLimitToWire converts a required domain use limit to its nullable wire form.

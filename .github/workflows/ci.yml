@@ -94,11 +94,11 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm --filter openclaw-brokerkit exec playwright install --with-deps
-      - run: pnpm --filter openclaw-brokerkit test:browser
+      - run: pnpm --filter openclaw-unyolo exec playwright install --with-deps
+      - run: pnpm --filter openclaw-unyolo test:browser
       - run: npm pack --dry-run
         working-directory: plugins/openclaw
-      - run: pnpm --filter openclaw-brokerkit test:package
+      - run: pnpm --filter openclaw-unyolo test:package
       - name: Use minimum supported Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

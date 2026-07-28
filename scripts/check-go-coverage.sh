@@ -10,7 +10,7 @@ host_coverfile="$(mktemp)"
 # Host deployment is measured separately so its platform-specific account,
 # privilege, and terminal paths do not dilute the long-standing repository
 # aggregate while still enforcing a meaningful package-family threshold.
-excluded_packages='/brokers/github/cmd/generate-github-surfaces$|/cmd/brokerkit(-[^/]+)?$|/deployment/|/internal/host/(deployment|identity|privilege)$|/internal/terminal/setup$'
+excluded_packages='/brokers/github/cmd/generate-github-surfaces$|/cmd/unyolo(-[^/]+)?$|/deployment/|/internal/host/(deployment|identity|privilege)$|/internal/terminal/setup$'
 mapfile -t test_packages < <(
   go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... |
     sed '/^$/d' |

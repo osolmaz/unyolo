@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/internal/secretset"
+	"github.com/osolmaz/unyolo/auth"
+	"github.com/osolmaz/unyolo/internal/secretset"
 )
 
 var (

@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/jsend"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/jsend"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func (s *Server) handleAPIRepos(w http.ResponseWriter, r *http.Request, client string) {

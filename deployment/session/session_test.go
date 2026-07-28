@@ -48,7 +48,7 @@ func TestSessionRoundTripAndResume(t *testing.T) {
 func TestSessionValidationAndDefaultDirectory(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	directory, err := DefaultDirectory()
-	if err != nil || !strings.HasSuffix(directory, filepath.Join("brokerkit", "setup")) {
+	if err != nil || !strings.HasSuffix(directory, filepath.Join("unyolo", "setup")) {
 		t.Fatalf("DefaultDirectory() = %q, %v", directory, err)
 	}
 	t.Setenv("XDG_STATE_HOME", "relative")

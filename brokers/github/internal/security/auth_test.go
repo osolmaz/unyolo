@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	bkauth "github.com/osolmaz/brokerkit/auth"
+	unyoloauth "github.com/osolmaz/unyolo/auth"
 )
 
 const expectedSecret = "expected-shared-secret-1234567890"
@@ -81,7 +81,7 @@ func TestFromAuthenticatorRejectsNil(t *testing.T) {
 
 func testTokenAuth(t *testing.T, client string) TokenAuth {
 	t.Helper()
-	authenticator, err := bkauth.New(map[string]string{client: expectedSecret}, bkauth.Options{})
+	authenticator, err := unyoloauth.New(map[string]string{client: expectedSecret}, unyoloauth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

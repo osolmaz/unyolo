@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/git/protocol"
+	"github.com/osolmaz/unyolo/git/protocol"
 )
 
 const zeroSHA = "0000000000000000000000000000000000000000"

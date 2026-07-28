@@ -57,7 +57,7 @@ fields the kind allows and requires, and some kinds are identified by `kind` alo
 { "kind": "repo", "owner": "osolmaz", "name": "gh-broker" }
 { "kind": "user", "name": "deploy" }
 { "kind": "bucket", "namespace": "osolmaz", "name": "artifacts" }
-{ "kind": "pull_request", "owner": "osolmaz", "repo": "brokerkit", "number": 123 }
+{ "kind": "pull_request", "owner": "osolmaz", "repo": "unyolo", "number": 123 }
 ```
 
 Common fields are `owner`, `name`, `type`, and `host`, but the valid set is per-registry rather
@@ -191,7 +191,7 @@ Allow pushes only to an agent's own branch namespace:
   "effect": "allow",
   "clients": ["agent-a"],
   "operations": ["git.push.fast_forward"],
-  "targets": [{ "kind": "repo", "owner": "osolmaz", "name": "brokerkit" }],
+  "targets": [{ "kind": "repo", "owner": "osolmaz", "name": "unyolo" }],
   "attrs": { "refs": ["refs/heads/agent-a/**"] }
 }
 ```

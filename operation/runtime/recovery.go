@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/grants"
 )
 
 type approvalSettlement uint8

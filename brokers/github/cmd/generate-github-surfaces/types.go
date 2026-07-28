@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
 
 const (

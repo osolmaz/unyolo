@@ -27,8 +27,8 @@ keeps this walkthrough short, and the narrow scope limits the blast radius of th
 Build from a checkout:
 
 ```sh
-git clone https://github.com/osolmaz/brokerkit
-cd brokerkit
+git clone https://github.com/osolmaz/unyolo
+cd unyolo
 go install ./brokers/github/cmd/gh-broker
 ```
 

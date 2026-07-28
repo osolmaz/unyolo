@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/fsx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/fsx"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
 
@@ -38,10 +38,10 @@ type Paths struct {
 // DefaultPaths returns the system installation paths for the current host.
 func DefaultPaths() Paths {
 	if runtimeGOOS() == "darwin" {
-		root := "/Library/Application Support/BrokerKit"
+		root := "/Library/Application Support/unyolo"
 		return Paths{Root: root, StateDir: root}
 	}
-	return Paths{Root: "/opt/brokerkit", StateDir: "/var/lib/brokerkit-host"}
+	return Paths{Root: "/opt/unyolo", StateDir: "/var/lib/unyolo-host"}
 }
 
 var runtimeGOOS = func() string { return runtime.GOOS }
@@ -266,11 +266,11 @@ func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate string
 		if active == "" {
 			return nil
 		}
-		return errors.New("active BrokerKit bundle has no activation record during transaction rollback")
+		return errors.New("active unYOLO bundle has no activation record during transaction rollback")
 	}
 	record := *snapshot
 	if record.ActiveBundleID != candidate {
-		return errors.New("active BrokerKit bundle changed before transaction rollback")
+		return errors.New("active unYOLO bundle changed before transaction rollback")
 	}
 	activeManifest, err := i.manifest(record.ActiveBundleID)
 	if err != nil {
@@ -298,7 +298,7 @@ func (i Installer) rollbackLocked(ctx context.Context) error {
 		return err
 	}
 	if record.PreviousBundleID == "" {
-		return errors.New("no previous BrokerKit bundle is available")
+		return errors.New("no previous unYOLO bundle is available")
 	}
 	activeManifest, err := i.manifest(record.ActiveBundleID)
 	if err != nil {
@@ -644,7 +644,7 @@ func componentsByName(components []Component) map[string]Component {
 }
 
 func stateBackupPath(stateDir, bundleID string) string {
-	return stateDir + ".brokerkit-backup-" + bundleID
+	return stateDir + ".unyolo-backup-" + bundleID
 }
 
 func replaceStateDirectory(stateDir, backup string) error {
@@ -694,7 +694,7 @@ func restoreStateDirectory(stateDir, backup string) error {
 	} else if err != nil {
 		return err
 	}
-	retired := stateDir + ".brokerkit-retired"
+	retired := stateDir + ".unyolo-retired"
 	_ = os.RemoveAll(retired)
 	if err := os.Rename(stateDir, retired); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -841,7 +841,7 @@ func acquireLock(stateDir string) (*activationLock, error) {
 	}
 	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = file.Close()
-		return nil, errors.New("another BrokerKit activation is running")
+		return nil, errors.New("another unYOLO activation is running")
 	}
 	return &activationLock{file: file}, nil
 }

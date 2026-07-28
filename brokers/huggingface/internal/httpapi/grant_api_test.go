@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	rootpolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	rootpolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {

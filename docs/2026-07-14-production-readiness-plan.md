@@ -26,7 +26,7 @@ policy-preset plans plus the remaining production hardening in this record.
 
 ## Objective
 
-Finish BrokerKit as a portable production platform rather than preserve the
+Finish unYOLO as a portable production platform rather than preserve the
 assumptions of its first host. Remove machine-specific defaults, implicit
 network behavior, permissive configuration fallbacks, duplicated runtime code,
 temporary quality exceptions, incomplete operating-system support, and mutable
@@ -46,8 +46,8 @@ other production-readiness work discovered with it.
 
 ## Required Outcomes
 
-1. BrokerKit has no fixed production TCP ports.
-2. BrokerKit has no defaults tied to a particular person's Unix or operator
+1. unYOLO has no fixed production TCP ports.
+2. unYOLO has no defaults tied to a particular person's Unix or operator
    identity.
 3. Credentials never traverse non-loopback plaintext HTTP.
 4. Present-but-invalid configuration always fails closed.
@@ -592,7 +592,7 @@ resolve the selected component release tag through GitHub's ref API, peel an
 annotated tag when necessary, require an exact 40-character commit SHA, and
 fetch the canonical installer from that commit. The installer uses a pinned,
 checksum-verified GitHub CLI to validate archive and checksum attestations
-against the BrokerKit release workflow and selected tag. The release workflow
+against the unYOLO release workflow and selected tag. The release workflow
 then re-downloads the published assets through the same verify-only path, so
 publication is not successful until digest, provenance, archive shape, and
 source identity all pass.

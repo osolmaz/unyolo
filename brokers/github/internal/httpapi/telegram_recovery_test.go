@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/grants"
 )
 
 func TestTelegramCallbackRecoversAmbiguousNotification(t *testing.T) {
@@ -69,12 +69,12 @@ func TestCallbackWinningSendRaceKeepsMessageActive(t *testing.T) {
 	}
 }
 
-func newReplacementTelegram(t *testing.T) (*fakeTelegramState, *bktelegram.Client) {
+func newReplacementTelegram(t *testing.T) (*fakeTelegramState, *unyolotelegram.Client) {
 	t.Helper()
 	state := &fakeTelegramState{chatID: 123, messageID: 77}
 	api := httptest.NewServer(fakeTelegramHandler(t, state))
 	t.Cleanup(api.Close)
-	client, err := bktelegram.NewWithOptions("bot-token", state.chatID, api.Client(), api.URL, bktelegram.Options{PollTimeoutSeconds: 1})
+	client, err := unyolotelegram.NewWithOptions("bot-token", state.chatID, api.Client(), api.URL, unyolotelegram.Options{PollTimeoutSeconds: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,8 +82,8 @@ func newReplacementTelegram(t *testing.T) (*fakeTelegramState, *bktelegram.Clien
 }
 
 func setReplacementCallback(state *fakeTelegramState, grant grants.Grant, token string) {
-	state.messageText, _ = bktelegram.RenderApproval(grantApprovalMessage(context.Background(), grant, token))
-	state.callbackData = bktelegram.CallbackData(notify.ActionApprove, grant.ID, token)
+	state.messageText, _ = unyolotelegram.RenderApproval(grantApprovalMessage(context.Background(), grant, token))
+	state.callbackData = unyolotelegram.CallbackData(notify.ActionApprove, grant.ID, token)
 }
 
 func claimReplacementGrant(t *testing.T, server *Server) (grants.Grant, string) {
@@ -111,7 +111,7 @@ func assertRetryableReplacementPoll(t *testing.T, offset int64, state *fakeTeleg
 	if err == nil {
 		t.Skip("filesystem does not enforce directory write permissions")
 	}
-	if !errors.Is(err, bktelegram.ErrDecisionRetry) || offset != 0 || state.answered {
+	if !errors.Is(err, unyolotelegram.ErrDecisionRetry) || offset != 0 || state.answered {
 		t.Fatalf("failed callback offset=%d answered=%v err=%v", offset, state.answered, err)
 	}
 }
@@ -148,7 +148,7 @@ type callbackDuringSendNotifier struct {
 
 func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, message approvalnotify.Approval) (notify.MessageRef, error) {
 	var err error
-	n.ref, err = bktelegram.ApprovalReference(message, 1, 7)
+	n.ref, err = unyolotelegram.ApprovalReference(message, 1, 7)
 	if err != nil {
 		return notify.MessageRef{}, err
 	}

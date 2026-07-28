@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/xetuploader"
-	"github.com/osolmaz/brokerkit/internal/storage/stream"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/xetuploader"
+	"github.com/osolmaz/unyolo/internal/storage/stream"
 )
 
 type bucketWriteFake struct {

@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
 
 func TestRenderRequestAllAgentOperations(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/credential/store"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
 )
 
 type credentialOutputFake struct {

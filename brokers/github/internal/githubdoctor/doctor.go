@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
-var lookupIdentity = bkdoctor.LookupIdentity
+var lookupIdentity = unyolodoctor.LookupIdentity
 
 // Options configures one GitHub deployment inspection.
 type Options struct {
@@ -29,123 +29,123 @@ type Options struct {
 }
 
 // Run executes secret-safe local and GitHub checks.
-func Run(ctx context.Context, cfg config.Config, opts Options) (bkdoctor.Report, error) {
+func Run(ctx context.Context, cfg config.Config, opts Options) (unyolodoctor.Report, error) {
 	agent, err := lookupIdentity(opts.AgentUser)
 	if err != nil {
-		return bkdoctor.Report{}, err
+		return unyolodoctor.Report{}, err
 	}
 	service, err := lookupIdentity(opts.ServiceUser)
 	if err != nil {
-		return bkdoctor.Report{}, err
+		return unyolodoctor.Report{}, err
 	}
 	owner, repo, err := parseRepo(opts.Repo)
 	if err != nil {
-		return bkdoctor.Report{}, err
+		return unyolodoctor.Report{}, err
 	}
-	checks := []bkdoctor.Check{bkdoctor.RootEquivalentCheck(agent), bkdoctor.SeparationCheck(agent, service)}
+	checks := []unyolodoctor.Check{unyolodoctor.RootEquivalentCheck(agent), unyolodoctor.SeparationCheck(agent, service)}
 	checks = append(checks, localSecretChecks(cfg, agent)...)
 	storedCredentials, storedCheck := storedCredentialStatuses(cfg.StateDir, time.Now().UTC())
 	if storedCheck != nil {
 		checks = append(checks, *storedCheck)
 	}
 	checks = append(checks, githubChecks(ctx, cfg, opts, owner, repo)...)
-	report := bkdoctor.NewReport(agent, checks...)
+	report := unyolodoctor.NewReport(agent, checks...)
 	credentials := append(localCredentialStatuses(cfg, time.Now().UTC()), storedCredentials...)
-	return bkdoctor.WithCredentials(report, credentials...), nil
+	return unyolodoctor.WithCredentials(report, credentials...), nil
 }
 
-func localSecretChecks(cfg config.Config, agent bkdoctor.Identity) []bkdoctor.Check {
+func localSecretChecks(cfg config.Config, agent unyolodoctor.Identity) []unyolodoctor.Check {
 	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubAppClientSecretFile, cfg.GitHubWebhookSecretFile,
 		cfg.SecretsFile, cfg.OperatorSecretsFile, cfg.TelegramBotTokenFile}
-	checks := make([]bkdoctor.Check, 0, len(paths)*5)
+	checks := make([]unyolodoctor.Check, 0, len(paths)*5)
 	for _, path := range paths {
 		if path != "" {
-			checks = append(checks, bkdoctor.SecretFileChecks(path, agent)...)
+			checks = append(checks, unyolodoctor.SecretFileChecks(path, agent)...)
 		}
 	}
 	checks = append(checks, inlineCredentialChecks(cfg)...)
 	return checks
 }
 
-func localCredentialStatuses(cfg config.Config, now time.Time) []bkdoctor.CredentialStatus {
-	const rotateAfter = bkdoctor.DefaultCredentialRotationAge
-	values := make([]bkdoctor.CredentialStatus, 0, 7)
-	values = appendCredentialFileStatus(values, "broker-client", cfg.SecretsFile, now, rotateAfter, bkdoctor.CredentialRevocationLocal)
-	values = appendCredentialFileStatus(values, "broker-operator", cfg.OperatorSecretsFile, now, rotateAfter, bkdoctor.CredentialRevocationLocal)
-	values = appendCredentialFileStatus(values, "github-development", cfg.GitHubTokenFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
-	values = appendCredentialFileStatus(values, "github-app-private-key", cfg.GitHubAppPrivateKeyFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
-	values = appendCredentialFileStatus(values, "github-app-client-secret", cfg.GitHubAppClientSecretFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
-	values = appendCredentialFileStatus(values, "github-webhook", cfg.GitHubWebhookSecretFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
-	values = appendCredentialFileStatus(values, "telegram-bot", cfg.TelegramBotTokenFile, now, rotateAfter, bkdoctor.CredentialRevocationManual)
+func localCredentialStatuses(cfg config.Config, now time.Time) []unyolodoctor.CredentialStatus {
+	const rotateAfter = unyolodoctor.DefaultCredentialRotationAge
+	values := make([]unyolodoctor.CredentialStatus, 0, 7)
+	values = appendCredentialFileStatus(values, "broker-client", cfg.SecretsFile, now, rotateAfter, unyolodoctor.CredentialRevocationLocal)
+	values = appendCredentialFileStatus(values, "broker-operator", cfg.OperatorSecretsFile, now, rotateAfter, unyolodoctor.CredentialRevocationLocal)
+	values = appendCredentialFileStatus(values, "github-development", cfg.GitHubTokenFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "github-app-private-key", cfg.GitHubAppPrivateKeyFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "github-app-client-secret", cfg.GitHubAppClientSecretFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "github-webhook", cfg.GitHubWebhookSecretFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
+	values = appendCredentialFileStatus(values, "telegram-bot", cfg.TelegramBotTokenFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
 	return appendInlineCredentialStatuses(values, cfg)
 }
 
-func appendCredentialFileStatus(values []bkdoctor.CredentialStatus, class, path string, now time.Time, rotateAfter time.Duration, revocation string) []bkdoctor.CredentialStatus {
+func appendCredentialFileStatus(values []unyolodoctor.CredentialStatus, class, path string, now time.Time, rotateAfter time.Duration, revocation string) []unyolodoctor.CredentialStatus {
 	if strings.TrimSpace(path) == "" {
 		return values
 	}
-	return append(values, bkdoctor.CredentialFileStatus(class, path, now, rotateAfter, time.Time{}, revocation))
+	return append(values, unyolodoctor.CredentialFileStatus(class, path, now, rotateAfter, time.Time{}, revocation))
 }
 
-func appendInlineCredentialStatuses(values []bkdoctor.CredentialStatus, cfg config.Config) []bkdoctor.CredentialStatus {
+func appendInlineCredentialStatuses(values []unyolodoctor.CredentialStatus, cfg config.Config) []unyolodoctor.CredentialStatus {
 	inline := []struct {
 		class, value, file, revocation string
 	}{
-		{"broker-client", cfg.SharedSecret, cfg.SecretsFile, bkdoctor.CredentialRevocationLocal},
-		{"broker-operator", cfg.OperatorSecret, cfg.OperatorSecretsFile, bkdoctor.CredentialRevocationLocal},
-		{"github-development", cfg.GitHubToken, cfg.GitHubTokenFile, bkdoctor.CredentialRevocationManual},
-		{"github-app-client-secret", cfg.GitHubAppClientSecret, cfg.GitHubAppClientSecretFile, bkdoctor.CredentialRevocationManual},
-		{"github-webhook", cfg.GitHubWebhookSecret, cfg.GitHubWebhookSecretFile, bkdoctor.CredentialRevocationManual},
-		{"telegram-bot", cfg.TelegramBotToken, cfg.TelegramBotTokenFile, bkdoctor.CredentialRevocationManual},
+		{"broker-client", cfg.SharedSecret, cfg.SecretsFile, unyolodoctor.CredentialRevocationLocal},
+		{"broker-operator", cfg.OperatorSecret, cfg.OperatorSecretsFile, unyolodoctor.CredentialRevocationLocal},
+		{"github-development", cfg.GitHubToken, cfg.GitHubTokenFile, unyolodoctor.CredentialRevocationManual},
+		{"github-app-client-secret", cfg.GitHubAppClientSecret, cfg.GitHubAppClientSecretFile, unyolodoctor.CredentialRevocationManual},
+		{"github-webhook", cfg.GitHubWebhookSecret, cfg.GitHubWebhookSecretFile, unyolodoctor.CredentialRevocationManual},
+		{"telegram-bot", cfg.TelegramBotToken, cfg.TelegramBotTokenFile, unyolodoctor.CredentialRevocationManual},
 	}
 	for _, item := range inline {
 		if item.value != "" && item.file == "" {
-			values = append(values, bkdoctor.InlineCredentialStatus(item.class, item.revocation))
+			values = append(values, unyolodoctor.InlineCredentialStatus(item.class, item.revocation))
 		}
 	}
 	return values
 }
 
-func storedCredentialStatuses(stateDir string, now time.Time) ([]bkdoctor.CredentialStatus, *bkdoctor.Check) {
+func storedCredentialStatuses(stateDir string, now time.Time) ([]unyolodoctor.CredentialStatus, *unyolodoctor.Check) {
 	if strings.TrimSpace(stateDir) == "" {
 		return nil, nil
 	}
 	path, err := githubauth.UserCredentialStorePath(stateDir)
 	if err != nil {
-		return nil, storedCredentialCheck(bkdoctor.CheckUnknown)
+		return nil, storedCredentialCheck(unyolodoctor.CheckUnknown)
 	}
 	if _, err := os.Lstat(path); os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {
-		return nil, storedCredentialCheck(bkdoctor.CheckUnknown)
+		return nil, storedCredentialCheck(unyolodoctor.CheckUnknown)
 	}
 	items, err := githubauth.InspectStoredUserCredentials(stateDir)
 	if err != nil {
-		return nil, storedCredentialCheck(bkdoctor.CheckUnknown)
+		return nil, storedCredentialCheck(unyolodoctor.CheckUnknown)
 	}
-	values := make([]bkdoctor.CredentialStatus, 0, 2*len(items))
+	values := make([]unyolodoctor.CredentialStatus, 0, 2*len(items))
 	for _, item := range items {
 		id := strconv.FormatInt(item.UserID, 10)
 		values = append(values,
-			bkdoctor.StoredCredentialStatus("github-user-access:"+id, item.UpdatedAt, item.AccessExpiresAt, now,
-				bkdoctor.DefaultCredentialRotationAge, bkdoctor.CredentialRevocationAutomatic),
-			bkdoctor.StoredCredentialStatus("github-user-refresh:"+id, item.UpdatedAt, item.RefreshExpiresAt, now,
-				bkdoctor.DefaultCredentialRotationAge, bkdoctor.CredentialRevocationAutomatic),
+			unyolodoctor.StoredCredentialStatus("github-user-access:"+id, item.UpdatedAt, item.AccessExpiresAt, now,
+				unyolodoctor.DefaultCredentialRotationAge, unyolodoctor.CredentialRevocationAutomatic),
+			unyolodoctor.StoredCredentialStatus("github-user-refresh:"+id, item.UpdatedAt, item.RefreshExpiresAt, now,
+				unyolodoctor.DefaultCredentialRotationAge, unyolodoctor.CredentialRevocationAutomatic),
 		)
 	}
-	return values, storedCredentialCheck(bkdoctor.CheckPass)
+	return values, storedCredentialCheck(unyolodoctor.CheckPass)
 }
 
-func storedCredentialCheck(status bkdoctor.CheckStatus) *bkdoctor.Check {
+func storedCredentialCheck(status unyolodoctor.CheckStatus) *unyolodoctor.Check {
 	message := "encrypted GitHub user lifecycle metadata is valid"
-	if status != bkdoctor.CheckPass {
+	if status != unyolodoctor.CheckPass {
 		message = "encrypted GitHub user lifecycle metadata could not be inspected"
 	}
-	return &bkdoctor.Check{Status: status, Name: "github_user_lifecycle_metadata", Message: message}
+	return &unyolodoctor.Check{Status: status, Name: "github_user_lifecycle_metadata", Message: message}
 }
 
-func inlineCredentialChecks(cfg config.Config) []bkdoctor.Check {
-	checks := make([]bkdoctor.Check, 0, 5)
+func inlineCredentialChecks(cfg config.Config) []unyolodoctor.Check {
+	checks := make([]unyolodoctor.Check, 0, 5)
 	checks = appendInlineCredentialCheck(checks, cfg.SharedSecret != "" && cfg.SecretsFile == "", "broker_client_secret")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubToken != "" && cfg.GitHubTokenFile == "", "github_token")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubWebhookSecret != "" && cfg.GitHubWebhookSecretFile == "", "github_webhook_secret")
@@ -154,18 +154,18 @@ func inlineCredentialChecks(cfg config.Config) []bkdoctor.Check {
 	return checks
 }
 
-func appendInlineCredentialCheck(checks []bkdoctor.Check, configured bool, credential string) []bkdoctor.Check {
+func appendInlineCredentialCheck(checks []unyolodoctor.Check, configured bool, credential string) []unyolodoctor.Check {
 	if !configured {
 		return checks
 	}
-	return append(checks, bkdoctor.Check{
-		Status:  bkdoctor.CheckUnknown,
+	return append(checks, unyolodoctor.Check{
+		Status:  unyolodoctor.CheckUnknown,
 		Name:    "inline_" + credential + "_isolation",
 		Message: "inline credential isolation cannot be verified; use a protected credential file",
 	})
 }
 
-func githubChecks(ctx context.Context, cfg config.Config, opts Options, owner string, repo string) []bkdoctor.Check {
+func githubChecks(ctx context.Context, cfg config.Config, opts Options, owner string, repo string) []unyolodoctor.Check {
 	baseURL := opts.APIBaseURL
 	if baseURL == nil {
 		baseURL, _ = url.Parse("https://api.github.com")
@@ -175,7 +175,7 @@ func githubChecks(ctx context.Context, cfg config.Config, opts Options, owner st
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
 	apis, installationChecks := githubDoctorAPI(ctx, cfg, baseURL, client, owner, repo, opts.RequireProtection)
-	checks := append([]bkdoctor.Check(nil), installationChecks...)
+	checks := append([]unyolodoctor.Check(nil), installationChecks...)
 	if apis.repository == nil {
 		return checks
 	}
@@ -184,7 +184,7 @@ func githubChecks(ctx context.Context, cfg config.Config, opts Options, owner st
 	if err != nil {
 		return checks
 	}
-	checks = append(checks, bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_default_branch", Message: "default branch is " + defaultBranch})
+	checks = append(checks, unyolodoctor.Check{Status: unyolodoctor.CheckPass, Name: "github_default_branch", Message: "default branch is " + defaultBranch})
 	if apis.protection == nil {
 		checks = append(checks, protectionCheck(opts.RequireProtection, false, errors.New("GitHub protection inspection credential is unavailable")))
 		return checks
@@ -199,20 +199,20 @@ type doctorAPIs struct {
 	protection *githubauth.API
 }
 
-func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, client *http.Client, owner string, repo string, requireProtection bool) (doctorAPIs, []bkdoctor.Check) {
+func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, client *http.Client, owner string, repo string, requireProtection bool) (doctorAPIs, []unyolodoctor.Check) {
 	var webURL *url.URL
 	if strings.TrimSpace(cfg.GitHubWebBaseURL) != "" {
 		var err error
 		webURL, err = url.Parse(cfg.GitHubWebBaseURL)
 		if err != nil {
-			return doctorAPIs{}, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
+			return doctorAPIs{}, []unyolodoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 		}
 	}
 	manager, err := githubauth.New(githubauth.Config{AppID: cfg.GitHubAppID, AppPrivateKey: cfg.GitHubAppPrivateKey,
 		AppClientID: cfg.GitHubAppClientID, AppClientSecret: []byte(cfg.GitHubAppClientSecret), DevelopmentToken: []byte(cfg.GitHubToken),
 		DevelopmentTokenFile: cfg.GitHubTokenFile, APIBaseURL: baseURL, WebBaseURL: webURL, HTTPClient: client})
 	if err != nil {
-		return doctorAPIs{}, []bkdoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
+		return doctorAPIs{}, []unyolodoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 	}
 	if manager.CredentialKind() == githubauth.KindDevelopmentToken {
 		return developmentDoctorAPI(ctx, cfg.Environment, manager, owner, repo)
@@ -220,28 +220,28 @@ func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, c
 	return appDoctorAPI(ctx, manager, owner, repo, requireProtection)
 }
 
-func developmentDoctorAPI(ctx context.Context, environment string, manager *githubauth.Manager, owner, repo string) (doctorAPIs, []bkdoctor.Check) {
-	status := bkdoctor.CheckWarn
+func developmentDoctorAPI(ctx context.Context, environment string, manager *githubauth.Manager, owner, repo string) (doctorAPIs, []unyolodoctor.Check) {
+	status := unyolodoctor.CheckWarn
 	message := "development-token fallback is non-production and cannot prove GitHub App permission narrowing"
 	if strings.EqualFold(environment, "production") || strings.EqualFold(environment, "prod") {
-		status = bkdoctor.CheckFail
+		status = unyolodoctor.CheckFail
 		message = "development-token fallback must not be used in production"
 	}
-	check := bkdoctor.Check{Status: status, Name: "github_development_token", Message: message}
+	check := unyolodoctor.Check{Status: status, Name: "github_development_token", Message: message}
 	credential, err := manager.RepositoryCredential(ctx, "repo.contents.read", owner, repo)
 	if err != nil {
-		return doctorAPIs{}, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
+		return doctorAPIs{}, []unyolodoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
 	}
 	api, err := manager.API(credential)
 	if err != nil {
-		return doctorAPIs{}, []bkdoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
+		return doctorAPIs{}, []unyolodoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
 	}
-	return doctorAPIs{repository: api, protection: api}, []bkdoctor.Check{check}
+	return doctorAPIs{repository: api, protection: api}, []unyolodoctor.Check{check}
 }
 
-func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo string, requireProtection bool) (doctorAPIs, []bkdoctor.Check) {
+func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo string, requireProtection bool) (doctorAPIs, []unyolodoctor.Check) {
 	jwtErr := manager.CheckApp(ctx)
-	checks := []bkdoctor.Check{resultCheck("github_app_jwt", "GitHub App authenticated transport works", "GitHub App authenticated transport failed", jwtErr)}
+	checks := []unyolodoctor.Check{resultCheck("github_app_jwt", "GitHub App authenticated transport works", "GitHub App authenticated transport failed", jwtErr)}
 	if jwtErr != nil {
 		return doctorAPIs{}, checks
 	}
@@ -272,39 +272,39 @@ func appDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo 
 	return doctorAPIs{repository: api, protection: protectionAPI}, checks
 }
 
-func permissionCheck(permissions map[string]string) bkdoctor.Check {
+func permissionCheck(permissions map[string]string) unyolodoctor.Check {
 	return exactPermissionCheck(permissions, "contents", "github_app_permissions", "repository inspection credential", "contents read")
 }
 
-func protectionPermissionCheck(permissions map[string]string) bkdoctor.Check {
+func protectionPermissionCheck(permissions map[string]string) unyolodoctor.Check {
 	return exactPermissionCheck(permissions, "administration", "github_protection_permissions", "protection inspection credential", "administration read")
 }
 
-func exactPermissionCheck(permissions map[string]string, permission, name, subject, scope string) bkdoctor.Check {
+func exactPermissionCheck(permissions map[string]string, permission, name, subject, scope string) unyolodoctor.Check {
 	if len(permissions) != 1 || permissions[permission] != "read" {
-		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: name, Message: subject + " was not narrowed to " + scope}
+		return unyolodoctor.Check{Status: unyolodoctor.CheckFail, Name: name, Message: subject + " was not narrowed to " + scope}
 	}
-	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: name, Message: subject + " is narrowed to " + scope}
+	return unyolodoctor.Check{Status: unyolodoctor.CheckPass, Name: name, Message: subject + " is narrowed to " + scope}
 }
 
-func protectionCheck(required bool, protected bool, err error) bkdoctor.Check {
+func protectionCheck(required bool, protected bool, err error) unyolodoctor.Check {
 	if protected {
-		return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: "github_default_branch_protected", Message: "default branch has an applicable ruleset or branch protection"}
+		return unyolodoctor.Check{Status: unyolodoctor.CheckPass, Name: "github_default_branch_protected", Message: "default branch has an applicable ruleset or branch protection"}
 	}
 	if !required {
-		return bkdoctor.Check{Status: bkdoctor.CheckWarn, Name: "github_default_branch_protected", Message: "default branch protection was not required by this doctor run"}
+		return unyolodoctor.Check{Status: unyolodoctor.CheckWarn, Name: "github_default_branch_protected", Message: "default branch protection was not required by this doctor run"}
 	}
 	if code, statusError := githubauth.StatusCode(err); err != nil && (!statusError || code != http.StatusNotFound) {
-		return bkdoctor.Check{Status: bkdoctor.CheckUnknown, Name: "github_default_branch_protected", Message: "default branch protection could not be inspected with the configured credential"}
+		return unyolodoctor.Check{Status: unyolodoctor.CheckUnknown, Name: "github_default_branch_protected", Message: "default branch protection could not be inspected with the configured credential"}
 	}
-	return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: "github_default_branch_protected", Message: "default branch has no verifiable ruleset or branch protection"}
+	return unyolodoctor.Check{Status: unyolodoctor.CheckFail, Name: "github_default_branch_protected", Message: "default branch has no verifiable ruleset or branch protection"}
 }
 
-func resultCheck(name string, passMessage string, failMessage string, err error) bkdoctor.Check {
+func resultCheck(name string, passMessage string, failMessage string, err error) unyolodoctor.Check {
 	if err != nil {
-		return bkdoctor.Check{Status: bkdoctor.CheckFail, Name: name, Message: failMessage}
+		return unyolodoctor.Check{Status: unyolodoctor.CheckFail, Name: name, Message: failMessage}
 	}
-	return bkdoctor.Check{Status: bkdoctor.CheckPass, Name: name, Message: passMessage}
+	return unyolodoctor.Check{Status: unyolodoctor.CheckPass, Name: name, Message: passMessage}
 }
 
 func parseRepo(value string) (string, string, error) {

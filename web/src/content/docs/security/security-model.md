@@ -1,9 +1,9 @@
 ---
 title: Security model
-description: The boundaries BrokerKit maintains, the controls behind each one, and how to verify them on a real host.
+description: The boundaries unYOLO maintains, the controls behind each one, and how to verify them on a real host.
 ---
 
-BrokerKit's security model rests on keeping several things apart that are usually the same thing:
+unYOLO's security model rests on keeping several things apart that are usually the same thing:
 the credential and the process that uses it, the agent and the operator, the network path and the
 authorization decision. This page describes each separation and the control that maintains it. The
 [threat model](/docs/security/threat-model) covers the specific attacks and the required failure
@@ -52,7 +52,7 @@ The Git listener requires its own scoped credential and exposes only Git routes.
 Run a broker where its clients cannot inspect its process or credential files. If the agent account
 can read `/etc/hf-broker/hf-token`, nothing in the software matters.
 
-This is the one part of the model BrokerKit cannot enforce from inside the process, which is why
+This is the one part of the model unYOLO cannot enforce from inside the process, which is why
 every broker ships a doctor that checks it:
 
 ```sh
@@ -60,7 +60,7 @@ hf-broker doctor \
   --agent-user agent \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/brokerkit/huggingface/agent/broker.sock
+  --socket /run/unyolo/huggingface/agent/broker.sock
 ```
 
 The doctor fails closed when the agent is root, is root-equivalent through a group such as `sudo`,
@@ -142,7 +142,7 @@ revision, idempotency key, and bounded narrowing.
 
 ## Coverage limits
 
-BrokerKit does not sandbox provider code, validate arbitrary shell strings, proxy arbitrary
+unYOLO does not sandbox provider code, validate arbitrary shell strings, proxy arbitrary
 provider APIs, or replace host hardening and secret rotation. It does not protect a machine where
 the broker account, state files, operator secret, provider credential, or privileged helper
 endpoint is already compromised.

@@ -12,14 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 const (
-	testAgentEndpoint    = "unix:///run/brokerkit/huggingface/agent/broker.sock"
-	testOperatorEndpoint = "unix:///run/brokerkit/huggingface/operator/broker.sock"
+	testAgentEndpoint    = "unix:///run/unyolo/huggingface/agent/broker.sock"
+	testOperatorEndpoint = "unix:///run/unyolo/huggingface/operator/broker.sock"
 )
 
 func requiredSetupArgs(args ...string) []string {
@@ -191,7 +191,7 @@ func TestParseSetupSystemdHelpAndPositionals(t *testing.T) {
 
 func TestRenderSystemdSetupFiles(t *testing.T) {
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ConfigDir: "/etc/hf-broker", StateDir: "/var/lib/hf-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
@@ -264,7 +264,7 @@ func TestSetupSystemdDryRun(t *testing.T) {
 	var stdout bytes.Buffer
 	configDir := t.TempDir()
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ConfigDir: configDir, StateDir: "/var/lib/hf-broker",
 			SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
@@ -287,7 +287,7 @@ func TestSetupSystemdDryRun(t *testing.T) {
 func TestPrintSystemdSummaryUsesQuotedBaseURL(t *testing.T) {
 	var stdout bytes.Buffer
 	printSystemdSummary(&stdout, setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			ClientName: "build agent;echo unsafe", ConfigDir: "/etc/hf-broker", Endpoint: testAgentEndpoint,
 		},
 		Repo: "osolmaz/scraped-news", RepoType: "dataset", OperatorEndpoint: testOperatorEndpoint,
@@ -308,7 +308,7 @@ func TestPrintSystemdSummaryUsesQuotedBaseURL(t *testing.T) {
 
 func TestSetupSystemdDryRunValidatesSharedUnit(t *testing.T) {
 	err := runSetupSystemd(context.Background(), ioDiscard{}, setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			User: "hf-broker", Group: "hf-broker", ConfigDir: "/etc/hf-broker",
 			StateDir: "/", SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker", DryRun: true,
 		},
@@ -319,7 +319,7 @@ func TestSetupSystemdDryRunValidatesSharedUnit(t *testing.T) {
 }
 
 func TestSystemdSetupPreflightDoesNotRequireExistingServiceAccount(t *testing.T) {
-	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: bksetup.SystemdOptions{
+	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: unyolosetup.SystemdOptions{
 		User: "hf-broker-user-does-not-exist", Group: "hf-broker-group-does-not-exist",
 		ConfigDir: "/etc/hf-broker", StateDir: "/var/lib/hf-broker",
 		SystemdDir: "/etc/systemd/system", BinaryPath: "/usr/local/bin/hf-broker",
@@ -366,7 +366,7 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	err := runSetupSystemd(context.Background(), &stdout, setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: currentUser.Username, Group: currentGroup.Name,
 			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
@@ -413,14 +413,14 @@ func TestRunSetupSystemdWritesFilesWithoutStart(t *testing.T) {
 	assertSetupFileContains(t, filepath.Join(dir, "systemd", "hf-broker-operator.socket"), "SocketGroup=hf-broker-operator", 0o644)
 }
 
-func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
+func TestUnyoloSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "source-token")
 	if err := os.WriteFile(tokenFile, []byte("hf_xxx\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
@@ -433,17 +433,17 @@ func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 		OperatorName: "operator-a", OperatorSecret: "operator-secret-abcdefghijklmnopqrstuvwxyz",
 		OperatorEndpoint: testOperatorEndpoint,
 	}
-	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
-		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
+		t.Fatalf("unyoloSystemdInstallPlan() error = %v", err)
 	}
 	if plan.UnitName != unitFileName || plan.Unit.EnvironmentFile != filepath.Join(opts.ConfigDir, envFileName) {
-		t.Fatalf("brokerkit install unit = %+v", plan.Unit)
+		t.Fatalf("unyolo install unit = %+v", plan.Unit)
 	}
-	wantOwners := map[string]bkservice.ManagedFileOwner{
-		hfTokenFileName: bkservice.ManagedFileOwnerService, secretsFileName: bkservice.ManagedFileOwnerService,
-		operatorSecretsFileName: bkservice.ManagedFileOwnerService,
-		scopeFileName:           bkservice.ManagedFileOwnerRoot, envFileName: bkservice.ManagedFileOwnerRoot,
+	wantOwners := map[string]unyoloservice.ManagedFileOwner{
+		hfTokenFileName: unyoloservice.ManagedFileOwnerService, secretsFileName: unyoloservice.ManagedFileOwnerService,
+		operatorSecretsFileName: unyoloservice.ManagedFileOwnerService,
+		scopeFileName:           unyoloservice.ManagedFileOwnerRoot, envFileName: unyoloservice.ManagedFileOwnerRoot,
 	}
 	for _, file := range plan.Files {
 		if got := file.Owner; got != wantOwners[file.Name] {
@@ -456,7 +456,7 @@ func TestBrokerkitSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
+func TestUnyoloSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
 	dir := t.TempDir()
 	hfToken := filepath.Join(dir, "hf-token-source")
 	telegramToken := filepath.Join(dir, "telegram-token-source")
@@ -467,18 +467,18 @@ func TestBrokerkitSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent-a", Endpoint: testAgentEndpoint, NoStart: true},
+		SystemdOptions: unyolosetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent-a", Endpoint: testAgentEndpoint, NoStart: true},
 		OperatorName:   "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testOperatorEndpoint,
 		HFTokenFile: hfToken, TelegramBotTokenFile: telegramToken, TelegramChatID: 123,
 		Repo: "osolmaz/repo", RepoType: "model", SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
 	}
-	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
 	for _, file := range plan.Files {
-		if file.Name == telegramTokenFileName && file.Owner == bkservice.ManagedFileOwnerService && file.Mode == 0o600 {
+		if file.Name == telegramTokenFileName && file.Owner == unyoloservice.ManagedFileOwnerService && file.Mode == 0o600 {
 			found = true
 		}
 	}
@@ -490,7 +490,7 @@ func TestBrokerkitSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T) {
+func TestUnyoloSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T) {
 	dir := t.TempDir()
 	hfToken := filepath.Join(dir, "hf-token-source")
 	telegramToken := filepath.Join(dir, "telegram-token-source")
@@ -501,7 +501,7 @@ func TestBrokerkitSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T)
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/hf-broker",
@@ -512,7 +512,7 @@ func TestBrokerkitSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T)
 		OperatorName: "operator", OperatorSecret: strings.Repeat("o", 32),
 		OperatorEndpoint: testOperatorEndpoint,
 	}
-	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,18 +524,18 @@ func TestBrokerkitSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T)
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.T) {
+func TestUnyoloSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.T) {
 	dir := t.TempDir()
 	hfToken := filepath.Join(dir, "hf-token-source")
 	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent-a", Endpoint: testAgentEndpoint, NoStart: true},
+		SystemdOptions: unyolosetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent-a", Endpoint: testAgentEndpoint, NoStart: true},
 		OperatorName:   "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testOperatorEndpoint,
 		HFTokenFile: hfToken, Repo: "osolmaz/repo", RepoType: "model", SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
 	}
-	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,14 +550,14 @@ func TestBrokerkitSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
+func TestUnyoloSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	tokenPath := filepath.Join(dir, "token")
 	if err := os.WriteFile(tokenPath, []byte("hf_example\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
 			ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/hf-broker",
@@ -568,7 +568,7 @@ func TestBrokerkitSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
 		OperatorName: "operator", OperatorSecret: strings.Repeat("o", 32),
 		OperatorEndpoint: testOperatorEndpoint,
 	}
-	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,14 +586,14 @@ func TestBrokerkitSystemdInstallPlanIncludesPresetArtifacts(t *testing.T) {
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanPreservesInstalledDenies(t *testing.T) {
+func TestUnyoloSystemdInstallPlanPreservesInstalledDenies(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "etc")
 	writeInstalledPolicy(t, configDir, []string{"repo.delete"}, false)
 	tokenPath := writeSetupToken(t, dir)
 	opts := presetSetupOptions(dir, configDir, tokenPath)
 	opts.DeniedOperations = []string{"repo.create"}
-	plan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -607,7 +607,7 @@ func TestBrokerkitSystemdInstallPlanPreservesInstalledDenies(t *testing.T) {
 
 	opts.ResetDeniedOperations = true
 	opts.DeniedOperations = nil
-	resetPlan, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	resetPlan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -620,21 +620,21 @@ func TestBrokerkitSystemdInstallPlanPreservesInstalledDenies(t *testing.T) {
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanRejectsModifiedInstalledPolicy(t *testing.T) {
+func TestUnyoloSystemdInstallPlanRejectsModifiedInstalledPolicy(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "etc")
 	writeInstalledPolicy(t, configDir, []string{"repo.delete"}, true)
 	opts := presetSetupOptions(dir, configDir, writeSetupToken(t, dir))
-	if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err == nil || !strings.Contains(err.Error(), "installed policy artifacts are modified") {
+	if _, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts)); err == nil || !strings.Contains(err.Error(), "installed policy artifacts are modified") {
 		t.Fatalf("modified installed policy error = %v", err)
 	}
 	opts.ResetDeniedOperations = true
-	if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err != nil {
+	if _, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts)); err != nil {
 		t.Fatalf("explicit deny reset did not recover from modified artifacts: %v", err)
 	}
 }
 
-func TestBrokerkitSystemdInstallPlanRejectsPartialInstalledPolicy(t *testing.T) {
+func TestUnyoloSystemdInstallPlanRejectsPartialInstalledPolicy(t *testing.T) {
 	for _, missing := range []string{policyProfileFileName, policyManifestFileName} {
 		t.Run(missing, func(t *testing.T) {
 			dir := t.TempDir()
@@ -644,7 +644,7 @@ func TestBrokerkitSystemdInstallPlanRejectsPartialInstalledPolicy(t *testing.T) 
 				t.Fatal(err)
 			}
 			opts := presetSetupOptions(dir, configDir, writeSetupToken(t, dir))
-			if _, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts)); err == nil || !strings.Contains(err.Error(), "artifacts are incomplete") {
+			if _, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts)); err == nil || !strings.Contains(err.Error(), "artifacts are incomplete") {
 				t.Fatalf("partial installed policy error = %v", err)
 			}
 		})
@@ -718,7 +718,7 @@ func writeSetupToken(t *testing.T, dir string) string {
 
 func presetSetupOptions(dir, configDir, tokenPath string) setupSystemdOptions {
 	return setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: configDir,
 			StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"),
 			BinaryPath: "/usr/bin/hf-broker", ClientName: "agent-a", Endpoint: testAgentEndpoint, NoStart: true,
@@ -730,7 +730,7 @@ func presetSetupOptions(dir, configDir, tokenPath string) setupSystemdOptions {
 	}
 }
 
-func managedFileData(t *testing.T, files []bkservice.ManagedFile, name string) []byte {
+func managedFileData(t *testing.T, files []unyoloservice.ManagedFile, name string) []byte {
 	t.Helper()
 	for _, file := range files {
 		if file.Name == name {
@@ -743,7 +743,7 @@ func managedFileData(t *testing.T, files []bkservice.ManagedFile, name string) [
 
 func TestRequirePolicyReplacement(t *testing.T) {
 	dir := t.TempDir()
-	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: bksetup.SystemdOptions{ConfigDir: dir}})
+	plan := systemdSetupPlan(setupSystemdOptions{SystemdOptions: unyolosetup.SystemdOptions{ConfigDir: dir}})
 	if err := requirePolicyReplacement(plan); err != nil {
 		t.Fatalf("fresh policy replacement check = %v", err)
 	}
@@ -759,7 +759,7 @@ func TestRequirePolicyReplacement(t *testing.T) {
 	}
 }
 
-func managedFileNamed(files []bkservice.ManagedFile, name string) bool {
+func managedFileNamed(files []unyoloservice.ManagedFile, name string) bool {
 	for _, file := range files {
 		if file.Name == name {
 			return true
@@ -768,7 +768,7 @@ func managedFileNamed(files []bkservice.ManagedFile, name string) bool {
 	return false
 }
 
-func managedFileIndex(files []bkservice.ManagedFile, name string) int {
+func managedFileIndex(files []unyoloservice.ManagedFile, name string) int {
 	for index, file := range files {
 		if file.Name == name {
 			return index
@@ -777,7 +777,7 @@ func managedFileIndex(files []bkservice.ManagedFile, name string) int {
 	return -1
 }
 
-func managedFileRefNamed(files []bkservice.ManagedFileRef, name string) bool {
+func managedFileRefNamed(files []unyoloservice.ManagedFileRef, name string) bool {
 	for _, file := range files {
 		if file.Name == name {
 			return true
@@ -786,19 +786,19 @@ func managedFileRefNamed(files []bkservice.ManagedFileRef, name string) bool {
 	return false
 }
 
-func TestBrokerkitSystemdInstallPlanRejectsMissingToken(t *testing.T) {
+func TestUnyoloSystemdInstallPlanRejectsMissingToken(t *testing.T) {
 	dir := t.TempDir()
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.SystemdOptions{
+		SystemdOptions: unyolosetup.SystemdOptions{
 			User: "hf-broker", Group: "hf-broker",
 			ConfigDir: filepath.Join(dir, "etc", "hf-broker"), StateDir: filepath.Join(dir, "var", "lib", "hf-broker"),
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/local/bin/hf-broker",
 		},
 		HFTokenFile: filepath.Join(dir, "missing"), Repo: "osolmaz/repo", RepoType: "model",
 	}
-	_, err := brokerkitSystemdInstallPlan(systemdSetupPlan(opts))
+	_, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
 	if err == nil || !strings.Contains(err.Error(), "read --hf-token-file") {
-		t.Fatalf("brokerkitSystemdInstallPlan() error = %v", err)
+		t.Fatalf("unyoloSystemdInstallPlan() error = %v", err)
 	}
 }
 

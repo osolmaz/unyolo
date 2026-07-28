@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/broker/controlplane"
-	hfapproval "github.com/osolmaz/brokerkit/brokers/huggingface/internal/approval"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/broker/controlplane"
+	hfapproval "github.com/osolmaz/unyolo/brokers/huggingface/internal/approval"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
@@ -27,7 +27,7 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	botAPI := httptest.NewServer(http.HandlerFunc(bot.serveHTTP))
 	defer botAPI.Close()
 
-	client, err := bktelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
+	client, err := unyolotelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestTelegramDecisionRetriesDurableStatusAfterRestart(t *testing.T) {
 	if _, recorded, err := store.SetNotificationIfClaimed(claimed.Grant.ID, claimed.Grant.NotificationClaimedAt, ref); err != nil || !recorded {
 		t.Fatalf("SetNotificationIfClaimed() recorded=%v err=%v", recorded, err)
 	}
-	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
+	bot.callbackData = unyolotelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
 
 	server := newTelegramDecisionTestServer(t, store, client)
 	offset, err := client.PollOnce(context.Background(), 0, server.handleTelegramDecision)
@@ -112,7 +112,7 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 	bot := &fakeTelegramBot{}
 	botAPI := httptest.NewServer(http.HandlerFunc(bot.serveHTTP))
 	defer botAPI.Close()
-	client, err := bktelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
+	client, err := unyolotelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestTelegramCallbackRecoversReferenceAfterAmbiguousSend(t *testing.T) {
 		t.Fatalf("RetainNotificationClaim() retained=%v err=%v", retained, err)
 	}
 	bot.sentText = approvalTextForTest(claimed)
-	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
+	bot.callbackData = unyolotelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
 	server := newTelegramDecisionTestServer(t, store, client)
 	if _, err := client.PollOnce(context.Background(), 0, server.handleTelegramDecision); err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 	bot := &fakeTelegramBot{}
 	botAPI := httptest.NewServer(http.HandlerFunc(bot.serveHTTP))
 	defer botAPI.Close()
-	client, err := bktelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
+	client, err := unyolotelegram.New("telegram_token_value", 123, botAPI.Client(), botAPI.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 		t.Fatalf("ClaimNotification() = %+v claimed=%v err=%v", claimed, ok, err)
 	}
 	bot.sentText = approvalTextForTest(claimed)
-	bot.callbackData = bktelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
+	bot.callbackData = unyolotelegram.CallbackData(notify.ActionApprove, claimed.Grant.ID, claimed.DecisionToken)
 	server := newTelegramDecisionTestServer(t, store, client)
 	if err := os.Chmod(dir, 0o500); err != nil { // #nosec G302 -- test intentionally blocks atomic replacement.
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 	if pollErr == nil {
 		t.Skip("filesystem does not enforce directory write permissions")
 	}
-	if !errors.Is(pollErr, bktelegram.ErrDecisionRetry) || offset != 0 || len(bot.answers) != 0 {
+	if !errors.Is(pollErr, unyolotelegram.ErrDecisionRetry) || offset != 0 || len(bot.answers) != 0 {
 		t.Fatalf("failed callback offset=%d answers=%v err=%v", offset, bot.answers, pollErr)
 	}
 	pending, err := store.Get(claimed.Grant.ID)
@@ -206,7 +206,7 @@ func TestTelegramCallbackRetriesAfterDurableWriteFailure(t *testing.T) {
 }
 
 func approvalTextForTest(claim grants.NotificationClaim) string {
-	text, _ := bktelegram.RenderApproval(grantApprovalMessage(context.Background(), claim.Grant, claim.DecisionToken))
+	text, _ := unyolotelegram.RenderApproval(grantApprovalMessage(context.Background(), claim.Grant, claim.DecisionToken))
 	return text
 }
 

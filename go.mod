@@ -1,4 +1,4 @@
-module github.com/osolmaz/brokerkit
+module github.com/osolmaz/unyolo
 
 go 1.25.8
 

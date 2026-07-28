@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/secretset"
+	"github.com/osolmaz/unyolo/internal/secretset"
 )
 
 // MinimumSecretBytes is the broker-wide minimum for client and operator

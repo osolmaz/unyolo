@@ -6,7 +6,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
 )
 
 type previousManagedCredential struct {

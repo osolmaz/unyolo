@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const defaultUVImage = "ghcr.io/astral-sh/uv:python3.12-bookworm"

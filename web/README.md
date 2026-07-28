@@ -1,6 +1,6 @@
-# BrokerKit documentation site
+# unYOLO documentation site
 
-This is the Astro site behind the BrokerKit landing page and documentation. It is a static build
+This is the Astro site behind the unYOLO landing page and documentation. It is a static build
 with no runtime backend: every page is prerendered, and the only client-side JavaScript handles the
 theme toggle, the search dialog, code-block copy buttons, and the mobile navigation.
 
@@ -9,7 +9,7 @@ theme toggle, the search dialog, code-block copy buttons, and the mobile navigat
 The site is a workspace package, so install from the repository root:
 
 ```sh
-pnpm install --filter brokerkit-web
+pnpm install --filter unyolo-web
 ```
 
 Then, from this directory:

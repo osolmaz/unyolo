@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
+	"github.com/osolmaz/unyolo/agent/v1"
 )
 
 func TestBucketObjectStreamsAreBoundedOwnedAndOneShot(t *testing.T) {

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://brokerkit.io/schema/setup-session/v1/session.schema.json",
-  "title": "BrokerKit nonsecret setup session",
+  "$id": "https://unyolo.io/schema/setup-session/v1/session.schema.json",
+  "title": "unYOLO nonsecret setup session",
   "type": "object",
   "additionalProperties": false,
   "required": ["api_version", "id", "build_id", "deployment", "completed_step_ids", "answers", "secret_slots", "generated_file_digests", "phase", "created_at", "updated_at"],
   "properties": {
-    "api_version": { "const": "brokerkit.io/setup-session/v1" },
+    "api_version": { "const": "unyolo.io/setup-session/v1" },
     "id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
     "build_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "deployment": { "type": "string", "minLength": 1, "maxLength": 64 },

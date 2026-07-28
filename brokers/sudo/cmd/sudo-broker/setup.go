@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 const setupUsage = `usage:
@@ -18,13 +18,13 @@ func runSetup(ctx context.Context, args []string, stdout io.Writer, stderr io.Wr
 	}
 	switch args[0] {
 	case "client":
-		opts, help, err := bksetup.ParseClient(stderr, args[1:], bksetup.ClientDefaults{
+		opts, help, err := unyolosetup.ParseClient(stderr, args[1:], unyolosetup.ClientDefaults{
 			BrokerName: "sudo-broker", EnvPrefix: "SUDO_BROKER",
 		})
 		if err != nil || help {
 			return err
 		}
-		_, err = bksetup.ConfigureClient(stdout, opts)
+		_, err = unyolosetup.ConfigureClient(stdout, opts)
 		return err
 	case "systemd":
 		return runSetupSystemd(ctx, args[1:], stdout, stderr)

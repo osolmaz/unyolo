@@ -1,5 +1,5 @@
 // Package mcpgrant owns the provider-neutral, transcript-safe MCP grant
-// projection layered over BrokerKit grant APIs.
+// projection layered over unYOLO grant APIs.
 package mcpgrant
 
 import (
@@ -7,10 +7,10 @@ import (
 	"errors"
 	"strings"
 
-	usebudget "github.com/osolmaz/brokerkit/authorization/budget"
+	usebudget "github.com/osolmaz/unyolo/authorization/budget"
 )
 
-const APIVersion = "brokerkit.io/mcp-grant/v1"
+const APIVersion = "unyolo.io/mcp-grant/v1"
 
 // Grant is the closed grant lifecycle document returned to MCP clients. Target
 // and attribute values contain only the provider scope accepted at the public

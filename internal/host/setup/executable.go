@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/internal/host/layout"
+	"github.com/osolmaz/unyolo/internal/host/layout"
 )
 
 // VerifyRootOwnedExecutable rejects a running binary or ancestor that a

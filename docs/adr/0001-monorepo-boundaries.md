@@ -1,4 +1,4 @@
-# ADR 0001: BrokerKit Monorepo Boundaries
+# ADR 0001: unYOLO Monorepo Boundaries
 
 Date: 2026-07-11
 
@@ -6,8 +6,8 @@ Status: accepted
 
 ## Decision
 
-The existing `github.com/osolmaz/brokerkit` repository is the authoritative
-monorepo for the shared BrokerKit runtime, Hugging Face broker, GitHub broker,
+The existing `github.com/osolmaz/unyolo` repository is the authoritative
+monorepo for the shared unYOLO runtime, Hugging Face broker, GitHub broker,
 sudo broker, and independently packaged OpenClaw plugin.
 
 Shared Go packages remain at the module root. Provider code lives only under
@@ -33,7 +33,7 @@ channel-specific behavior.
 
 ## Authority
 
-BrokerKit owns the common request, decision, grant, event, and audit lifecycle.
+unYOLO owns the common request, decision, grant, event, and audit lifecycle.
 Each provider broker exclusively owns upstream credentials, request
 classification, immutable executable plans, activation validation, execution,
 provider backstops, and provider audit extensions. A trusted host may present
@@ -50,4 +50,4 @@ schemas.
 
 The root module uses `vX.Y.Z`. Component artifacts use qualified tags:
 `hf-broker/vX.Y.Z`, `gh-broker/vX.Y.Z`, `sudo-broker/vX.Y.Z`, and
-`openclaw-brokerkit/vX.Y.Z`.
+`openclaw-unyolo/vX.Y.Z`.

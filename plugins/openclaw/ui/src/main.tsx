@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { Action, SafeRequest } from "../../src/types.js";
 import {
-  BrokerKitUiApi,
+  unYOLOUiApi,
   parseUiBootstrap,
   type UiDecisionOptions,
 } from "./api.js";
@@ -20,7 +20,7 @@ import "./styles.css";
 import { useBrokerSnapshot } from "./use-broker-snapshot.js";
 
 const bootstrap = parseUiBootstrap(location.hash.slice(1));
-const api = new BrokerKitUiApi(bootstrap);
+const api = new unYOLOUiApi(bootstrap);
 history.replaceState(null, "", location.pathname);
 
 export function App() {
@@ -59,7 +59,7 @@ export function App() {
       <header>
         <div>
           <p className="eyebrow">
-            <ShieldCheck size={15} /> BrokerKit
+            <ShieldCheck size={15} /> unYOLO
           </p>
           <h1>Approvals</h1>
           <p className="subtle">

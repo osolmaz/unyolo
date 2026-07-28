@@ -10,7 +10,7 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/storage/state"
 )
 
 // Run executes one offline state maintenance command.

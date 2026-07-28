@@ -1,4 +1,4 @@
-// Package controlplane assembles Brokerkit's shared broker control plane.
+// Package controlplane assembles unYOLO's shared broker control plane.
 package controlplane
 
 import (
@@ -6,19 +6,19 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/authorization/decision"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/operator/api"
-	"github.com/osolmaz/brokerkit/operator/auth"
-	"github.com/osolmaz/brokerkit/operator/inbox"
-	"github.com/osolmaz/brokerkit/telemetry/metrics"
+	"github.com/osolmaz/unyolo/approval"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/auth"
+	"github.com/osolmaz/unyolo/authorization/decision"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/operator/api"
+	"github.com/osolmaz/unyolo/operator/auth"
+	"github.com/osolmaz/unyolo/operator/inbox"
+	"github.com/osolmaz/unyolo/telemetry/metrics"
 )
 
 // Options provides broker-owned policy vocabulary and presentation to the shared runtime.

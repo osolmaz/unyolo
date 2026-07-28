@@ -3,7 +3,7 @@ title: Architecture
 description: The shared control plane, the provider boundary, and the package layout that enforces it.
 ---
 
-BrokerKit is the shared layer beneath `hf-broker`, `gh-broker`, and `sudo-broker`. Its job is to
+unYOLO is the shared layer beneath `hf-broker`, `gh-broker`, and `sudo-broker`. Its job is to
 make the repeated broker machinery reusable without hiding the dangerous provider-specific
 boundary. This page describes the request path, what belongs on each side of that boundary, and how
 the Go package tree keeps the two apart.
@@ -49,7 +49,7 @@ names or target kinds as global built-ins, provider-specific approval wording, o
 parsing.
 
 One exclusion has a subtlety worth stating. The systemd and launchd exclusion is about provider
-operation execution. BrokerKit does own the narrow native service-manager adapters it needs to
+operation execution. unYOLO does own the narrow native service-manager adapters it needs to
 activate and roll back its own host bundle, because that is host lifecycle rather than a brokered
 operation.
 
@@ -65,7 +65,7 @@ and `head_ref`. `sudo-broker` owns the single `exec.command` operation, the `use
 The Go tree is organised by product domain rather than by layer:
 
 ```text
-brokerkit/
+unyolo/
 |-- agent/         # Agent V1 API, clients, runtime, MCP bridge, wire adapters
 |-- approval/      # Decision presentation and notification lifecycle
 |-- authorization/ # Admission, policy, grants, decisions, use budgets
@@ -104,7 +104,7 @@ commands and plugins
         ↓
 provider brokers
         ↓
-public BrokerKit domains
+public unYOLO domains
         ↓
 internal infrastructure and protocol artifacts
 ```
@@ -131,7 +131,7 @@ exposes an authenticated identity handshake plus provider-approved smart-HTTP an
 Agent operations, grants, webhooks, browser sessions, and operator routes all return not found on
 that listener, so a Git endpoint cannot be repurposed into a broad agent API.
 
-BrokerKit defines no default port for any of them. Production setup on Linux uses
+unYOLO defines no default port for any of them. Production setup on Linux uses
 permission-restricted Unix sockets for the agent and operator listeners; the Git listener needs a
 TCP endpoint because standard Git clients require one.
 

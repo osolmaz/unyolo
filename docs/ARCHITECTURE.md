@@ -1,15 +1,15 @@
-# BrokerKit Architecture
+# unYOLO Architecture
 
-BrokerKit is the shared layer for broker-style access-control services. It
+unYOLO is the shared layer for broker-style access-control services. It
 makes repeated broker machinery reusable without hiding the dangerous
 provider-specific boundary.
 
-`hf-broker`, `gh-broker`, and `sudo-broker` use BrokerKit for the shared control
+`hf-broker`, `gh-broker`, and `sudo-broker` use unYOLO for the shared control
 plane. Provider directories contain only their platform-specific behavior.
 
 ## Broker Shape
 
-Every broker using BrokerKit follows this request path:
+Every broker using unYOLO follows this request path:
 
 ```text
 authenticate client
@@ -31,10 +31,10 @@ provider-specific message wording, and execution.
 
 ## Package Boundaries
 
-BrokerKit groups shared packages by product domain:
+unYOLO groups shared packages by product domain:
 
 ```text
-brokerkit/
+unyolo/
 |-- agent/         # Agent API, clients, runtime, MCP bridge, and wire adapters.
 |-- approval/      # Decision presentation and notification lifecycle.
 |-- authorization/ # Admission, policy, grants, decisions, and use budgets.
@@ -55,7 +55,7 @@ boundary is [OWNERSHIP.md](OWNERSHIP.md).
 
 ## What Belongs Here
 
-brokerkit may contain:
+unyolo may contain:
 
 - bearer/basic shared-secret authentication for named clients
 - minimum secret length checks
@@ -85,7 +85,7 @@ brokerkit may contain:
 
 ## What Does Not Belong Here
 
-brokerkit must not contain:
+unyolo must not contain:
 
 - Hugging Face Git/LFS behavior
 - GitHub REST or Git smart-HTTP behavior
@@ -97,7 +97,7 @@ brokerkit must not contain:
 - broad framework wiring that makes simple brokers harder to understand
 
 The systemd and launchd exclusion concerns provider operation execution.
-BrokerKit does own the narrow native service-manager adapters required to
+unYOLO does own the narrow native service-manager adapters required to
 activate and roll back its own immutable host bundle.
 
 ## Provider Responsibilities
@@ -136,7 +136,7 @@ provider-specific MCP dispatch path.
 
 ## Security Invariants
 
-brokerkit must preserve these invariants:
+unyolo must preserve these invariants:
 
 - A broker client secret is not the protected upstream credential.
 - Upstream credentials and privilege tokens are never returned to clients.
@@ -161,7 +161,7 @@ classifiers, credentials, execution, and wording remain in their broker.
 
 Git-speaking brokers use three distinct listeners: Agent V1, Operator V1, and
 Git data plane. The Git listener is an explicit deployment-selected TCP
-endpoint. BrokerKit defines no default port. Its shared route gate exposes only
+endpoint. unYOLO defines no default port. Its shared route gate exposes only
 an authenticated identity handshake and provider-approved smart-HTTP and LFS
 routes; agent operations, grants, webhooks, browser sessions, and operator
 routes are unreachable on that listener.

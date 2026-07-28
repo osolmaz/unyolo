@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/flow"
 )
 
 func TestAccessibleSelect(t *testing.T) {

@@ -6,7 +6,7 @@ Status: implemented; release qualification pending
 
 ## Objective
 
-BrokerKit needs one host-level installation and upgrade transaction for every
+unYOLO needs one host-level installation and upgrade transaction for every
 component that participates in an approval. The brokers remain separate
 processes, release artifacts, credential domains, listeners, state stores, and
 audit streams. A signed bundle manifest pins the compatible artifacts and the
@@ -18,7 +18,7 @@ survive restarts and temporary route failures without being lost.
 
 ## Incident That Motivated This Work
 
-On 2026-07-21, `brokerkit-telegram.service` was still running a deleted
+On 2026-07-21, `unyolo-telegram.service` was still running a deleted
 `0.1.0+70dc15c` executable after a newer binary had replaced the file on disk.
 The GitHub broker used a newer Operator V1 decision schema. Telegram delivered
 notifications successfully, but button clicks sent the old decision payload.
@@ -30,7 +30,7 @@ four lifecycle gaps:
 
 - component installers could replace binaries independently;
 - replacing a binary did not guarantee that its service restarted;
-- Operator discovery identified only `brokerkit.io/operator/v1`, even when the
+- Operator discovery identified only `unyolo.io/operator/v1`, even when the
   in-place v1 schema had changed; and
 - Telegram acknowledged a failed callback without a durable retry record.
 
@@ -55,20 +55,20 @@ repair, but it does not meet the objective.
 
 ### Host command
 
-Add `cmd/brokerkit` as the operator-facing host command. Its system lifecycle is
+Add `cmd/unyolo` as the operator-facing host command. Its system lifecycle is
 provider-neutral:
 
 ```text
-brokerkit system plan
-brokerkit system install --manifest <path-or-release>
-brokerkit system upgrade --manifest <path-or-release>
-brokerkit system status [--json]
-brokerkit system doctor [--json]
-brokerkit system rollback
+unyolo system plan
+unyolo system install --manifest <path-or-release>
+unyolo system upgrade --manifest <path-or-release>
+unyolo system status [--json]
+unyolo system doctor [--json]
+unyolo system rollback
 ```
 
 Provider commands continue to own credentials, policy, catalogs, and provider
-configuration. `brokerkit system` owns artifact staging, release activation,
+configuration. `unyolo system` owns artifact staging, release activation,
 service ordering, compatibility checks, rollback, and host-level evidence.
 
 ### Immutable host layout
@@ -76,25 +76,25 @@ service ordering, compatibility checks, rollback, and host-level evidence.
 Linux uses:
 
 ```text
-/opt/brokerkit/releases/<bundle-id>/
+/opt/unyolo/releases/<bundle-id>/
   manifest.json
-  bin/brokerkit-telegram
+  bin/unyolo-telegram
   bin/gh-broker
   bin/hf-broker
   bin/sudo-broker
   libexec/sudo-broker-exec
 
-/opt/brokerkit/current -> releases/<bundle-id>
-/var/lib/brokerkit-host/activation.json
-/var/lib/brokerkit-host/activation.lock
+/opt/unyolo/current -> releases/<bundle-id>
+/var/lib/unyolo-host/activation.json
+/var/lib/unyolo-host/activation.lock
 ```
 
 macOS uses the same internal layout beneath:
 
 ```text
-/Library/Application Support/BrokerKit/releases/<bundle-id>/
-/Library/Application Support/BrokerKit/current
-/Library/Application Support/BrokerKit/activation.json
+/Library/Application Support/unyolo/releases/<bundle-id>/
+/Library/Application Support/unyolo/current
+/Library/Application Support/unyolo/activation.json
 ```
 
 Configuration and broker state remain in their existing provider-owned
@@ -110,20 +110,20 @@ mutable release pointer.
 
 ### Bundle manifest
 
-Create a closed `brokerkit.io/runtime-bundle/v1` manifest. It contains no
+Create a closed `unyolo.io/runtime-bundle/v1` manifest. It contains no
 credentials or machine-specific configuration.
 
 ```json
 {
-  "api_version": "brokerkit.io/runtime-bundle/v1",
+  "api_version": "unyolo.io/runtime-bundle/v1",
   "bundle_id": "2026.07.21.1",
   "source_commit": "<full commit sha>",
   "operator_contract_digest": "sha256:<digest>",
   "components": [
     {
-      "name": "brokerkit-telegram",
-      "release_tag": "brokerkit-telegram/v0.2.0",
-      "asset": "brokerkit-telegram_0.2.0_linux_amd64.tar.gz",
+      "name": "unyolo-telegram",
+      "release_tag": "unyolo-telegram/v0.2.0",
+      "asset": "unyolo-telegram_0.2.0_linux_amd64.tar.gz",
       "sha256": "<digest>",
       "required": true
     }
@@ -172,7 +172,7 @@ Replace the Operator V1 descriptor in place with required fields:
 
 ```json
 {
-  "api_version": "brokerkit.io/operator/v1",
+  "api_version": "unyolo.io/operator/v1",
   "contract_digest": "sha256:<digest>",
   "build_id": "gh-broker/v0.4.0+<commit>"
 }
@@ -184,20 +184,20 @@ digests. A health response is ready only after configuration, state, policy,
 credentials, and protocol identity are ready.
 
 The Operator client requires both the API version and contract digest to
-match. Unknown or missing digests fail closed. `brokerkit-telegram` checks every
+match. Unknown or missing digests fail closed. `unyolo-telegram` checks every
 configured route before polling and repeats the check periodically. A mismatch
 stops polling and makes ingress readiness fail.
 
 The host command checks the manifest, every executable on disk, every running
 process, and every authenticated discovery response. Linux diagnostics also
 detect `/proc/<pid>/exe (deleted)`. macOS uses the native process executable
-lookup. Any disagreement makes `brokerkit system status` unhealthy.
+lookup. Any disagreement makes `unyolo system status` unhealthy.
 
 ## Transactional Activation
 
 ### Preflight
 
-`brokerkit system install` and `upgrade` acquire the host activation lock and
+`unyolo system install` and `upgrade` acquire the host activation lock and
 complete all checks before stopping a service:
 
 1. verify manifest schema, signature, provenance, and component completeness;
@@ -217,7 +217,7 @@ and rollback action. Dry-run output contains no secrets.
 
 The host command then performs one bounded transaction:
 
-1. stop `brokerkit-telegram` so Telegram retains new updates upstream;
+1. stop `unyolo-telegram` so Telegram retains new updates upstream;
 2. stop optional shared UI consumers;
 3. stop provider services and their socket activation units;
 4. fsync the staged release and atomically switch `current`;
@@ -266,8 +266,8 @@ it into the new format.
 
 ### Linux
 
-Install a `brokerkit.target` that groups the configured BrokerKit units. Each
-unit declares `PartOf=brokerkit.target`, while the host command retains explicit
+Install a `unyolo.target` that groups the configured unYOLO units. Each
+unit declares `PartOf=unyolo.target`, while the host command retains explicit
 start and readiness ordering. The target supports status, emergency stop, and
 operator inspection. It is not used as a substitute for the activation
 transaction.
@@ -341,7 +341,7 @@ activation.
 
 ## Doctor and Observability
 
-`brokerkit system doctor` reports one row per component with:
+`unyolo system doctor` reports one row per component with:
 
 - desired and running build IDs;
 - desired and discovered contract digests;
@@ -358,7 +358,7 @@ or provider credentials. JSON output uses a closed schema.
 Add structured events and metrics for activation stage, rollback, protocol
 mismatch, deleted running executable, callback receipt, retry, terminal
 decision, queue age, and route health. Callback failures log the operator error
-code, HTTP status, route, grant correlation ID, and BrokerKit correlation ID.
+code, HTTP status, route, grant correlation ID, and unYOLO correlation ID.
 Raw response bodies remain excluded.
 
 An unavailable callback increments a dedicated counter. A protocol mismatch or

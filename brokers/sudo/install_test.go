@@ -16,12 +16,12 @@ func TestInstallWrapperDelegatesCompanionBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(context.Background(), "sh", "install.sh") // #nosec G204 -- repository-owned wrapper.
-	command.Env = append(os.Environ(), "BROKERKIT_INSTALLER_FILE="+delegate)
+	command.Env = append(os.Environ(), "UNYOLO_INSTALLER_FILE="+delegate)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("install wrapper: %v: %s", err, output)
 	}
-	if got := strings.TrimSpace(string(output)); got != "sudo-broker|osolmaz/brokerkit|sudo-broker/|sudo-broker-exec" {
+	if got := strings.TrimSpace(string(output)); got != "sudo-broker|osolmaz/unyolo|sudo-broker/|sudo-broker-exec" {
 		t.Fatalf("delegated environment = %q", got)
 	}
 }

@@ -26,16 +26,16 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/approval"
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	bkaudit "github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/approval"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	unyoloaudit "github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const testSharedSecret = "0123456789abcdef0123456789abcdef"
@@ -73,7 +73,7 @@ func TestGitHubWebhookVerifiesSignatureAndAuditsMetadata(t *testing.T) {
 	var logs bytes.Buffer
 	server := newTestServer(t)
 	server.githubWebhookSecret = "webhook-secret"
-	server.auditWriter = bkaudit.New(&logs)
+	server.auditWriter = unyoloaudit.New(&logs)
 	body := []byte(`{"action":"added","installation":{"id":42},"repositories_added":[{"full_name":"osolmaz/gh-broker"}]}`)
 	response := doWebhook(t, server, body, map[string]string{
 		"X-GitHub-Event":      "installation_repositories",
@@ -1001,7 +1001,7 @@ func TestTelegramApprovalActivatesGrant(t *testing.T) {
 	telegramState := &fakeTelegramState{chatID: 123, messageID: 77}
 	telegramAPI := httptest.NewServer(fakeTelegramHandler(t, telegramState))
 	t.Cleanup(telegramAPI.Close)
-	telegram, err := bktelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, bktelegram.Options{
+	telegram, err := unyolotelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, unyolotelegram.Options{
 		PollTimeoutSeconds: 1,
 	})
 	if err != nil {
@@ -1468,7 +1468,7 @@ func createTelegramPullRequestGrant(t *testing.T, server *Server, state *fakeTel
 	return decodeGrantResponse(t, response)
 }
 
-func pollTelegramApproval(t *testing.T, telegram *bktelegram.Client, server *Server) {
+func pollTelegramApproval(t *testing.T, telegram *unyolotelegram.Client, server *Server) {
 	t.Helper()
 	nextOffset, err := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
 	if err != nil {
@@ -1775,15 +1775,15 @@ func TestAPIGrantFromStoreIncludesSafeStatusFields(t *testing.T) {
 
 func TestAPITarget(t *testing.T) {
 	t.Parallel()
-	target := apiTarget(policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "brokerkit"}))
-	if target.Owner != "osolmaz" || target.Name != "brokerkit" || target.Kind != "repo" {
+	target := apiTarget(policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "unyolo"}))
+	if target.Owner != "osolmaz" || target.Name != "unyolo" || target.Kind != "repo" {
 		t.Fatalf("apiTarget() = %+v, want repo target", target)
 	}
 }
 
 func TestLegacyJSONProxyRoutesAreRemoved(t *testing.T) {
 	server := newTestServer(t)
-	for _, path := range []string{"/api/repos", "/api/repos/osolmaz/brokerkit/contents/README.md"} {
+	for _, path := range []string{"/api/repos", "/api/repos/osolmaz/unyolo/contents/README.md"} {
 		response := do(t, server, http.MethodGet, path, bearerAuth())
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("%s status = %d, want 404", path, response.Code)
@@ -1795,7 +1795,7 @@ func TestAuditLogDoesNotExposeClientSecretsOrBodies(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
 	server := newTestServer(t)
-	server.auditWriter = bkaudit.New(&logs)
+	server.auditWriter = unyoloaudit.New(&logs)
 	rawBody := []byte("do-not-log-body")
 	response := doWithHeaders(
 		t,
@@ -1823,7 +1823,7 @@ func TestAuditLogRecordsPolicyDenialWithoutSecrets(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
 	server := newTestServer(t)
-	server.auditWriter = bkaudit.New(&logs)
+	server.auditWriter = unyoloaudit.New(&logs)
 	response := doWithBody(
 		t,
 		server,
@@ -1850,7 +1850,7 @@ func TestAuditLogRecordsActualReceivePackOperation(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
 	server := newTestServer(t)
-	server.auditWriter = bkaudit.New(&logs)
+	server.auditWriter = unyoloaudit.New(&logs)
 	response := doWithBody(
 		t,
 		server,

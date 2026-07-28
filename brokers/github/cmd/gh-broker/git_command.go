@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/osolmaz/brokerkit/git/client"
+	"github.com/osolmaz/unyolo/git/client"
 )
 
 func githubGitProvider() gitclient.Provider {

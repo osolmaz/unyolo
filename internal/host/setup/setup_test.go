@@ -22,7 +22,7 @@ func TestParseAndConfigureClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts, help, err := ParseClient(&bytes.Buffer{}, []string{
-		"--client", "bob", "--endpoint", "unix:///run/brokerkit/test/agent.sock", "--secret-file", secretFile, "--home-dir", home,
+		"--client", "bob", "--endpoint", "unix:///run/unyolo/test/agent.sock", "--secret-file", secretFile, "--home-dir", home,
 	}, ClientDefaults{BrokerName: "test-broker", EnvPrefix: "TEST_BROKER", ClientName: "agent"})
 	if err != nil || help {
 		t.Fatalf("ParseClient() opts=%+v help=%v err=%v", opts, help, err)
@@ -36,7 +36,7 @@ func TestParseAndConfigureClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"agent_endpoint": "unix:///run/brokerkit/test/agent.sock"`) ||
+	if !strings.Contains(string(data), `"agent_endpoint": "unix:///run/unyolo/test/agent.sock"`) ||
 		!strings.Contains(string(data), `"client_id": "bob"`) ||
 		!strings.Contains(string(data), `"shared_secret": "`+secret+`"`) {
 		t.Fatalf("client config = %s", data)
@@ -54,10 +54,10 @@ func TestParseClientHelpAndValidation(t *testing.T) {
 	}
 	invalid := [][]string{
 		{"extra"},
-		{"--endpoint", "unix:///run/brokerkit/test/agent.sock", "--secret-file", "/tmp/s", "--home-dir", "/tmp", "--client", ""},
+		{"--endpoint", "unix:///run/unyolo/test/agent.sock", "--secret-file", "/tmp/s", "--home-dir", "/tmp", "--client", ""},
 		{"--client", "bob", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
 		{"--client", "bob", "--endpoint", "activation://agent", "--secret-file", "/tmp/s", "--home-dir", "/tmp"},
-		{"--client", "bob", "--endpoint", "unix:///run/brokerkit/test/agent.sock", "--home-dir", "/tmp"},
+		{"--client", "bob", "--endpoint", "unix:///run/unyolo/test/agent.sock", "--home-dir", "/tmp"},
 	}
 	for _, args := range invalid {
 		if _, _, err := ParseClient(&bytes.Buffer{}, args, ClientDefaults{BrokerName: "test-broker", EnvPrefix: "TEST", ClientName: "bob"}); err == nil {
@@ -73,7 +73,7 @@ func TestConfigureClientRejectsWeakSecret(t *testing.T) {
 	}
 	_, err := ConfigureClient(&bytes.Buffer{}, ClientOptions{
 		BrokerName: "test-broker", EnvPrefix: "TEST", ClientName: "bob",
-		Endpoint: "unix:///run/brokerkit/test/agent.sock", SecretFile: secretFile, HomeDir: t.TempDir(),
+		Endpoint: "unix:///run/unyolo/test/agent.sock", SecretFile: secretFile, HomeDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("ConfigureClient(weak secret) error = nil")

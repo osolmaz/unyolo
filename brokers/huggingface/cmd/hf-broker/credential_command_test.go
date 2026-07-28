@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/credentialauth"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/provider"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
 )
 
 func TestCredentialInspectReadsTokenFromStdinWithoutLeakingIt(t *testing.T) {
@@ -78,8 +78,8 @@ func TestCredentialInteractiveElevationPreservesExplicitOutputFlags(t *testing.T
 func TestCredentialActivationBuildsExactReplacement(t *testing.T) {
 	deps := credentialTestDependencies()
 	deps.euid = func() int { return 0 }
-	var plan bkservice.CredentialReplacePlan
-	deps.replace = func(_ context.Context, candidate bkservice.CredentialReplacePlan) error {
+	var plan unyoloservice.CredentialReplacePlan
+	deps.replace = func(_ context.Context, candidate unyoloservice.CredentialReplacePlan) error {
 		plan = candidate
 		return nil
 	}
@@ -204,7 +204,7 @@ func TestCredentialRepairLifecycleAuditIsDurableAndVerboseOnly(t *testing.T) {
 				}
 				return nopWriteCloser{Writer: io.MultiWriter(writers...)}, nil
 			}
-			deps.replace = func(_ context.Context, plan bkservice.CredentialReplacePlan) error {
+			deps.replace = func(_ context.Context, plan unyoloservice.CredentialReplacePlan) error {
 				return plan.Lifecycle.Record(credentiallifecycle.Event{
 					Class: "huggingface-access", Action: credentiallifecycle.ActionRotated,
 					Outcome: credentiallifecycle.OutcomeSucceeded, Provider: "huggingface",
@@ -285,7 +285,7 @@ func TestCredentialActivationRefusesCorruptGenerationMetadata(t *testing.T) {
 	deps := credentialTestDependencies()
 	deps.euid = func() int { return 0 }
 	deps.readFile = func(string) ([]byte, error) { return []byte(`{"status":"valid","snapshot":{}}`), nil }
-	deps.replace = func(context.Context, bkservice.CredentialReplacePlan) error {
+	deps.replace = func(context.Context, unyoloservice.CredentialReplacePlan) error {
 		t.Fatal("replacement ran with corrupt generation metadata")
 		return nil
 	}
@@ -596,7 +596,7 @@ func credentialTestDependencies() credentialDependencies {
 				},
 			})
 		},
-		replace:       func(context.Context, bkservice.CredentialReplacePlan) error { return nil },
+		replace:       func(context.Context, unyoloservice.CredentialReplacePlan) error { return nil },
 		openURL:       func(context.Context, string) error { return nil },
 		readHidden:    func(io.Reader, io.Writer) (string, error) { return "hf_candidate", nil },
 		euid:          func() int { return 1000 },

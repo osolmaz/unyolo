@@ -8,10 +8,10 @@ import (
 	"io"
 	"os"
 
-	sharedpreset "github.com/osolmaz/brokerkit/authorization/preset"
-	ghpolicy "github.com/osolmaz/brokerkit/brokers/github/internal/policy"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	sharedpreset "github.com/osolmaz/unyolo/authorization/preset"
+	ghpolicy "github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policypreset"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 const policyUsage = `usage:
@@ -34,8 +34,8 @@ func runPolicy(stdout, stderr io.Writer, args []string) error {
 
 type policyRenderCommand struct {
 	preset           string
-	clients          bksetup.StringListFlag
-	deniedOperations bksetup.StringListFlag
+	clients          unyolosetup.StringListFlag
+	deniedOperations unyolosetup.StringListFlag
 	policyOutput     string
 	profileOutput    string
 	manifestOutput   string
@@ -49,7 +49,7 @@ func runPolicyRender(stdout, stderr io.Writer, args []string) error {
 	}
 	clients := command.clients
 	if len(clients) == 0 {
-		clients = bksetup.StringListFlag{"agent"}
+		clients = unyolosetup.StringListFlag{"agent"}
 	}
 	artifacts, err := policypreset.Render(policypreset.Profile{
 		Version: policypreset.ProfileVersion, Preset: command.preset,

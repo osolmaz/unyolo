@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
 
 const githubOperationContextKey = "gh_broker_operation"

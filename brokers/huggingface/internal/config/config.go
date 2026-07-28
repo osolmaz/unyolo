@@ -18,10 +18,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/authorization/admission"
-	"github.com/osolmaz/brokerkit/internal/config/secretfile"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/auth"
+	"github.com/osolmaz/unyolo/authorization/admission"
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 // MinSecretBytes is the minimum accepted client secret length.

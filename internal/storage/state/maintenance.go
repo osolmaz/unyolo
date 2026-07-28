@@ -15,15 +15,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/fsx"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/fsx"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 	sqlite "modernc.org/sqlite"
 )
 
 const (
 	backupManifestFile = "manifest.json"
-	backupFormat       = "brokerkit.io/state-backup/v1"
-	exportFormat       = "brokerkit.io/state-export/v1"
+	backupFormat       = "unyolo.io/state-backup/v1"
+	exportFormat       = "unyolo.io/state-export/v1"
 	maxStateFileBytes  = int64(4 << 30)
 	maxExportRows      = 100_000
 )
@@ -128,7 +128,7 @@ func createBackupStage(stateDirectory, destination string) (string, error) {
 	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
 		return "", errors.New("backup destination already exists or is unavailable")
 	}
-	temporary, err := os.MkdirTemp(filepath.Dir(destination), ".brokerkit-backup-")
+	temporary, err := os.MkdirTemp(filepath.Dir(destination), ".unyolo-backup-")
 	if err != nil {
 		return "", err
 	}

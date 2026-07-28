@@ -1,8 +1,8 @@
-![BrokerKit](assets/logo-wordmark.svg)
+![unYOLO](assets/logo-wordmark.svg)
 
-# BrokerKit
+# unYOLO
 
-BrokerKit is a Go framework for building credential brokers. A broker holds a
+unYOLO is a Go framework for building credential brokers. A broker holds a
 real credential and hands an untrusted client a separate one that works only
 for the operations you allowed.
 
@@ -89,11 +89,11 @@ One Go module, built with the version in [go.mod](go.mod):
 go build ./brokers/github/cmd/gh-broker
 go build ./brokers/huggingface/cmd/hf-broker
 go build ./brokers/sudo/cmd/sudo-broker ./brokers/sudo/cmd/sudo-broker-exec
-go build ./cmd/brokerkit ./cmd/brokerkit-telegram
+go build ./cmd/unyolo ./cmd/unyolo-telegram
 ```
 
 Each broker's `setup` command writes credentials, policy, and service files.
-For a production host, `brokerkit system install` activates every service as
+For a production host, `unyolo system install` activates every service as
 one signed bundle. See [docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
 
 ## Building your own broker

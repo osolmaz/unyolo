@@ -1,4 +1,4 @@
-// Package buildinfo exposes the release identity embedded in BrokerKit binaries.
+// Package buildinfo exposes the release identity embedded in unYOLO binaries.
 package buildinfo
 
 // Version is replaced by the release builder. Development binaries remain

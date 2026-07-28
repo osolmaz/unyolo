@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-  "/.well-known/brokerkit-operator": {
+  "/.well-known/unyolo-operator": {
     parameters: {
       query?: never;
       header?: never;
@@ -123,7 +123,7 @@ export interface components {
   schemas: {
     Descriptor: {
       /** @constant */
-      api_version: "brokerkit.io/operator/v1";
+      api_version: "unyolo.io/operator/v1";
       contract_digest: string;
       build_id: string;
     };
@@ -238,7 +238,7 @@ export interface components {
     };
     UISnapshot: {
       /** @constant */
-      api_version: "brokerkit.io/operator-ui/v1";
+      api_version: "unyolo.io/operator-ui/v1";
       cursor: string;
       /** Format: date-time */
       synchronized_at: string;
@@ -248,13 +248,13 @@ export interface components {
     };
     UISnapshotEvent: {
       /** @constant */
-      api_version: "brokerkit.io/operator-ui/v1";
+      api_version: "unyolo.io/operator-ui/v1";
       cursor: string;
       changed: boolean;
     };
     UISummary: {
       /** @constant */
-      api_version: "brokerkit.io/operator-ui/v1";
+      api_version: "unyolo.io/operator-ui/v1";
       cursor: string;
       pending: number;
       healthy: boolean;

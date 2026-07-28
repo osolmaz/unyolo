@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const APIVersion = "brokerkit.io/agent/v1"
+const APIVersion = "unyolo.io/agent/v1"
 
 var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 

@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 // Outcome is the stable result of execution or reconciliation. Proven must be

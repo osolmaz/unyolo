@@ -40,14 +40,14 @@ func TestLaunchdInstallPlanRejectsUnsafeValues(t *testing.T) {
 
 func TestValidateLaunchdRuntimeDirectoryRejectsDuplicateAndUnsafeMode(t *testing.T) {
 	seen := map[string]struct{}{}
-	valid := LaunchdDirectory{Path: "/var/run/brokerkit/test", Owner: "root", Group: "_broker", Mode: 0o750}
+	valid := LaunchdDirectory{Path: "/var/run/unyolo/test", Owner: "root", Group: "_broker", Mode: 0o750}
 	if err := validateLaunchdRuntimeDirectory(valid, seen); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateLaunchdRuntimeDirectory(valid, seen); err == nil {
 		t.Fatal("duplicate runtime directory accepted")
 	}
-	unsafeMode := LaunchdDirectory{Path: "/var/run/brokerkit/other", Owner: "root", Group: "_broker", Mode: 0o777}
+	unsafeMode := LaunchdDirectory{Path: "/var/run/unyolo/other", Owner: "root", Group: "_broker", Mode: 0o777}
 	if err := validateLaunchdRuntimeDirectory(unsafeMode, map[string]struct{}{}); err == nil {
 		t.Fatal("unsafe runtime directory mode accepted")
 	}
@@ -57,11 +57,11 @@ func launchdInstallFixture() LaunchdInstallPlan {
 	return LaunchdInstallPlan{
 		User: "_broker", Group: "_broker", AdditionalGroups: []string{"broker-agent", "broker-operator"},
 		GroupMembers: map[string][]string{"broker-agent": {"bob"}, "broker-operator": {"onur"}},
-		ConfigDir:    "/Library/Application Support/BrokerKit/test", StateDir: "/Library/Application Support/BrokerKit/test-state",
-		LaunchdDir: "/Library/LaunchDaemons", PlistName: "dev.brokerkit.test.plist", NoStart: true, AllowNonRoot: true,
+		ConfigDir:    "/Library/Application Support/unyolo/test", StateDir: "/Library/Application Support/unyolo/test-state",
+		LaunchdDir: "/Library/LaunchDaemons", PlistName: "io.unyolo.test.plist", NoStart: true, AllowNonRoot: true,
 		Files:              []ManagedFile{{Area: ManagedFileConfig, Name: "secret", Data: []byte("secret"), Mode: 0o600, Owner: ManagedFileOwnerService}},
-		RuntimeDirectories: []LaunchdDirectory{{Path: "/var/run/brokerkit/test", Owner: "root", Group: "_broker", Mode: 0o750}},
-		Unit: LaunchdUnit{Label: "dev.brokerkit.test", ProgramArguments: []string{"/usr/local/bin/test", "serve"}, UserName: "_broker", GroupName: "_broker",
-			Sockets: []LaunchdSocket{{Name: "agent", Path: "/var/run/brokerkit/test/agent.sock", Owner: "root", Group: "broker-agent", Mode: 0o660, DirectoryMode: 0o750}}},
+		RuntimeDirectories: []LaunchdDirectory{{Path: "/var/run/unyolo/test", Owner: "root", Group: "_broker", Mode: 0o750}},
+		Unit: LaunchdUnit{Label: "io.unyolo.test", ProgramArguments: []string{"/usr/local/bin/test", "serve"}, UserName: "_broker", GroupName: "_broker",
+			Sockets: []LaunchdSocket{{Name: "agent", Path: "/var/run/unyolo/test/agent.sock", Owner: "root", Group: "broker-agent", Mode: 0o660, DirectoryMode: 0o750}}},
 	}
 }

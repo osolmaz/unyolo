@@ -9,13 +9,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/policypreset"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/brokers/github/internal/policypreset"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const setupUsage = `usage:
@@ -25,11 +25,11 @@ const setupUsage = `usage:
   gh-broker setup github-user revoke --state-dir DIR --user-id ID --github-app-client-id-file FILE --github-app-client-secret-file FILE
   gh-broker setup client --client <name> --endpoint <uri> --git-endpoint <loopback-tcp-uri> --secret-file <path> [--home-dir <path>]`
 
-type setupClientOptions = bksetup.ClientOptions
+type setupClientOptions = unyolosetup.ClientOptions
 type setupCommand func(context.Context, io.Writer, io.Writer, []string) error
 
 type setupSystemdOptions struct {
-	bksetup.SystemdOptions
+	unyolosetup.SystemdOptions
 	GitHubTokenFile           string
 	GitHubAppIDFile           string
 	GitHubAppPrivateKeyFile   string
@@ -39,7 +39,7 @@ type setupSystemdOptions struct {
 	GitHubWebhookSecretFile   string
 	ScopeFile                 string
 	PolicyPreset              string
-	DeniedOperations          bksetup.StringListFlag
+	DeniedOperations          unyolosetup.StringListFlag
 	ResetDeniedOperations     bool
 	ReplacePolicy             bool
 	PolicyPresetExplicit      bool
@@ -52,7 +52,7 @@ type setupSystemdOptions struct {
 	TelegramBotTokenFile      string
 	TelegramChatID            int64
 	DevTokenFallback          bool
-	CommandRunner             bkservice.CommandRunner
+	CommandRunner             unyoloservice.CommandRunner
 	Lifecycle                 *credentiallifecycle.Reporter
 }
 
@@ -89,7 +89,7 @@ func setupCommands() map[string]setupCommand {
 }
 
 func runSetupClientCommand(stdout io.Writer, stderr io.Writer, args []string) error {
-	opts, help, err := bksetup.ParseClient(stderr, args, ghClientDefaults())
+	opts, help, err := unyolosetup.ParseClient(stderr, args, ghClientDefaults())
 	if err != nil {
 		return err
 	}
@@ -115,12 +115,12 @@ func runSetupSystemdCommand(ctx context.Context, stdout io.Writer, stderr io.Wri
 }
 
 func parseSetupClient(stderr io.Writer, args []string) (setupClientOptions, error) {
-	opts, _, err := bksetup.ParseClient(stderr, args, ghClientDefaults())
+	opts, _, err := unyolosetup.ParseClient(stderr, args, ghClientDefaults())
 	return opts, err
 }
 
-func ghClientDefaults() bksetup.ClientDefaults {
-	return bksetup.ClientDefaults{BrokerName: "gh-broker", EnvPrefix: "GH_BROKER"}
+func ghClientDefaults() unyolosetup.ClientDefaults {
+	return unyolosetup.ClientDefaults{BrokerName: "gh-broker", EnvPrefix: "GH_BROKER"}
 }
 
 func validateSetupClientOptions(opts setupClientOptions) error {
@@ -128,7 +128,7 @@ func validateSetupClientOptions(opts setupClientOptions) error {
 }
 
 func runSetupClient(stdout io.Writer, opts setupClientOptions) error {
-	_, err := bksetup.ConfigureClient(stdout, opts)
+	_, err := unyolosetup.ConfigureClient(stdout, opts)
 	return err
 }
 
@@ -155,15 +155,15 @@ func parseSetupSystemdCommand(stderr io.Writer, stdin io.Reader, args []string) 
 
 func defaultGitHubSystemdOptions() setupSystemdOptions {
 	return setupSystemdOptions{
-		SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
+		SystemdOptions: unyolosetup.DefaultSystemdOptions(unyolosetup.SystemdDefaults{
 			BrokerName: "gh-broker", User: "gh-broker", Group: "gh-broker",
-			Endpoint: "unix:///run/brokerkit/github/agent/broker.sock",
+			Endpoint: "unix:///run/unyolo/github/agent/broker.sock",
 		}),
 	}
 }
 
 func bindGitHubSystemdFlags(fs *flag.FlagSet, opts *setupSystemdOptions) {
-	bksetup.BindSystemdFlags(fs, &opts.SystemdOptions)
+	unyolosetup.BindSystemdFlags(fs, &opts.SystemdOptions)
 	fs.StringVar(&opts.GitHubTokenFile, "github-token-file", "", "file containing a GitHub token for dev-token fallback")
 	fs.StringVar(&opts.GitHubAppIDFile, "github-app-id-file", "", "file containing the GitHub App id")
 	fs.StringVar(&opts.GitHubAppPrivateKeyFile, "github-app-private-key-file", "", "file containing the GitHub App private key")
@@ -179,7 +179,7 @@ func bindGitHubSystemdFlags(fs *flag.FlagSet, opts *setupSystemdOptions) {
 	fs.BoolVar(&opts.DevTokenFallback, "dev-token-fallback", false, "configure the current GitHub token fallback runtime")
 	fs.StringVar(&opts.OperatorID, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
-	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/github/operator/broker.sock", "operator inbox endpoint URI")
+	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/unyolo/github/operator/broker.sock", "operator inbox endpoint URI")
 	fs.StringVar(&opts.GitEndpoint, "git-endpoint", "", "explicit loopback TCP endpoint for native Git clients")
 	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
@@ -200,17 +200,17 @@ func parseGitHubSystemdFlags(fs *flag.FlagSet, stderr io.Writer, flagOutput *str
 }
 
 func finalizeGitHubSystemdOptions(opts *setupSystemdOptions, stdin io.Reader) error {
-	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
+	finalized, err := unyolosetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
 		return err
 	}
 	opts.SystemdOptions = finalized
-	secret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin}, stdin)
+	secret, err := unyolosetup.ResolveSecret(unyolosetup.SecretInput{File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin}, stdin)
 	if err != nil {
 		return err
 	}
 	opts.SharedSecret = secret
-	operatorSecret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
+	operatorSecret, err := unyolosetup.ResolveSecret(unyolosetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func validateSetupOperatorCredentials(opts setupSystemdOptions) error {
 	if err := clientconfig.ValidateClientName(opts.OperatorID); err != nil {
 		return err
 	}
-	if _, err := bksetup.ResolveSecret(bksetup.SecretInput{Stdin: true}, strings.NewReader(opts.OperatorSecret)); err != nil {
+	if _, err := unyolosetup.ResolveSecret(unyolosetup.SecretInput{Stdin: true}, strings.NewReader(opts.OperatorSecret)); err != nil {
 		return fmt.Errorf("operator secret: %w", err)
 	}
 	if opts.OperatorSecret == opts.SharedSecret {
@@ -355,6 +355,6 @@ func validateGitHubAppUserSetup(opts setupSystemdOptions) error {
 }
 
 func validateSetupSystemdClientOptions(opts setupSystemdOptions) error {
-	_, err := bksetup.ResolveSecret(bksetup.SecretInput{Stdin: true}, strings.NewReader(opts.SharedSecret))
+	_, err := unyolosetup.ResolveSecret(unyolosetup.SecretInput{Stdin: true}, strings.NewReader(opts.SharedSecret))
 	return err
 }

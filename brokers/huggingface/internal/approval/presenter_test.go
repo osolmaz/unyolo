@@ -5,17 +5,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/approval/view"
-	bkgrants "github.com/osolmaz/brokerkit/authorization/grants"
-	bkpolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	hfpolicy "github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/approval/view"
+	unyologrants "github.com/osolmaz/unyolo/authorization/grants"
+	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
 func TestPresenterRendersSafeHFDetails(t *testing.T) {
-	presentation, err := (Presenter{}).Present(context.Background(), bkgrants.Grant{
+	presentation, err := (Presenter{}).Present(context.Background(), unyologrants.Grant{
 		ID: "grant-1", Operation: "git.push.force",
-		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "refs": {"refs/heads/main"}}},
+		Target:   unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "refs": {"refs/heads/main"}}},
 		Metadata: map[string]string{"hf_grant_mode": "window"},
 	})
 	if err != nil {
@@ -24,15 +24,15 @@ func TestPresenterRendersSafeHFDetails(t *testing.T) {
 	if presentation.Risk != approvalview.RiskCritical || presentation.Target != "dataset/acme/demo" || len(presentation.Facts) != 3 || len(presentation.Warnings) != 1 {
 		t.Fatalf("presentation = %+v", presentation)
 	}
-	if _, err := (Presenter{}).Present(context.Background(), bkgrants.Grant{ID: "missing"}); err == nil {
+	if _, err := (Presenter{}).Present(context.Background(), unyologrants.Grant{ID: "missing"}); err == nil {
 		t.Fatal("Present() accepted a grant without target")
 	}
 }
 
 func TestPresenterUsesExactPlanProjection(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("a", 64)
-	presentation, err := (Presenter{}).Present(t.Context(), bkgrants.Grant{ID: "grant-1", Operation: "repo.delete",
-		Target:   bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"kind": {"repo"}, "type": {"dataset"}, "owner": {"acme"}, "name": {"demo"}}},
+	presentation, err := (Presenter{}).Present(t.Context(), unyologrants.Grant{ID: "grant-1", Operation: "repo.delete",
+		Target:   unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"kind": {"repo"}, "type": {"dataset"}, "owner": {"acme"}, "name": {"demo"}}},
 		Metadata: map[string]string{hfplan.MetadataTitle: "Delete Hugging Face repository", hfplan.MetadataSummary: "Permanently delete dataset acme/demo", hfplan.MetadataDigest: digest}})
 	if err != nil || presentation.Target != "dataset/acme/demo" || presentation.Title != "Delete Hugging Face repository" ||
 		presentation.Summary != "Permanently delete dataset acme/demo" || presentation.PlanHash != digest {
@@ -60,9 +60,9 @@ func TestPresenterRiskClasses(t *testing.T) {
 
 func TestPresenterCoversEveryRequestableOperation(t *testing.T) {
 	for _, operation := range hfpolicy.Operations() {
-		presentation, err := (Presenter{}).Present(t.Context(), bkgrants.Grant{
+		presentation, err := (Presenter{}).Present(t.Context(), unyologrants.Grant{
 			ID: "grant-" + string(operation), Operation: string(operation),
-			Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
+			Target: unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
 		})
 		if err != nil {
 			t.Errorf("Present(%q) error = %v", operation, err)
@@ -78,9 +78,9 @@ func TestPresenterCoversEveryRequestableOperation(t *testing.T) {
 }
 
 func TestPresenterShowsAmbiguousExecutionWithoutInternalCounters(t *testing.T) {
-	presentation, err := (Presenter{}).Present(t.Context(), bkgrants.Grant{
+	presentation, err := (Presenter{}).Present(t.Context(), unyologrants.Grant{
 		ID: "grant-1", Operation: string(hfpolicy.OpGitPushAppend), ReservationRetained: true, ReservedCount: 1,
-		Target: bkpolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
+		Target: unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
 	})
 	if err != nil {
 		t.Fatal(err)

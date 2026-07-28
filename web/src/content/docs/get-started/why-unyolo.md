@@ -1,9 +1,9 @@
 ---
-title: Why BrokerKit
-description: What BrokerKit sets out to do, the constraints it accepts, and the things it deliberately refuses.
+title: Why unYOLO
+description: What unYOLO sets out to do, the constraints it accepts, and the things it deliberately refuses.
 ---
 
-BrokerKit exists to make one narrow thing routine: letting an untrusted process act through a
+unYOLO exists to make one narrow thing routine: letting an untrusted process act through a
 credential it never sees. Everything else follows from that, including several features it does
 not have. This page is the honest version of the pitch, so you can rule the project out quickly if
 it does not match your problem.
@@ -42,7 +42,7 @@ not match the threat model.
 
 ## Non-goals
 
-BrokerKit does not sandbox provider code, and it does not make a dangerous executor safe. If a
+unYOLO does not sandbox provider code, and it does not make a dangerous executor safe. If a
 broker's own execution path has a bug, the control plane in front of it does not save you. Each
 broker is responsible for parsing, validating, and executing its own operations correctly.
 
@@ -56,7 +56,7 @@ root-owned catalog with typed argument slots. There is no shell session, TTY, st
 caller-supplied environment. Parsing untrusted shell input safely is a problem the project declines
 to take on.
 
-It is not a secret manager. BrokerKit stores the credentials its brokers need and rotates them
+It is not a secret manager. unYOLO stores the credentials its brokers need and rotates them
 through an exact-replacement flow, but it does not distribute secrets to other systems, and it has
 no dual-secret window. When a broker's client secret is replaced, clients holding the old one fail
 immediately and must be given the new config as a separate deliberate step.
@@ -68,7 +68,7 @@ hands, none of the invariants hold. The
 
 ## Constraints the design accepts
 
-Some of the friction in BrokerKit is intentional, and it is worth knowing about before you deploy
+Some of the friction in unYOLO is intentional, and it is worth knowing about before you deploy
 it.
 
 Policy is written by hand, so adding a capability means editing a file and restarting or reloading
@@ -77,7 +77,7 @@ and requires approval for writes, which gives you a working starting point, but 
 your work.
 
 Because every broker is a separate process with its own state and release artifact, a production
-host runs several services. The `brokerkit` host command exists to activate them as one signed
+host runs several services. The `unyolo` host command exists to activate them as one signed
 bundle so a partial upgrade cannot leave two processes speaking different contract versions.
 
 State format changes are replacements rather than migrations. The old service stops, its state

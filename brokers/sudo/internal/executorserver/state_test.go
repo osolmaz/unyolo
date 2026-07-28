@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorprotocol"
 )
 
 func TestExecutionStateClaimsPersistsAndReplays(t *testing.T) {

@@ -9,9 +9,9 @@ TAG_PREFIX="${TAG_PREFIX:-}"
 COMPANION_BINARIES="${COMPANION_BINARIES:-}"
 PATH_COMPANION_BINARIES="${PATH_COMPANION_BINARIES:-}"
 LIBEXEC_DIR="${LIBEXEC_DIR:-}"
-BROKERKIT_VERIFY_ONLY="${BROKERKIT_VERIFY_ONLY:-false}"
-BROKERKIT_VERIFY_RELEASE_SET="${BROKERKIT_VERIFY_RELEASE_SET:-false}"
-BROKERKIT_VERIFIER_FILE="${BROKERKIT_VERIFIER_FILE:-}"
+UNYOLO_VERIFY_ONLY="${UNYOLO_VERIFY_ONLY:-false}"
+UNYOLO_VERIFY_RELEASE_SET="${UNYOLO_VERIFY_RELEASE_SET:-false}"
+UNYOLO_VERIFIER_FILE="${UNYOLO_VERIFIER_FILE:-}"
 
 GH_VERIFIER_VERSION="2.96.0"
 GH_VERIFIER_RELEASE="https://github.com/cli/cli/releases/download/v${GH_VERIFIER_VERSION}"
@@ -55,22 +55,22 @@ validate_inputs() {
       *) fail "install directories must be absolute normalized paths" ;;
     esac
   done
-  for setting in BROKERKIT_VERIFY_ONLY BROKERKIT_VERIFY_RELEASE_SET; do
+  for setting in UNYOLO_VERIFY_ONLY UNYOLO_VERIFY_RELEASE_SET; do
     eval "value=\${$setting}"
     case "$value" in
       true | false) ;;
       *) fail "$setting must be true or false" ;;
     esac
   done
-  if [ "$BROKERKIT_VERIFY_RELEASE_SET" = true ] && [ "$BROKERKIT_VERIFY_ONLY" != true ]; then
-    fail "BROKERKIT_VERIFY_RELEASE_SET requires BROKERKIT_VERIFY_ONLY=true"
+  if [ "$UNYOLO_VERIFY_RELEASE_SET" = true ] && [ "$UNYOLO_VERIFY_ONLY" != true ]; then
+    fail "UNYOLO_VERIFY_RELEASE_SET requires UNYOLO_VERIFY_ONLY=true"
   fi
-  if [ -n "$BROKERKIT_VERIFIER_FILE" ]; then
-    case "$BROKERKIT_VERIFIER_FILE" in
-      /*) case "$BROKERKIT_VERIFIER_FILE/" in *"/../"* | *"/./"* | *"//"*) fail "BROKERKIT_VERIFIER_FILE must be an absolute normalized path" ;; esac ;;
-      *) fail "BROKERKIT_VERIFIER_FILE must be an absolute normalized path" ;;
+  if [ -n "$UNYOLO_VERIFIER_FILE" ]; then
+    case "$UNYOLO_VERIFIER_FILE" in
+      /*) case "$UNYOLO_VERIFIER_FILE/" in *"/../"* | *"/./"* | *"//"*) fail "UNYOLO_VERIFIER_FILE must be an absolute normalized path" ;; esac ;;
+      *) fail "UNYOLO_VERIFIER_FILE must be an absolute normalized path" ;;
     esac
-    [ -x "$BROKERKIT_VERIFIER_FILE" ] || fail "BROKERKIT_VERIFIER_FILE must be executable"
+    [ -x "$UNYOLO_VERIFIER_FILE" ] || fail "UNYOLO_VERIFIER_FILE must be executable"
   fi
   for binary in $COMPANION_BINARIES $PATH_COMPANION_BINARIES; do
     case "$binary" in
@@ -80,16 +80,16 @@ validate_inputs() {
 }
 
 system_name() {
-  if [ -n "${BROKERKIT_UNAME_S:-}" ]; then
-    echo "$BROKERKIT_UNAME_S"
+  if [ -n "${UNYOLO_UNAME_S:-}" ]; then
+    echo "$UNYOLO_UNAME_S"
     return
   fi
   uname -s
 }
 
 machine_name() {
-  if [ -n "${BROKERKIT_UNAME_M:-}" ]; then
-    echo "$BROKERKIT_UNAME_M"
+  if [ -n "${UNYOLO_UNAME_M:-}" ]; then
+    echo "$UNYOLO_UNAME_M"
     return
   fi
   uname -m
@@ -115,13 +115,13 @@ normalize_arch() {
 
 latest_version() {
   if [ -z "$TAG_PREFIX" ]; then
-    url="${BROKERKIT_LATEST_RELEASE_URL:-https://api.github.com/repos/${REPO}/releases/latest}"
+    url="${UNYOLO_LATEST_RELEASE_URL:-https://api.github.com/repos/${REPO}/releases/latest}"
     curl -fsSL "$url" |
       sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' |
       head -n 1
     return
   fi
-  url="${BROKERKIT_RELEASES_URL:-https://api.github.com/repos/${REPO}/releases?per_page=100}"
+  url="${UNYOLO_RELEASES_URL:-https://api.github.com/repos/${REPO}/releases?per_page=100}"
   curl -fsSL "$url" |
     tr '{' '\n' |
     sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' |
@@ -169,8 +169,8 @@ verifier_archive() {
 }
 
 prepare_verifier() {
-  if [ -n "$BROKERKIT_VERIFIER_FILE" ]; then
-    echo "$BROKERKIT_VERIFIER_FILE"
+  if [ -n "$UNYOLO_VERIFIER_FILE" ]; then
+    echo "$UNYOLO_VERIFIER_FILE"
     return
   fi
 
@@ -223,8 +223,8 @@ verify_complete_release() {
     validate_archive "${tmp_dir}/${release_asset}" "${tmp_dir}/${release_asset}.list"
     set -- "$@" "${tmp_dir}/${release_asset}"
   done
-  if [ "$BROKER" = brokerkit ]; then
-    for release_asset in brokerkit-bootstrap-root.sh brokerkit-runtime-release.pub; do
+  if [ "$BROKER" = unyolo ]; then
+    for release_asset in unyolo-bootstrap-root.sh unyolo-runtime-release.pub; do
       curl -fsSL "${base_url}/${release_asset}" -o "${tmp_dir}/${release_asset}"
       verify_checksum "$release_asset" "${tmp_dir}/checksums.txt"
       set -- "$@" "${tmp_dir}/${release_asset}"
@@ -306,7 +306,7 @@ case "$VERSION" in
 esac
 
 asset="${BROKER}_${os}_${arch}.tar.gz"
-base_url="${BROKERKIT_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${VERSION}}"
+base_url="${UNYOLO_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${VERSION}}"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
@@ -314,13 +314,13 @@ echo "Downloading ${REPO} ${VERSION} for ${os}/${arch}"
 curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
 curl -fsSL "${base_url}/checksums.txt" -o "${tmp_dir}/checksums.txt"
 verify_checksum "$asset" "${tmp_dir}/checksums.txt"
-if [ "$BROKERKIT_VERIFY_RELEASE_SET" = true ]; then
+if [ "$UNYOLO_VERIFY_RELEASE_SET" = true ]; then
   verify_complete_release
 else
   verify_provenance "${tmp_dir}/${asset}" "${tmp_dir}/checksums.txt"
   validate_archive "${tmp_dir}/${asset}" "${tmp_dir}/archive.list"
 fi
-if [ "$BROKERKIT_VERIFY_ONLY" = true ]; then
+if [ "$UNYOLO_VERIFY_ONLY" = true ]; then
   echo "Verified ${REPO} ${VERSION} release assets and provenance"
   exit 0
 fi

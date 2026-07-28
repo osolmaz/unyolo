@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/internal/schemautil"
+	"github.com/osolmaz/unyolo/internal/schemautil"
 )
 
 func TestSensitiveFields(t *testing.T) {

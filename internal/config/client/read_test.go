@@ -36,8 +36,8 @@ func TestReadRejectsUnknownAndDuplicateJSONFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, body := range []string{
-		`{"api_version":"brokerkit.io/client/v1","client_id":"a","agent_endpoint":"unix:///tmp/a","shared_secret":"secret","run":"evil"}`,
-		`{"api_version":"brokerkit.io/client/v1","client_id":"a","agent_endpoint":"unix:///tmp/a","agent_endpoint":"unix:///tmp/b","shared_secret":"secret"}`,
+		`{"api_version":"unyolo.io/client/v1","client_id":"a","agent_endpoint":"unix:///tmp/a","shared_secret":"secret","run":"evil"}`,
+		`{"api_version":"unyolo.io/client/v1","client_id":"a","agent_endpoint":"unix:///tmp/a","agent_endpoint":"unix:///tmp/b","shared_secret":"secret"}`,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, "client.json"), []byte(body), 0o600); err != nil {
 			t.Fatal(err)

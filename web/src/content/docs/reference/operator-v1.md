@@ -3,10 +3,10 @@ title: Operator V1 API
 description: Routes, filters, decision bodies, SSE cursors, and the Go packages behind the operator inbox.
 ---
 
-Operator V1 (`brokerkit.io/operator/v1`) is the protected inbox used to list, approve, deny, and
+Operator V1 (`unyolo.io/operator/v1`) is the protected inbox used to list, approve, deny, and
 revoke requests. The canonical contract is `protocol/openapi/operator-v1.yaml`, with generated Go
 clients and Echo interfaces under `protocol/operatorwire/` and generated TypeScript types and
-validators shipped in `openclaw-brokerkit/operator-v1`.
+validators shipped in `openclaw-unyolo/operator-v1`.
 
 Provider execution plans and credentials are deliberately absent from the contract.
 
@@ -39,7 +39,7 @@ Cursors are opaque and bound to the filter that produced them, so swapping filte
 is rejected rather than silently returning a different slice.
 
 ```sh
-curl -sS --unix-socket /run/brokerkit/huggingface/operator/broker.sock \
+curl -sS --unix-socket /run/unyolo/huggingface/operator/broker.sock \
   -H "Authorization: Bearer $OPERATOR_TOKEN" \
   "http://localhost/api/operator/v1/requests?status=pending&limit=25"
 ```
@@ -139,7 +139,7 @@ browser session
     → trusted web backend
     → operator/client using a server-held operator credential
     → broker operator API
-    → canonical BrokerKit grant store
+    → canonical unYOLO grant store
 ```
 
 The browser authenticates only to the trusted host. Operator credentials never enter browser

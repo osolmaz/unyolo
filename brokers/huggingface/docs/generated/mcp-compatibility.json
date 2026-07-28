@@ -1,5 +1,5 @@
 {
-  "api_version": "brokerkit.io/mcp-compatibility-manifest/v1",
+  "api_version": "unyolo.io/mcp-compatibility-manifest/v1",
   "provider": "huggingface",
   "host_profiles": ["openclaw@2026.7.1"],
   "agent_facing_operations": 149,

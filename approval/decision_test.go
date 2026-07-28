@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/authorization/grants"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/grants"
 )
 
 type fakeDecider struct {

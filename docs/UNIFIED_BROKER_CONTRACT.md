@@ -6,7 +6,7 @@ shape. Each broker keeps only its dangerous platform adapter.
 
 ## Boundary
 
-brokerkit owns the reusable broker control plane:
+unyolo owns the reusable broker control plane:
 
 - binary install conventions
 - service setup helpers and file layout conventions
@@ -31,7 +31,7 @@ Each broker owns only its platform adapter:
 - `sudo-broker`: Unix users, exact command catalogs, the privileged helper,
   systemd/host integration, and Unix wording
 
-brokerkit must not grow provider-specific credentials, API calls, command
+unyolo must not grow provider-specific credentials, API calls, command
 execution, or user-facing approval text.
 
 ## Operator Inbox
@@ -41,7 +41,7 @@ listener or Unix socket. The agent listener remains client-scoped and cannot
 make operator decisions or read cross-client history.
 
 Each broker provides only its `operator/inbox.Presenter`, operator transport,
-credential loading, and broker name. Brokerkit owns bounded queries, safe
+credential loading, and broker name. unYOLO owns bounded queries, safe
 records, revision-checked decisions, durable events/SSE, operator auth
 primitives, audit fields, the Go client, and conformance fixtures. Telegram is
 an optional notification view over the same grant store, not a separate
@@ -54,14 +54,14 @@ stored request.
 
 ## Binary Install
 
-Every broker binary uses a component-local wrapper around BrokerKit's shared
+Every broker binary uses a component-local wrapper around unYOLO's shared
 installer:
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/github/install.sh" | sh
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/huggingface/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/sudo/install.sh" | sh
 ```
 
 Common environment variables:
@@ -77,7 +77,7 @@ The installer should:
 - detect `amd64` and `arm64`
 - download the release tarball for the selected version
 - download and verify `checksums.txt`
-- verify both files' GitHub attestations against the BrokerKit release workflow
+- verify both files' GitHub attestations against the unYOLO release workflow
   and selected tag with a checksum-pinned verifier
 - install only the binary
 - default to `$HOME/.local/bin` and require an explicit writable
@@ -232,7 +232,7 @@ Every broker should expose the same client setup concept:
 ```sh
 <broker> setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/<provider>/agent/broker.sock \
+  --endpoint unix:///run/unyolo/<provider>/agent/broker.sock \
   --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/<broker>/secrets \
   --home-dir /home/agent-a
@@ -244,13 +244,13 @@ That command should write a client-owned config file under:
 ~/.config/<broker>/client.json
 ```
 
-The owner-only file uses the closed `brokerkit.io/client/v1` schema:
+The owner-only file uses the closed `unyolo.io/client/v1` schema:
 
 ```json
 {
-  "api_version": "brokerkit.io/client/v1",
+  "api_version": "unyolo.io/client/v1",
   "client_id": "agent-a",
-  "agent_endpoint": "unix:///run/brokerkit/provider/agent/broker.sock",
+  "agent_endpoint": "unix:///run/unyolo/provider/agent/broker.sock",
   "git_endpoint": "tcp://127.0.0.1:38471",
   "shared_secret": "broker-client-secret"
 }
@@ -271,7 +271,7 @@ partial update.
 
 ## Policy
 
-brokerkit owns the policy schema and decision engine. Brokers register their
+unyolo owns the policy schema and decision engine. Brokers register their
 operation, target, and attr vocabulary.
 
 Common rule shape:
@@ -309,7 +309,7 @@ broker registry explicitly allows them.
 
 ## Grants And Approval
 
-brokerkit owns:
+unyolo owns:
 
 - pending, active, denied, expired, consumed, canceled, and revoked states
 - idempotency keys
@@ -329,7 +329,7 @@ brokerkit owns:
   blocking callbacks for healthy brokers
 
 Brokers own bounded semantic titles, summaries, targets, risk, warnings, and
-provider-specific facts shown to the operator. BrokerKit owns presentation
+provider-specific facts shown to the operator. unYOLO owns presentation
 validation, Telegram layout and escaping, fixed controls, callback answers,
 terminal wording, and durable presentation/render digests.
 
@@ -438,7 +438,7 @@ Every broker should provide:
 <broker> doctor isolation
 ```
 
-brokerkit should provide reusable doctor helpers for:
+unyolo should provide reusable doctor helpers for:
 
 - service user and agent user separation
 - root-equivalent group checks

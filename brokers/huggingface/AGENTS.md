@@ -1,11 +1,11 @@
 # AGENTS.md
 
-These instructions apply to the Hugging Face broker subtree of the BrokerKit
+These instructions apply to the Hugging Face broker subtree of the unYOLO
 repository. Root `AGENTS.md` and root quality gates also apply.
 
 ## Project Rules
 
-- This is hf-broker: the Hugging Face provider adapter for BrokerKit and a
+- This is hf-broker: the Hugging Face provider adapter for unYOLO and a
   self-hosted append-only credential broker for
   Hugging Face repos. The full design is `docs/SPECIFICATION.md`; read it
   before changing enforcement, routing, or configuration behavior.

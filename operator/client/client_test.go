@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/operator/wire"
-	"github.com/osolmaz/brokerkit/protocol/contract"
-	"github.com/osolmaz/brokerkit/protocol/operatorwire"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/operator/wire"
+	"github.com/osolmaz/unyolo/protocol/contract"
+	"github.com/osolmaz/unyolo/protocol/operatorwire"
 )
 
 func TestClientImplementsOperatorV1Source(t *testing.T) {
@@ -34,7 +34,7 @@ func TestClientImplementsOperatorV1Source(t *testing.T) {
 		switch request.URL.Path {
 		case "/healthz":
 			_ = json.NewEncoder(writer).Encode(operatorwire.Health{Status: "ok", ContractDigest: contract.OperatorV1Digest, BuildId: "test"})
-		case "/.well-known/brokerkit-operator":
+		case "/.well-known/unyolo-operator":
 			_ = json.NewEncoder(writer).Encode(operatorv1.Descriptor{APIVersion: operatorv1.APIVersion,
 				ContractDigest: contract.OperatorV1Digest, BuildID: "test"})
 		case "/api/operator/v1/requests":
@@ -215,8 +215,8 @@ func TestWireConversionsPreserveOptionalOperatorFields(t *testing.T) {
 
 func TestClientConstructionAndResponseErrors(t *testing.T) {
 	t.Parallel()
-	client, err := New("unix:///tmp/brokerkit-operator.sock", strings.Repeat("t", 32), nil)
-	if err != nil || client.baseURL != "http://brokerkit.local" || client.httpClient == nil {
+	client, err := New("unix:///tmp/unyolo-operator.sock", strings.Repeat("t", 32), nil)
+	if err != nil || client.baseURL != "http://unyolo.local" || client.httpClient == nil {
 		t.Fatalf("New() = %#v, %v", client, err)
 	}
 	for _, endpoint := range []string{"", "unix:///tmp/../tmp/socket", "unix:///tmp/bad\x00socket"} {

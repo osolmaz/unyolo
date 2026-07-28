@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/validatex"
+	"github.com/osolmaz/unyolo/internal/validatex"
 )
 
 // Status is the overall doctor verdict.

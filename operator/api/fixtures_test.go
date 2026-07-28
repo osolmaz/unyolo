@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/operator/v1"
+	"github.com/osolmaz/unyolo/operator/v1"
 )
 
 func TestContractFixturesRoundTripAndContainNoAuthority(t *testing.T) {

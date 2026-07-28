@@ -9,7 +9,7 @@ Status: implemented
 Give every broker and every operator channel one consistent, secure approval
 experience without centralizing provider policy or execution semantics.
 
-BrokerKit will own a channel-neutral, bounded approval view and the renderers
+unYOLO will own a channel-neutral, bounded approval view and the renderers
 that turn that view into Telegram, web, terminal, and future channel output.
 Hugging Face, GitHub, and sudo will only describe their own operation, target,
 risk, warnings, and provider-specific facts.
@@ -84,7 +84,7 @@ parsed to authorize or execute an operation.
 
 ### Shared mechanics, provider-owned meaning
 
-BrokerKit owns validation, normalization, generic request facts, risk display,
+unYOLO owns validation, normalization, generic request facts, risk display,
 layout, rendering, status transitions, and transport behavior. Providers own
 the meaning of their operation catalogs and produce only bounded semantic
 values.

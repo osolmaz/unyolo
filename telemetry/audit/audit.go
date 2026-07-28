@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/slicex"
+	"github.com/osolmaz/unyolo/internal/slicex"
 )
 
 const (

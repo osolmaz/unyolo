@@ -2,47 +2,47 @@
 
 package isolation
 
-import bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+import unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 
 func canRead(agent identity, stat fileStat) bool {
-	return bkdoctor.CanGainRead(doctorIdentity(agent), doctorFile(stat))
+	return unyolodoctor.CanGainRead(doctorIdentity(agent), doctorFile(stat))
 }
 
 func canWrite(agent identity, stat fileStat) bool {
-	return bkdoctor.CanGainWrite(doctorIdentity(agent), doctorFile(stat))
+	return unyolodoctor.CanGainWrite(doctorIdentity(agent), doctorFile(stat))
 }
 
 func canReplaceDirectoryEntry(agent identity, stat fileStat) bool {
-	return bkdoctor.CanReplaceDirectoryEntry(doctorIdentity(agent), doctorFile(stat))
+	return unyolodoctor.CanReplaceDirectoryEntry(doctorIdentity(agent), doctorFile(stat))
 }
 
 func canReplacePathEntry(agent identity, entry, parent fileStat) bool {
-	return bkdoctor.CanReplacePathEntry(doctorIdentity(agent), doctorFile(entry), doctorFile(parent))
+	return unyolodoctor.CanReplacePathEntry(doctorIdentity(agent), doctorFile(entry), doctorFile(parent))
 }
 
-func doctorIdentity(agent identity) bkdoctor.Identity {
+func doctorIdentity(agent identity) unyolodoctor.Identity {
 	groups := make([]int, 0, len(agent.gids))
 	for group := range agent.gids {
 		groups = append(groups, group)
 	}
-	return bkdoctor.Identity{User: agent.user, UID: agent.uid, GID: agent.gid, GroupIDs: groups}
+	return unyolodoctor.Identity{User: agent.user, UID: agent.uid, GID: agent.gid, GroupIDs: groups}
 }
 
-func doctorFile(stat fileStat) bkdoctor.UnixFile {
-	return bkdoctor.UnixFile{Path: stat.path, Mode: stat.mode, UID: stat.uid, GID: stat.gid}
+func doctorFile(stat fileStat) unyolodoctor.UnixFile {
+	return unyolodoctor.UnixFile{Path: stat.path, Mode: stat.mode, UID: stat.uid, GID: stat.gid}
 }
 
 func lstat(path string) (fileStat, bool) { return statFile(path, false) }
 
 func statTarget(path string) (fileStat, bool) {
-	return localFileStat(bkdoctor.InspectSymlinkTarget(path))
+	return localFileStat(unyolodoctor.InspectSymlinkTarget(path))
 }
 
 func statFile(path string, followSymlink bool) (fileStat, bool) {
-	return localFileStat(bkdoctor.InspectUnixFile(path, followSymlink))
+	return localFileStat(unyolodoctor.InspectUnixFile(path, followSymlink))
 }
 
-func localFileStat(stat bkdoctor.UnixFile, ok bool) (fileStat, bool) {
+func localFileStat(stat unyolodoctor.UnixFile, ok bool) (fileStat, bool) {
 	if !ok {
 		return fileStat{}, false
 	}

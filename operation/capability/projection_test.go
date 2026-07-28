@@ -64,7 +64,7 @@ func TestCompatibilityProfileConformsToPinnedOpenClawFixture(t *testing.T) {
 	for _, testCase := range fixture.Cases {
 		class := profile.Classify(testCase.Name, false)
 		if testCase.Sensitive && class == MCPFieldSafe {
-			t.Errorf("OpenClaw redacts %q but BrokerKit classifies it safe", testCase.Name)
+			t.Errorf("OpenClaw redacts %q but unYOLO classifies it safe", testCase.Name)
 		}
 		if !testCase.Sensitive && transcriptSafeExactNames[testCase.Name] && class != MCPFieldSafe {
 			t.Errorf("reviewed alias %q is not safe", testCase.Name)

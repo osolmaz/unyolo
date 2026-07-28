@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/copyx"
-	"github.com/osolmaz/brokerkit/internal/schemautil"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/internal/copyx"
+	"github.com/osolmaz/unyolo/internal/schemautil"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 var pathParameterPattern = regexp.MustCompile(`\{([^}]+)\}`)

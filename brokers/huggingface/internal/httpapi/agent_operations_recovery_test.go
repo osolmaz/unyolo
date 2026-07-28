@@ -13,17 +13,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfgrant"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hfplan"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func TestInterruptedOperationRecoveryProvesOrRefusesResult(t *testing.T) {

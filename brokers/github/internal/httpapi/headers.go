@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/transport/http"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 var githubProxyResponseHeader = httpx.DropAny(

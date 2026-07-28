@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/githubauth"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 type planPreconditions struct {

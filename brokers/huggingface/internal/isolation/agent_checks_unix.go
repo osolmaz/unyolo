@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func validateOptions(opts Options) error {
@@ -32,7 +32,7 @@ func runAgentChecks(report *Report, agent identity) {
 	}
 	var risky []string
 	for group := range agent.groups {
-		if bkdoctor.RootEquivalentGroup(group) {
+		if unyolodoctor.RootEquivalentGroup(group) {
 			risky = append(risky, group)
 		}
 	}

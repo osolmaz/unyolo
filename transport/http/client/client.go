@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 // ParseBaseURL accepts only absolute HTTP(S) origins with an optional path.

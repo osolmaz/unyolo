@@ -3,7 +3,7 @@ title: Host deployment
 description: Provisioning a complete Linux agent host from one locked, non-secret deployment pack.
 ---
 
-BrokerKit can install or reconcile a complete Linux agent host from one locked, non-secret
+unYOLO can install or reconcile a complete Linux agent host from one locked, non-secret
 deployment pack. The same pack drives the guided setup wizard and the unattended commands, so what
 you review interactively is what an automated apply executes.
 
@@ -18,19 +18,19 @@ release:
 
 ```sh
 curl -fsSL \
-  "https://raw.githubusercontent.com/osolmaz/brokerkit/<reviewed-commit>/install/bootstrap.sh" \
-  | sh -s -- --release brokerkit/v<reviewed-version> setup
+  "https://raw.githubusercontent.com/osolmaz/unyolo/<reviewed-commit>/install/bootstrap.sh" \
+  | sh -s -- --release unyolo/v<reviewed-version> setup
 ```
 
 The bootstrap verifies the archive checksum, the exact tagged release workflow, and the GitHub
 build attestation. It installs only the user CLI below `~/.local/bin`. The root phase separately
-verifies and pins the attested BrokerKit runtime public key before any deployment adapter can run,
+verifies and pins the attested unYOLO runtime public key before any deployment adapter can run,
 and production validation and planning reject a missing or different key. The CLI refuses
 interactive root execution.
 
 The guide explains the operator and agent boundary, then opens a locked deployment kit. Recommended
 and Custom setup materialize the verified profile graph and signed runtime artifacts below
-`~/.config/brokerkit/deployments/<deployment-name>/`. Existing deployment mode reviews the selected
+`~/.config/unyolo/deployments/<deployment-name>/`. Existing deployment mode reviews the selected
 pack in place. Setup validates every signed component adapter and shows the complete plan before
 starting the matching root-owned worker.
 
@@ -41,8 +41,8 @@ Use `--accessible` for the screen-reader prompt path and `--no-open` on a remote
 Incomplete local sessions can be inspected and resumed:
 
 ```sh
-brokerkit setup status
-brokerkit setup --resume <session-id>
+unyolo setup status
+unyolo setup --resume <session-id>
 ```
 
 ## The deployment pack
@@ -57,7 +57,7 @@ example shows the important fields with no credentials in it:
 
 ```json
 {
-  "api_version": "brokerkit.io/github-deployment/v1",
+  "api_version": "unyolo.io/github-deployment/v1",
   "accounts": [
     {
       "name": "gh-broker",
@@ -68,7 +68,7 @@ example shows the important fields with no credentials in it:
   ],
   "groups": [
     { "name": "gh-broker" },
-    { "name": "gh-broker-agent", "members": ["brokerkit-agent"] },
+    { "name": "gh-broker-agent", "members": ["unyolo-agent"] },
     { "name": "gh-broker-operator", "members": ["operator"] }
   ],
   "directories": [
@@ -102,7 +102,7 @@ example shows the important fields with no credentials in it:
       "owner": "root",
       "group": "gh-broker",
       "encoding": "client_secret_file",
-      "client_id": "brokerkit-agent"
+      "client_id": "unyolo-agent"
     }
   ],
   "clients": [
@@ -111,7 +111,7 @@ example shows the important fields with no credentials in it:
       "broker_name": "gh-broker",
       "env_prefix": "GH_BROKER",
       "secret_slot": "github-client-secret",
-      "endpoint": "unix:///run/brokerkit/github/agent/broker.sock",
+      "endpoint": "unix:///run/unyolo/github/agent/broker.sock",
       "git_endpoint": "tcp://127.0.0.1:38471"
     }
   ],
@@ -134,26 +134,26 @@ adapter cannot claim a path, account, group, or service outside that signed enve
 Lock the pack after editing any referenced file:
 
 ```sh
-brokerkit system profile lock --profile "$PWD/deployment"
-brokerkit system profile lock --check --profile "$PWD/deployment"
+unyolo system profile lock --profile "$PWD/deployment"
+unyolo system profile lock --check --profile "$PWD/deployment"
 ```
 
 Protected validation, planning, and apply use the same engine as guided setup. Invoke the
 root-owned worker installed by the verified bootstrap. Never run a user-local binary with `sudo`:
 
 ```sh
-worker=/opt/brokerkit/bootstrap/v<reviewed-version>/brokerkit
+worker=/opt/unyolo/bootstrap/v<reviewed-version>/unyolo
 
 sudo "$worker" system validate --profile "$PWD/deployment"
 
 sudo "$worker" system plan \
   --profile "$PWD/deployment" \
-  --output /tmp/brokerkit-plan.json
+  --output /tmp/unyolo-plan.json
 
 sudo "$worker" system apply \
   --profile "$PWD/deployment" \
   --expect-plan sha256:<reviewed-plan-digest> \
-  --secret-file github-client-secret=/run/brokerkit-secrets/github-client-secret
+  --secret-file github-client-secret=/run/unyolo-secrets/github-client-secret
 
 sudo "$worker" system verify --profile "$PWD/deployment"
 sudo "$worker" system export --profile "$PWD/deployment" --json

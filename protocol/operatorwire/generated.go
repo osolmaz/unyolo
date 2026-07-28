@@ -94,13 +94,13 @@ func (e BrokerEventKind) Valid() bool {
 
 // Defines values for DescriptorApiVersion.
 const (
-	BrokerkitIooperatorv1 DescriptorApiVersion = "brokerkit.io/operator/v1"
+	UnyoloIooperatorv1 DescriptorApiVersion = "unyolo.io/operator/v1"
 )
 
 // Valid indicates whether the value is a known member of the DescriptorApiVersion enum.
 func (e DescriptorApiVersion) Valid() bool {
 	switch e {
-	case BrokerkitIooperatorv1:
+	case UnyoloIooperatorv1:
 		return true
 	default:
 		return false
@@ -259,13 +259,13 @@ func (e StatusGroup) Valid() bool {
 
 // Defines values for UISnapshotApiVersion.
 const (
-	UISnapshotApiVersionBrokerkitIooperatorUiv1 UISnapshotApiVersion = "brokerkit.io/operator-ui/v1"
+	UISnapshotApiVersionUnyoloIooperatorUiv1 UISnapshotApiVersion = "unyolo.io/operator-ui/v1"
 )
 
 // Valid indicates whether the value is a known member of the UISnapshotApiVersion enum.
 func (e UISnapshotApiVersion) Valid() bool {
 	switch e {
-	case UISnapshotApiVersionBrokerkitIooperatorUiv1:
+	case UISnapshotApiVersionUnyoloIooperatorUiv1:
 		return true
 	default:
 		return false
@@ -274,13 +274,13 @@ func (e UISnapshotApiVersion) Valid() bool {
 
 // Defines values for UISnapshotEventApiVersion.
 const (
-	UISnapshotEventApiVersionBrokerkitIooperatorUiv1 UISnapshotEventApiVersion = "brokerkit.io/operator-ui/v1"
+	UISnapshotEventApiVersionUnyoloIooperatorUiv1 UISnapshotEventApiVersion = "unyolo.io/operator-ui/v1"
 )
 
 // Valid indicates whether the value is a known member of the UISnapshotEventApiVersion enum.
 func (e UISnapshotEventApiVersion) Valid() bool {
 	switch e {
-	case UISnapshotEventApiVersionBrokerkitIooperatorUiv1:
+	case UISnapshotEventApiVersionUnyoloIooperatorUiv1:
 		return true
 	default:
 		return false
@@ -289,13 +289,13 @@ func (e UISnapshotEventApiVersion) Valid() bool {
 
 // Defines values for UISummaryApiVersion.
 const (
-	UISummaryApiVersionBrokerkitIooperatorUiv1 UISummaryApiVersion = "brokerkit.io/operator-ui/v1"
+	UISummaryApiVersionUnyoloIooperatorUiv1 UISummaryApiVersion = "unyolo.io/operator-ui/v1"
 )
 
 // Valid indicates whether the value is a known member of the UISummaryApiVersion enum.
 func (e UISummaryApiVersion) Valid() bool {
 	switch e {
-	case UISummaryApiVersionBrokerkitIooperatorUiv1:
+	case UISummaryApiVersionUnyoloIooperatorUiv1:
 		return true
 	default:
 		return false
@@ -605,7 +605,7 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// DiscoverOperator performs a GET /.well-known/brokerkit-operator (the `DiscoverOperator` operationId) request.
+	// DiscoverOperator performs a GET /.well-known/unyolo-operator (the `DiscoverOperator` operationId) request.
 	DiscoverOperator(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StreamOperatorEvents performs a GET /api/operator/v1/events (the `StreamOperatorEvents` operationId) request.
@@ -634,7 +634,7 @@ type ClientInterface interface {
 	OperatorReady(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-// DiscoverOperator performs a GET /.well-known/brokerkit-operator (the `DiscoverOperator` operationId) request.
+// DiscoverOperator performs a GET /.well-known/unyolo-operator (the `DiscoverOperator` operationId) request.
 func (c *Client) DiscoverOperator(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDiscoverOperatorRequest(c.Server)
 	if err != nil {
@@ -751,7 +751,7 @@ func NewDiscoverOperatorRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/.well-known/brokerkit-operator")
+	operationPath := fmt.Sprintf("/.well-known/unyolo-operator")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1138,7 +1138,7 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// DiscoverOperatorWithResponse performs a GET /.well-known/brokerkit-operator (the `DiscoverOperator` operationId) request.
+	// DiscoverOperatorWithResponse performs a GET /.well-known/unyolo-operator (the `DiscoverOperator` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	DiscoverOperatorWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverOperatorResponse, error)
@@ -1503,7 +1503,7 @@ func (r OperatorReadyResponse) ContentType() string {
 	return ""
 }
 
-// DiscoverOperatorWithResponse performs a GET /.well-known/brokerkit-operator (the `DiscoverOperator` operationId) request.
+// DiscoverOperatorWithResponse performs a GET /.well-known/unyolo-operator (the `DiscoverOperator` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
 func (c *ClientWithResponses) DiscoverOperatorWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DiscoverOperatorResponse, error) {
@@ -1813,7 +1813,7 @@ func ParseOperatorReadyResponse(rsp *http.Response) (*OperatorReadyResponse, err
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
-	// (GET /.well-known/brokerkit-operator)
+	// (GET /.well-known/unyolo-operator)
 	DiscoverOperator(ctx echo.Context) error
 
 	// (GET /api/operator/v1/events)
@@ -2052,7 +2052,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 		Handler: si,
 	}
 
-	router.GET(options.BaseURL+"/.well-known/brokerkit-operator", wrapper.DiscoverOperator, options.OperationMiddlewares["discoverOperator"]...)
+	router.GET(options.BaseURL+"/.well-known/unyolo-operator", wrapper.DiscoverOperator, options.OperationMiddlewares["discoverOperator"]...)
 	router.GET(options.BaseURL+"/api/operator/v1/events", wrapper.StreamOperatorEvents, options.OperationMiddlewares["streamOperatorEvents"]...)
 	router.GET(options.BaseURL+"/api/operator/v1/requests", wrapper.ListOperatorRequests, options.OperationMiddlewares["listOperatorRequests"]...)
 	router.GET(options.BaseURL+"/api/operator/v1/requests/:id", wrapper.GetOperatorRequest, options.OperationMiddlewares["getOperatorRequest"]...)

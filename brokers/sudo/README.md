@@ -8,23 +8,23 @@ TTYs, stdin, or caller-controlled environment variables.
 
 The runtime has two processes:
 
-- `sudo-broker` is an unprivileged HTTP frontend using BrokerKit policy,
+- `sudo-broker` is an unprivileged HTTP frontend using unYOLO policy,
   grants, Operator V1, and optional Telegram approval.
 - `sudo-broker-exec` is a root helper reachable only through a private Unix
   socket by the dedicated frontend account.
 
 ## Install
 
-Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+Fetch the bootstrap from a reviewed unYOLO commit. It resolves the latest
 Sudo Broker release to its exact commit, verifies release checksums, and
 installs to `$HOME/.local/bin`:
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/sudo/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/sudo/install.sh" | sh
 ```
 
-Pin a release from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
+Pin a release from [unYOLO releases](https://github.com/osolmaz/unyolo/releases)
 with `VERSION=<version>`. The frontend is installed in the selected binary
 directory. The helper is installed in the adjacent `libexec` directory and is
 not added to ordinary user command paths.
@@ -58,7 +58,7 @@ Write a client config for an agent account:
 ```sh
 sudo sudo-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/sudo/agent/broker.sock \
+  --endpoint unix:///run/unyolo/sudo/agent/broker.sock \
   --secret-file /etc/sudo-broker/secrets \
   --home-dir /home/agent-a
 ```
@@ -93,7 +93,7 @@ never retry an ambiguous execution under a new id.
 
 When Telegram notifications are configured, sudo-broker supplies only the
 cataloged command description, target user, bounded arguments, timeout, and
-risk. BrokerKit renders the same escaped rich approval layout and fixed
+risk. unYOLO renders the same escaped rich approval layout and fixed
 Approve/Deny controls used by the other brokers; raw executables, environment
 values, and unrestricted command lines are never notification fields.
 

@@ -12,7 +12,7 @@ const request = {
   },
 };
 
-describe("BrokerKit command", () => {
+describe("unYOLO command", () => {
   it("requires authenticated server-attributed actors", async () => {
     const runtime = fakeRuntime();
     expect(
@@ -52,7 +52,7 @@ describe("BrokerKit command", () => {
         runtime as never,
         context({ args: "subscribe extra" }),
       ),
-    ).toEqual({ text: "Invalid BrokerKit command." });
+    ).toEqual({ text: "Invalid unYOLO command." });
     expect(
       await handleCommand(
         runtime as never,
@@ -83,7 +83,7 @@ describe("BrokerKit command", () => {
     ).toEqual({ text: "A single request handle is required." });
     expect(
       await handleCommand(runtime as never, context({ args: "unknown value" })),
-    ).toEqual({ text: "Unknown BrokerKit command." });
+    ).toEqual({ text: "Unknown unYOLO command." });
   });
 
   it("never translates a failed decision into success", async () => {

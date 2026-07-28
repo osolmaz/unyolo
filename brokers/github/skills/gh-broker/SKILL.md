@@ -1,17 +1,17 @@
 ---
 name: gh-broker
-description: Use BrokerKit for GitHub repositories, pull requests, explicit administrator merges, issues, reviews, comments, checks, workflows, releases, and other GitHub API operations when gh-broker is installed. Use instead of gh auth, GH_TOKEN, GITHUB_TOKEN, personal access tokens, or direct GitHub API credentials.
+description: Use unYOLO for GitHub repositories, pull requests, explicit administrator merges, issues, reviews, comments, checks, workflows, releases, and other GitHub API operations when gh-broker is installed. Use instead of gh auth, GH_TOKEN, GITHUB_TOKEN, personal access tokens, or direct GitHub API credentials.
 metadata:
   { "openclaw": { "emoji": "🔐", "requires": { "bins": ["gh-broker"] } } }
 ---
 
 # GitHub Broker
 
-Use `gh-broker` for GitHub API operations. BrokerKit keeps the upstream GitHub
+Use `gh-broker` for GitHub API operations. unYOLO keeps the upstream GitHub
 credential inside the broker, so `gh auth status` may correctly report that no
 GitHub host is authenticated.
 
-## Authenticate to BrokerKit
+## Authenticate to unYOLO
 
 `gh-broker` loads its private client V1 document directly from
 `~/.config/gh-broker/client.json`. Do not source it or copy its credential into
@@ -115,7 +115,7 @@ request ID.
 
 A pending response means policy requires operator approval; it does not mean
 GitHub authentication failed. Preserve the operation ID and keep waiting for the
-decision without ending the agent turn. Do not bypass BrokerKit policy.
+decision without ending the agent turn. Do not bypass unYOLO policy.
 
 Treat broker results as the authoritative outcome. Before a destructive or
 state-sensitive follow-up such as merge, ref deletion, or force push, re-read

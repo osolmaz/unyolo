@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opbinding"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 var pathFieldPattern = regexp.MustCompile(`\{([A-Za-z][A-Za-z0-9]*)\}`)

@@ -36,13 +36,13 @@ then
 	exit 1
 fi
 if [ "$(grep -R --include='*.go' -c 'exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script' internal/host/privilege | awk -F: '{sum += $2} END {print sum + 0}')" -ne 1 ] ||
-  grep -n 'exec.Command.*"sudo"' cmd/brokerkit/deployment.go cmd/brokerkit/setup.go 2>/dev/null
+  grep -n 'exec.Command.*"sudo"' cmd/unyolo/deployment.go cmd/unyolo/setup.go 2>/dev/null
 then
 	echo 'the host bootstrap must have exactly one bounded privilege transition' >&2
 	exit 1
 fi
 
-if grep -R -n -E 'BROKERKIT_INSTALLER_REV=.*main|raw\.githubusercontent\.com/[^/]+/[^/]+/main/' brokers/*/install.sh 2>/dev/null; then
+if grep -R -n -E 'UNYOLO_INSTALLER_REV=.*main|raw\.githubusercontent\.com/[^/]+/[^/]+/main/' brokers/*/install.sh 2>/dev/null; then
 	echo 'broker installer wrappers must resolve an immutable installer commit' >&2
 	exit 1
 fi
@@ -98,8 +98,8 @@ if grep -R -n --include='*.go' --exclude='*_test.go' -E '((HF|GH|SUDO)_BROKER_(B
 	exit 1
 fi
 
-if ! grep -q 'BROKERKIT_VERIFY_ONLY: "true"' .github/workflows/release.yml ||
-  ! grep -q 'BROKERKIT_VERIFY_RELEASE_SET: "true"' .github/workflows/release.yml ||
+if ! grep -q 'UNYOLO_VERIFY_ONLY: "true"' .github/workflows/release.yml ||
+  ! grep -q 'UNYOLO_VERIFY_RELEASE_SET: "true"' .github/workflows/release.yml ||
   ! grep -q -- '--signer-workflow "$REPO/.github/workflows/release.yml"' install/install.sh ||
   ! grep -q -- '--deny-self-hosted-runners' install/install.sh
 then
@@ -133,7 +133,7 @@ then
 fi
 
 if find . -path './brokers' -prune -o -path './.git' -prune -o -name '*.go' -type f -print0 |
-  xargs -0 grep -n 'github.com/osolmaz/brokerkit/brokers/'
+  xargs -0 grep -n 'github.com/osolmaz/unyolo/brokers/'
 then
   echo 'shared Go package imports provider code' >&2
   exit 1
@@ -143,7 +143,7 @@ for provider in huggingface github sudo; do
   [ -d "brokers/$provider" ] || continue
   for other in huggingface github sudo; do
     [ "$provider" = "$other" ] && continue
-    if grep -R -n --include='*.go' "github.com/osolmaz/brokerkit/brokers/$other/" "brokers/$provider"; then
+    if grep -R -n --include='*.go' "github.com/osolmaz/unyolo/brokers/$other/" "brokers/$provider"; then
       echo "$provider imports $other provider code" >&2
       exit 1
     fi
@@ -191,7 +191,7 @@ if grep -R -n --include='*.go' -E 'operations\.json|store\.WriteJSONAtomic' agen
   exit 1
 fi
 
-if grep -R -n --include='*.go' 'github.com/osolmaz/brokerkit/planstore' \
+if grep -R -n --include='*.go' 'github.com/osolmaz/unyolo/planstore' \
   brokers/huggingface/internal/hfplan 2>/dev/null
 then
   echo 'HF plans must persist only through the shared SQLite state layer' >&2
@@ -205,7 +205,7 @@ then
   exit 1
 fi
 
-if grep -R -n --include='*.go' -E 'grants\.New\(|brokerkit/planstore|planstore\.' \
+if grep -R -n --include='*.go' -E 'grants\.New\(|unyolo/planstore|planstore\.' \
   brokers/github --exclude='*_test.go' 2>/dev/null
 then
   echo 'GH lifecycle state must use the shared SQLite database' >&2
@@ -213,7 +213,7 @@ then
 fi
 
 if ! grep -q 'agentAPI.Register' brokers/sudo/internal/routes/server.go ||
-	grep -R -n --include='*.go' -E 'api/v1/(requests|executions)|grants\.New\(|brokerkit/planstore|planstore\.' \
+	grep -R -n --include='*.go' -E 'api/v1/(requests|executions)|grants\.New\(|unyolo/planstore|planstore\.' \
 		brokers/sudo --exclude='*_test.go' 2>/dev/null
 then
 	echo 'sudo operations and lifecycle state must use Agent V1 and shared SQLite' >&2
@@ -230,11 +230,11 @@ fi
 if grep -R -n --include='*.go' -E 'gorm\.io/|github\.com/jmoiron/sqlx|github\.com/mattn/go-sqlite3' \
   . --exclude-dir=.git 2>/dev/null
 then
-  echo 'BrokerKit state must use database/sql with modernc SQLite and sqlc only' >&2
+  echo 'unYOLO state must use database/sql with modernc SQLite and sqlc only' >&2
   exit 1
 fi
 
-if ! grep -q 'github.com/osolmaz/brokerkit/operation/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
+if ! grep -q 'github.com/osolmaz/unyolo/operation/capability' brokers/huggingface/internal/opcatalog/catalog.go ||
   ! grep -A4 'type Descriptor struct' brokers/github/internal/opcatalog/catalog.go | grep -q 'capability.Descriptor'
 then
   echo 'provider operation catalogs must use the shared capability descriptor' >&2
@@ -285,7 +285,7 @@ then
   exit 1
 fi
 
-if ! grep -q 'github.com/osolmaz/brokerkit/operation/runtime' brokers/huggingface/internal/operations/operations.go ||
+if ! grep -q 'github.com/osolmaz/unyolo/operation/runtime' brokers/huggingface/internal/operations/operations.go ||
   grep -R -n --include='*.go' -E 'type Adapter interface|byName map\[string\].*Adapter|type PossiblePartialError struct' \
     brokers/huggingface --exclude='*_test.go' 2>/dev/null
 then

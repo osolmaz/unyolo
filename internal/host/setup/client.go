@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/config/client"
 )
 
 // ClientDefaults configures the shared setup client command.

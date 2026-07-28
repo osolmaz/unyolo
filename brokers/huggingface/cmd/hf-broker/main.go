@@ -15,17 +15,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/httpapi"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	"github.com/osolmaz/brokerkit/deployment/component"
-	"github.com/osolmaz/brokerkit/internal/storage/command"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
-	"github.com/osolmaz/brokerkit/transport/http/server"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/credentialauth"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/httpapi"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/internal/storage/command"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 var version = "dev"
@@ -143,7 +143,7 @@ func runSetupComponentCommand(command commandContext, args []string) error {
 		return errors.New("setup-component does not accept arguments")
 	}
 	return component.Serve(command.ctx, command.stdin, command.stdout, component.Config{
-		ComponentID: "huggingface", ProfileAPI: "brokerkit.io/huggingface-deployment/v1",
+		ComponentID: "huggingface", ProfileAPI: "unyolo.io/huggingface-deployment/v1",
 		AllowedPaths:    []string{"/etc/hf-broker", "/var/lib/hf-broker", "/etc/systemd/system/hf-broker.service"},
 		AllowedServices: []string{"hf-broker.service"}, AllowedAccounts: []string{"hf-broker"},
 		AllowedGroups: []string{"hf-broker", "hf-broker-agent", "hf-broker-operator"}, BackupDirectory: "/var/lib/hf-broker/deployment-backups",

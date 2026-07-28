@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/deployment/component"
+	"github.com/osolmaz/unyolo/deployment/component"
 )
 
 var version = "dev"
@@ -31,7 +31,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return errors.New("usage: brokerkit-telegram [--version|version|serve|setup]")
+		return errors.New("usage: unyolo-telegram [--version|version|serve|setup]")
 	}
 	switch args[0] {
 	case "serve":
@@ -49,13 +49,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return errors.New("setup-component does not accept arguments")
 		}
 		return component.Serve(ctx, os.Stdin, stdout, component.Config{
-			ComponentID: "telegram", ProfileAPI: "brokerkit.io/telegram-deployment/v1",
-			AllowedPaths:    []string{"/etc/brokerkit-telegram", "/var/lib/brokerkit-telegram", "/etc/systemd/system/brokerkit-telegram.service"},
-			AllowedServices: []string{"brokerkit-telegram.service"}, AllowedAccounts: []string{"brokerkit-telegram"},
-			AllowedGroups: []string{"brokerkit-telegram"}, BackupDirectory: "/var/lib/brokerkit-telegram/deployment-backups",
+			ComponentID: "telegram", ProfileAPI: "unyolo.io/telegram-deployment/v1",
+			AllowedPaths:    []string{"/etc/unyolo-telegram", "/var/lib/unyolo-telegram", "/etc/systemd/system/unyolo-telegram.service"},
+			AllowedServices: []string{"unyolo-telegram.service"}, AllowedAccounts: []string{"unyolo-telegram"},
+			AllowedGroups: []string{"unyolo-telegram"}, BackupDirectory: "/var/lib/unyolo-telegram/deployment-backups",
 		})
 	default:
-		return errors.New("usage: brokerkit-telegram [--version|version|serve|setup]")
+		return errors.New("usage: unyolo-telegram [--version|version|serve|setup]")
 	}
 }
 
@@ -63,9 +63,9 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 	if ctx.Err() != nil {
 		return nil
 	}
-	flags := flag.NewFlagSet("brokerkit-telegram serve", flag.ContinueOnError)
+	flags := flag.NewFlagSet("unyolo-telegram serve", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", "/etc/brokerkit-telegram/config.json", "absolute ingress config path")
+	configPath := flags.String("config", "/etc/unyolo-telegram/config.json", "absolute ingress config path")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

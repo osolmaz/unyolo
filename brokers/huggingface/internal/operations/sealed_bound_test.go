@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/internal/storage/sealed"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/internal/storage/sealed"
 )
 
 type sealedBoundFake struct {

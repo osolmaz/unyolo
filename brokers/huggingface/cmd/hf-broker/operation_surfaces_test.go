@@ -17,12 +17,12 @@ import (
 	"time"
 
 	"github.com/dlclark/regexp2"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/mcpprojection"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opbinding"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/mcp/operation"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/mcpprojection"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opbinding"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
+	"github.com/osolmaz/unyolo/mcp/operation"
+	"github.com/osolmaz/unyolo/operation/capability"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -51,7 +51,7 @@ func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 			}
 			compiler := jsonschema.NewCompiler()
 			compiler.UseRegexpEngine(compileMCPTestRegexp)
-			location := "https://brokerkit.local/mcp/" + descriptor.Name + ".json"
+			location := "https://unyolo.local/mcp/" + descriptor.Name + ".json"
 			encoded, _ := json.Marshal(schema)
 			var normalized any
 			_ = json.Unmarshal(encoded, &normalized)
@@ -195,7 +195,7 @@ func TestMCPCompatibilityManifestMatchesCatalog(t *testing.T) {
 			projected = append(projected, descriptor.Name)
 		}
 	}
-	if manifest.APIVersion != "brokerkit.io/mcp-compatibility-manifest/v1" || manifest.Provider != "huggingface" ||
+	if manifest.APIVersion != "unyolo.io/mcp-compatibility-manifest/v1" || manifest.Provider != "huggingface" ||
 		!slices.Equal(manifest.HostProfiles, []string{"openclaw@2026.7.1"}) ||
 		manifest.AgentFacingOperations != len(agentFacingDescriptors()) || manifest.OperationTools != len(agentFacingDescriptors()) ||
 		manifest.UtilityTools != 5 || !slices.Equal(manifest.ProjectedOperations, projected) ||

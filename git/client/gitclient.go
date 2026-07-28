@@ -1,4 +1,4 @@
-// Package gitclient installs and diagnoses BrokerKit's user-level Git routing.
+// Package gitclient installs and diagnoses unYOLO's user-level Git routing.
 package gitclient
 
 import (
@@ -17,11 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
-const identityPath = "/_brokerkit/git/v1"
+const identityPath = "/_unyolo/git/v1"
 
 // Provider describes one broker-owned Git provider without embedding provider
 // behavior in this package.
@@ -111,14 +111,14 @@ func validateInstallState(ctx context.Context, provider Provider, current Status
 		return verifyCredentialHelper(ctx, provider, runner)
 	}
 	if err := verifyInstallation(ctx, provider, current, runner); err != nil {
-		return fmt.Errorf("verify existing BrokerKit Git installation: %w", err)
+		return fmt.Errorf("verify existing unYOLO Git installation: %w", err)
 	}
 	return nil
 }
 
 func validateReplacement(current Status, origin string, opts Options) error {
 	if current.Installed && (current.Origin != origin || current.Mode != opts.Mode) && !opts.Replace {
-		return errors.New("BrokerKit Git routing already exists with different settings; rerun with --replace")
+		return errors.New("unYOLO Git routing already exists with different settings; rerun with --replace")
 	}
 	return nil
 }
@@ -149,17 +149,17 @@ func rollbackReplacement(
 	defer cancel()
 	errs := []error{installErr}
 	if err := remove(rollbackCtx, provider, partial, runner); err != nil {
-		errs = append(errs, fmt.Errorf("clean up partial BrokerKit Git installation: %w", err))
+		errs = append(errs, fmt.Errorf("clean up partial unYOLO Git installation: %w", err))
 	}
 	if previous.Installed && previous.Origin == partial.Origin {
 		if err := writeConfig(rollbackCtx, provider, previous.Origin, previous.Mode, runner); err != nil {
-			errs = append(errs, fmt.Errorf("restore previous BrokerKit Git installation: %w", err))
+			errs = append(errs, fmt.Errorf("restore previous unYOLO Git installation: %w", err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// Uninstall removes only configuration recorded as owned by BrokerKit.
+// Uninstall removes only configuration recorded as owned by unYOLO.
 func Uninstall(ctx context.Context, provider Provider, opts Options) (Status, error) {
 	runner, err := prepareHome(provider, &opts)
 	if err != nil {
@@ -175,7 +175,7 @@ func Uninstall(ctx context.Context, provider Provider, opts Options) (Status, er
 	return Status{Provider: provider.ID}, nil
 }
 
-// Inspect reports the exact BrokerKit-owned installation state.
+// Inspect reports the exact unYOLO-owned installation state.
 func Inspect(ctx context.Context, provider Provider, opts Options) (Status, error) {
 	runner, err := prepareHome(provider, &opts)
 	if err != nil {
@@ -208,7 +208,7 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 
 func validateDoctorInstallation(ctx context.Context, provider Provider, status Status, origin string, runner Runner) error {
 	if !status.Installed || status.Origin != origin {
-		return errors.New("BrokerKit Git routing is not installed for the configured listener")
+		return errors.New("unYOLO Git routing is not installed for the configured listener")
 	}
 	if err := rejectConflicts(ctx, provider, origin, status, runner); err != nil {
 		return err
@@ -313,14 +313,14 @@ func checkIdentity(ctx context.Context, client *http.Client, origin, secret, pro
 	if err != nil {
 		return err
 	}
-	request.SetBasicAuth("brokerkit", secret)
+	request.SetBasicAuth("unyolo", secret)
 	response, err := client.Do(request)
 	if err != nil {
-		return fmt.Errorf("reach BrokerKit Git listener: %w", err)
+		return fmt.Errorf("reach unYOLO Git listener: %w", err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("BrokerKit Git listener returned HTTP %d", response.StatusCode)
+		return fmt.Errorf("unYOLO Git listener returned HTTP %d", response.StatusCode)
 	}
 	var identity struct {
 		Provider string `json:"provider"`
@@ -346,7 +346,7 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 	credentialKey := "credential." + origin
 	commands := [][]string{
 		{"config", "--global", "--replace-all", credentialKey + ".helper", ""},
-		{"config", "--global", "--add", credentialKey + ".helper", "brokerkit --provider " + provider.ID},
+		{"config", "--global", "--add", credentialKey + ".helper", "unyolo --provider " + provider.ID},
 		{"config", "--global", credentialKey + ".useHttpPath", "true"},
 		{"config", "--global", "http." + origin + ".proxy", ""},
 		{"config", "--global", statusKey(provider, "origin"), origin},
@@ -354,7 +354,7 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 	}
 	for _, command := range commands {
 		if _, err := runner.Run(ctx, command...); err != nil {
-			return fmt.Errorf("write BrokerKit Git configuration: %w", err)
+			return fmt.Errorf("write unYOLO Git configuration: %w", err)
 		}
 	}
 	return nil
@@ -367,9 +367,9 @@ func remove(ctx context.Context, provider Provider, status Status, runner Runner
 			return fmt.Errorf("remove Git URL routing: %w", err)
 		}
 	}
-	for _, section := range []string{"credential." + status.Origin, "brokerkit.git." + provider.ID} {
+	for _, section := range []string{"credential." + status.Origin, "unyolo.git." + provider.ID} {
 		if _, err := runner.Run(ctx, "config", "--global", "--remove-section", section); err != nil && !isMissingConfig(err) {
-			return fmt.Errorf("remove BrokerKit Git configuration: %w", err)
+			return fmt.Errorf("remove unYOLO Git configuration: %w", err)
 		}
 	}
 	return removeProxyIsolation(ctx, status.Origin, runner)
@@ -389,11 +389,11 @@ func readStatus(ctx context.Context, provider Provider, runner Runner) (Status, 
 		return Status{Provider: provider.ID}, nil
 	}
 	if originErr != nil || modeErr != nil {
-		return Status{}, errors.New("BrokerKit Git ownership metadata is incomplete")
+		return Status{}, errors.New("unYOLO Git ownership metadata is incomplete")
 	}
 	mode := Mode(modeValue)
 	if mode != ModeAll {
-		return Status{}, errors.New("BrokerKit Git ownership metadata has an invalid mode")
+		return Status{}, errors.New("unYOLO Git ownership metadata has an invalid mode")
 	}
 	return Status{Provider: provider.ID, Origin: origin, Mode: mode, Installed: true}, nil
 }
@@ -443,7 +443,7 @@ func rejectUnownedCredentialScope(ctx context.Context, origin string, runner Run
 			return fmt.Errorf("inspect Git credential helper configuration: %w", err)
 		}
 		if len(output) > 0 {
-			return fmt.Errorf("git credential helper configuration %s already exists for the BrokerKit listener", key)
+			return fmt.Errorf("git credential helper configuration %s already exists for the unYOLO listener", key)
 		}
 	}
 	return nil
@@ -545,7 +545,7 @@ func rejectInheritedTransportOverrides(ctx context.Context, runner Runner, scope
 		return fmt.Errorf("inspect %s Git LFS configuration: %w", strings.TrimPrefix(scope, "--"), err)
 	}
 	key, _, _ := bytes.Cut(bytes.Split(output, []byte{0})[0], []byte{'\n'})
-	return fmt.Errorf("%s Git transport override %s bypasses BrokerKit", strings.TrimPrefix(scope, "--"), key)
+	return fmt.Errorf("%s Git transport override %s bypasses unYOLO", strings.TrimPrefix(scope, "--"), key)
 }
 
 func rejectScopedProxyOverrides(ctx context.Context, runner Runner, origin, scope, root string) error {
@@ -573,7 +573,7 @@ func rejectScopedProxyRecords(output []byte, origin, scope string) error {
 		if scope == "--global" && strings.ToLower(string(key)) == ownedKey && len(value) == 0 {
 			continue
 		}
-		return fmt.Errorf("git proxy override %s could expose the BrokerKit client credential", key)
+		return fmt.Errorf("git proxy override %s could expose the unYOLO client credential", key)
 	}
 	return nil
 }
@@ -653,7 +653,7 @@ func rejectRepositoryTransportConfig(ctx context.Context, root, scope string, ru
 	}
 	record := bytes.Split(output, []byte{0})[0]
 	key, _, _ := bytes.Cut(record, []byte{'\n'})
-	return fmt.Errorf("repository Git transport override %s bypasses BrokerKit", key)
+	return fmt.Errorf("repository Git transport override %s bypasses unYOLO", key)
 }
 
 func conflictingRewrite(record []byte, prefixes []string, expected map[string]bool) ([]byte, []byte, bool) {
@@ -686,16 +686,16 @@ func verifyInstallation(ctx context.Context, provider Provider, status Status, r
 func verifyURLRouting(ctx context.Context, provider Provider, status Status, runner Runner) error {
 	rewrites, err := configValues(ctx, runner, "url."+status.Origin+"/.insteadOf")
 	if err != nil || !slices.Equal(rewrites, provider.CanonicalPrefixes) {
-		return errors.New("BrokerKit Git URL routing is incomplete or modified")
+		return errors.New("unYOLO Git URL routing is incomplete or modified")
 	}
 	return nil
 }
 
 func verifyCredentialConfiguration(ctx context.Context, provider Provider, status Status, runner Runner) error {
 	helpers, err := configValues(ctx, runner, "credential."+status.Origin+".helper")
-	wantHelpers := []string{"", "brokerkit --provider " + provider.ID}
+	wantHelpers := []string{"", "unyolo --provider " + provider.ID}
 	if err != nil || !slices.Equal(helpers, wantHelpers) {
-		return errors.New("BrokerKit Git credential helper is incomplete or modified")
+		return errors.New("unYOLO Git credential helper is incomplete or modified")
 	}
 	return nil
 }
@@ -703,7 +703,7 @@ func verifyCredentialConfiguration(ctx context.Context, provider Provider, statu
 func verifyCredentialPathIsolation(ctx context.Context, status Status, runner Runner) error {
 	usePath, err := configValue(ctx, runner, "credential."+status.Origin+".useHttpPath")
 	if err != nil || usePath != "true" {
-		return errors.New("BrokerKit Git credential path isolation is incomplete or modified")
+		return errors.New("unYOLO Git credential path isolation is incomplete or modified")
 	}
 	return nil
 }
@@ -716,8 +716,8 @@ func verifyConfiguredProxyIsolation(ctx context.Context, status Status, runner R
 func verifyCredentialHelper(ctx context.Context, provider Provider, runner Runner) error {
 	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if _, err := runner.Run(checkCtx, "credential-brokerkit", "--provider", provider.ID, "capability"); err != nil {
-		return fmt.Errorf("BrokerKit Git credential helper is unavailable: %w", err)
+	if _, err := runner.Run(checkCtx, "credential-unyolo", "--provider", provider.ID, "capability"); err != nil {
+		return fmt.Errorf("unYOLO Git credential helper is unavailable: %w", err)
 	}
 	return nil
 }
@@ -726,7 +726,7 @@ func verifyProxyIsolation(value string, err error) error {
 	if err == nil && value == "" {
 		return nil
 	}
-	return errors.New("BrokerKit Git proxy isolation is incomplete or modified")
+	return errors.New("unYOLO Git proxy isolation is incomplete or modified")
 }
 
 func configValues(ctx context.Context, runner Runner, key string) ([]string, error) {
@@ -743,7 +743,7 @@ func configValue(ctx context.Context, runner Runner, key string) (string, error)
 }
 
 func statusKey(provider Provider, field string) string {
-	return "brokerkit.git." + provider.ID + "." + field
+	return "unyolo.git." + provider.ID + "." + field
 }
 
 func isMissingConfig(err error) bool {

@@ -13,15 +13,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/authorization/budget"
-	"github.com/osolmaz/brokerkit/authorization/decision"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/operator/client"
-	"github.com/osolmaz/brokerkit/operator/fake"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/decision"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/operator/client"
+	"github.com/osolmaz/unyolo/operator/fake"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const testOperatorSecret = "operator-secret-with-enough-entropy"
@@ -38,7 +38,7 @@ func TestOperatorV1DiscoveryAuthAndLegacyCutover(t *testing.T) {
 	if err := unauthenticated.Health(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/.well-known/brokerkit-operator", "/api/operator/v1/requests"} {
+	for _, path := range []string{"/.well-known/unyolo-operator", "/api/operator/v1/requests"} {
 		response := rawRequest(t, server.HTTPClient(), http.MethodGet, server.URL()+path, "", "")
 		if response.status != http.StatusUnauthorized || response.cacheControl != "no-store" {
 			t.Fatalf("%s = %+v", path, response)

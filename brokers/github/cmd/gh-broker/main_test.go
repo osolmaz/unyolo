@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/config"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
-	"github.com/osolmaz/brokerkit/transport/http/server"
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
+	"github.com/osolmaz/unyolo/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 func TestRunWithArgsVersion(t *testing.T) {

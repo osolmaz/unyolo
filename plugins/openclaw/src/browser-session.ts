@@ -1,4 +1,4 @@
-export const BROWSER_SESSION_HEADER = "BrokerKit-Session";
+export const BROWSER_SESSION_HEADER = "unyolo-session";
 export const MAX_BROWSER_SESSION_BYTES = 4096;
 
 export function validBrowserSession(value: string): boolean {

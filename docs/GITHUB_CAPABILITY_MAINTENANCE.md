@@ -1,6 +1,6 @@
 # GitHub Capability Maintenance
 
-BrokerKit generates the GitHub operation catalog from reviewed, immutable
+unYOLO generates the GitHub operation catalog from reviewed, immutable
 snapshots. A weekly read-only monitor compares those snapshots with current
 official GitHub metadata and maintains one issue when structural drift exists.
 

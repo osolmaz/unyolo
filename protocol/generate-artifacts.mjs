@@ -30,7 +30,7 @@ const specs = [
       Presentation: "presentation.schema.json",
       BrokerRequest: "request.schema.json",
     },
-    idBase: "https://brokerkit.dev/schema/operator/v1/",
+    idBase: "https://unyolo.io/schema/operator/v1/",
   },
   {
     name: "agent",
@@ -43,7 +43,7 @@ const specs = [
       OperationPage: "page.schema.json",
       SubmitRequest: "submit.schema.json",
     },
-    idBase: "https://brokerkit.io/schema/agent/v1/",
+    idBase: "https://unyolo.io/schema/agent/v1/",
   },
   {
     name: "mcp",
@@ -55,7 +55,7 @@ const specs = [
       OperationPage: "page.schema.json",
       RequestIDConflict: "request-id-conflict.schema.json",
     },
-    idBase: "https://brokerkit.io/schema/mcp/v1/",
+    idBase: "https://unyolo.io/schema/mcp/v1/",
   },
 ];
 
@@ -205,7 +205,7 @@ function emitOperatorValidators(components) {
     "UISummary",
     "UIRequest",
   ];
-  const rootID = "https://brokerkit.dev/schema/operator/v1/runtime/components";
+  const rootID = "https://unyolo.io/schema/operator/v1/runtime/components";
   const definitions = Object.fromEntries(
     Object.entries(components).map(([name, schema]) => [
       name,
@@ -227,7 +227,7 @@ function emitOperatorValidators(components) {
     ajv.addSchema(
       {
         $schema: "https://json-schema.org/draft/2020-12/schema",
-        $id: `https://brokerkit.dev/schema/operator/v1/runtime/${name}`,
+        $id: `https://unyolo.io/schema/operator/v1/runtime/${name}`,
         $ref: `${rootID}#/$defs/${name}`,
       },
       name,

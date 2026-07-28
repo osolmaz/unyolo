@@ -16,7 +16,7 @@ mkdirSync(outputRoot, { recursive: true });
 for (const skill of pluginSkills) {
   const source = path.resolve(packageDir, skill.source);
   if (!existsSync(path.join(source, "SKILL.md"))) {
-    throw new Error(`BrokerKit skill ${skill.name} is missing SKILL.md`);
+    throw new Error(`unYOLO skill ${skill.name} is missing SKILL.md`);
   }
   cpSync(source, path.join(outputRoot, skill.name), { recursive: true });
 }

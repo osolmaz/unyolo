@@ -3,7 +3,7 @@ package policy
 import (
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/copyx"
+	"github.com/osolmaz/unyolo/internal/copyx"
 )
 
 // Decide evaluates one classified request.

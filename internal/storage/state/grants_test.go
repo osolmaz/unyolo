@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state/internal/dbsql"
-	"github.com/osolmaz/brokerkit/operation/digest"
+	"github.com/osolmaz/unyolo/internal/storage/state/internal/dbsql"
+	"github.com/osolmaz/unyolo/operation/digest"
 )
 
 func testIntPointer(value int) *int { return &value }

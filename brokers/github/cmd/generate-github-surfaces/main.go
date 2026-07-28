@@ -13,8 +13,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/github/internal/opcatalog"
-	"github.com/osolmaz/brokerkit/operation/capability"
+	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/operation/capability"
 )
 
 var checkOnly bool

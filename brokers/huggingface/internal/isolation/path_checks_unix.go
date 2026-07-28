@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	bkdoctor "github.com/osolmaz/brokerkit/internal/host/doctor"
+	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
 )
 
 func runParentWriteChecks(report *Report, agent identity, dir, name string) {
-	for _, candidate := range bkdoctor.ParentDirs(dir) {
+	for _, candidate := range unyolodoctor.ParentDirs(dir) {
 		stat, ok := lstat(candidate)
 		if !ok {
 			add(report, CheckUnknown, name, parentInspectMessage(name, candidate))
@@ -46,12 +46,12 @@ func runParentSymlinkReplaceCheck(report *Report, agent identity, entry fileStat
 }
 
 func runPathEntryReplaceCheck(report *Report, agent identity, path, name string) {
-	entry, entryOK := lstat(bkdoctor.CleanPath(path))
+	entry, entryOK := lstat(unyolodoctor.CleanPath(path))
 	if !entryOK {
 		add(report, CheckUnknown, name, pathEntryInspectMessage(name))
 		return
 	}
-	parent, parentOK := lstat(bkdoctor.ResolvedDir(path))
+	parent, parentOK := lstat(unyolodoctor.ResolvedDir(path))
 	if !parentOK {
 		add(report, CheckUnknown, name, pathEntryParentInspectMessage(name))
 		return
@@ -64,12 +64,12 @@ func runPathEntryReplaceCheck(report *Report, agent identity, path, name string)
 }
 
 func runResolvedPathChecks(report *Report, agent identity, path, prefix string) {
-	resolved, ok := bkdoctor.ResolvedCleanPath(path)
+	resolved, ok := unyolodoctor.ResolvedCleanPath(path)
 	if !ok {
 		add(report, CheckUnknown, prefix+"_path", pathMessagesFor(prefix).resolveUnknown)
 		return
 	}
-	if resolved == bkdoctor.CleanPath(path) {
+	if resolved == unyolodoctor.CleanPath(path) {
 		return
 	}
 	runPathEntryReplaceCheck(report, agent, resolved, prefix+"_entry_not_replaceable")
@@ -141,7 +141,7 @@ func statPath(report *Report, checkName, path string) (fileStat, bool) {
 	if !filepath.IsAbs(path) {
 		add(report, CheckWarn, checkName+"_absolute", relativePathMessage(checkName, path))
 	}
-	stat, ok := lstat(bkdoctor.CleanPath(path))
+	stat, ok := lstat(unyolodoctor.CleanPath(path))
 	if !ok {
 		add(report, CheckUnknown, checkName, inspectPathMessage(checkName, path))
 		return fileStat{}, false

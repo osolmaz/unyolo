@@ -3,7 +3,7 @@ title: systemd and launchd
 description: The unified setup command, the hardened unit baseline, file layout, and the two typed policies that vary.
 ---
 
-Every broker uses one privileged setup command with the same shape, and BrokerKit renders the
+Every broker uses one privileged setup command with the same shape, and unYOLO renders the
 service definition from a shared hardened baseline. This page covers the flags, the file layout the
 setup produces, and the two policies a broker may vary.
 
@@ -147,7 +147,7 @@ access denied and requires root-trusted executable and working directory chains.
 
 **Privilege escalation** defaults to denied with `NoNewPrivileges=true`. A broker that deliberately
 performs an identity transition, which in practice means `sudo-broker` and its root helper, must
-explicitly select `PrivilegeEscalationAllow`, and BrokerKit then renders `NoNewPrivileges=false`.
+explicitly select `PrivilegeEscalationAllow`, and unYOLO then renders `NoNewPrivileges=false`.
 
 `PathValidationPreview` exists only for dry-runs and non-root temporary-directory fixtures.
 Installable units use the zero-value strict policy.
@@ -157,13 +157,13 @@ Installable units use the zero-value strict policy.
 ```sh
 <broker> setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/<provider>/agent/broker.sock \
+  --endpoint unix:///run/unyolo/<provider>/agent/broker.sock \
   --git-endpoint tcp://127.0.0.1:38471 \
   --secret-file /etc/<broker>/secrets \
   --home-dir /home/agent-a
 ```
 
-This writes `~/.config/<broker>/client.json` using the closed `brokerkit.io/client/v1` schema. It
+This writes `~/.config/<broker>/client.json` using the closed `unyolo.io/client/v1` schema. It
 does not edit Git configuration; `<broker> git install` owns that. Neither command writes an
 upstream provider credential.
 

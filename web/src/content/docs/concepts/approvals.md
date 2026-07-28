@@ -14,7 +14,7 @@ cannot make operator decisions or read another client's history. The operator in
 listener or Unix socket with its own credential, and a credential reused by a broker client is
 rejected outright.
 
-BrokerKit provides the durable backend for the inbox. It does not render a web application. A
+unYOLO provides the durable backend for the inbox. It does not render a web application. A
 broker mounts the shared handler behind an operator-only transport, and a trusted host calls that
 backend and presents the records in its own UI.
 
@@ -92,7 +92,7 @@ browser session
     → trusted web backend
     → operator/client using a server-held operator credential
     → broker operator API
-    → canonical BrokerKit grant store
+    → canonical unYOLO grant store
 ```
 
 The browser authenticates only to the trusted host. Operator credentials never enter browser
@@ -126,12 +126,12 @@ Telegram is an optional notification view over the same durable grant store, not
 state machine. A decision made through a Telegram button and a decision made through the inbox API
 close the same request exactly once.
 
-Provider code supplies only bounded operation, target, risk, warning, and plan facts. BrokerKit
+Provider code supplies only bounded operation, target, risk, warning, and plan facts. unYOLO
 owns Telegram layout, escaping, emoji, the fixed Approve and Deny buttons, callback answers,
 terminal wording, and message limits. Dynamic provider values are HTML-escaped and bounded without
 splitting UTF-8, and they cannot supply markup, button labels, callback answers, or status prose.
 
-When several brokers share a bot, one `brokerkit-telegram` ingress owns inbound updates and routes
+When several brokers share a bot, one `unyolo-telegram` ingress owns inbound updates and routes
 decisions to the owning broker's authenticated Operator V1 socket. See
 [Telegram approvals](/docs/guides/telegram-approvals).
 

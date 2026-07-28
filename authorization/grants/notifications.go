@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 // MessageRef is the durable form of an editable operator notification.

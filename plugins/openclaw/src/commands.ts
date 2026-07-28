@@ -13,7 +13,7 @@ export async function handleCommand(
   const command = tokens[0] ?? "pending";
   const handle = tokens[1];
   if (command === "subscribe" || command === "unsubscribe") {
-    if (tokens.length !== 1) return { text: "Invalid BrokerKit command." };
+    if (tokens.length !== 1) return { text: "Invalid unYOLO command." };
     if (!validRouting(ctx.channel, ctx.to, ctx.accountId, ctx.messageThreadId))
       return { text: "This conversation has no stable delivery target." };
     const value = {
@@ -38,7 +38,7 @@ export async function handleCommand(
     };
   }
   if (command === "pending") {
-    if (tokens.length > 1) return { text: "Invalid BrokerKit command." };
+    if (tokens.length > 1) return { text: "Invalid unYOLO command." };
     const lines = runtime
       .snapshot()
       .requests.filter((request) => request.request.status === "pending")
@@ -47,7 +47,7 @@ export async function handleCommand(
           `${request.handle} · ${request.source_label} · ${request.request.presentation.title}`,
       );
     return {
-      text: lines.length ? lines.join("\n") : "No pending BrokerKit requests.",
+      text: lines.length ? lines.join("\n") : "No pending unYOLO requests.",
     };
   }
   if (!handle || tokens.length !== 2)
@@ -73,7 +73,7 @@ export async function handleCommand(
       return { text: commandError(error) };
     }
   }
-  return { text: "Unknown BrokerKit command." };
+  return { text: "Unknown unYOLO command." };
 }
 
 function validRouting(

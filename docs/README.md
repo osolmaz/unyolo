@@ -1,6 +1,6 @@
-# BrokerKit Documentation
+# unYOLO Documentation
 
-BrokerKit's documentation index contains maintained contracts and current
+unYOLO's documentation index contains maintained contracts and current
 component documentation.
 
 ## Start Here

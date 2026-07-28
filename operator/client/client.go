@@ -1,4 +1,4 @@
-// Package operatorclient implements the BrokerKit Operator V1 Source contract.
+// Package operatorclient implements the unYOLO Operator V1 Source contract.
 package operatorclient
 
 import (
@@ -14,16 +14,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/auth"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/internal/optional"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/operator/v1"
-	"github.com/osolmaz/brokerkit/operator/wire"
-	"github.com/osolmaz/brokerkit/protocol/contract"
-	"github.com/osolmaz/brokerkit/protocol/operatorwire"
-	"github.com/osolmaz/brokerkit/transport/http"
-	"github.com/osolmaz/brokerkit/transport/http/client"
+	"github.com/osolmaz/unyolo/auth"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/internal/optional"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/operator/v1"
+	"github.com/osolmaz/unyolo/operator/wire"
+	"github.com/osolmaz/unyolo/protocol/contract"
+	"github.com/osolmaz/unyolo/protocol/operatorwire"
+	"github.com/osolmaz/unyolo/transport/http"
+	"github.com/osolmaz/unyolo/transport/http/client"
 )
 
 const maxResponseBytes = 2 * 1024 * 1024

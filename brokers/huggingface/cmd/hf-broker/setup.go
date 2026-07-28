@@ -11,14 +11,14 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
-	"github.com/osolmaz/brokerkit/transport/endpoint"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
+	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const setupUsage = `usage:
@@ -30,7 +30,7 @@ const setupUsage = `usage:
 var hubNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type setupSystemdOptions struct {
-	bksetup.SystemdOptions
+	unyolosetup.SystemdOptions
 	HFTokenFile           string
 	XetPython             string
 	TelegramBotTokenFile  string
@@ -50,7 +50,7 @@ type setupSystemdOptions struct {
 	OperatorSecret        string
 	OperatorEndpoint      string
 	GitEndpoint           string
-	CommandRunner         bkservice.CommandRunner
+	CommandRunner         unyoloservice.CommandRunner
 	Lifecycle             *credentiallifecycle.Reporter
 }
 
@@ -104,15 +104,15 @@ func parseSetupSystemd(stderr io.Writer, args []string) (setupSystemdOptions, er
 
 func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (setupSystemdOptions, error) {
 	opts := setupSystemdOptions{
-		SystemdOptions: bksetup.DefaultSystemdOptions(bksetup.SystemdDefaults{
+		SystemdOptions: unyolosetup.DefaultSystemdOptions(unyolosetup.SystemdDefaults{
 			BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker",
-			Endpoint: "unix:///run/brokerkit/huggingface/agent/broker.sock",
+			Endpoint: "unix:///run/unyolo/huggingface/agent/broker.sock",
 		}),
 	}
 	var flagOutput strings.Builder
 	fs := flag.NewFlagSet("hf-broker setup systemd", flag.ContinueOnError)
 	fs.SetOutput(&flagOutput)
-	bksetup.BindSystemdFlags(fs, &opts.SystemdOptions)
+	unyolosetup.BindSystemdFlags(fs, &opts.SystemdOptions)
 	fs.StringVar(&opts.HFTokenFile, "hf-token-file", "", "file containing the upstream Hugging Face token")
 	fs.StringVar(&opts.XetPython, "xet-python", "python3", "broker-only Python interpreter containing the pinned hf-xet package")
 	fs.StringVar(&opts.Repo, "repo", "", "allowed Hub repo as owner/name")
@@ -127,7 +127,7 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	fs.StringVar(&opts.OperatorName, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
-	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/brokerkit/huggingface/operator/broker.sock", "operator inbox endpoint URI")
+	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/unyolo/huggingface/operator/broker.sock", "operator inbox endpoint URI")
 	fs.StringVar(&opts.GitEndpoint, "git-endpoint", "", "explicit loopback TCP endpoint for native Git clients")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -140,19 +140,19 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 		return setupSystemdOptions{}, exitError{code: 64, message: "setup systemd does not accept positional arguments"}
 	}
 	opts.PolicyPresetExplicit = flagProvided(fs, "policy-preset")
-	finalized, err := bksetup.FinalizeSystemd(opts.SystemdOptions)
+	finalized, err := unyolosetup.FinalizeSystemd(opts.SystemdOptions)
 	if err != nil {
 		return setupSystemdOptions{}, exitError{code: 64, message: err.Error()}
 	}
 	opts.SystemdOptions = finalized
-	secret, err := bksetup.ResolveSecret(bksetup.SecretInput{
+	secret, err := unyolosetup.ResolveSecret(unyolosetup.SecretInput{
 		File: opts.SharedSecretFile, Stdin: opts.SharedSecretStdin,
 	}, stdin)
 	if err != nil {
 		return setupSystemdOptions{}, exitError{code: 64, message: err.Error()}
 	}
 	opts.SharedSecret = secret
-	operatorSecret, err := bksetup.ResolveSecret(bksetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
+	operatorSecret, err := unyolosetup.ResolveSecret(unyolosetup.SecretInput{File: opts.OperatorSecretFile}, strings.NewReader(""))
 	if err != nil {
 		return setupSystemdOptions{}, exitError{code: 64, message: err.Error()}
 	}

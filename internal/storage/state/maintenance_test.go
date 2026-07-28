@@ -212,7 +212,7 @@ func TestStateExportIsDeterministicAndRedacted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.InsertOperation(t.Context(), OperationRecord{ID: "op-1", APIVersion: "brokerkit.io/agent/v1", Broker: "test-broker",
+	if err := database.InsertOperation(t.Context(), OperationRecord{ID: "op-1", APIVersion: "unyolo.io/agent/v1", Broker: "test-broker",
 		ClientID: "agent-a", IdempotencyKey: "request-1", Operation: "repo.create", TargetJSON: []byte(`{"token":"target-secret"}`),
 		ArgumentsJSON: []byte(`{"token":"argument-secret"}`), Reason: "reason-secret", State: "pending", Revision: 1,
 		CreatedAt: createdAt, UpdatedAt: createdAt, PresentationJSON: []byte(`{"title":"secret title"}`), PlanDigest: digest}); err != nil {

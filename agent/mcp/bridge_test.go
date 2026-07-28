@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/mcp/server"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/mcp/server"
 )
 
 const testSecret = "01234567890123456789012345678901"
@@ -27,7 +27,7 @@ func TestBridgeSubmitsEverySelectedOperation(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusCreated)
-		_, _ = writer.Write([]byte(`{"api_version":"brokerkit.io/agent/v1","id":"op_1","broker":"test","client_id":"agent","idempotency_key":"req_1","operation":"repo.read","target":{"kind":"repo"},"arguments":{},"reason":"read","state":"pending","revision":1,"created_at":"2026-07-18T00:00:00Z","updated_at":"2026-07-18T00:00:00Z","presentation":{"title":"Read"}}`))
+		_, _ = writer.Write([]byte(`{"api_version":"unyolo.io/agent/v1","id":"op_1","broker":"test","client_id":"agent","idempotency_key":"req_1","operation":"repo.read","target":{"kind":"repo"},"arguments":{},"reason":"read","state":"pending","revision":1,"created_at":"2026-07-18T00:00:00Z","updated_at":"2026-07-18T00:00:00Z","presentation":{"title":"Read"}}`))
 	}))
 	defer server.Close()
 	client, err := agentclient.New(agentclient.Options{Endpoint: strings.Replace(server.URL, "http://", "tcp://", 1), Credential: testSecret})
@@ -72,11 +72,11 @@ func TestBridgeRejectsInvalidReasonBeforeClient(t *testing.T) {
 }
 
 func TestBridgeOperationLifecycleUtilities(t *testing.T) {
-	operation := `{"api_version":"brokerkit.io/agent/v1","id":"op_1","broker":"test","client_id":"agent","idempotency_key":"req_1","operation":"repo.read","target":{},"arguments":{},"reason":"read","state":"pending","revision":1,"created_at":"2026-07-18T00:00:00Z","updated_at":"2026-07-18T00:00:00Z","presentation":{"title":"Read"}}`
+	operation := `{"api_version":"unyolo.io/agent/v1","id":"op_1","broker":"test","client_id":"agent","idempotency_key":"req_1","operation":"repo.read","target":{},"arguments":{},"reason":"read","state":"pending","revision":1,"created_at":"2026-07-18T00:00:00Z","updated_at":"2026-07-18T00:00:00Z","presentation":{"title":"Read"}}`
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/api/agent/v1/operations" {
-			_, _ = writer.Write([]byte(`{"api_version":"brokerkit.io/agent/v1","operations":[` + operation + `],"next_cursor":null}`))
+			_, _ = writer.Write([]byte(`{"api_version":"unyolo.io/agent/v1","operations":[` + operation + `],"next_cursor":null}`))
 			return
 		}
 		if request.URL.Path == "/api/agent/v1/operations/op_1" || request.URL.Path == "/api/agent/v1/operations/op_1/cancel" {

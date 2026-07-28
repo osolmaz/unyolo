@@ -17,9 +17,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/internal/config/client"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
 
@@ -151,7 +151,7 @@ func createBackup(ctx context.Context, config Config, paths []string, profile Pr
 	if err != nil {
 		return backup{}, err
 	}
-	record := backup{APIVersion: "brokerkit.io/component-backup/v1", ID: id}
+	record := backup{APIVersion: "unyolo.io/component-backup/v1", ID: id}
 	record.Accounts, record.Groups, err = snapshotIdentityBackups(ctx, profile)
 	if err != nil {
 		return backup{}, err
@@ -547,7 +547,7 @@ func rollback(ctx context.Context, config Config, handle string) error {
 		return err
 	}
 	var record backup
-	if err := strictjson.Decode(data, &record, true); err != nil || record.ID != handle || record.APIVersion != "brokerkit.io/component-backup/v1" {
+	if err := strictjson.Decode(data, &record, true); err != nil || record.ID != handle || record.APIVersion != "unyolo.io/component-backup/v1" {
 		return errors.New("component rollback backup is invalid")
 	}
 	if err := rollbackIdentities(ctx, config, record); err != nil {

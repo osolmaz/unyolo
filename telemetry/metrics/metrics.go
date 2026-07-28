@@ -1,4 +1,4 @@
-// Package observability owns BrokerKit's bounded operational metrics.
+// Package observability owns unYOLO's bounded operational metrics.
 package observability
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/osolmaz/brokerkit/internal/storage/state"
+	"github.com/osolmaz/unyolo/internal/storage/state"
 )
 
 const stateCollectionTimeout = 2 * time.Second
@@ -47,28 +47,28 @@ func New(broker string, source StateSource) (*Metrics, error) {
 	labels := prometheus.Labels{"broker": broker}
 	metrics := &Metrics{
 		registry: prometheus.NewRegistry(),
-		admissions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_admission_requests_total",
+		admissions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_admission_requests_total",
 			Help: "Agent operation admission outcomes.", ConstLabels: labels}, []string{"result", "code"}),
-		submissions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_operation_submissions_total",
+		submissions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_operation_submissions_total",
 			Help: "Agent operation submission outcomes.", ConstLabels: labels}, []string{"result"}),
-		executions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_operation_executions_total",
+		executions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_operation_executions_total",
 			Help: "Provider operation execution outcomes.", ConstLabels: labels}, []string{"result"}),
-		executionTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "brokerkit_operation_execution_seconds",
+		executionTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "unyolo_operation_execution_seconds",
 			Help: "Provider execution and reconciliation latency.", ConstLabels: labels,
 			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120}}, []string{"result"}),
-		decisions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_operator_decisions_total",
+		decisions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_operator_decisions_total",
 			Help: "Operator decision outcomes.", ConstLabels: labels}, []string{"action", "result"}),
-		notifications: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_notification_deliveries_total",
+		notifications: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_notification_deliveries_total",
 			Help: "Approval notification delivery outcomes.", ConstLabels: labels}, []string{"result"}),
-		dependencies: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "brokerkit_dependency_healthy",
+		dependencies: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "unyolo_dependency_healthy",
 			Help: "Last observed health of a bounded runtime dependency.", ConstLabels: labels}, []string{"dependency"}),
-		upstream: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_dependency_requests_total",
+		upstream: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_dependency_requests_total",
 			Help: "Provider and notification dependency outcomes.", ConstLabels: labels}, []string{"dependency", "result", "error_category"}),
-		retries: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "brokerkit_dependency_retries_total",
+		retries: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_dependency_retries_total",
 			Help: "Durable retry attempts by bounded dependency.", ConstLabels: labels}, []string{"dependency"}),
-		workerActive: prometheus.NewGauge(prometheus.GaugeOpts{Name: "brokerkit_worker_active",
+		workerActive: prometheus.NewGauge(prometheus.GaugeOpts{Name: "unyolo_worker_active",
 			Help: "Current provider operation workers in use.", ConstLabels: labels}),
-		workerLimit: prometheus.NewGauge(prometheus.GaugeOpts{Name: "brokerkit_worker_limit",
+		workerLimit: prometheus.NewGauge(prometheus.GaugeOpts{Name: "unyolo_worker_limit",
 			Help: "Configured provider operation worker capacity.", ConstLabels: labels}),
 	}
 	metrics.registry.MustRegister(metrics.admissions, metrics.submissions, metrics.executions,
@@ -183,8 +183,8 @@ type stateCollector struct {
 func newStateCollector(labels prometheus.Labels, source StateSource) *stateCollector {
 	return &stateCollector{
 		source:  source,
-		healthy: prometheus.NewDesc("brokerkit_database_healthy", "Whether the durable state database answered the bounded scrape probe.", nil, labels),
-		depth:   prometheus.NewDesc("brokerkit_queue_depth", "Durable work depth by fixed queue class.", []string{"queue"}, labels),
+		healthy: prometheus.NewDesc("unyolo_database_healthy", "Whether the durable state database answered the bounded scrape probe.", nil, labels),
+		depth:   prometheus.NewDesc("unyolo_queue_depth", "Durable work depth by fixed queue class.", []string{"queue"}, labels),
 	}
 }
 

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/deployment/api"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const maxFrameBytes = api.MaxMessageBytes

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/osolmaz/brokerkit/operation/capability"
+import "github.com/osolmaz/unyolo/operation/capability"
 
 func splitSealedArgumentsSchema(schema map[string]any, paths []string) (map[string]any, map[string]any) {
 	return capability.SplitSealedArgumentsSchema(schema, paths)

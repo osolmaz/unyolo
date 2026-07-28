@@ -23,20 +23,20 @@ the broker and `git push` prints the reason.
 
 ## Install
 
-Fetch the bootstrap from a reviewed BrokerKit commit. It resolves the latest
+Fetch the bootstrap from a reviewed unYOLO commit. It resolves the latest
 HF Broker release to its exact commit, verifies release checksums, and
 installs to `$HOME/.local/bin`:
 
 ```sh
-BROKERKIT_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/brokerkit/$BROKERKIT_REV/brokers/huggingface/install.sh" | sh
+UNYOLO_REV=<verified-40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/huggingface/install.sh" | sh
 ```
 
-Pin a release from [BrokerKit releases](https://github.com/osolmaz/brokerkit/releases)
+Pin a release from [unYOLO releases](https://github.com/osolmaz/unyolo/releases)
 with `VERSION=<version>`, or choose the target directory with
 `INSTALL_DIR=/absolute/path`.
 
-For development, install from a BrokerKit checkout with the Go version
+For development, install from a unYOLO checkout with the Go version
 declared by the root module:
 
 ```sh
@@ -70,7 +70,7 @@ The command opens Hugging Face's fine-grained token form, prints the exact URL,
 and reads the token through a hidden terminal prompt. Its final panel reports
 only the verified subject and capability count. The token form starts empty:
 the operator chooses the permissions and resources the broker may use.
-BrokerKit policy and operator approval can narrow that authority but can never
+unYOLO policy and operator approval can narrow that authority but can never
 expand it.
 
 For inspection or automation, use bounded standard input and explicit JSON
@@ -116,7 +116,7 @@ sudo install -o hf-broker -g hf-broker -m 0600 /path/to/hf-token /etc/hf-broker/
 export HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
 ```
 
-BrokerKit defines no default TCP port. Local production setup uses separate
+unYOLO defines no default TCP port. Local production setup uses separate
 permission-restricted agent and operator Unix sockets; standard Git HTTP and
 remote clients require an explicit TCP listener or HTTPS reverse proxy. Run
 the broker somewhere the agent cannot inspect its process or credential
@@ -162,10 +162,10 @@ hf-broker git doctor
 Normal `https://huggingface.co/...` and Hugging Face SSH-form remotes now use
 the broker for clone and fetch operations plus pull and push. Supported Git LFS routes use it too. Remotes
 contain no broker or provider credential. The listener port belongs to the
-deployment; BrokerKit defines no fixed Git port.
+deployment; unYOLO defines no fixed Git port.
 
 Basic Git LFS is supported. Xet custom-transfer negotiation currently fails
-closed before signed actions are returned; BrokerKit never exports the Hugging
+closed before signed actions are returned; unYOLO never exports the Hugging
 Face token to enable Xet.
 
 Clones, pulls, fast-forward pushes, new branches, and new tags work as
@@ -339,8 +339,8 @@ service user when needed, then enables and starts the service. The agent and
 operator listeners are separate Unix sockets:
 
 ```text
-/run/brokerkit/huggingface/agent/broker.sock
-/run/brokerkit/huggingface/operator/broker.sock
+/run/unyolo/huggingface/agent/broker.sock
+/run/unyolo/huggingface/operator/broker.sock
 ```
 
 It prints the broker endpoint plus a secret-safe client setup command and
@@ -379,7 +379,7 @@ Write a client config file for an agent account with:
 ```sh
 sudo hf-broker setup client \
   --client agent-a \
-  --endpoint unix:///run/brokerkit/huggingface/agent/broker.sock \
+  --endpoint unix:///run/unyolo/huggingface/agent/broker.sock \
   --secret-file /etc/hf-broker/secrets \
   --home-dir /home/agent-a
 ```
@@ -407,7 +407,7 @@ hf-broker doctor \
   --agent-user agent \
   --broker-pid "$(pgrep -x hf-broker)" \
   --token-file /etc/hf-broker/hf-token \
-  --socket /run/brokerkit/huggingface/agent/broker.sock
+  --socket /run/unyolo/huggingface/agent/broker.sock
 ```
 
 `hf-broker doctor isolation` is the explicit form and behaves the same. If no
@@ -431,7 +431,7 @@ than `ok`.
 
 ## Operator inbox
 
-The separate operator listener exposes BrokerKit's shared inbox:
+The separate operator listener exposes unYOLO's shared inbox:
 
 ```text
 GET  /api/operator/v1/requests
@@ -455,8 +455,8 @@ same request exactly once. For a service deployment, pass
 The broker sends approval requests to the configured operator chat with the
 shared rich layout, fixed Approve and Deny buttons, and durable terminal status
 edits. Hugging Face code supplies only bounded operation, target, risk,
-warning, and plan facts; BrokerKit owns Telegram formatting and escaping. The
-separate `brokerkit-telegram` service is the only Bot API poller and sends
+warning, and plan facts; unYOLO owns Telegram formatting and escaping. The
+separate `unyolo-telegram` service is the only Bot API poller and sends
 decisions to this broker's authenticated Operator V1 socket. Configure it as described in
 [Telegram approval ingress](../../docs/TELEGRAM_INGRESS.md). Rerunning provider
 setup without both Telegram flags disables Telegram notifications and retires

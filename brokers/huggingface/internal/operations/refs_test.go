@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/hubclient"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
 )
 
 func TestRefsAdaptersExecuteAndReconcile(t *testing.T) {

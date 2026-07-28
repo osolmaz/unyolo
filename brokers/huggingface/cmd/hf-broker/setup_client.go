@@ -3,13 +3,13 @@ package main
 import (
 	"io"
 
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
-type setupClientOptions = bksetup.ClientOptions
+type setupClientOptions = unyolosetup.ClientOptions
 
 func parseSetupClient(stderr io.Writer, args []string) (setupClientOptions, error) {
-	opts, help, err := bksetup.ParseClient(stderr, args, bksetup.ClientDefaults{
+	opts, help, err := unyolosetup.ParseClient(stderr, args, unyolosetup.ClientDefaults{
 		BrokerName: "hf-broker", EnvPrefix: "HF_BROKER",
 	})
 	if help {
@@ -22,6 +22,6 @@ func parseSetupClient(stderr io.Writer, args []string) (setupClientOptions, erro
 }
 
 func runSetupClient(stdout io.Writer, opts setupClientOptions) error {
-	_, err := bksetup.ConfigureClient(stdout, opts)
+	_, err := unyolosetup.ConfigureClient(stdout, opts)
 	return err
 }

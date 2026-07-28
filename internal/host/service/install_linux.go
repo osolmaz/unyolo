@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/brokerkit/internal/validatex"
+	"github.com/osolmaz/unyolo/internal/validatex"
 )
 
 // InstallSystemd installs one broker service from a validated typed plan.

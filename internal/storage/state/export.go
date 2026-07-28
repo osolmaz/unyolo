@@ -121,7 +121,7 @@ func (d *Database) Export(ctx context.Context, destination string) error {
 
 func writeExportFile(destination string, value redactedExport) error {
 	parent := filepath.Dir(destination)
-	file, err := os.CreateTemp(parent, ".brokerkit-state-export-*.json")
+	file, err := os.CreateTemp(parent, ".unyolo-state-export-*.json")
 	if err != nil {
 		return err
 	}

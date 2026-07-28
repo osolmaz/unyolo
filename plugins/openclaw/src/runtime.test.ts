@@ -9,7 +9,7 @@ import type { Subscription } from "./store.js";
 import { OPERATOR_V1_SCHEMA_SHA256 } from "./operator-v1.js";
 
 const discovery = JSON.stringify({
-  api_version: "brokerkit.io/operator/v1",
+  api_version: "unyolo.io/operator/v1",
   contract_digest: OPERATOR_V1_SCHEMA_SHA256,
   build_id: "test",
 });
@@ -52,7 +52,7 @@ describe("BrokerRuntime", () => {
         res.statusCode = 401;
         return res.end();
       }
-      if (req.url === "/.well-known/brokerkit-operator")
+      if (req.url === "/.well-known/unyolo-operator")
         return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?"))
         return res.end(
@@ -104,7 +104,7 @@ describe("BrokerRuntime", () => {
       pollIntervalMs: 5000,
     });
     if (config.mode !== "direct") throw new Error("unexpected mode");
-    const stateDir = mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-"));
+    const stateDir = mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-"));
     const delivered: Array<{ channel: string; text: string }> = [];
     const hooks = {
       resolveCredential: async () => "operator",
@@ -126,7 +126,7 @@ describe("BrokerRuntime", () => {
       .poll(() => new Set(delivered.map((item) => item.channel)).size)
       .toBe(2);
     expect(
-      delivered.every((item) => item.text.includes("/brokerkit approve")),
+      delivered.every((item) => item.text.includes("/unyolo approve")),
     ).toBe(true);
     await expect(
       runtime.decide(handle!, "approve", 1, "operator:onur", {
@@ -160,13 +160,13 @@ describe("BrokerRuntime", () => {
   it("keeps healthy sources available when another source fails discovery", async () => {
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
-      if (req.url === "/.well-known/brokerkit-operator") {
+      if (req.url === "/.well-known/unyolo-operator") {
         return res.end(
           JSON.stringify({
             api_version:
               req.headers.authorization === "Bearer good"
-                ? "brokerkit.io/operator/v1"
-                : "brokerkit.io/operator/v2",
+                ? "unyolo.io/operator/v1"
+                : "unyolo.io/operator/v2",
             contract_digest: OPERATOR_V1_SCHEMA_SHA256,
             build_id: "test",
           }),
@@ -203,7 +203,7 @@ describe("BrokerRuntime", () => {
       log: () => undefined,
     });
     await runtime.start(
-      mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-")),
+      mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-")),
     );
     expect(runtime.snapshot().sources).toEqual([
       expect.objectContaining({ id: "bad", healthy: false }),
@@ -216,7 +216,7 @@ describe("BrokerRuntime", () => {
     let listCalls = 0;
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
-      if (req.url === "/.well-known/brokerkit-operator")
+      if (req.url === "/.well-known/unyolo-operator")
         return res.end(discovery);
       if (req.url?.startsWith("/api/operator/v1/requests?")) {
         listCalls += 1;
@@ -257,7 +257,7 @@ describe("BrokerRuntime", () => {
       log: () => undefined,
     });
     await runtime.start(
-      mkdtempSync(path.join(os.tmpdir(), "brokerkit-runtime-")),
+      mkdtempSync(path.join(os.tmpdir(), "unyolo-runtime-")),
     );
     await expect.poll(() => listCalls).toBeGreaterThanOrEqual(4);
     expect(runtime.snapshot().sources).toEqual([

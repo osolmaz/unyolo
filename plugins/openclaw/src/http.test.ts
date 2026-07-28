@@ -26,14 +26,14 @@ describe("OpenClaw HTTP boundary", () => {
     });
     expect(
       (
-        await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+        await fetch(`${base}/plugins/unyolo/api/v1/snapshot`, {
           headers: { origin: "null" },
         })
       ).status,
     ).toBe(401);
     expect(
       (
-        await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+        await fetch(`${base}/plugins/unyolo/api/v1/snapshot`, {
           headers: { authorization: `Bearer ${capability}`, origin: "null" },
         })
       ).status,
@@ -84,7 +84,7 @@ describe("OpenClaw HTTP boundary", () => {
     ]) {
       expect(
         (
-          await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+          await fetch(`${base}/plugins/unyolo/api/v1/snapshot`, {
             headers: { [BROWSER_SESSION_HEADER]: value, origin: "null" },
           })
         ).status,
@@ -104,7 +104,7 @@ describe("OpenClaw HTTP boundary", () => {
 
   it("answers strict opaque-origin preflights without cookies", async () => {
     const base = await serve({ snapshot, decide: vi.fn() });
-    const response = await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+    const response = await fetch(`${base}/plugins/unyolo/api/v1/snapshot`, {
       method: "OPTIONS",
       headers: {
         origin: "null",
@@ -121,7 +121,7 @@ describe("OpenClaw HTTP boundary", () => {
     expect(response.headers.get("vary")).toBe("Origin");
     expect(
       (
-        await fetch(`${base}/plugins/brokerkit/api/v1/snapshot`, {
+        await fetch(`${base}/plugins/unyolo/api/v1/snapshot`, {
           method: "OPTIONS",
           headers: {
             origin: "null",
@@ -207,7 +207,7 @@ describe("OpenClaw HTTP boundary", () => {
     const waitForSnapshot = vi
       .fn()
       .mockResolvedValueOnce({
-        api_version: "brokerkit.io/operator-ui/v1",
+        api_version: "unyolo.io/operator-ui/v1",
         cursor: "epoch.2",
         changed: true,
       })
@@ -223,7 +223,7 @@ describe("OpenClaw HTTP boundary", () => {
     );
     expect(changed.status).toBe(200);
     expect(await changed.json()).toEqual({
-      api_version: "brokerkit.io/operator-ui/v1",
+      api_version: "unyolo.io/operator-ui/v1",
       cursor: "epoch.2",
       changed: true,
     });
@@ -244,7 +244,7 @@ describe("OpenClaw HTTP boundary", () => {
   });
 
   it("serves only the packaged UI prefix with restrictive headers", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "brokerkit-http-"));
+    const root = mkdtempSync(path.join(os.tmpdir(), "unyolo-http-"));
     const ui = path.join(root, "dist", "ui");
     mkdirSync(ui, { recursive: true });
     writeFileSync(
@@ -254,10 +254,10 @@ describe("OpenClaw HTTP boundary", () => {
     mkdirSync(path.join(ui, "assets"));
     writeFileSync(
       path.join(ui, "assets", "app.js"),
-      "globalThis.brokerKit = true;",
+      "globalThis.unyolo = true;",
     );
     const base = await serve({ snapshot: vi.fn(), decide: vi.fn() }, root);
-    const response = await fetch(`${base}/plugins/brokerkit/ui/`);
+    const response = await fetch(`${base}/plugins/unyolo/ui/`);
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("Approvals");
     expect(response.headers.get("content-security-policy")).toContain(
@@ -267,16 +267,16 @@ describe("OpenClaw HTTP boundary", () => {
     expect(response.headers.get("cross-origin-resource-policy")).toBe(
       "same-origin",
     );
-    const asset = await fetch(`${base}/plugins/brokerkit/ui/assets/app.js`);
+    const asset = await fetch(`${base}/plugins/unyolo/ui/assets/app.js`);
     expect(asset.status).toBe(200);
     expect(asset.headers.get("cross-origin-resource-policy")).toBe(
       "cross-origin",
     );
-    expect((await fetch(`${base}/plugins/brokerkit/unrelated`)).status).toBe(
+    expect((await fetch(`${base}/plugins/unyolo/unrelated`)).status).toBe(
       404,
     );
     expect(
-      (await fetch(`${base}/plugins/brokerkit/ui/?token=nope`)).status,
+      (await fetch(`${base}/plugins/unyolo/ui/?token=nope`)).status,
     ).toBe(404);
   });
 });
@@ -298,7 +298,7 @@ async function serve(runtime: object, rootDir = "/tmp/missing-plugin") {
 }
 
 function apiFetch(base: string, route: string, init: RequestInit = {}) {
-  return fetch(`${base}/plugins/brokerkit/api/v1${route}`, {
+  return fetch(`${base}/plugins/unyolo/api/v1${route}`, {
     ...init,
     headers: {
       [BROWSER_SESSION_HEADER]: capability,
@@ -309,7 +309,7 @@ function apiFetch(base: string, route: string, init: RequestInit = {}) {
 }
 
 function rawStatus(base: string, rawHeaders: string[]): Promise<number> {
-  const url = new URL(`${base}/plugins/brokerkit/api/v1/snapshot`);
+  const url = new URL(`${base}/plugins/unyolo/api/v1/snapshot`);
   return new Promise((resolve, reject) => {
     const request = httpRequest(
       {
@@ -331,7 +331,7 @@ function rawStatus(base: string, rawHeaders: string[]): Promise<number> {
 
 function snapshot() {
   return {
-    api_version: "brokerkit.io/operator-ui/v1",
+    api_version: "unyolo.io/operator-ui/v1",
     cursor: "epoch.1",
     synchronized_at: "2026-07-11T00:00:00Z",
     sources: [],

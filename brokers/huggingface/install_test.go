@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
-func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
+func TestInstallWrapperDelegatesToUnyolo(t *testing.T) {
 	dir := t.TempDir()
 	delegate := filepath.Join(dir, "delegate.sh")
 	if err := os.WriteFile(delegate, []byte("#!/bin/sh\nprintf '%s|%s|%s|%s|%s\\n' \"$BROKER\" \"$REPO\" \"$TAG_PREFIX\" \"$VERSION\" \"$INSTALL_DIR\"\n"), 0o600); err != nil {
@@ -21,7 +21,7 @@ func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
 	}
 	command := exec.CommandContext(context.Background(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
 	command.Env = append(os.Environ(),
-		"BROKERKIT_INSTALLER_FILE="+delegate,
+		"UNYOLO_INSTALLER_FILE="+delegate,
 		"VERSION=v1.2.3",
 		"INSTALL_DIR=/tmp/broker-bin",
 	)
@@ -29,7 +29,7 @@ func TestInstallWrapperDelegatesToBrokerkit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install wrapper: %v: %s", err, output)
 	}
-	if got := strings.TrimSpace(string(output)); got != "hf-broker|osolmaz/brokerkit|hf-broker/|v1.2.3|/tmp/broker-bin" {
+	if got := strings.TrimSpace(string(output)); got != "hf-broker|osolmaz/unyolo|hf-broker/|v1.2.3|/tmp/broker-bin" {
 		t.Fatalf("delegated environment = %q", got)
 	}
 }
@@ -50,7 +50,7 @@ func TestInstallWrapperPropagatesDownloadFailure(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	command := exec.CommandContext(context.Background(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
-	command.Env = append(os.Environ(), "BROKERKIT_INSTALLER_URL="+server.URL)
+	command.Env = append(os.Environ(), "UNYOLO_INSTALLER_URL="+server.URL)
 	if output, err := command.CombinedOutput(); err == nil {
 		t.Fatalf("install wrapper succeeded after failed download: %s", output)
 	}
@@ -74,8 +74,8 @@ func TestInstallWrapperResolvesReleaseToImmutableCommit(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
-	command.Env = append(os.Environ(), "BROKERKIT_RELEASES_URL="+server.URL+"/releases",
-		"BROKERKIT_REF_URL_BASE="+server.URL+"/refs", "BROKERKIT_RAW_URL_BASE="+server.URL+"/raw")
+	command.Env = append(os.Environ(), "UNYOLO_RELEASES_URL="+server.URL+"/releases",
+		"UNYOLO_REF_URL_BASE="+server.URL+"/refs", "UNYOLO_RAW_URL_BASE="+server.URL+"/raw")
 	output, err := command.CombinedOutput()
 	if err != nil || strings.TrimSpace(string(output)) != "hf-broker/v1.2.3" {
 		t.Fatalf("immutable wrapper err=%v output=%s", err, output)
@@ -106,9 +106,9 @@ func TestInstallWrapperPeelsAnnotatedTagToImmutableCommit(t *testing.T) {
 	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
 	command.Env = append(os.Environ(),
 		"VERSION=v1.2.3",
-		"BROKERKIT_REF_URL_BASE="+server.URL+"/refs",
-		"BROKERKIT_TAG_URL_BASE="+server.URL+"/tags",
-		"BROKERKIT_RAW_URL_BASE="+server.URL+"/raw",
+		"UNYOLO_REF_URL_BASE="+server.URL+"/refs",
+		"UNYOLO_TAG_URL_BASE="+server.URL+"/tags",
+		"UNYOLO_RAW_URL_BASE="+server.URL+"/raw",
 	)
 	output, err := command.CombinedOutput()
 	if err != nil || strings.TrimSpace(string(output)) != "hf-broker/v1.2.3" {
@@ -121,7 +121,7 @@ func TestInstallWrapperPeelsAnnotatedTagToImmutableCommit(t *testing.T) {
 
 func TestInstallWrapperRejectsMutableRevision(t *testing.T) {
 	command := exec.CommandContext(t.Context(), "sh", "install.sh") // #nosec G204 -- test executes the repository-owned installer wrapper.
-	command.Env = append(os.Environ(), "BROKERKIT_INSTALLER_REV=main")
+	command.Env = append(os.Environ(), "UNYOLO_INSTALLER_REV=main")
 	output, err := command.CombinedOutput()
 	if err == nil || !strings.Contains(string(output), "exact 40-character commit SHA") {
 		t.Fatalf("mutable revision err=%v output=%s", err, output)

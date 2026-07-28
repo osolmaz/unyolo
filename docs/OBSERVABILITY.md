@@ -1,6 +1,6 @@
 # Operational Observability
 
-Every broker owns an isolated Prometheus registry created by BrokerKit's
+Every broker owns an isolated Prometheus registry created by unYOLO's
 `telemetry/metrics` package. Metrics are exposed at `GET /metrics` only on the
 configured operator listener and require the same operator bearer credential as
 Operator V1. The agent listener never serves metrics. A broker without an
@@ -22,12 +22,12 @@ The current registry reports:
   pending-notification, and unresolved-notification depths; and
 - a bounded durable-database health probe at scrape time.
 
-When the database probe fails, `brokerkit_database_healthy` is `0` and queue
-gauges are omitted. BrokerKit does not report unknown durable state as zero or
+When the database probe fails, `unyolo_database_healthy` is `0` and queue
+gauges are omitted. unYOLO does not report unknown durable state as zero or
 retain stale queue values between scrapes.
 
 Each registry has one setup-controlled `broker` label. Other labels come from
-closed BrokerKit enums. Client names, repository names, target users, reasons,
+closed unYOLO enums. Client names, repository names, target users, reasons,
 paths, commands, URLs, tokens, and upstream error strings are never metric
 labels. Unknown values collapse to `other`, which keeps cardinality bounded and
 prevents secrets from reaching the exposition output.
@@ -62,7 +62,7 @@ input, output, and Basic credentials are never logged.
 
 ## Host bundle diagnostics
 
-`brokerkit system status --json` and `brokerkit system doctor --json` provide a
+`unyolo system status --json` and `unyolo system doctor --json` provide a
 closed host-level report. It contains bundle IDs, release build IDs, artifact
 digest results, native service names, PIDs, executable paths, active state, and
 recovery-required state. It never contains credentials, Telegram destinations,

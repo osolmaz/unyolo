@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/setx"
-	"github.com/osolmaz/brokerkit/internal/validatex"
+	"github.com/osolmaz/unyolo/internal/setx"
+	"github.com/osolmaz/unyolo/internal/validatex"
 )
 
 // LaunchdSocket describes one named launchd listener.

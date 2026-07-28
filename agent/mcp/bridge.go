@@ -7,11 +7,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/agent/client"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
-	"github.com/osolmaz/brokerkit/mcp/operation"
-	"github.com/osolmaz/brokerkit/mcp/server"
+	"github.com/osolmaz/unyolo/agent/client"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/mcp/operation"
+	"github.com/osolmaz/unyolo/mcp/server"
 )
 
 const MaxReasonBytes = 2000

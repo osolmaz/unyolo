@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/executorprotocol"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/routes"
-	"github.com/osolmaz/brokerkit/transport/http/server"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/routes"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 func TestParseServeOptionsAndHTTPServerHardening(t *testing.T) {
@@ -53,7 +53,7 @@ func TestRunServeOrchestrationFailsBeforeListening(t *testing.T) {
 	}
 }
 
-func TestBuildServerAssemblesBrokerkitRuntime(t *testing.T) {
+func TestBuildServerAssemblesUnyoloRuntime(t *testing.T) {
 	directory := t.TempDir()
 	write := func(name string, data string) string {
 		path := filepath.Join(directory, name)

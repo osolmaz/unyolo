@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/profile"
 )
 
 func TestInspectDeploymentRejectsRootEquivalentAgent(t *testing.T) {
@@ -98,7 +98,7 @@ func TestLookupCurrentShell(t *testing.T) {
 }
 
 func TestSafeManagedCommand(t *testing.T) {
-	valid := profile.Agent{UnixUser: "brokerkit-agent", AccountMode: "managed", Home: "/var/lib/brokerkit-agent", Shell: "/usr/sbin/nologin"}
+	valid := profile.Agent{UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}
 	command, err := SafeManagedCommand(valid)
 	if err != nil {
 		t.Fatal(err)

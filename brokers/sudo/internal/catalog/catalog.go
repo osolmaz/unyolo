@@ -18,7 +18,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 const (

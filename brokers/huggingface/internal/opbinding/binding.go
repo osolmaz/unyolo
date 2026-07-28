@@ -14,8 +14,8 @@ import (
 	"github.com/dlclark/regexp2"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/osolmaz/brokerkit/internal/schemautil"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/schemautil"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 //go:embed hf-openapi-2026-07-13.json
@@ -657,7 +657,7 @@ func compileSchema(name string, schema, components map[string]any) (json.RawMess
 	}
 	compiler := jsonschema.NewCompiler()
 	compiler.UseRegexpEngine(compileECMAScriptRegexp)
-	location := "https://brokerkit.local/huggingface/" + name + ".json"
+	location := "https://unyolo.local/huggingface/" + name + ".json"
 	if err := compiler.AddResource(location, document); err != nil {
 		return nil, nil, err
 	}

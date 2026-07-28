@@ -1,8 +1,8 @@
-# OpenClaw BrokerKit
+# OpenClaw unYOLO
 
-`openclaw-brokerkit` is an OpenClaw plugin that adds a provider-neutral
-Approvals tab and `/brokerkit` commands to OpenClaw. It connects to one or
-more BrokerKit Operator V1 sources; the brokers remain authoritative and
+`openclaw-unyolo` is an OpenClaw plugin that adds a provider-neutral
+Approvals tab and `/unyolo` commands to OpenClaw. It connects to one or
+more unYOLO Operator V1 sources; the brokers remain authoritative and
 retain all provider credentials and executable plans.
 
 The minimum supported host is `openclaw@2026.7.1`, the first stable
@@ -11,16 +11,16 @@ SDK used by this package that includes public tab descriptors.
 ## Install
 
 Install an exact release from
-[npm](https://www.npmjs.com/package/openclaw-brokerkit) through OpenClaw:
+[npm](https://www.npmjs.com/package/openclaw-unyolo) through OpenClaw:
 
 ```sh
-openclaw plugins install npm:openclaw-brokerkit@<version>
+openclaw plugins install npm:openclaw-unyolo@<version>
 ```
 
 From a local checkout, build and link the package explicitly:
 
 ```sh
-pnpm --filter openclaw-brokerkit build
+pnpm --filter openclaw-unyolo build
 openclaw plugins install --link ./plugins/openclaw
 ```
 
@@ -45,12 +45,12 @@ validators as the plugin without installing OpenClaw:
 import {
   parseRequestPage,
   type RequestPage,
-} from "openclaw-brokerkit/operator-v1";
+} from "openclaw-unyolo/operator-v1";
 
 const page: RequestPage = parseRequestPage(await response.json());
 ```
 
-The subpath is generated from BrokerKit's canonical OpenAPI document. Its
+The subpath is generated from unYOLO's canonical OpenAPI document. Its
 standalone validators use no runtime code generation and reject unknown fields,
 invalid bounds, unsafe integers, and protocol drift.
 
@@ -59,7 +59,7 @@ invalid bounds, unsafe integers, and protocol drift.
 - `skills-only` is the default when configuration is absent. It loads the
   packaged client skills without registering approval surfaces.
 - `direct` trusts the OpenClaw process with operator SecretRefs and enables
-  the tab, background reconciliation, `/brokerkit` commands, and channel
+  the tab, background reconciliation, `/unyolo` commands, and channel
   delivery.
 - `delegated-web` packages only the tab UI and delegates authenticated
   browser requests to a same-origin trusted backend. It gives OpenClaw no
@@ -71,7 +71,7 @@ invalid bounds, unsafe integers, and protocol drift.
 {
   plugins: {
     entries: {
-      brokerkit: {
+      unyolo: {
         enabled: true,
         config: {
           mode: "direct",
@@ -103,13 +103,13 @@ delivery bookkeeping under the OpenClaw service state directory.
 ## Commands
 
 ```text
-/brokerkit subscribe
-/brokerkit unsubscribe
-/brokerkit pending
-/brokerkit show <handle>
-/brokerkit approve <handle>
-/brokerkit deny <handle>
-/brokerkit revoke <handle>
+/unyolo subscribe
+/unyolo unsubscribe
+/unyolo pending
+/unyolo show <handle>
+/unyolo approve <handle>
+/unyolo deny <handle>
+/unyolo revoke <handle>
 ```
 
 Commands are registered only in direct mode. They require an authorized
@@ -127,12 +127,12 @@ For a deployment that treats OpenClaw as untrusted:
 {
   plugins: {
     entries: {
-      brokerkit: {
+      unyolo: {
         enabled: true,
         config: {
           mode: "delegated-web",
           delegatedWeb: {
-            basePath: "/trusted-host/api/brokerkit",
+            basePath: "/trusted-host/api/unyolo",
           },
         },
       },
@@ -141,7 +141,7 @@ For a deployment that treats OpenClaw as untrusted:
 }
 ```
 
-The trusted backend implements `brokerkit.io/delegated-web/v1`, authenticates
+The trusted backend implements `unyolo.io/delegated-web/v1`, authenticates
 the human operator, and issues an in-memory decision token lasting no more
 than five minutes. The base path must be a normalized same-origin absolute
 path. The OpenClaw gateway must set `gateway.controlUi.embedSandbox` to
@@ -162,7 +162,7 @@ The host injects the short-lived delegated session into the sandboxed
 response:
 
 ```html
-<meta name="brokerkit-delegated-session" content="BASE64URL_SESSION_JSON" />
+<meta name="unyolo-delegated-session" content="BASE64URL_SESSION_JSON" />
 ```
 
 Token-bearing HTML responses must enforce `sandbox allow-scripts` in their
@@ -170,13 +170,13 @@ CSP, and immutable UI assets must be loadable by the opaque document (serve
 them without a same-origin CORP restriction or set
 `Cross-Origin-Resource-Policy: cross-origin`).
 
-The content is a base64url-encoded `brokerkit.io/delegated-web/v1` session
+The content is a base64url-encoded `unyolo.io/delegated-web/v1` session
 object; the UI removes the element as soon as it reads it. Version 1 uses
 this closed payload:
 
 ```json
 {
-  "api_version": "brokerkit.io/delegated-web/v1",
+  "api_version": "unyolo.io/delegated-web/v1",
   "token": "opaque-short-lived-browser-session",
   "expires_at": "<no more than five minutes from issue time, RFC3339>",
   "access": "decide",
@@ -196,18 +196,18 @@ Every direct and delegated-web browser API call carries its raw session in
 one fixed HTTP field:
 
 ```http
-GET /trusted-host/api/brokerkit/snapshot HTTP/1.1
+GET /trusted-host/api/unyolo/snapshot HTTP/1.1
 Origin: null
-BrokerKit-Session: eyJ2ZXJzaW9uIjoxLCJhdWRpZW5jZSI6Ii4uLiJ9.signature
+unyolo-session: eyJ2ZXJzaW9uIjoxLCJhdWRpZW5jZSI6Ii4uLiJ9.signature
 Accept: application/json
 ```
 
-`BrokerKit-Session` has no authentication-scheme prefix. A host must reject
+`unyolo-session` has no authentication-scheme prefix. A host must reject
 empty, repeated, combined, malformed, or oversized values; tokens are 32 to
 4096 bytes of visible ASCII excluding comma and whitespace. The same field
 protects `POST /session`, `GET /snapshot`, `GET /events`, request detail,
 approval, denial, and revocation; direct-mode capabilities use it on
-`/plugins/brokerkit/api/v1` as well.
+`/plugins/unyolo/api/v1` as well.
 
 Standard `Authorization` is reserved for the hosting edge and for
 server-to-server Operator V1 clients. Browser clients never use it, and never
@@ -217,12 +217,12 @@ copied into an Operator V1 request, or persisted by the host or UI.
 
 Because the packaged UI has an opaque origin under the required scripts-only
 sandbox, a delegated host must accept only the expected `Origin: null`,
-return `Access-Control-Allow-Origin: null`, allow `BrokerKit-Session` and
+return `Access-Control-Allow-Origin: null`, allow `unyolo-session` and
 `Content-Type` in preflight responses, allow only its fixed route methods,
 and set `Vary: Origin` plus `Cache-Control: no-store`. Delegated and direct API
 requests use `credentials: "omit"`; a delegated host must be reachable without
 ambient browser credentials. Every delegated route requires and validates the
-short-lived `BrokerKit-Session`.
+short-lived `unyolo-session`.
 
 ### Parent session bridge
 
@@ -230,14 +230,14 @@ When the parent application is trusted, a sandboxed tab that cannot call the
 delegated session endpoint directly may instead use this host-neutral bridge:
 
 ```text
-request:  { type: "brokerkit.delegated-web.session.request", version: 1, nonce }
-response: { type: "brokerkit.delegated-web.session.response", nonce, session }
+request:  { type: "unyolo.delegated-web.session.request", version: 1, nonce }
+response: { type: "unyolo.delegated-web.session.response", nonce, session }
 ```
 
-The trusted parent must answer only requests from the embedded BrokerKit
+The trusted parent must answer only requests from the embedded unYOLO
 frame and must bind each response to the supplied 128-bit nonce. `session` is
-the same `brokerkit.io/delegated-web/v1` object returned by
-`POST <basePath>/session`. The bridge is a BrokerKit interface; it contains
+the same `unyolo.io/delegated-web/v1` object returned by
+`POST <basePath>/session`. The bridge is a unYOLO interface; it contains
 no host-product namespace or host-specific payload.
 
 ### Session rebootstrap
@@ -247,10 +247,10 @@ host rejects renewal with `not_authorized`, a framed UI sends this
 credential-free message once:
 
 ```text
-{ type: "brokerkit.delegated-web.rebootstrap", version: 1 }
+{ type: "unyolo.delegated-web.rebootstrap", version: 1 }
 ```
 
-The host must accept it only from the embedded BrokerKit frame and reload only
+The host must accept it only from the embedded unYOLO frame and reload only
 that protected frame so its HTML response can inject a fresh session. Hosts
 must rate-limit reloads and must not return a token through this message. This
 keeps rebootstrap host-neutral while leaving session issuance at the trusted

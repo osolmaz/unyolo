@@ -151,40 +151,40 @@ Setup-specific flags: `--catalog-file` and `--policy-file`.
 The privileged helper `sudo-broker-exec` is installed in the adjacent `libexec` directory and is
 not invoked directly.
 
-## brokerkit host command
+## unyolo host command
 
 ```sh
-brokerkit setup [--accessible] [--no-open]
-brokerkit setup status
-brokerkit setup --resume <session-id>
+unyolo setup [--accessible] [--no-open]
+unyolo setup status
+unyolo setup --resume <session-id>
 
-brokerkit system profile lock          --profile /path/to/deployment
-brokerkit system profile lock --check  --profile /path/to/deployment
+unyolo system profile lock          --profile /path/to/deployment
+unyolo system profile lock --check  --profile /path/to/deployment
 
-brokerkit system validate --profile /path/to/deployment
-brokerkit system plan     --profile /path/to/deployment --output /tmp/plan.json
-brokerkit system apply    --profile /path/to/deployment \
+unyolo system validate --profile /path/to/deployment
+unyolo system plan     --profile /path/to/deployment --output /tmp/plan.json
+unyolo system apply    --profile /path/to/deployment \
   --expect-plan sha256:<digest> \
   --secret-file <slot>=/absolute/path
-brokerkit system verify   --profile /path/to/deployment
-brokerkit system export   --profile /path/to/deployment --json
+unyolo system verify   --profile /path/to/deployment
+unyolo system export   --profile /path/to/deployment --json
 
-brokerkit system plan     --manifest manifest.json --signature manifest.sig --public-key release.pub
-brokerkit system install  --manifest manifest.json --signature manifest.sig --public-key release.pub
-brokerkit system upgrade  --manifest manifest.json --signature manifest.sig --public-key release.pub
-brokerkit system status [--json]
-brokerkit system doctor [--json]
-brokerkit system rollback
+unyolo system plan     --manifest manifest.json --signature manifest.sig --public-key release.pub
+unyolo system install  --manifest manifest.json --signature manifest.sig --public-key release.pub
+unyolo system upgrade  --manifest manifest.json --signature manifest.sig --public-key release.pub
+unyolo system status [--json]
+unyolo system doctor [--json]
+unyolo system rollback
 ```
 
 Run `system` commands through the root-owned worker the verified bootstrap installed at
-`/opt/brokerkit/bootstrap/v<version>/brokerkit`. Never run a user-local binary with `sudo`. The CLI
+`/opt/unyolo/bootstrap/v<version>/unyolo`. Never run a user-local binary with `sudo`. The CLI
 refuses interactive root execution.
 
-## brokerkit-telegram
+## unyolo-telegram
 
 ```sh
-sudo brokerkit-telegram setup systemd \
+sudo unyolo-telegram setup systemd \
   --telegram-bot-token-file ./telegram-bot-token \
   --telegram-chat-id 123456789 \
   --hf-operator-token-file ./hf-operator-secret \
@@ -200,7 +200,7 @@ non-default layouts.
 ```text
 VERSION                     release tag, for example v0.1.0
 INSTALL_DIR                 absolute writable install directory
-BROKERKIT_VERIFIER_FILE     absolute path to a separately verified verifier
-BROKERKIT_VERIFY_ONLY       download and verify without installing
-BROKERKIT_VERIFY_RELEASE_SET  verify every platform archive, the manifest, and the SBOM
+UNYOLO_VERIFIER_FILE     absolute path to a separately verified verifier
+UNYOLO_VERIFY_ONLY       download and verify without installing
+UNYOLO_VERIFY_RELEASE_SET  verify every platform archive, the manifest, and the SBOM
 ```

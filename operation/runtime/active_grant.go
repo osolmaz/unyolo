@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/osolmaz/brokerkit/agent/runtime"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/unyolo/agent/runtime"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/policy"
 )
 
 func (r *Runtime[I, P, A]) submitDirectGrant(submission agentops.Submit, adapter Adapter[I, P, A], plan P,

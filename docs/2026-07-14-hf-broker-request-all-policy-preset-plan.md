@@ -6,7 +6,7 @@ Status: implemented
 
 ## Objective
 
-Make a BrokerKit-owned HF Broker policy preset the default for new HF Broker
+Make a unYOLO-owned HF Broker policy preset the default for new HF Broker
 installations. The preset must expose every supported agent-facing Hugging Face
 operation through an explicit policy decision:
 
@@ -25,8 +25,8 @@ approved.
 
 ## Decision
 
-The preset belongs to HF Broker inside the BrokerKit monorepo, not to ML Claw
-and not to BrokerKit's provider-neutral `policy` package.
+The preset belongs to HF Broker inside the unYOLO monorepo, not to ML Claw
+and not to unYOLO's provider-neutral `policy` package.
 
 HF Broker owns the Hugging Face operation catalog, target vocabulary, risk
 metadata, grant modes, and immutable operation plans. The shared policy package
@@ -40,7 +40,7 @@ The stable preset identifier is:
 request-all-agent-operations
 ```
 
-New `hf-broker setup` installations select this preset by default. BrokerKit
+New `hf-broker setup` installations select this preset by default. unYOLO
 and HF Broker still fail closed when no valid policy has been configured. A
 library caller, hand-started broker process, or malformed installation never
 receives an implicit policy.
@@ -103,7 +103,7 @@ Add a required provider-owned field to each HF operation descriptor:
 ```
 
 This is policy-generation metadata, not a runtime decision and not a generic
-BrokerKit concept. Risk alone is insufficient: a medium-risk inference call
+unYOLO concept. Risk alone is insufficient: a medium-risk inference call
 may need to run directly for an agent harness, while a low-cost mutation must
 still require approval.
 
@@ -285,7 +285,7 @@ profile.
 
 ## ML Claw Integration
 
-After the BrokerKit implementation is released, ML Claw must:
+After the unYOLO implementation is released, ML Claw must:
 
 1. delete its hand-maintained Hugging Face operation allowlist;
 2. invoke the released HF Broker policy renderer while building or updating a
@@ -298,7 +298,7 @@ After the BrokerKit implementation is released, ML Claw must:
 7. require an explicit user action before adopting newly cataloged operations.
 
 ML Claw may add product-specific deny overrides, but it must not copy operation
-names or reconstruct grant policies. BrokerKit remains the single source of
+names or reconstruct grant policies. unYOLO remains the single source of
 truth.
 
 ## Implementation Work
@@ -348,7 +348,7 @@ Add focused tests for:
   separate exact approval before deletion;
 - an opted-out `repo.delete` refusing without creating an approval.
 
-Run the full BrokerKit and HF Broker quality gates, including race tests,
+Run the full unYOLO and HF Broker quality gates, including race tests,
 coverage, lint, vulnerability scanning, Slophammer checks, and generated
 artifact consistency.
 

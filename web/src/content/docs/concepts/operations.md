@@ -42,7 +42,7 @@ window on a wait.
 
 ```sh
 gh-broker operation submit repo.contents.read \
-  --target-json '{"kind":"repo","owner":"osolmaz","name":"brokerkit"}' \
+  --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
   --arguments-json '{"path":"README.md","ref":"main"}' \
   --wait
 ```
@@ -89,7 +89,7 @@ operator denies it, which is a different terminal state and reads differently in
 The agent listener exposes the lifecycle plus its supporting transfer surfaces:
 
 ```text
-GET  /.well-known/brokerkit-agent
+GET  /.well-known/unyolo-agent
 POST /api/agent/v1/operations
 GET  /api/agent/v1/operations/{id}
 GET  /api/agent/v1/operations/{id}/events
@@ -102,7 +102,7 @@ GET  /api/agent/v1/streams/{id}
 Sealed payloads and streams are how bounded content moves without going through the JSON body.
 Both are authenticated and bounded, and both stay inside the client's own scope.
 
-The discovery document at `/.well-known/brokerkit-agent` exposes the exact generated contract
+The discovery document at `/.well-known/unyolo-agent` exposes the exact generated contract
 digest and build identity, so a client can detect protocol drift without logging response bodies. A
 version label alone is never treated as compatibility evidence.
 

@@ -12,7 +12,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     {
-      name: "brokerkit-classic-sandbox-entry",
+      name: "unyolo-classic-sandbox-entry",
       apply: "build",
       enforce: "post",
       transformIndexHtml: {
@@ -26,7 +26,7 @@ export default defineConfig({
     },
   ],
   root: "ui",
-  base: "/plugins/brokerkit/ui/",
+  base: "/plugins/unyolo/ui/",
   preview: { headers: cspHeaders },
   build: {
     outDir: "../dist/ui",

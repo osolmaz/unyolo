@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Snapshot } from "../../src/types.js";
-import { BrokerKitUiApi } from "./api.js";
+import { unYOLOUiApi } from "./api.js";
 
-export const UI_INVALIDATE = "brokerkit.operator-ui.invalidate";
+export const UI_INVALIDATE = "unyolo.operator-ui.invalidate";
 
-export function useBrokerSnapshot(api: BrokerKitUiApi) {
+export function useBrokerSnapshot(api: unYOLOUiApi) {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [canDecide, setCanDecide] = useState(false);
   const [error, setError] = useState("");

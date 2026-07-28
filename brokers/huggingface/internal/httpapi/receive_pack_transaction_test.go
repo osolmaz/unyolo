@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 )
 
 func TestHFPushTransactionRequestIDIncludesTarget(t *testing.T) {

@@ -16,9 +16,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policypreset"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	bksetup "github.com/osolmaz/brokerkit/internal/host/setup"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 )
 
 const (
@@ -48,11 +48,11 @@ func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOpt
 	if err := checkPolicyReplacement(stdout, plan); err != nil {
 		return err
 	}
-	installPlan, err := brokerkitSystemdInstallPlan(plan)
+	installPlan, err := unyoloSystemdInstallPlan(plan)
 	if err != nil {
 		return exitError{code: 64, message: err.Error()}
 	}
-	if err := bkservice.InstallSystemd(ctx, installPlan); err != nil {
+	if err := unyoloservice.InstallSystemd(ctx, installPlan); err != nil {
 		return err
 	}
 	printSystemdSummary(stdout, opts)
@@ -97,54 +97,54 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 	}
 }
 
-func brokerkitSystemdInstallPlan(plan systemdPlan) (bkservice.SystemdInstallPlan, error) {
+func unyoloSystemdInstallPlan(plan systemdPlan) (unyoloservice.SystemdInstallPlan, error) {
 	token, err := readHFTokenFile(plan.opts.HFTokenFile)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
-	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, unitFileName)
+	activation, err := unyolosetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, unitFileName)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
 	policyFiles, err := renderSetupPolicy(plan)
 	if err != nil {
-		return bkservice.SystemdInstallPlan{}, err
+		return unyoloservice.SystemdInstallPlan{}, err
 	}
-	files := []bkservice.ManagedFile{
-		{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "huggingface-access"},
-		{Area: bkservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
-		{Area: bkservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
+	files := []unyoloservice.ManagedFile{
+		{Area: unyoloservice.ManagedFileConfig, Name: hfTokenFileName, Data: token, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "huggingface-access"},
+		{Area: unyoloservice.ManagedFileConfig, Name: secretsFileName, Data: []byte(plan.opts.ClientName + " = " + plan.opts.SharedSecret + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-client"},
+		{Area: unyoloservice.ManagedFileConfig, Name: operatorSecretsFileName, Data: []byte(plan.opts.OperatorName + " = " + plan.opts.OperatorSecret + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-operator"},
 	}
-	var removeFiles []bkservice.ManagedFileRef
+	var removeFiles []unyoloservice.ManagedFileRef
 	if policyFiles.managedPreset {
 		files = append(files,
-			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: policyProfileFileName, Data: policyFiles.profile, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
-			bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: policyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
+			unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: policyProfileFileName, Data: policyFiles.profile, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
+			unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: policyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
 		)
 	} else {
 		removeFiles = append(removeFiles,
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: policyProfileFileName},
-			bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: policyManifestFileName},
+			unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: policyProfileFileName},
+			unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: policyManifestFileName},
 		)
 	}
 	files = append(files,
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: scopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: bkservice.ManagedFileOwnerRoot},
-		bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot},
+		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: scopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
+		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 	)
-	var readyCheck bkservice.ReadinessCheck
+	var readyCheck unyoloservice.ReadinessCheck
 	if plan.opts.TelegramBotTokenFile != "" {
 		telegramToken, readErr := readSetupTokenFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
 		if readErr != nil {
-			return bkservice.SystemdInstallPlan{}, readErr
+			return unyoloservice.SystemdInstallPlan{}, readErr
 		}
-		files = append(files, bkservice.ManagedFile{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"})
+		files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"})
 	} else {
-		removeFiles = append(removeFiles, bkservice.ManagedFileRef{Area: bkservice.ManagedFileConfig, Name: telegramTokenFileName, CredentialClass: "telegram-bot"})
+		removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: telegramTokenFileName, CredentialClass: "telegram-bot"})
 	}
 	if len(removeFiles) > 0 {
-		readyCheck = bkservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
+		readyCheck = unyoloservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
 	}
-	return bkservice.SystemdInstallPlan{
+	return unyoloservice.SystemdInstallPlan{
 		User:             plan.opts.User,
 		Group:            plan.opts.Group,
 		AdditionalGroups: activation.Groups,
@@ -438,9 +438,9 @@ func renderEnvFile(plan systemdPlan) string {
 	return body
 }
 
-func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
+func systemdUnit(plan systemdPlan) unyoloservice.SystemdUnit {
 	opts := plan.opts
-	return bkservice.SystemdUnit{
+	return unyoloservice.SystemdUnit{
 		Description:                  "hf-broker Hugging Face credential broker",
 		User:                         opts.User,
 		Group:                        opts.Group,
@@ -448,36 +448,36 @@ func systemdUnit(plan systemdPlan) bkservice.SystemdUnit {
 		ExecStart:                    opts.BinaryPath,
 		StateDir:                     opts.StateDir,
 		ConfigDir:                    opts.ConfigDir,
-		HomeAccess:                   bkservice.HomeAccessDeny,
+		HomeAccess:                   unyoloservice.HomeAccessDeny,
 		PathValidation:               setupPathValidation(opts),
-		ManagedExecutableDestination: bksetup.ManagedDestination(opts.BinaryPath, opts.ManagedDestination),
+		ManagedExecutableDestination: unyolosetup.ManagedDestination(opts.BinaryPath, opts.ManagedDestination),
 	}
 }
 
 func renderSystemdUnit(plan systemdPlan) (string, error) {
-	return bkservice.RenderSystemd(systemdUnit(plan))
+	return unyoloservice.RenderSystemd(systemdUnit(plan))
 }
 
 func validateSystemdSetupPlan(plan systemdPlan) error {
 	unit := systemdUnit(plan)
-	unit.PathValidation = bkservice.PathValidationPreview
-	_, err := bkservice.RenderSystemd(unit)
+	unit.PathValidation = unyoloservice.PathValidationPreview
+	_, err := unyoloservice.RenderSystemd(unit)
 	return err
 }
 
-func setupPathValidation(opts setupSystemdOptions) bkservice.PathValidation {
+func setupPathValidation(opts setupSystemdOptions) unyoloservice.PathValidation {
 	if opts.DryRun || opts.AllowNonRoot {
-		return bkservice.PathValidationPreview
+		return unyoloservice.PathValidationPreview
 	}
-	return bkservice.PathValidationStrict
+	return unyoloservice.PathValidationStrict
 }
 
 func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
-	activation, err := bksetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, unitFileName)
+	activation, err := unyolosetup.BuildSystemdActivation(plan.opts.SystemdOptions, plan.opts.OperatorEndpoint, unitFileName)
 	if err != nil {
 		return err
 	}
-	sockets, err := bkservice.RenderSystemdSockets(activation.Sockets)
+	sockets, err := unyoloservice.RenderSystemdSockets(activation.Sockets)
 	if err != nil {
 		return err
 	}

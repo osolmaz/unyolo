@@ -51,7 +51,7 @@ func TestInstallerVerifiesExpectedReleaseProvenance(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "verifier.log")
 	installDir := t.TempDir()
 	command := installerCommand(t, installDir, server.URL, "v1.2.3")
-	command.Env = append(command.Env, "BROKERKIT_VERIFY_ONLY=true", "BROKERKIT_VERIFIER_LOG="+logPath)
+	command.Env = append(command.Env, "UNYOLO_VERIFY_ONLY=true", "UNYOLO_VERIFIER_LOG="+logPath)
 	output, err := command.CombinedOutput()
 	if err != nil || !strings.Contains(string(output), "Verified example/test-broker v1.2.3 release assets and provenance") {
 		t.Fatalf("verify-only installer err=%v output=%s", err, output)
@@ -89,9 +89,9 @@ func TestInstallerVerifiesCompletePublishedRelease(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "verifier.log")
 	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
 	command.Env = append(command.Env,
-		"BROKERKIT_VERIFY_ONLY=true",
-		"BROKERKIT_VERIFY_RELEASE_SET=true",
-		"BROKERKIT_VERIFIER_LOG="+logPath,
+		"UNYOLO_VERIFY_ONLY=true",
+		"UNYOLO_VERIFY_RELEASE_SET=true",
+		"UNYOLO_VERIFIER_LOG="+logPath,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -135,19 +135,19 @@ func TestInstallerPlacesGitCredentialHelperOnPath(t *testing.T) {
 	asset := "test-broker_linux_amd64.tar.gz"
 	releaseDir := t.TempDir()
 	writeReleaseAssetEntries(t, filepath.Join(releaseDir, asset), map[string]string{
-		"test-broker": "#!/bin/sh\necho v1.2.3\n", "git-credential-brokerkit": "#!/bin/sh\nexit 0\n",
+		"test-broker": "#!/bin/sh\necho v1.2.3\n", "git-credential-unyolo": "#!/bin/sh\nexit 0\n",
 	})
 	writeChecksums(t, releaseDir, asset)
 	server := releaseServer(t, releaseDir, asset)
 	defer server.Close()
 	installDir := filepath.Join(t.TempDir(), "bin")
 	command := installerCommand(t, installDir, server.URL, "v1.2.3")
-	command.Env = append(command.Env, "PATH_COMPANION_BINARIES=git-credential-brokerkit")
+	command.Env = append(command.Env, "PATH_COMPANION_BINARIES=git-credential-unyolo")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("installer failed: %v\n%s", err, output)
 	}
-	if info, err := os.Stat(filepath.Join(installDir, "git-credential-brokerkit")); err != nil || info.Mode().Perm() != 0o755 {
+	if info, err := os.Stat(filepath.Join(installDir, "git-credential-unyolo")); err != nil || info.Mode().Perm() != 0o755 {
 		t.Fatalf("credential helper info = %+v err=%v", info, err)
 	}
 }
@@ -175,7 +175,7 @@ func TestInstallerSelectsQualifiedComponentRelease(t *testing.T) {
 	server := releaseServer(t, releaseDir, asset)
 	defer server.Close()
 	command := installerCommand(t, t.TempDir(), server.URL, "")
-	command.Env = append(command.Env, "TAG_PREFIX=test-broker/", "BROKERKIT_RELEASES_URL="+server.URL+"/releases")
+	command.Env = append(command.Env, "TAG_PREFIX=test-broker/", "UNYOLO_RELEASES_URL="+server.URL+"/releases")
 	output, err := command.CombinedOutput()
 	if err != nil || !strings.Contains(string(output), "test-broker/v1.2.3") {
 		t.Fatalf("qualified installer err=%v output=%s", err, output)
@@ -215,7 +215,7 @@ func TestInstallerNeverInvokesSudoForUnwritableDestination(t *testing.T) {
 	if err := os.WriteFile(fakeSudo, []byte("#!/bin/sh\ntouch '"+marker+"'\nexit 99\n"), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
 		t.Fatal(err)
 	}
-	command := installerCommand(t, "/proc/brokerkit-installer-test", server.URL, "v1.2.3")
+	command := installerCommand(t, "/proc/unyolo-installer-test", server.URL, "v1.2.3")
 	command.Env = append(command.Env, "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	output, err := command.CombinedOutput()
 	if err == nil || strings.Contains(string(output), "sudo") {
@@ -232,7 +232,7 @@ func TestInstallerRejectsUnsupportedPlatformAndInvalidInputs(t *testing.T) {
 		env  []string
 		want string
 	}{
-		{name: "os", env: []string{"BROKER=test-broker", "REPO=example/test-broker", "BROKERKIT_UNAME_S=Windows", "BROKERKIT_UNAME_M=x86_64"}, want: "unsupported OS"},
+		{name: "os", env: []string{"BROKER=test-broker", "REPO=example/test-broker", "UNYOLO_UNAME_S=Windows", "UNYOLO_UNAME_M=x86_64"}, want: "unsupported OS"},
 		{name: "broker", env: []string{"BROKER=../bad", "REPO=example/test-broker"}, want: "BROKER must contain"},
 		{name: "repo", env: []string{"BROKER=test-broker", "REPO=missing"}, want: "owner/name"},
 		{name: "nested repo", env: []string{"BROKER=test-broker", "REPO=example/team/test-broker"}, want: "owner/name"},
@@ -260,11 +260,11 @@ func installerCommand(t *testing.T, installDir string, serverURL string, version
 		"REPO=example/test-broker",
 		"INSTALL_DIR="+installDir,
 		"VERSION="+version,
-		"BROKERKIT_UNAME_S=Linux",
-		"BROKERKIT_UNAME_M=x86_64",
-		"BROKERKIT_LATEST_RELEASE_URL="+serverURL+"/latest",
-		"BROKERKIT_RELEASE_BASE_URL="+serverURL+"/release",
-		"BROKERKIT_VERIFIER_FILE="+writeFakeVerifier(t),
+		"UNYOLO_UNAME_S=Linux",
+		"UNYOLO_UNAME_M=x86_64",
+		"UNYOLO_LATEST_RELEASE_URL="+serverURL+"/latest",
+		"UNYOLO_RELEASE_BASE_URL="+serverURL+"/release",
+		"UNYOLO_VERIFIER_FILE="+writeFakeVerifier(t),
 	)
 	return command
 }
@@ -272,7 +272,7 @@ func installerCommand(t *testing.T, installDir string, serverURL string, version
 func writeFakeVerifier(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "gh")
-	body := "#!/bin/sh\nif [ -n \"${BROKERKIT_VERIFIER_LOG:-}\" ]; then printf '%s\\n' \"$*\" >> \"$BROKERKIT_VERIFIER_LOG\"; fi\n"
+	body := "#!/bin/sh\nif [ -n \"${UNYOLO_VERIFIER_LOG:-}\" ]; then printf '%s\\n' \"$*\" >> \"$UNYOLO_VERIFIER_LOG\"; fi\n"
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil { // #nosec G306 -- executable fixture requires execute bits.
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func releaseServer(t *testing.T, dir string, asset string) *httptest.Server {
 		case "/latest":
 			_, _ = io.WriteString(w, `{"tag_name":"v1.2.3"}`)
 		case "/releases":
-			_, _ = io.WriteString(w, `[{"tag_name":"openclaw-brokerkit/v9.0.0"},{"tag_name":"test-broker/v1.2.3"}]`)
+			_, _ = io.WriteString(w, `[{"tag_name":"openclaw-unyolo/v9.0.0"},{"tag_name":"test-broker/v1.2.3"}]`)
 		case "/release/" + asset:
 			http.ServeFile(w, r, filepath.Join(dir, asset))
 		case "/release/checksums.txt":

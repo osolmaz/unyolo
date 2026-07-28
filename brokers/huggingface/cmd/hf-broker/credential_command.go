@@ -19,12 +19,12 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/credentialauth"
-	"github.com/osolmaz/brokerkit/credential/lifecycle"
-	"github.com/osolmaz/brokerkit/credential/provider"
-	bkservice "github.com/osolmaz/brokerkit/internal/host/service"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/credentialauth"
+	"github.com/osolmaz/unyolo/credential/lifecycle"
+	"github.com/osolmaz/unyolo/credential/provider"
+	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 const (
@@ -37,7 +37,7 @@ const (
 
 type credentialDependencies struct {
 	inspect       func(context.Context, string, string, uint64) (providercredential.Snapshot, error)
-	replace       func(context.Context, bkservice.CredentialReplacePlan) error
+	replace       func(context.Context, unyoloservice.CredentialReplacePlan) error
 	openURL       func(context.Context, string) error
 	readHidden    func(io.Reader, io.Writer) (string, error)
 	euid          func() int
@@ -71,7 +71,7 @@ func defaultCredentialDependencies() credentialDependencies {
 			defer secret.Clear()
 			return (credentialauth.Adapter{Inspector: credentialauth.Inspector{BaseURL: baseURL, Client: client}, Generation: generation}).Inspect(ctx, secret)
 		},
-		replace:       bkservice.ReplaceCredential,
+		replace:       unyoloservice.ReplaceCredential,
 		openURL:       openCredentialURL,
 		readHidden:    readHiddenCredential,
 		euid:          os.Geteuid,
@@ -371,15 +371,15 @@ func activateCredential(command commandContext, deps credentialDependencies, opt
 	if err != nil {
 		return err
 	}
-	plan := bkservice.CredentialReplacePlan{
+	plan := unyoloservice.CredentialReplacePlan{
 		Provider: "huggingface",
 		User:     deployment.user, Group: deployment.group, ConfigDir: deployment.configDir,
 		SystemdUnit: unitFileName, LaunchdLabel: deployment.launchdLabel,
-		Files: []bkservice.ManagedFile{
-			{Area: bkservice.ManagedFileConfig, Name: hfTokenFileName, Data: []byte(token + "\n"), Mode: 0o600, Owner: bkservice.ManagedFileOwnerService, CredentialClass: "huggingface-access"},
-			{Area: bkservice.ManagedFileConfig, Name: credentialStatusFileName, Data: metadata, Mode: 0o640, Owner: bkservice.ManagedFileOwnerRoot, CredentialClass: "huggingface-access-metadata"},
+		Files: []unyoloservice.ManagedFile{
+			{Area: unyoloservice.ManagedFileConfig, Name: hfTokenFileName, Data: []byte(token + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "huggingface-access"},
+			{Area: unyoloservice.ManagedFileConfig, Name: credentialStatusFileName, Data: metadata, Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot, CredentialClass: "huggingface-access-metadata"},
 		},
-		ReadyCheck: bkservice.EndpointReadyCheck(deployment.endpoint, "/healthz"), Lifecycle: reporter,
+		ReadyCheck: unyoloservice.EndpointReadyCheck(deployment.endpoint, "/healthz"), Lifecycle: reporter,
 	}
 	return deps.replace(command.ctx, plan)
 }
@@ -395,13 +395,13 @@ type credentialDeployment struct {
 func installedCredentialDeployment() credentialDeployment {
 	if runtime.GOOS == "darwin" {
 		return credentialDeployment{
-			configDir: "/Library/Application Support/BrokerKit/hf-broker/config", user: "_hf_broker", group: "_hf_broker",
-			endpoint: "unix:///var/run/brokerkit/huggingface/agent/broker.sock", launchdLabel: "dev.brokerkit.huggingface",
+			configDir: "/Library/Application Support/unyolo/hf-broker/config", user: "_hf_broker", group: "_hf_broker",
+			endpoint: "unix:///var/run/unyolo/huggingface/agent/broker.sock", launchdLabel: "io.unyolo.huggingface",
 		}
 	}
 	return credentialDeployment{
 		configDir: "/etc/hf-broker", user: "hf-broker", group: "hf-broker",
-		endpoint: "unix:///run/brokerkit/huggingface/agent/broker.sock",
+		endpoint: "unix:///run/unyolo/huggingface/agent/broker.sock",
 	}
 }
 

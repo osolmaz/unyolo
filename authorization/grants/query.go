@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/authorization/policy"
+	"github.com/osolmaz/unyolo/authorization/policy"
 )
 
 const maxGrantPageSize = 100

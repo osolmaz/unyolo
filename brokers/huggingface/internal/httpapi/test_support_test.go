@@ -20,14 +20,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/brokerkit/approval/notification"
-	"github.com/osolmaz/brokerkit/approval/notifier"
-	bktelegram "github.com/osolmaz/brokerkit/approval/notifier/telegram"
-	"github.com/osolmaz/brokerkit/approval/view"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/config"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/gitproxy"
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/brokerkit/telemetry/audit"
+	"github.com/osolmaz/unyolo/approval/notification"
+	"github.com/osolmaz/unyolo/approval/notifier"
+	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
 func testAuditRecorder() audit.Recorder { return audit.New(io.Discard) }
@@ -102,7 +102,7 @@ type callbackDuringSendNotifier struct {
 }
 
 func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
-	ref, err := bktelegram.ApprovalReference(msg, n.ref.ChatID, n.ref.MessageID)
+	ref, err := unyolotelegram.ApprovalReference(msg, n.ref.ChatID, n.ref.MessageID)
 	if err != nil {
 		return notify.MessageRef{}, err
 	}
@@ -120,7 +120,7 @@ func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg appro
 
 func testTelegramReference(t *testing.T, grantID string) notify.MessageRef {
 	t.Helper()
-	ref, err := bktelegram.ApprovalReference(approvalnotify.Approval{
+	ref, err := unyolotelegram.ApprovalReference(approvalnotify.Approval{
 		GrantID: grantID, DecisionToken: "test-token", Broker: "Hugging Face", Requester: "agent", Operation: "test.operation",
 		Reason: "test notification", RequestedDurationSeconds: 60, MaxUses: 1, PendingExpiresAt: time.Now().Add(time.Minute),
 		Presentation: approvalview.Presentation{Risk: approvalview.RiskLow, Title: "Test approval", Target: "test/repository"},

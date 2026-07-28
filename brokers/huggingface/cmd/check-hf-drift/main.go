@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/osolmaz/brokerkit/brokers/huggingface/internal/upstreamdrift"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/upstreamdrift"
 )
 
 const pinnedSnapshot = "brokers/huggingface/internal/opbinding/hf-openapi-2026-07-13.json"

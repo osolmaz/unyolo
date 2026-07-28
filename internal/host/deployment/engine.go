@@ -1,4 +1,4 @@
-// Package deployment orchestrates one canonical BrokerKit host deployment.
+// Package deployment orchestrates one canonical unYOLO host deployment.
 package deployment
 
 import (
@@ -16,18 +16,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/brokerkit/deployment/api"
-	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
-	"github.com/osolmaz/brokerkit/deployment/profile"
-	adapterruntime "github.com/osolmaz/brokerkit/deployment/runtime"
-	"github.com/osolmaz/brokerkit/deployment/transaction"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	"github.com/osolmaz/brokerkit/internal/host/identity"
-	hostsetup "github.com/osolmaz/brokerkit/internal/host/setup"
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/deployment/api"
+	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
+	"github.com/osolmaz/unyolo/deployment/profile"
+	adapterruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/deployment/transaction"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/internal/host/identity"
+	hostsetup "github.com/osolmaz/unyolo/internal/host/setup"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
-const exportAPIVersion = "brokerkit.io/host-export/v1"
+const exportAPIVersion = "unyolo.io/host-export/v1"
 
 // Options configures one host deployment engine.
 type Options struct {
@@ -278,7 +278,7 @@ func (engine *Engine) Verify(ctx context.Context, profileRoot string) (Verificat
 
 func (engine *Engine) verifyPlanned(ctx context.Context, planned Planned) (Verification, error) {
 	report := Verification{
-		APIVersion: "brokerkit.io/host-verification/v1", DeploymentName: planned.Snapshot.Deployment.Name,
+		APIVersion: "unyolo.io/host-verification/v1", DeploymentName: planned.Snapshot.Deployment.Name,
 		DeploymentDigest: planned.Snapshot.Digest, RuntimeBundleID: planned.Snapshot.Manifest.BundleID, Healthy: true,
 	}
 	if planned.ActiveBundleID != planned.Snapshot.Manifest.BundleID {
@@ -307,7 +307,7 @@ func (engine *Engine) verifyPlanned(ctx context.Context, planned Planned) (Verif
 		report.Components = append(report.Components, entry)
 	}
 	if !report.Healthy {
-		return report, errors.New("BrokerKit host requires repair")
+		return report, errors.New("unYOLO host requires repair")
 	}
 	return report, nil
 }
@@ -337,7 +337,7 @@ func (engine *Engine) verifySnapshotTrust(snapshot profile.Snapshot) error {
 		return fmt.Errorf("verify deployment runtime trust root: %w", err)
 	}
 	if needsPin {
-		return errors.New("deployment runtime trust root is not pinned; run the verified BrokerKit bootstrap")
+		return errors.New("deployment runtime trust root is not pinned; run the verified unYOLO bootstrap")
 	}
 	return nil
 }

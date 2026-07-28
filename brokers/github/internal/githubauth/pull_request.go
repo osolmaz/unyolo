@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/osolmaz/brokerkit/internal/strictjson"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 // PullRequestSnapshot is the secret-free state required to bind and verify a

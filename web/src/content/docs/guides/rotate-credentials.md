@@ -3,7 +3,7 @@ title: Rotate credentials
 description: Exact-replacement rotation, what setup does on failure, revocation paths per credential class, and doctor reporting.
 ---
 
-BrokerKit uses one exact-replacement model for installed credentials. It does not keep old and new
+unYOLO uses one exact-replacement model for installed credentials. It does not keep old and new
 secrets active at the same time. This applies to broker client and operator secrets, provider
 credentials, Telegram bot tokens, GitHub App keys and OAuth secrets, and any other protected file
 broker setup manages.
@@ -54,7 +54,7 @@ without restoring an old credential. A committed cutover stays committed.
 
 ## Revocation paths
 
-Local cutover and upstream retirement are different steps, and BrokerKit automates the second only
+Local cutover and upstream retirement are different steps, and unYOLO automates the second only
 where the provider exposes a supported API and the broker holds the exact authority and identifier
 needed.
 
@@ -68,7 +68,7 @@ needed.
 | Hugging Face user token | Exact protected-file replacement | Manual in Hugging Face token settings after readiness |
 | Telegram bot token | Exact protected-file replacement or retirement | Manual through BotFather after readiness |
 
-BrokerKit does not call undocumented endpoints and does not broaden provider permissions to
+unYOLO does not call undocumented endpoints and does not broaden provider permissions to
 automate static-key cleanup. Provider revocation failures are recorded as failed lifecycle events.
 A successful local cutover stays active; an old credential is never restored merely to make it
 usable again.
@@ -113,7 +113,7 @@ Protected-file age comes from file metadata without opening the file. The defaul
 90 days.
 
 `not-reported` is distinct from an unlimited or verified lifetime. A static provider credential
-that exposes no expiry metadata reports `not-reported`, which means BrokerKit does not know rather
+that exposes no expiry metadata reports `not-reported`, which means unYOLO does not know rather
 than that the credential does not expire.
 
 Supply every relevant installed path when running the Hugging Face isolation doctor:

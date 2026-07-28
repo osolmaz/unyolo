@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	gitx "github.com/osolmaz/brokerkit/git/protocol"
+	gitx "github.com/osolmaz/unyolo/git/protocol"
 )
 
 func TestGitHubPackBaseReaderFetchesAndVerifiesObjects(t *testing.T) {

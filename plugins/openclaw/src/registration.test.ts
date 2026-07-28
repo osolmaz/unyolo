@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { registerBrokerKit } from "../index.js";
+import { registerunYOLO } from "../index.js";
 
 describe("plugin registration", () => {
   it("registers no approval surfaces in the default skills-only mode", () => {
     const registerService = vi.fn();
     const registerCommand = vi.fn();
     const registerHttpRoute = vi.fn();
-    registerBrokerKit({
+    registerunYOLO({
       pluginConfig: {},
       registerService,
       registerCommand,
@@ -21,10 +21,10 @@ describe("plugin registration", () => {
     const registerCommand = vi.fn();
     const registerHttpRoute = vi.fn();
     const registerControlUiDescriptor = vi.fn();
-    registerBrokerKit({
+    registerunYOLO({
       pluginConfig: {
         mode: "delegated-web",
-        delegatedWeb: { basePath: "/trusted-host/api/brokerkit" },
+        delegatedWeb: { basePath: "/trusted-host/api/unyolo" },
       },
       session: { controls: { registerControlUiDescriptor } },
       registerService,
@@ -48,7 +48,7 @@ describe("plugin registration", () => {
     expect(bootstrap).toEqual({
       version: 1,
       mode: "delegated-web",
-      basePath: "/trusted-host/api/brokerkit",
+      basePath: "/trusted-host/api/unyolo",
     });
   });
   it("rotates a 256-bit direct UI capability on each registration", () => {
@@ -57,7 +57,7 @@ describe("plugin registration", () => {
       const registerService = vi.fn();
       const registerCommand = vi.fn();
       const registerHttpRoute = vi.fn();
-      registerBrokerKit({
+      registerunYOLO({
         pluginConfig: {
           mode: "direct",
           brokers: [
@@ -87,7 +87,7 @@ describe("plugin registration", () => {
       expect(registerService).toHaveBeenCalledOnce();
       expect(registerCommand).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: "brokerkit",
+          name: "unyolo",
           requireAuth: true,
           requiredScopes: ["operator.approvals"],
         }),

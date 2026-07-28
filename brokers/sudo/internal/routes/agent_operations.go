@@ -7,17 +7,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/osolmaz/brokerkit/agent/api"
-	"github.com/osolmaz/brokerkit/agent/v1"
-	"github.com/osolmaz/brokerkit/approval/notification"
-	bkauthorization "github.com/osolmaz/brokerkit/authorization"
-	"github.com/osolmaz/brokerkit/authorization/grants"
-	corepolicy "github.com/osolmaz/brokerkit/authorization/policy"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/operations"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/plan"
-	"github.com/osolmaz/brokerkit/brokers/sudo/internal/presenter"
-	"github.com/osolmaz/brokerkit/internal/storage/state"
-	"github.com/osolmaz/brokerkit/operation/runtime"
+	"github.com/osolmaz/unyolo/agent/api"
+	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/approval/notification"
+	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/operations"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/presenter"
+	"github.com/osolmaz/unyolo/internal/storage/state"
+	"github.com/osolmaz/unyolo/operation/runtime"
 )
 
 func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
@@ -46,30 +46,30 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 	})
 }
 
-func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (bkauthorization.GrantIntent, error) {
+func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloauthorization.GrantIntent, error) {
 	if preparation.Direct {
-		return bkauthorization.GrantIntent{}, errors.New("sudo operations require explicit approval")
+		return unyoloauthorization.GrantIntent{}, errors.New("sudo operations require explicit approval")
 	}
 	duration, pending, err := grantBounds(preparation.Decision.GrantPolicy, 0)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	request := grants.Request{Client: preparation.Client, ClientRequestID: preparation.OperationID,
 		Operation: preparation.DescriptorName, Target: preparation.Core.Target, Attrs: preparation.Core.Attrs,
 		Reason: preparation.Reason, Duration: duration, PendingTimeout: pending, MaxUses: 1, MaxUsesSpecified: true}
 	identity, err := s.identities.Lookup(preparation.Plan.Resolved.TargetUser)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, errors.New("target user cannot be resolved")
+		return unyoloauthorization.GrantIntent{}, errors.New("target user cannot be resolved")
 	}
 	command, err := plan.Build(request, preparation.Plan.Resolved, identity, preparation.CreatedAt)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
 	immutable, err := s.plans.PrepareBind(&request, command)
 	if err != nil {
-		return bkauthorization.GrantIntent{}, err
+		return unyoloauthorization.GrantIntent{}, err
 	}
-	return bkauthorization.GrantIntent{Mode: corepolicy.GrantModeExecution, Authorization: preparation.Core,
+	return unyoloauthorization.GrantIntent{Mode: corepolicy.GrantModeExecution, Authorization: preparation.Core,
 		Request: request, Plan: immutable}, nil
 }
 

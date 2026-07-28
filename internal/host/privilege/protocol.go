@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	deploymentplan "github.com/osolmaz/brokerkit/deployment/plan"
-	deploymentruntime "github.com/osolmaz/brokerkit/deployment/runtime"
-	"github.com/osolmaz/brokerkit/internal/host/bundle"
-	hostdeployment "github.com/osolmaz/brokerkit/internal/host/deployment"
+	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
+	hostdeployment "github.com/osolmaz/unyolo/internal/host/deployment"
 )
 
-const APIVersion = "brokerkit.io/setup-worker/v1"
+const APIVersion = "unyolo.io/setup-worker/v1"
 
 var verifyIdentity = verifyWorkerIdentity
 
