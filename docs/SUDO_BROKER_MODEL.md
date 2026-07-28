@@ -47,7 +47,7 @@ sudo-broker should provide:
 - local isolation doctor checks
 - sudo-specific approval wording
 
-## Initial Policy Vocabulary
+## Initial policy vocabulary
 
 Operations:
 

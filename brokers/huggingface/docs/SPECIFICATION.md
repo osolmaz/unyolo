@@ -1,4 +1,4 @@
-# hf-broker — Specification
+# hf-broker specification
 
 Status: current.
 
@@ -9,7 +9,7 @@ repositories while keeping the upstream credential server-side. The broker
 classifies every request, applies policy and grants, enforces Git safety, and
 only then forwards an allowed operation.
 
-## Safety Model
+## Safety model
 
 Standing policy covers routine reads and append-only writes. Dangerous Git
 operations require time-bounded, use-bounded operator approval. The agent holds
@@ -23,7 +23,7 @@ operations. The broker is a boundary the agent cannot cross: it withholds the
 upstream credential and rejects non-fast-forward Git updates unless a matching
 grant is active.
 
-## unYOLO Boundary
+## unYOLO boundary
 
 `github.com/osolmaz/unyolo` is the shared base for the broker family:
 `hf-broker`, `gh-broker`, and `sudo-broker`.
@@ -49,16 +49,15 @@ Reversibility is the standing Git safety property: accepted append-only updates
 remain reachable and can be reverted. Destructive operations are refused unless
 an explicit request rule and active grant authorize the exact operation.
 
-## Threat Model
+## Threat model
 
 **Protected against:** unauthorized history rewrites and ref deletion,
 credential theft from the agent machine, and scope escape. The agent holds only
 a revocable broker secret that is useless outside the broker.
 
 **Required for the guarantees to hold:** the broker process and its
-upstream token must be unreachable from the agent's execution context —
-a separate machine or at minimum a
-separate Unix user. A broker running as the same user as the agent is
+upstream token must be unreachable from the agent's execution context. Use a
+separate machine or at minimum a separate Unix user. A broker running as the same user as the agent is
 decoration. Network reachability is never treated as authorization;
 every request must present a broker secret.
 
@@ -74,17 +73,16 @@ reports unsafe, the deployment must be changed; no broker policy can
 protect a local token from host root.
 
 **Not protected against:** exfiltration of anything readable through the
-broker; junk accumulation within scope
-(spam commits, new branches, new objects — reversible and quota-bounded,
-but real); denial of service against the broker itself. Stated
+broker; junk accumulation within scope (spam commits, new branches, or new
+objects that remain reversible and quota-bounded); denial of service against
+the broker itself. Stated
 deliberately: the guarantee is "nothing irreversible," not "nothing
 annoying."
 
-## Security Invariants
+## Security invariants
 
-- No API — internal or external — returns credential material: not the
-  upstream token, not broker secrets, not reversible blobs, not token
-  metadata.
+- Internal and external APIs never return credential material. This includes
+  the upstream token, broker secrets, reversible blobs, and token metadata.
 - Scope configuration is a manually edited file; there is no endpoint to
   read or change it.
 - The broker exposes no generic Hub API proxy or arbitrary command execution.
@@ -148,7 +146,7 @@ a hand-edited `scope.json` for what is reachable:
 Routine operations use standing `allow` rules. Dangerous operations use
 `request` rules and temporary grants. There is no standing full-write mode.
 
-## Git Proxy
+## Git proxy
 
 Routes mirror git smart HTTP for configured repos only:
 
@@ -187,18 +185,21 @@ Rules, applied per command, all-or-nothing for the push:
 ### Ancestry verification without duplicating data
 
 The chosen approach (V1 confirmed, see Verification Status) is a
-per-repo **commits-only mirror**: `git clone --bare --filter=tree:0` —
-the commit graph without trees or blobs, megabytes even for terabyte
-repos. Verified against a live Hub dataset: the filtered clone returned
+per-repo **commits-only mirror** built with `git clone --bare
+--filter=tree:0`. It stores the commit graph without trees or blobs and stays
+small even for terabyte-scale repositories. Verified against a live Hub dataset: the filtered clone returned
 only commit objects (0 trees, 0 blobs), 56 KiB for 100 commits.
 
 Enforcement algorithm per push, per updated `refs/heads/*` or
 `refs/tags/*` command with a non-zero `old-sha`:
 
 1. Acquire the per-repo lock (see Concurrency).
-2. Ensure the mirror exists and is current: `git -C <mirror> fetch
-   --filter=tree:0 origin '+refs/heads/*:refs/heads/*'
-   '+refs/tags/*:refs/tags/*'` (the mirror uses the upstream token).
+2. Ensure the mirror exists and is current by fetching branch and tag refs
+   with the upstream token:
+
+   ```sh
+   git -C <mirror> fetch --filter=tree:0 origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+   ```
 3. Confirm the client-claimed `old-sha` matches the mirror's current
    value for that ref. If it does not, the client is working from stale
    state; refuse and let it re-fetch (prevents lost-update races and
@@ -214,9 +215,8 @@ Enforcement algorithm per push, per updated `refs/heads/*` or
    upstream; on a 2xx upstream response, advance the mirror's refs to the
    new values; release the lock.
 
-The mirror doubles as an append-only record of every history the broker
-has accepted — a recovery aid, though it holds commit graph only, not
-file contents.
+The mirror also records every history the broker has accepted. It can aid
+recovery even though it contains only the commit graph and no file contents.
 
 ## Grants
 
@@ -260,10 +260,10 @@ Smallest valid git override request:
 }
 ```
 
-The broker fills defaults from `scope.json` grant policy: `minutes`
-defaults to `5`, `max_uses` defaults to `1`, and no grant may exceed
-`60` minutes. A push request is one use regardless of how many commits it
-contains.
+The broker fills omitted values from the matching `scope.json` grant rule. In
+the default policy, `minutes` defaults to `5`, `max_uses` defaults to `25`, and
+no force-push grant may exceed `60` minutes. A push request is one use
+regardless of how many commits it contains.
 
 Grant modes:
 
@@ -393,9 +393,8 @@ or object payloads.
 
 **Channel separation is a security requirement, not a UX choice**: the
 approval action must travel on a channel the agent's execution context
-cannot reach or forge. In particular, approval is never an endpoint on
-the broker surface the agent talks to — anything reachable with (or
-adjacent to) the agent's secret is disqualified by construction.
+cannot reach or forge. Approval is never an endpoint on the broker surface the
+agent uses. Anything reachable with the agent's secret is disqualified.
 
 Two operator surfaces are supported:
 
@@ -431,14 +430,14 @@ target, decision (allowed / refused / grant-used), refusal reason,
 upstream status. Never bodies, never secrets. The audit stream is the
 operator's answer to "what did the agent actually do?"
 
-## Client Setup
+## Client setup
 
 ```sh
 # Standard Git clients use a deployment-owned HTTPS ingress.
 git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped-news
 ```
 
-## Repository Layout
+## Repository layout
 
 Go package tree `github.com/osolmaz/unyolo/brokers/huggingface`, using the
 root unYOLO module and toolchain `go1.26.5`. One binary
@@ -468,7 +467,7 @@ stays free of HTTP framework types so it is unit-testable without a server.
 
 ## Configuration
 
-### Secrets (never in files the agent could read)
+### Secret files
 
 | Variable | Required | Meaning |
 |----------|----------|---------|
@@ -583,7 +582,7 @@ registered. Repository creation, deletion, settings, membership, and other
 supported administrative actions execute through Agent Operations V1 and an
 immutable plan. The broker does not expose a generic Hub API proxy.
 
-## Request Handling
+## Request handling
 
 ### Authentication
 
@@ -653,8 +652,8 @@ Response bodies are streamed back.
 
 ### Refusal responses (must be legible to the client)
 
-A refusal must reach the human at the terminal, not just return a bare
-500:
+A refusal must reach the human at the terminal. A bare 500 response is
+insufficient:
 
 - **Git push refusals**: return HTTP `200` with a valid
   `git-receive-pack` **report-status** that reports the offending ref as
@@ -662,16 +661,16 @@ A refusal must reach the human at the terminal, not just return a bare
   history rewrite refused)`), *and* an ERR sideband line so `git push`
   prints the reason. The push must be rejected **before** any bytes reach
   upstream. (If report-status framing proves impractical for a given
-  client, the documented fallback is HTTP `403` with the reason in the
-  body — acceptable but less clean.)
+  client, the documented fallback is HTTP `403` with the reason in the body.
+  This fallback is acceptable but less clean.)
 - **Scope / auth refusals** on any route: `403` / `401` with a one-line
   plain reason.
 ### Health
 
-`GET /healthz` → `200 {"ok": true}`, no auth, no secrets, for liveness
-probes.
+`GET /healthz` → `200 {"ok": true}` for unauthenticated liveness probes. The
+response contains no secrets.
 
-## On-Disk State
+## On-disk state
 
 Everything the broker persists lives under `HF_BROKER_STATE_DIR`:
 
@@ -717,7 +716,7 @@ available.
   a slow upstream cannot hold the lock indefinitely (timeout → refuse,
   release, mirror unchanged).
 
-## Quality Gates and CI
+## Quality gates and CI
 
 The root CI workflow runs formatting, vet, race tests, coverage, builds,
 linting, vulnerability checks, architecture checks, and the configured
@@ -725,17 +724,17 @@ Slophammer gates. The checked-in workflow and `slophammer.yml` are the source of
 truth for exact commands and thresholds. Mutation testing is disabled and
 non-blocking.
 
-## Testing Strategy
+## Testing strategy
 
 The proxy is testable without a live Hub:
 
 - **Unit (the bulk)**: pkt-line parsing, ref-command extraction,
   enforcement decisions, scope decisions, config validation, grant policy
-  validation, grant expiry, grant use budgets, idempotency, and plan hashing — all pure,
-  table-driven.
+  validation, grant expiry, grant use budgets, idempotency, and plan hashing.
+  These tests are pure and table-driven.
 - **Ancestry**: build throwaway real git repos in `tmp` with `git`
   plumbing, exercise `mirror` against them (fast-forward, non-ff,
-  deletion, new branch, new tag, tag move) — real git, no network.
+  deletion, new branch, new tag, tag move) using real Git with no network.
 - **Proxy integration**: a stub upstream (`httptest.Server`) mimicking
   the Hub's `info/refs` + `receive-pack` responses asserts that refused
   pushes never reach it and allowed pushes are forwarded verbatim with
@@ -744,7 +743,7 @@ The proxy is testable without a live Hub:
   streams across a representative run; assert no configured secret or
   token value ever appears.
 
-## Non-Goals
+## Non-goals
 
 - GitHub operations, which belong in gh-broker.
 - Arbitrary Hub API proxying, repository administration, and organization

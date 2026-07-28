@@ -1,4 +1,4 @@
-# unYOLO Directory Structure
+# unYOLO directory structure
 
 unYOLO uses a domain-first Go package tree. Top-level directories represent
 stable product domains or repository-level deliverables. Implementation details
@@ -59,10 +59,10 @@ must not duplicate bundle staging, protocol identity, rollback, or host doctor
 logic.
 
 Do not create `pkg/`, `src/`, `common/`, `shared/`, or `utils/`. A new top-level
-directory requires a durable product domain, not merely code that does not fit
-the first package considered.
+directory requires a durable product domain. Code that does not fit the first
+package considered is not enough reason to create one.
 
-## Public And Internal Packages
+## Public and internal packages
 
 Every shared Go package outside `internal/` and `brokers/` is an intentional
 reusable surface. Keep it provider-neutral, documented, bounded, and
@@ -93,7 +93,7 @@ Shared domains must never import `brokers/`. One provider must never import
 another provider. Protocol packages define wire contracts and must not depend
 on provider execution code.
 
-## Generated And Local Output
+## Generated and local output
 
 Generated source stays beside its owning contract or under
 `protocol/generated/`. Local coverage, build, package-manager, and Slophammer

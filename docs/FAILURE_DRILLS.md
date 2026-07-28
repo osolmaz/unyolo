@@ -20,7 +20,7 @@ operation-specific cases without replacing these shared drills.
 | Partial multi-service upgrade | providers start before consumers and any failure restores the previous release and state | `internal/host/bundle/bundle_test.go` |
 | Host process exits during activation | the private transaction journal restores the prior release and activation record before another lifecycle command proceeds | `internal/host/bundle/bundle_test.go` |
 
-Every drill asserts durable terminal state or rollback state, not just an HTTP
-status. Test fixtures use bounded timeouts and synthetic local upstreams. Live
+Every drill asserts durable terminal or rollback state. An HTTP status alone is
+insufficient. Test fixtures use bounded timeouts and synthetic local upstreams. Live
 provider tests complement this matrix but are not the only evidence for a
 failure invariant.

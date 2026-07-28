@@ -1,25 +1,22 @@
 # hf-broker
 
-hf-broker is a self-hosted credential broker between a coding agent and
-Hugging Face. It exposes only registered, policy-gated Git, LFS, repository,
-and Router inference operations; broad Hugging Face credentials remain inside
-the broker while agents receive only revocable broker credentials. Dangerous
-operations can require a short-lived operator approval without weakening
-append-only or execution-time provider checks.
+hf-broker is a self-hosted Hugging Face access broker for coding agents. It
+keeps the Hugging Face token inside the broker and exposes registered
+operations through revocable broker credentials. Policy covers Git, LFS,
+repository operations, and Router inference. Sensitive work can wait for a
+short-lived operator approval.
 
-The provider-specific design and threat model are in
-[docs/SPECIFICATION.md](docs/SPECIFICATION.md), including the full list of
-environment variables.
+The provider design, threat model, and environment variables are documented in
+[docs/SPECIFICATION.md](docs/SPECIFICATION.md).
 
-## How the Git proxy works
+## Git proxy
 
-The broker is a git smart-HTTP proxy. Every `git push` body is parsed before
-anything is forwarded; a push is accepted only if all its ref updates are
-append-only (fast-forwards, new branches, new tags). Ancestry is verified
-against a local commits-only mirror (`--filter=tree:0`), so even terabyte
-repos cost megabytes. Accepted pushes are forwarded upstream with a
-server-side write token the agent can never read; refused pushes never leave
-the broker and `git push` prints the reason.
+The broker is a Git smart-HTTP proxy. It parses every `git push` body before
+forwarding anything and accepts only append-only ref updates. Ancestry is
+verified against a local commits-only mirror (`--filter=tree:0`), which keeps
+large repositories cheap to check. An accepted push uses a server-side write
+token that the agent cannot read. A refused push never leaves the broker, and
+`git push` prints the reason.
 
 ## Install
 

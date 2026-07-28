@@ -6,7 +6,7 @@ and validation rules. Brokers use this core directly and do not keep local
 compatibility policy engines. See [OWNERSHIP.md](OWNERSHIP.md) for the broader
 unYOLO versus broker boundary.
 
-## Minimal Policy File
+## Minimal policy file
 
 ```json
 {
@@ -305,7 +305,7 @@ The policy core does not:
 
 Those responsibilities stay with the broker using unyolo.
 
-## Native Git Transactions
+## Native Git transactions
 
 A receive-pack request is one authorization transaction. Provider adapters
 classify every ref before any bytes are sent upstream. A deny rejects the

@@ -96,7 +96,7 @@ must refresh the list before reconnecting.
 
 Checked-in wire examples are under `operator/api/testdata`.
 
-## Trusted Host Integration
+## Trusted host integration
 
 A trusted presentation host is not another grant authority:
 

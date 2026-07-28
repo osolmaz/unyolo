@@ -1,40 +1,37 @@
 ---
 title: Overview
-description: What unYOLO is, the problem it solves, and how its pieces fit together.
+description: unYOLO's broker model and included components.
 ---
 
-unYOLO is a Go framework for building credential brokers. A broker is a small service that holds
-a real credential, GitHub App keys, a Hugging Face token, or the ability to act as another Unix
-user, and hands an untrusted client a separate credential that works only for the operations you
-allowed.
+unYOLO is an access-control framework for coding agents. It keeps provider
+credentials in separate broker processes and gives each agent only the
+operations allowed by policy.
 
-The point is to let a coding agent do useful work in your own accounts without giving it the
-credential that would let it destroy something. An agent can push to its own branches and open pull
-requests, while the same credential cannot force-push over `main`, delete a repository, or read the
-repositories you did not list.
+An agent can push its own branches and open pull requests without receiving a
+GitHub token. The broker can refuse a force-push to `main`, reject access to an
+unlisted repository, or wait for an operator before continuing.
 
-Three brokers ship ready to run, and they are consumers of the framework rather than the whole of
-it. If you need the same boundary in front of an internal API key or a cloud role, you write the
-provider-specific parts and inherit everything else.
+Ready-to-run brokers cover GitHub and Hugging Face. `sudo-broker` applies the
+same model to privileged Unix commands. You can also use the framework to put a
+policy boundary in front of another provider.
 
-## The problem
+## Credential problem
 
-A GitHub personal access token is scoped to your account, not to the job you wanted done. Give one
-to an agent so it can open a pull request, and you have also given it the ability to force-push
-over `main`, delete branches, change repository visibility, and read every private repository you
-can read. Hugging Face write tokens and `sudoers` entries have the same shape. The credential
-matches your identity, and the thing you meant to delegate was one operation on one target.
+A GitHub personal access token describes what its owner may do across an
+account. It does not describe the smaller job you wanted an agent to perform.
+A token that can open a pull request may also be able to rewrite `main`, change
+repository settings, or read unrelated private repositories.
 
-Handing that credential to the agent also puts it somewhere the agent can reach. It ends up in an
-environment variable, a config file, or a `~/.netrc`, all of which the agent can read and echo.
-Rotating it afterwards means rotating something your other tools depend on.
+The agent must also be able to read any token placed in its environment,
+configuration, or `~/.netrc`. Once exposed there, the token can be printed,
+copied, or used outside the intended workflow.
 
-## The broker answer
+## Broker model
 
-The broker runs as a separate process under its own account, where the agent cannot inspect its
-memory or read its credential files. The agent gets a broker-client secret that is worth nothing to
-GitHub. Every request it makes is classified and checked against a policy file before the broker
-spends the real credential on its behalf.
+A broker runs under a separate account where the agent cannot inspect its
+memory or credential files. The agent receives a broker-client secret that has
+no meaning to the upstream provider. The broker classifies each request and
+checks it against policy before using the provider credential.
 
 ```text
 client request
@@ -52,46 +49,41 @@ provider-specific executor
 audit log
 ```
 
-Requests the policy cannot classify are refused. There is no permissive default, and an empty rules
-array is a valid deny-all policy.
+An unclassified request is refused, and an empty rules array denies everything.
 
-The property that makes this reusable is where provider knowledge sits. Authentication, policy
-evaluation, grant lifecycle, the approval workflow, and audit formatting are shared code with no
-idea what a GitHub pull request is. Classification and execution are the only stages that know, and
-they live in the provider's own directory.
+Most of the request path is shared. Authentication, policy evaluation, grants,
+approval records, and audit fields do not depend on the provider. The provider
+adapter owns classification and execution.
 
 ## Included brokers
 
-Each broker is a separate process with its own listener, credential domain, state directory,
-release artifact, and audit stream, so one cannot reach another's credentials.
+Each broker has its own process, listener, credential domain, state directory,
+release artifact, and audit stream.
 
 | Broker | Holds | Typical operations |
 | --- | --- | --- |
-| [`gh-broker`](/docs/brokers/github) | GitHub App credentials | Git traffic, contents reads, pull requests, the wider REST and GraphQL catalog |
-| [`hf-broker`](/docs/brokers/hugging-face) | A Hugging Face token | Git and LFS traffic, repository reads and writes, bucket objects, Router inference |
+| [`gh-broker`](/docs/brokers/github) | GitHub App credentials | Git traffic, contents reads, pull requests, and the GitHub APIs |
+| [`hf-broker`](/docs/brokers/hugging-face) | A Hugging Face token | Git, LFS, repository operations, bucket objects, and Router inference |
 | [`sudo-broker`](/docs/brokers/sudo) | The ability to act as another Unix user | One exact command from a root-owned catalog |
 
-Alongside them sit the `unyolo` host command, which activates signed immutable runtime bundles
-and verifies the resulting processes, the `unyolo-telegram` ingress that owns inbound updates
-when several brokers share one bot, and an [OpenClaw plugin](/docs/brokers/openclaw) that adds an
-approvals tab and client skills to that agent host.
+The `unyolo` host command activates signed runtime bundles and checks the
+resulting processes. `unyolo-telegram` owns inbound Telegram updates when
+several brokers share one bot. The [OpenClaw plugin](/docs/brokers/openclaw)
+adds an approvals tab and broker skills.
 
 ## Protocols
 
-Agent Operations V1 is the authenticated surface agents submit typed operations to. Operator V1 is
-the protected inbox you use to approve, deny, and revoke. Both are defined by OpenAPI documents,
-with generated Go and TypeScript artifacts checked in, and both expose an exact contract digest so
-a client can detect drift without guessing from a version label.
+Agents submit typed operations through Agent Operations V1. Operators use the
+protected Operator V1 inbox to approve, deny, and revoke requests. OpenAPI
+documents define both protocols, and checked-in Go and TypeScript artifacts
+provide strict clients and validators.
 
-## Further reading
+Each endpoint reports its exact contract digest so peers can reject incompatible
+artifacts before processing a request.
 
-Start with the [quickstart](/docs/get-started/quickstart) if you want `gh-broker` running against
-one repository in the next few minutes. Read [why unYOLO](/docs/get-started/why-unyolo) if
-you first want to know what it refuses to do, which is often the faster way to decide whether it
-fits.
+## Starting points
 
-If you are evaluating this for a host that already has agents on it, the
-[security model](/docs/security/security-model) and the
-[threat model](/docs/security/threat-model) are the two pages worth reading before anything else.
-If you came here to broker something other than the three shipped providers, start at the
-[framework overview](/docs/build/framework).
+The [quickstart](/docs/get-started/quickstart) runs `gh-broker` against one
+repository. The [security model](/docs/security/security-model) explains the
+host boundary, and the [framework overview](/docs/build/framework) covers
+custom brokers.

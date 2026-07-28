@@ -1,8 +1,8 @@
 # unYOLO documentation site
 
-This is the Astro site behind the unYOLO landing page and documentation. It is a static build
-with no runtime backend: every page is prerendered, and the only client-side JavaScript handles the
-theme toggle, the search dialog, code-block copy buttons, and the mobile navigation.
+This directory contains the Astro site for unYOLO. Every page is prerendered,
+and the site has no runtime backend. Client-side JavaScript is limited to
+navigation, search, theme switching, and code-block copy buttons.
 
 ## Working on it
 

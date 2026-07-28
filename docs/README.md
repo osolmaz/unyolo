@@ -1,9 +1,9 @@
-# unYOLO Documentation
+# unYOLO documentation
 
-unYOLO's documentation index contains maintained contracts and current
-component documentation.
+This index links to the maintained design contracts and component guides for
+unYOLO.
 
-## Start Here
+## Start here
 
 - [Architecture](ARCHITECTURE.md)
 - [Directory structure](DIRECTORY_STRUCTURE.md)
@@ -35,7 +35,7 @@ component documentation.
 - [Failure drills](FAILURE_DRILLS.md)
 - [Observability](OBSERVABILITY.md)
 
-## Implementation Records
+## Implementation records
 
 - [Host deployment profile](2026-07-26-host-deployment-profile-plan.md)
 - [Atomic runtime bundle](2026-07-21-atomic-runtime-bundle-plan.md)

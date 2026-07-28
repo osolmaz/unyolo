@@ -1,4 +1,4 @@
-# Linux Service Setup
+# Linux service setup
 
 `hf-broker` is a server. For a real same-host deployment, run it as a
 dedicated service user and let local clients use its protected agent socket.

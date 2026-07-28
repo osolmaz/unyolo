@@ -1,4 +1,4 @@
-# unYOLO Architecture
+# unYOLO architecture
 
 unYOLO is the shared layer for broker-style access-control services. It
 makes repeated broker machinery reusable without hiding the dangerous
@@ -7,7 +7,7 @@ provider-specific boundary.
 `hf-broker`, `gh-broker`, and `sudo-broker` use unYOLO for the shared control
 plane. Provider directories contain only their platform-specific behavior.
 
-## Broker Shape
+## Broker shape
 
 Every broker using unYOLO follows this request path:
 
@@ -29,7 +29,7 @@ safety helpers.
 The consuming broker should own request classification, provider credentials,
 provider-specific message wording, and execution.
 
-## Package Boundaries
+## Package boundaries
 
 unYOLO groups shared packages by product domain:
 
@@ -53,7 +53,7 @@ The complete layout and package placement rules are in
 [DIRECTORY_STRUCTURE.md](DIRECTORY_STRUCTURE.md). The canonical ownership
 boundary is [OWNERSHIP.md](OWNERSHIP.md).
 
-## What Belongs Here
+## Shared package scope
 
 unyolo may contain:
 
@@ -83,7 +83,7 @@ unyolo may contain:
 - signed immutable host release activation and rollback; and
 - a durable encrypted Telegram callback inbox.
 
-## What Does Not Belong Here
+## Provider exclusions
 
 unyolo must not contain:
 
@@ -100,7 +100,7 @@ The systemd and launchd exclusion concerns provider operation execution.
 unYOLO does own the narrow native service-manager adapters required to
 activate and roll back its own immutable host bundle.
 
-## Provider Responsibilities
+## Provider responsibilities
 
 Each broker must register its own vocabulary.
 
@@ -157,7 +157,7 @@ unyolo must preserve these invariants:
 Shared packages must expose provider-neutral behavior and tests. Provider
 classifiers, credentials, execution, and wording remain in their broker.
 
-## Native Git Path
+## Native Git path
 
 Git-speaking brokers use three distinct listeners: Agent V1, Operator V1, and
 Git data plane. The Git listener is an explicit deployment-selected TCP

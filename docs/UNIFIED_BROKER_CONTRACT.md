@@ -1,4 +1,4 @@
-# Unified Broker Contract
+# Unified broker contract
 
 This is the shared contract for `hf-broker`, `gh-broker`, and `sudo-broker`.
 It defines one install, setup, config, policy, approval, audit, and release
@@ -307,7 +307,7 @@ deny > active generated grant > allow > request > no_match
 Unknown operations, target kinds, attrs, and fields fail closed unless the
 broker registry explicitly allows them.
 
-## Grants And Approval
+## Grants and approval
 
 unyolo owns:
 

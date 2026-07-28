@@ -1,10 +1,9 @@
 # sudo-broker
 
-sudo-broker is a privileged-command broker for Unix hosts. It lets an
-authenticated local agent request and run one exact, operator-approved
-command as another Unix user. Commands come from a root-owned catalog; it
-does not accept shell strings, arbitrary executables, interactive shells,
-TTYs, stdin, or caller-controlled environment variables.
+sudo-broker is a privileged-command broker for Unix hosts. It runs one command
+from a root-owned catalog as another Unix user after client authentication and
+policy approval. Catalog entries fix the executable and its accepted arguments.
+The request API has no shell, TTY, stdin, or caller-controlled environment.
 
 The runtime has two processes:
 
@@ -34,8 +33,9 @@ not added to ordinary user command paths.
 Write the command catalog and policy, starting from
 [catalog.example.json](catalog.example.json) and
 [policy.example.json](policy.example.json). The catalog fixes each command's
-exact executable, arguments, target users, timeout, and output limit; the
-rules for authoring it are in [docs/catalog.md](docs/catalog.md). Then run:
+executable and arguments. It also sets the allowed target users and output
+limit together with the timeout. Authoring rules are in
+[docs/catalog.md](docs/catalog.md). Then run:
 
 ```sh
 sudo sudo-broker setup systemd \
@@ -92,8 +92,8 @@ repeat `--arg-json NAME=JSON`. Reuse a stable `--operation-id` when retrying;
 never retry an ambiguous execution under a new id.
 
 When Telegram notifications are configured, sudo-broker supplies only the
-cataloged command description, target user, bounded arguments, timeout, and
-risk. unYOLO renders the same escaped rich approval layout and fixed
+cataloged command description and target user. It also provides bounded
+arguments plus the timeout and risk. unYOLO renders the same escaped rich approval layout and fixed
 Approve/Deny controls used by the other brokers; raw executables, environment
 values, and unrestricted command lines are never notification fields.
 

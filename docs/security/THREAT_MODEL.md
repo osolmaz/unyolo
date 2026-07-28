@@ -1,4 +1,4 @@
-# unYOLO Threat Model
+# unYOLO threat model
 
 unYOLO is a control-plane library for brokers that keep an upstream
 credential or privilege boundary away from an untrusted client. It does not
@@ -80,7 +80,7 @@ classifying, validating, and executing its own operations.
   conflicting URL rewrites, owns exact values, never stores an upstream
   credential, and fails closed when the broker listener or helper is missing.
 
-## Threats And Failure Behavior
+## Threats and failure behavior
 
 | Threat | Required behavior |
 | --- | --- |

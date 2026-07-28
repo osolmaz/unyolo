@@ -38,16 +38,15 @@ state directories, generates a client secret when none is supplied, writes an en
 policy file, writes the unit, and enables and starts the service unless `--no-start` is set.
 Finally it prints the broker endpoint and the client setup instructions.
 
-<div class="callout callout--danger">
-<span class="callout__title">No raw secrets on the command line</span>
-<p><code>setup systemd</code> never accepts a raw secret value as a command-line argument. Those
-leak through shell history and process listings. Use <code>--shared-secret-file</code> or
-<code>--shared-secret-stdin</code>.</p>
-</div>
+> **No raw secrets on the command line**
+>
+> `setup systemd` never accepts a raw secret value as a command-line argument.
+> Those values leak through shell history and process listings. Use
+> `--shared-secret-file` or `--shared-secret-stdin`.
 
-Broker-specific secret files stay broker-local: a Hugging Face token file for `hf-broker`; a GitHub
-App private key, app ID, webhook secret, or dev PAT file for `gh-broker`; a command catalog, policy,
-host identity, and privileged helper configuration for `sudo-broker`.
+Broker-specific secret files stay with their broker. `hf-broker` reads a Hugging Face token file.
+`gh-broker` reads its GitHub App files or a development PAT file. `sudo-broker` reads the command
+catalog and policy together with its host identity and privileged-helper configuration.
 
 ## File layout
 
@@ -131,7 +130,7 @@ rejected rather than rendered ambiguously.
 Trusted service paths are always rejected below `/home`, `/root`, and `/run/user`, even when a
 broker's operations may access those trees. Service binaries, config, environment files, and state
 must be installed outside user-controlled home directories. Existing trusted path components must
-be root-owned, non-symlinked, and not writable by group or other users. The final state directory
+be owned by root with no symlinks or write access for group and other users. The final state directory
 may instead be owned by the dedicated service account, and the writable state path may never be
 `/`.
 

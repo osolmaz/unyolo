@@ -2,22 +2,23 @@
 
 # unYOLO
 
-unYOLO is a Go framework for building credential brokers. A broker holds a
-real credential and hands an untrusted client a separate one that works only
-for the operations you allowed.
+unYOLO is an access-control framework for coding agents. It keeps provider
+credentials in separate broker processes and checks each requested operation
+against a policy you control.
 
-The point is to let a coding agent work in your accounts without holding the
-credential that would let it destroy something. It can push branches and open
-pull requests without being able to force-push over `main` or delete a
-repository.
+An agent can push its own branch and open a pull request without ever receiving
+a GitHub token. A force-push to `main` can be refused outright or kept waiting
+for an operator. The same model applies to Hugging Face and privileged Unix
+commands.
 
-Three brokers ship ready to run, covering GitHub, Hugging Face, and Unix
-privilege.
+The repository includes ready-to-run GitHub and Hugging Face brokers.
+`sudo-broker` handles approved Unix commands, and the OpenClaw plugin provides
+an approvals UI.
 
-## Example
+## Policy example
 
-Policy is a JSON file you edit by hand. This lets one agent work on one
-repository, in its own branch namespace:
+Policy lives in ordinary JSON. This rule gives `agent-a` read access to one
+repository and allows fast-forward pushes under its own branch namespace:
 
 ```json
 {
@@ -34,8 +35,8 @@ repository, in its own branch namespace:
 }
 ```
 
-Nothing names `refs/heads/main` or `git.push.force`, so both are denied. Git
-remotes stay ordinary GitHub URLs and hold no credential:
+No rule grants access to `refs/heads/main` or `git.push.force`, so both requests
+are denied. Git remotes stay as ordinary GitHub URLs and contain no credential:
 
 ```console
 $ git push origin agent-a/parser-fix
@@ -46,12 +47,12 @@ $ git push --force origin main
    (gh-broker: no rule allows git.push.force on refs/heads/main)
 ```
 
-Change `allow` to `request` and the broker holds the push open, notifies an
-operator, and resumes it once approved.
+Set a rule's effect to `request` when the operation needs a human decision. The
+broker keeps the original command blocked and resumes it after approval.
 
 ## Request path
 
-Every broker handles a request the same way:
+Every broker uses the same request path:
 
 ```text
 authenticate client
@@ -62,28 +63,26 @@ provider executor
 audit log
 ```
 
-Requests the policy cannot classify are refused. `deny` beats an approved
-grant, so adding a deny rule immediately neuters every grant it covers.
+An unclassified request is refused. A `deny` rule also overrides any active
+grant it covers. Provider-specific code is limited to classification and
+execution.
 
-Only classification and execution know anything about the provider. The rest is
-shared code.
+## Included components
 
-## Components
-
-| Directory | What it is |
+| Directory | Component |
 | --- | --- |
-| [brokers/github](brokers/github/README.md) | `gh-broker`: GitHub App credentials, Git, pull requests, REST and GraphQL |
-| [brokers/huggingface](brokers/huggingface/README.md) | `hf-broker`: Hugging Face token, Git, LFS, Hub, inference |
-| [brokers/sudo](brokers/sudo/README.md) | `sudo-broker`: one exact command as another Unix user |
-| [plugins/openclaw](plugins/openclaw/README.md) | Approvals tab and client skills for OpenClaw |
+| [brokers/github](brokers/github/README.md) | `gh-broker` holds GitHub App credentials and handles Git, pull requests, and the GitHub APIs |
+| [brokers/huggingface](brokers/huggingface/README.md) | `hf-broker` handles Hugging Face Git, LFS, Hub operations, and inference |
+| [brokers/sudo](brokers/sudo/README.md) | `sudo-broker` runs one approved command as another Unix user |
+| [plugins/openclaw](plugins/openclaw/README.md) | OpenClaw approvals UI and broker skills |
 | [protocol](protocol/README.md) | Agent V1 and Operator V1 wire contracts |
 
-Each broker is its own process with its own listener, credentials, state
-directory, and audit stream.
+Each broker has its own process, listener, credential domain, state directory,
+release artifact, and audit stream.
 
 ## Build
 
-One Go module, built with the version in [go.mod](go.mod):
+Use the Go version declared in [go.mod](go.mod):
 
 ```sh
 go build ./brokers/github/cmd/gh-broker
@@ -92,32 +91,33 @@ go build ./brokers/sudo/cmd/sudo-broker ./brokers/sudo/cmd/sudo-broker-exec
 go build ./cmd/unyolo ./cmd/unyolo-telegram
 ```
 
-Each broker's `setup` command writes credentials, policy, and service files.
-For a production host, `unyolo system install` activates every service as
-one signed bundle. See [docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
+A broker's `setup` command writes its configuration and protected credential
+files, then installs the service. For a production host, `unyolo system
+install` activates every service as one signed bundle. See
+[docs/OPERATIONS_RUNTIME.md](docs/OPERATIONS_RUNTIME.md).
 
-## Building your own broker
+## Custom brokers
 
-You write a classifier, a registry, an executor, and the approval wording.
-Authentication, policy, grants, the operator inbox, audit, installers, and
-doctor checks come from the framework. `scripts/check-architecture.sh` fails a
-build where shared code imports a provider. Start at
+A custom broker supplies a request classifier and executor along with an
+operation registry and approval text. The shared packages handle
+authentication, policy, grants, the operator inbox, audit records, service
+installation, and host checks.
+
+`scripts/check-architecture.sh` rejects shared code that imports a provider.
+Package ownership rules are documented in
 [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
 
-## Security
+## Security boundary
 
-Credentials are write-only inside a broker. No API, log line, or error path
-returns one. Agent and operator credentials are separate, and every endpoint
-except `GET /healthz` requires authentication.
+Provider credentials stay inside the broker and are never returned to clients.
+They must never appear in logs or errors. Agent credentials and operator
+credentials are separate, and every endpoint except `GET /healthz` requires
+authentication.
 
-Run a broker where its clients cannot read its process or its files, and use
-`<broker> doctor` to check that they cannot. The full boundary is in
-[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md).
-
-## Documentation
-
-[docs/](docs/README.md) holds the maintained contracts. [web/](web/README.md)
-builds the same material into a documentation site.
+Run each broker where its clients cannot inspect the broker process or read its
+files. The `<broker> doctor` command checks that boundary. See
+[docs/security/THREAT_MODEL.md](docs/security/THREAT_MODEL.md) for the complete
+threat model.
 
 ## License
 
