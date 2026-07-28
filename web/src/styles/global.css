@@ -68,15 +68,26 @@ html[data-theme="light"] {
   --accent-subtle: #eef3f9;
   --accent-border: #bcd0e6;
 
-  /* Isometric diagram faces: three flat tones, plus an accent cube. */
-  --iso-top: #e9e9ec;
-  --iso-left: #cdcdd3;
-  --iso-right: #b3b3bb;
-  --iso-mark: #6f6f78;
-  --iso-a-top: #35353c;
-  --iso-a-left: #232328;
-  --iso-a-right: #16161a;
-  --iso-a-mark: #e9e9ec;
+  /* Diagram solids. Each face runs from its own tone to a slightly darker
+     one, which gives the shapes volume without washing the page in colour. */
+  --iso-hi: #fbfbfc;
+  --iso-top: #ececef;
+  --iso-top2: #dadade;
+  --iso-left: #cacad1;
+  --iso-left2: #b6b6bf;
+  --iso-right: #a9a9b3;
+  --iso-right2: #93939e;
+  --iso-mark: #74747d;
+  --iso-shadow: rgb(17 17 19 / 0.13);
+  --iso-screen: #3a3a42;
+  --iso-eye: #f4f4f6;
+  --iso-a-top: #3c3c44;
+  --iso-a-top2: #2b2b31;
+  --iso-a-left: #26262c;
+  --iso-a-left2: #1a1a1e;
+  --iso-a-right: #171719;
+  --iso-a-right2: #0d0d0f;
+  --iso-a-mark: #ececef;
   --wire-danger: #b4444a;
   --wire-live: #2f7a4d;
 
@@ -120,13 +131,23 @@ html[data-theme="dark"] {
   --accent-subtle: #16202c;
   --accent-border: #2b4360;
 
-  --iso-top: #3d3e45;
-  --iso-left: #2c2d33;
+  --iso-hi: #55565f;
+  --iso-top: #44454d;
+  --iso-top2: #383941;
+  --iso-left: #303138;
+  --iso-left2: #26272d;
   --iso-right: #212227;
+  --iso-right2: #191a1e;
   --iso-mark: #9c9ca6;
-  --iso-a-top: #f0f0f2;
-  --iso-a-left: #c7c7cf;
-  --iso-a-right: #a4a4ae;
+  --iso-shadow: rgb(0 0 0 / 0.45);
+  --iso-screen: #17181b;
+  --iso-eye: #8fd3b4;
+  --iso-a-top: #f4f4f6;
+  --iso-a-top2: #dedee3;
+  --iso-a-left: #cbcbd2;
+  --iso-a-left2: #b3b3bc;
+  --iso-a-right: #a1a1ab;
+  --iso-a-right2: #8b8b95;
   --iso-a-mark: #16161a;
   --wire-danger: #e08588;
   --wire-live: #7fc79b;
