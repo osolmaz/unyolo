@@ -1046,6 +1046,56 @@ func TestRuntimeRestartRequiresReservedValidAuthority(t *testing.T) {
 	}
 }
 
+func TestRuntimeRestartCommitsReservedAuthorityAfterProvenSuccess(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-proven",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.ReserveUse(operation.ApprovalID, operation.ID, operation.Operation); err != nil {
+		t.Fatal(err)
+	}
+	operation, err = operations.Transition(operation.ID, agentv1.StateApproved)
+	if err == nil {
+		operation, err = operations.Transition(operation.ID, agentv1.StateExecuting)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReconcileInterrupted(t.Context(), operation)
+	stored, _ := operations.Get("agent", operation.ID)
+	use, useErr := grantStore.GetUse(operation.ApprovalID, operation.ID)
+	if stored.State != agentv1.StateSucceeded || useErr != nil || use.Use.State != grants.UseCommitted || use.Grant.UsedCount != 1 {
+		t.Fatalf("recovered operation = %+v, use = %+v, %v", stored, use, useErr)
+	}
+	if !runtime.settleRecoveredApproval(agentv1.Operation{}) || !runtime.settleRecoveredApproval(operation) {
+		t.Fatal("direct or already committed recovery authority was rejected")
+	}
+	released, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{IdempotencyKey: "restart-released",
+		Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{}`), Reason: "create demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(released.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.ReserveUse(released.ApprovalID, released.ID, released.Operation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.ReleaseUse(released.ApprovalID, released.ID); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.settleRecoveredApproval(released) {
+		t.Fatal("released recovery authority was accepted")
+	}
+}
+
 func TestRuntimeRestartRetainsUnprovenReservedAuthority(t *testing.T) {
 	notifier := &captureNotifier{}
 	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)

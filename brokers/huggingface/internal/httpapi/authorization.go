@@ -429,36 +429,54 @@ func (s *Server) forwardAndRecord(w http.ResponseWriter, r *http.Request, client
 }
 
 func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string, grant grants.Grant) {
-	if err := s.planValidator.ValidateExecution(grant); err != nil {
-		writePlain(w, http.StatusForbidden, "hf-broker: grant plan is invalid\n")
-		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant plan is invalid", 0)
+	reserved, err := s.reserveForwardGrant(r, client, classified, target, grant)
+	if err != nil {
+		s.refuseForwardGrant(w, client, classified.operation, target, err)
 		return
+	}
+	statusCode, forwardErr := s.forward(w, r, client, classified.route, classified.body, classified.bodyRead)
+	s.settleForwardGrantError(reserved, forwardErr)
+	if s.recordForwardError(w, client, classified, target, statusCode, forwardErr, policy.Decision{}) {
+		return
+	}
+	s.updateGrantMessages(s.commitGrantUses([]grants.UseReservation{reserved}), s.updateGrantUseMessage)
+	s.recordGrantUsed(client, string(classified.operation), target, statusCode, []string{reserved.Grant.ID})
+}
+
+var errForwardGrantPlanInvalid = errors.New("grant plan is invalid")
+
+func (s *Server) reserveForwardGrant(r *http.Request, client string, classified classifiedRequest, target string, grant grants.Grant) (grants.UseReservation, error) {
+	if err := s.planValidator.ValidateExecution(grant); err != nil {
+		return grants.UseReservation{}, errForwardGrantPlanInvalid
 	}
 	requestIdentity := plandigest.Digest([]byte(client + "\x00" + r.Method + "\x00" + r.URL.RequestURI() + "\x00" +
 		string(classified.operation) + "\x00" + target + "\x00" + plandigest.Digest(classified.body)))
 	requestID, err := grants.DeriveUseRequestID(grant.ID, requestIdentity)
 	if err != nil {
-		writePlain(w, http.StatusForbidden, "hf-broker: grant is not active\n")
-		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant is not active", 0)
-		return
+		return grants.UseReservation{}, err
 	}
 	reserved, err := s.grants.ReserveUse(grant.ID, requestID, grant.Operation)
 	if err != nil || !reserved.Acquired || reserved.Use.State != grants.UseReserved {
-		writePlain(w, http.StatusForbidden, "hf-broker: grant is not active\n")
-		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant is not active", 0)
-		return
+		return grants.UseReservation{}, errors.Join(err, grants.ErrUseSettled)
 	}
-	statusCode, err := s.forward(w, r, client, classified.route, classified.body, classified.bodyRead)
+	return reserved, nil
+}
+
+func (s *Server) refuseForwardGrant(w http.ResponseWriter, client string, operation policy.Operation, target string, cause error) {
+	reason := "grant is not active"
+	if errors.Is(cause, errForwardGrantPlanInvalid) {
+		reason = "grant plan is invalid"
+	}
+	writePlain(w, http.StatusForbidden, "hf-broker: "+reason+"\n")
+	s.record(client, string(operation), target, audit.DecisionRefused, reason, 0)
+}
+
+func (s *Server) settleForwardGrantError(reserved grants.UseReservation, err error) {
 	if errors.Is(err, errInvalidLFSAction) {
 		_, _ = s.grants.ReleaseUse(reserved.Grant.ID, reserved.Use.RequestID)
 	} else if err != nil {
 		s.closeForwardGrantReservation(reserved, err)
 	}
-	if s.recordForwardError(w, client, classified, target, statusCode, err, policy.Decision{}) {
-		return
-	}
-	s.updateGrantMessages(s.commitGrantUses([]grants.UseReservation{reserved}), s.updateGrantUseMessage)
-	s.recordGrantUsed(client, string(classified.operation), target, statusCode, []string{reserved.Grant.ID})
 }
 
 func (s *Server) recordForwardError(w http.ResponseWriter, client string, classified classifiedRequest, target string, statusCode int, err error, decision policy.Decision) bool {

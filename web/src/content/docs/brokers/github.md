@@ -243,6 +243,20 @@ idempotent approval request. Git prints the approval ID and asks the caller to a
 repeating the same push while it is pending reuses the same request. Approval creates a short-lived
 grant evaluated by the same policy path, and the next identical push consumes it.
 
+Every requestable operation defaults to a reusable window. A request rule can instead require an
+exact approval for each operation:
+
+```json
+"grant_policy": {
+  "mode": "execution",
+  "default_minutes": 5,
+  "max_minutes": 5,
+  "request_ttl_minutes": 5,
+  "default_max_uses": 1,
+  "max_uses": 1
+}
+```
+
 ## Routes
 
 The agent listener exposes:

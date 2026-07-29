@@ -427,6 +427,33 @@ func TestSensitiveRepositoryWriteUsesReusableGrantBounds(t *testing.T) {
 	}
 }
 
+func TestRequestRuleCanSelectExactExecutionMode(t *testing.T) {
+	t.Parallel()
+	configured := &corepolicy.GrantPolicy{Mode: string(corepolicy.GrantModeExecution), DefaultMinutes: 5, MaxMinutes: 10,
+		RequestTTLMinutes: 5, DefaultMaxUses: usebudget.SingleUse, MaxUses: usebudget.SingleUse}
+	p, err := New(Scope{Rules: []Rule{{
+		ID: "exact-issue-create", Effect: EffectRequest, Clients: []string{"bob"}, Operations: []Operation{"issue.issues_create"},
+		Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "unyolo"}}, GrantPolicy: configured,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := p.EvaluateGrantRequest(repoRequest("issue.issues_create", "osolmaz", "unyolo", nil))
+	if decision.Effect != EffectRequest || decision.GrantPolicy == nil ||
+		decision.GrantPolicy.Mode != string(corepolicy.GrantModeExecution) || decision.GrantPolicy.MaxUses != usebudget.SingleUse {
+		t.Fatalf("execution decision = %+v", decision)
+	}
+
+	invalid := *configured
+	invalid.MaxUses = 2
+	if _, err := New(Scope{Rules: []Rule{{
+		ID: "invalid-execution", Effect: EffectRequest, Clients: []string{"bob"}, Operations: []Operation{"issue.issues_create"},
+		Targets: []Target{{Kind: "repo", Owner: "osolmaz", Name: "unyolo"}}, GrantPolicy: &invalid,
+	}}}); err == nil {
+		t.Fatal("multi-use execution policy was accepted")
+	}
+}
+
 func TestRequestRulesRequireGrantForExecution(t *testing.T) {
 	t.Parallel()
 	p, err := New(Scope{Rules: []Rule{

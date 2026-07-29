@@ -72,7 +72,7 @@ func (s *Store) QueryGrants(query Query) (Page, error) {
 	eventSequence := data.NextEvent
 	changed := s.prepareLifecycle(&data)
 	changed = s.reconcileLifecycle(&data, before) || changed
-	if err := s.persistQueryLifecycle(data, eventSequence, changed); err != nil {
+	if err := s.savePreparedLifecycle(data, eventSequence, changed); err != nil {
 		return Page{}, err
 	}
 	page := buildGrantPage(data.Grants, query, cursor)
@@ -82,7 +82,7 @@ func (s *Store) QueryGrants(query Query) (Page, error) {
 	return page, nil
 }
 
-func (s *Store) persistQueryLifecycle(data fileData, eventSequence uint64, changed bool) error {
+func (s *Store) savePreparedLifecycle(data fileData, eventSequence uint64, changed bool) error {
 	if !changed {
 		return nil
 	}

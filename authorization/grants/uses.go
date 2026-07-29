@@ -63,48 +63,9 @@ func (s *Store) ReserveUse(grantID, requestID, operation string) (UseReservation
 	}
 	var created bool
 	err := s.update(func(data *fileData) error {
-		if useIndex, existing, found := findUseIndex(data.Uses, requestID); found {
-			if existing.GrantID != grantID || existing.Operation != operation {
-				return ErrUseIdentityConflict
-			}
-			if existing.State != UseReleased {
-				return nil
-			}
-			grantIndex, grant, findErr := findGrant(data.Grants, grantID)
-			if findErr != nil {
-				return findErr
-			}
-			now := s.opts.Now().UTC()
-			if !grantCanUse(grant, now) {
-				return ErrNotActive
-			}
-			existing.State = UseReserved
-			existing.Revision++
-			existing.UpdatedAt = now
-			existing.SettledAt = time.Time{}
-			data.Uses[useIndex] = existing
-			grant.ReservationRevision++
-			data.Grants[grantIndex] = aggregateGrantUses(grant, data.Uses)
-			created = true
-			return nil
-		}
-		index, grant, err := findGrant(data.Grants, grantID)
-		if err != nil {
-			return err
-		}
-		if grant.Operation != operation {
-			return ErrUseIdentityConflict
-		}
-		now := s.opts.Now().UTC()
-		if !grantCanUse(grant, now) {
-			return ErrNotActive
-		}
-		data.Uses = append(data.Uses, GrantUse{GrantID: grantID, RequestID: requestID, Operation: operation,
-			State: UseReserved, Revision: 1, CreatedAt: now, UpdatedAt: now})
-		grant.ReservationRevision++
-		data.Grants[index] = aggregateGrantUses(grant, data.Uses)
-		created = true
-		return nil
+		createdUse, updateErr := s.reserveUse(data, grantID, requestID, operation)
+		created = createdUse
+		return updateErr
 	})
 	if err != nil {
 		return UseReservation{}, err
@@ -112,6 +73,58 @@ func (s *Store) ReserveUse(grantID, requestID, operation string) (UseReservation
 	result, err := s.GetUse(grantID, requestID)
 	result.Acquired = created
 	return result, err
+}
+
+func (s *Store) reserveUse(data *fileData, grantID, requestID, operation string) (bool, error) {
+	useIndex, existing, found := findUseIndex(data.Uses, requestID)
+	if found {
+		return s.reserveExistingUse(data, useIndex, existing, grantID, operation)
+	}
+	return s.reserveNewUse(data, grantID, requestID, operation)
+}
+
+func (s *Store) reserveExistingUse(data *fileData, useIndex int, use GrantUse, grantID, operation string) (bool, error) {
+	if use.GrantID != grantID || use.Operation != operation {
+		return false, ErrUseIdentityConflict
+	}
+	if use.State != UseReleased {
+		return false, nil
+	}
+	grantIndex, grant, err := findGrant(data.Grants, grantID)
+	if err != nil {
+		return false, err
+	}
+	now := s.opts.Now().UTC()
+	if !grantCanUse(grant, now) {
+		return false, ErrNotActive
+	}
+	use.State = UseReserved
+	use.Revision++
+	use.UpdatedAt = now
+	use.SettledAt = time.Time{}
+	data.Uses[useIndex] = use
+	grant.ReservationRevision++
+	data.Grants[grantIndex] = aggregateGrantUses(grant, data.Uses)
+	return true, nil
+}
+
+func (s *Store) reserveNewUse(data *fileData, grantID, requestID, operation string) (bool, error) {
+	grantIndex, grant, err := findGrant(data.Grants, grantID)
+	if err != nil {
+		return false, err
+	}
+	if grant.Operation != operation {
+		return false, ErrUseIdentityConflict
+	}
+	now := s.opts.Now().UTC()
+	if !grantCanUse(grant, now) {
+		return false, ErrNotActive
+	}
+	data.Uses = append(data.Uses, GrantUse{GrantID: grantID, RequestID: requestID, Operation: operation,
+		State: UseReserved, Revision: 1, CreatedAt: now, UpdatedAt: now})
+	grant.ReservationRevision++
+	data.Grants[grantIndex] = aggregateGrantUses(grant, data.Uses)
+	return true, nil
 }
 
 // CommitUse consumes the exact operation-bound reservation.
@@ -134,47 +147,68 @@ func (s *Store) settleUse(grantID, requestID string, target UseState) (UseReserv
 		return UseReservation{}, ErrUseIdentityConflict
 	}
 	err := s.update(func(data *fileData) error {
-		useIndex, use, found := findUseIndex(data.Uses, requestID)
-		if !found || use.GrantID != grantID {
-			return ErrUseIdentityConflict
-		}
-		grantIndex, grant, err := findGrant(data.Grants, grantID)
-		if err != nil {
-			return err
-		}
-		if use.State == target {
-			return nil
-		}
-		if use.State == UseCommitted || use.State == UseReleased {
-			return ErrUseSettled
-		}
-		if !reservationCanSettle(grant.Status) {
-			return ErrNotActive
-		}
-		now := s.opts.Now().UTC()
-		use.State = target
-		use.Revision++
-		use.UpdatedAt = now
-		if target == UseCommitted || target == UseReleased {
-			use.SettledAt = now
-		}
-		data.Uses[useIndex] = use
-		grant.ReservationRevision++
-		if target == UseCommitted {
-			grant.UseRevision++
-		}
-		grant = aggregateGrantUses(grant, data.Uses)
-		if grant.MaxUses.Exhausted(grant.UsedCount) && grant.Status != StatusRevoked {
-			grant.Status = StatusConsumed
-			grant.ExpiredFrom = ""
-		}
-		data.Grants[grantIndex] = grant
-		return nil
+		return s.settleStoredUse(data, grantID, requestID, target)
 	})
 	if err != nil {
 		return UseReservation{}, err
 	}
 	return s.GetUse(grantID, requestID)
+}
+
+func (s *Store) settleStoredUse(data *fileData, grantID, requestID string, target UseState) error {
+	useIndex, use, found := findUseIndex(data.Uses, requestID)
+	if !found || use.GrantID != grantID {
+		return ErrUseIdentityConflict
+	}
+	grantIndex, grant, err := findGrant(data.Grants, grantID)
+	if err != nil {
+		return err
+	}
+	settle, err := useCanSettle(use, grant, target)
+	if err != nil || !settle {
+		return err
+	}
+	s.applyUseSettlement(data, useIndex, grantIndex, use, grant, target)
+	return nil
+}
+
+func (s *Store) applyUseSettlement(data *fileData, useIndex, grantIndex int, use GrantUse, grant Grant, target UseState) {
+	now := s.opts.Now().UTC()
+	use.State = target
+	use.Revision++
+	use.UpdatedAt = now
+	if useStateSettled(target) {
+		use.SettledAt = now
+	}
+	data.Uses[useIndex] = use
+	grant.ReservationRevision++
+	if target == UseCommitted {
+		grant.UseRevision++
+	}
+	data.Grants[grantIndex] = settleGrantUse(aggregateGrantUses(grant, data.Uses))
+}
+
+func useCanSettle(use GrantUse, grant Grant, target UseState) (bool, error) {
+	if use.State == target {
+		return false, nil
+	}
+	if useStateSettled(use.State) {
+		return false, ErrUseSettled
+	}
+	if !reservationCanSettle(grant.Status) {
+		return false, ErrNotActive
+	}
+	return true, nil
+}
+
+func useStateSettled(state UseState) bool { return state == UseCommitted || state == UseReleased }
+
+func settleGrantUse(grant Grant) Grant {
+	if grant.MaxUses.Exhausted(grant.UsedCount) && grant.Status != StatusRevoked {
+		grant.Status = StatusConsumed
+		grant.ExpiredFrom = ""
+	}
+	return grant
 }
 
 // GetUse returns one exact operation-bound use and its current grant aggregate.
@@ -189,6 +223,17 @@ func (s *Store) GetUse(grantID, requestID string) (UseReservation, error) {
 	eventSequence := data.NextEvent
 	changed := s.prepareLifecycle(&data)
 	changed = s.reconcileLifecycle(&data, before) || changed
+	result, err := useReservationFromData(data, grantID, requestID)
+	if err != nil {
+		return UseReservation{}, err
+	}
+	if err := s.savePreparedLifecycle(data, eventSequence, changed); err != nil {
+		return UseReservation{}, err
+	}
+	return result, nil
+}
+
+func useReservationFromData(data fileData, grantID, requestID string) (UseReservation, error) {
 	_, grant, err := findGrant(data.Grants, grantID)
 	if err != nil {
 		return UseReservation{}, err
@@ -196,12 +241,6 @@ func (s *Store) GetUse(grantID, requestID string) (UseReservation, error) {
 	use, found := findUse(data.Uses, requestID)
 	if !found || use.GrantID != grantID {
 		return UseReservation{}, ErrUseIdentityConflict
-	}
-	if changed {
-		if err := s.save(data); err != nil {
-			return UseReservation{}, err
-		}
-		s.signalNewEvents(eventSequence, data.NextEvent)
 	}
 	return UseReservation{Grant: grant, Use: use}, nil
 }
@@ -259,26 +298,62 @@ func validateLoadedUses(grants []Grant, uses []GrantUse) error {
 	for _, grant := range grants {
 		grantByID[grant.ID] = grant
 	}
+	if err := validateLoadedUseRecords(grantByID, uses); err != nil {
+		return err
+	}
+	return validateLoadedUseAggregates(grants, uses)
+}
+
+func validateLoadedUseRecords(grantByID map[string]Grant, uses []GrantUse) error {
 	seen := make(map[string]bool, len(uses))
 	for _, use := range uses {
 		grant, found := grantByID[use.GrantID]
-		if !found || seen[use.RequestID] || !validUseIdentity(use.GrantID, use.RequestID, use.Operation) ||
-			grant.Operation != use.Operation || !validUseState(use.State) || use.Revision < 1 || use.CreatedAt.IsZero() ||
-			use.UpdatedAt.Before(use.CreatedAt) || !validUseSettlementTime(use) {
+		if !found || seen[use.RequestID] || !validLoadedUse(use, grant) {
 			return ErrUnsupportedState
 		}
 		seen[use.RequestID] = true
 	}
+	return nil
+}
+
+func validLoadedUse(use GrantUse, grant Grant) bool {
+	return validLoadedUseIdentity(use, grant) && validLoadedUseLifecycle(use)
+}
+
+func validLoadedUseIdentity(use GrantUse, grant Grant) bool {
+	return validUseIdentity(use.GrantID, use.RequestID, use.Operation) && grant.Operation == use.Operation
+}
+
+func validLoadedUseLifecycle(use GrantUse) bool {
+	if !validUseState(use.State) || use.Revision < 1 {
+		return false
+	}
+	return !use.CreatedAt.IsZero() && !use.UpdatedAt.Before(use.CreatedAt) && validUseSettlementTime(use)
+}
+
+func validateLoadedUseAggregates(grants []Grant, uses []GrantUse) error {
 	for _, grant := range grants {
 		aggregated := aggregateGrantUses(grant, uses)
-		if grant.UsedCount != aggregated.UsedCount || grant.ReservedCount != aggregated.ReservedCount ||
-			grant.ReservationRetained != aggregated.ReservationRetained || !grant.UsedAt.Equal(aggregated.UsedAt) ||
-			!grant.ReservedAt.Equal(aggregated.ReservedAt) || grant.UseRevision != aggregated.UsedCount ||
-			grant.ReservationRevision != useRevisionTotal(grant.ID, uses) {
+		want := grantUseAggregate{UsedCount: aggregated.UsedCount, ReservedCount: aggregated.ReservedCount,
+			ReservationRetained: aggregated.ReservationRetained, UsedAt: aggregated.UsedAt, ReservedAt: aggregated.ReservedAt,
+			UseRevision: aggregated.UsedCount, ReservationRevision: useRevisionTotal(grant.ID, uses)}
+		if grantUseAggregateFromGrant(grant) != want {
 			return ErrUnsupportedState
 		}
 	}
 	return nil
+}
+
+type grantUseAggregate struct {
+	UsedCount, ReservedCount, UseRevision, ReservationRevision int
+	ReservationRetained                                        bool
+	UsedAt, ReservedAt                                         time.Time
+}
+
+func grantUseAggregateFromGrant(grant Grant) grantUseAggregate {
+	return grantUseAggregate{UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
+		UseRevision: grant.UseRevision, ReservationRevision: grant.ReservationRevision,
+		ReservationRetained: grant.ReservationRetained, UsedAt: grant.UsedAt, ReservedAt: grant.ReservedAt}
 }
 
 func validUseSettlementTime(use GrantUse) bool {
@@ -303,22 +378,29 @@ func aggregateGrantUses(grant Grant, uses []GrantUse) Grant {
 	grant.ReservationRetained = false
 	grant.UsedAt = time.Time{}
 	for _, use := range uses {
-		if use.GrantID != grant.ID {
-			continue
+		if use.GrantID == grant.ID {
+			grant = aggregateGrantUse(grant, use)
 		}
-		switch use.State {
-		case UseCommitted:
-			grant.UsedCount++
-			if grant.UsedAt.Before(use.SettledAt) {
-				grant.UsedAt = use.SettledAt
-			}
-		case UseReserved, UseRetained:
-			grant.ReservedCount++
-			if grant.ReservedAt.IsZero() || use.UpdatedAt.Before(grant.ReservedAt) {
-				grant.ReservedAt = use.UpdatedAt
-			}
-			grant.ReservationRetained = grant.ReservationRetained || use.State == UseRetained
+	}
+	return grant
+}
+
+func aggregateGrantUse(grant Grant, use GrantUse) Grant {
+	switch use.State {
+	case UseCommitted:
+		grant.UsedCount++
+		if grant.UsedAt.Before(use.SettledAt) {
+			grant.UsedAt = use.SettledAt
 		}
+	case UseReserved, UseRetained:
+		grant.ReservedCount++
+		if grant.ReservedAt.IsZero() || use.UpdatedAt.Before(grant.ReservedAt) {
+			grant.ReservedAt = use.UpdatedAt
+		}
+		if use.State == UseRetained {
+			grant.ReservationRetained = true
+		}
+	case UseReleased:
 	}
 	return grant
 }

@@ -64,7 +64,7 @@ func expandRule(rule Rule) ([]coreRule, error) {
 			Operations:  []string{string(op)},
 			Targets:     targets,
 			Attrs:       attrs,
-			GrantPolicy: grantPolicyForEffect(rule.Effect, op),
+			GrantPolicy: grantPolicyForEffect(rule.Effect, op, rule.GrantPolicy),
 		})
 	}
 	if len(out) == 0 {
@@ -191,9 +191,9 @@ func operationWildcard(ops []Operation) bool {
 	return slices.Contains(ops, Operation("*"))
 }
 
-func grantPolicyForEffect(effect Effect, operation Operation) *corepolicy.GrantPolicy {
-	if effect != EffectRequest {
-		return nil
+func grantPolicyForEffect(effect Effect, operation Operation, configured *corepolicy.GrantPolicy) *corepolicy.GrantPolicy {
+	if configured != nil || effect != EffectRequest {
+		return configured
 	}
 	spec := operationInfos()[canonicalOperation(operation)].spec
 	mode := spec.GrantMode

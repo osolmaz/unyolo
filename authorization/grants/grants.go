@@ -431,27 +431,6 @@ func (s *Store) ListForClient(client string) ([]Grant, error) {
 	return out, nil
 }
 
-func (s *Store) changeUse(id string, mutate func(Grant) (Grant, error)) (Grant, error) {
-	var out Grant
-	err := s.update(func(data *fileData) error {
-		index, grant, err := findGrant(data.Grants, id)
-		if err != nil {
-			return err
-		}
-		updated, err := mutate(grant)
-		if err != nil {
-			return err
-		}
-		data.Grants[index] = updated
-		out = updated
-		return nil
-	})
-	if err == nil && out.ID != "" {
-		out, err = s.Get(out.ID)
-	}
-	return out, err
-}
-
 func (s *Store) normalizeRequest(req Request) (Request, error) {
 	normalized, err := normalizeRequestValues(req)
 	if err != nil {

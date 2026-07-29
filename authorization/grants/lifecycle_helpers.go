@@ -52,10 +52,6 @@ func grantCanUse(grant Grant, now time.Time) bool {
 		grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount)
 }
 
-func grantCanCommitUse(grant Grant) bool {
-	return grant.ReservedCount > 0 && reservationCanSettle(grant.Status)
-}
-
 func reservationCanSettle(status Status) bool {
 	return status == StatusActive || status == StatusExpired || status == StatusRevoked
 }
