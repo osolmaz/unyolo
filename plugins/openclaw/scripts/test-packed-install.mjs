@@ -42,7 +42,7 @@ run(
     [
       'const contract = await import("openclaw-unyolo/operator-v1");',
       'if (contract.operatorV1.apiVersion !== "unyolo.io/operator/v1") throw new Error("contract metadata missing");',
-      'const request = {id:"request-1",revision:1,requester:"bob",operation:"repo.read",status:"pending",requested_at:"2026-07-19T00:00:00Z",requested_duration_seconds:300,requested_max_uses:1,granted_max_uses:null,used_count:0,presentation:{risk:"low",title:"Read repository",target:"example/project",warnings:[],plan_hash:"sha256:test"},allowed_actions:["approve","deny"]};',
+      'const request = {id:"request-1",revision:1,requester:"bob",operation:"repo.read",mode:"window",status:"pending",requested_at:"2026-07-19T00:00:00Z",requested_duration_seconds:300,requested_max_uses:1,granted_max_uses:null,used_count:0,presentation:{risk:"low",title:"Read repository",target:"example/project",warnings:[],plan_hash:"sha256:test"},allowed_actions:["approve","deny"]};',
       'if (contract.parseRequest(request).presentation.target !== "example/project") throw new Error("contract parser rejected canonical request");',
       'try { contract.parseRequest({...request, revision: Number.MAX_SAFE_INTEGER + 1}); throw new Error("unsafe integer accepted"); } catch (error) { if (error.message === "unsafe integer accepted") throw error; }',
     ].join(" "),

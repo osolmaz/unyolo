@@ -55,12 +55,13 @@ type Target struct {
 }
 
 type Rule struct {
-	ID         string              `json:"id"`
-	Effect     Effect              `json:"effect"`
-	Clients    []string            `json:"clients"`
-	Operations []Operation         `json:"operations"`
-	Targets    []Target            `json:"targets"`
-	Attrs      map[string][]string `json:"attrs,omitempty"`
+	ID          string                  `json:"id"`
+	Effect      Effect                  `json:"effect"`
+	Clients     []string                `json:"clients"`
+	Operations  []Operation             `json:"operations"`
+	Targets     []Target                `json:"targets"`
+	Attrs       map[string][]string     `json:"attrs,omitempty"`
+	GrantPolicy *corepolicy.GrantPolicy `json:"grant_policy,omitempty"`
 }
 
 type Scope struct {

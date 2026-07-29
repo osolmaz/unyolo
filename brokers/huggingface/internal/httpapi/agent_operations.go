@@ -73,20 +73,7 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloa
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
-	mode, err := runtimeGrantMode(preparation, descriptor)
-	if err != nil {
-		return unyoloauthorization.GrantIntent{}, err
-	}
-	duration, pending, maxUses, err := preparationBounds(preparation, adapter, mode)
-	if err != nil {
-		return unyoloauthorization.GrantIntent{}, err
-	}
-	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
-		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
-		Mode: string(mode), PolicyTarget: &preparation.Auth.Target, Attrs: preparation.Auth.Attrs,
-		Reason: preparation.Reason, RequestedDuration: duration, PendingTimeout: pending,
-		MaxUses: maxUses, MaxUsesSpecified: true,
-	})
+	mode, request, err := runtimeGrantRequest(preparation, adapter, descriptor)
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
@@ -105,6 +92,24 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloa
 		hfplan.BindPresentation(&request, adapter.Present(preparation.Plan))
 	}
 	return unyoloauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: prepared}, nil
+}
+
+func runtimeGrantRequest(preparation operations.Preparation, adapter operations.Adapter, descriptor opcatalog.Descriptor) (corepolicy.GrantMode, grants.Request, error) {
+	mode, err := runtimeGrantMode(preparation, descriptor)
+	if err != nil {
+		return "", grants.Request{}, err
+	}
+	duration, pending, maxUses, err := preparationBounds(preparation, adapter, mode)
+	if err != nil {
+		return "", grants.Request{}, err
+	}
+	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
+		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
+		Mode: string(mode), PolicyTarget: &preparation.Auth.Target, Attrs: preparation.Auth.Attrs,
+		Reason: preparation.Reason, RequestedDuration: duration, PendingTimeout: pending,
+		MaxUses: maxUses, MaxUsesSpecified: true,
+	})
+	return mode, request, err
 }
 
 func runtimeCredentialBinding(credential *providercredential.Service) (providercredential.Binding, error) {

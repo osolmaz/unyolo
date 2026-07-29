@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,15 @@ func TestGrantUseIdentityIsIdempotentAndConflictSafe(t *testing.T) {
 	if _, err := store.ReserveUse(other.Grant.ID, "operation-1", other.Grant.Operation); !errors.Is(err, ErrUseIdentityConflict) {
 		t.Fatalf("conflicting grant error = %v", err)
 	}
+	if _, err := store.GetUse("missing-grant", "operation-1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing grant use error = %v", err)
+	}
+	if _, err := store.GetUse(approved.ID, "missing-use"); !errors.Is(err, ErrUseIdentityConflict) {
+		t.Fatalf("missing use error = %v", err)
+	}
+	if _, err := store.GetUse(other.Grant.ID, "operation-1"); !errors.Is(err, ErrUseIdentityConflict) {
+		t.Fatalf("mismatched use owner error = %v", err)
+	}
 
 	committed, err := store.CommitUse(approved.ID, "operation-1")
 	if err != nil || committed.Use.State != UseCommitted || committed.Grant.UsedCount != 1 {
@@ -46,6 +56,119 @@ func TestGrantUseIdentityIsIdempotentAndConflictSafe(t *testing.T) {
 	}
 	if _, err := store.ReleaseUse(approved.ID, "operation-1"); !errors.Is(err, ErrUseSettled) {
 		t.Fatalf("conflicting settlement error = %v", err)
+	}
+}
+
+func TestLoadedGrantUseValidationRejectsMalformedRecords(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	grant := Grant{ID: "grant-1", Operation: "repo.write"}
+	valid := GrantUse{GrantID: grant.ID, RequestID: "request-1", Operation: grant.Operation,
+		State: UseReserved, Revision: 1, CreatedAt: now, UpdatedAt: now}
+	if !validLoadedUse(valid, grant) {
+		t.Fatal("valid use was rejected")
+	}
+	tests := map[string]func(*GrantUse){
+		"missing identity": func(use *GrantUse) { use.RequestID = "" },
+		"wrong operation":  func(use *GrantUse) { use.Operation = "repo.delete" },
+		"invalid state":    func(use *GrantUse) { use.State = "invalid" },
+		"invalid revision": func(use *GrantUse) { use.Revision = 0 },
+		"missing creation": func(use *GrantUse) { use.CreatedAt = time.Time{} },
+		"time reversal":    func(use *GrantUse) { use.UpdatedAt = now.Add(-time.Second) },
+		"false settlement": func(use *GrantUse) { use.SettledAt = now },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			changed := valid
+			mutate(&changed)
+			if validLoadedUse(changed, grant) {
+				t.Fatal("malformed use was accepted")
+			}
+		})
+	}
+	committed := valid
+	committed.State = UseCommitted
+	committed.UpdatedAt = now.Add(time.Second)
+	committed.SettledAt = committed.UpdatedAt
+	if !validLoadedUse(committed, grant) {
+		t.Fatal("committed use was rejected")
+	}
+	if validateLoadedUses([]Grant{grant}, []GrantUse{valid, valid}) == nil {
+		t.Fatal("duplicate request identity was accepted")
+	}
+}
+
+func TestGrantUseInputAndAggregateValidation(t *testing.T) {
+	if _, err := DeriveUseRequestID("", "request"); !errors.Is(err, ErrUseIdentityConflict) {
+		t.Fatalf("empty grant identity error = %v", err)
+	}
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	if _, err := store.ReserveUse("", "request", "repo.write"); !errors.Is(err, ErrUseIdentityConflict) {
+		t.Fatalf("invalid reservation error = %v", err)
+	}
+	if _, err := store.CommitUse("", "request"); !errors.Is(err, ErrUseIdentityConflict) {
+		t.Fatalf("invalid settlement error = %v", err)
+	}
+	if _, err := store.ListUses("missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing grant list error = %v", err)
+	}
+	if validUseIdentity("grant", strings.Repeat("x", 129), "repo.write") || validUseIdentity("grant", "bad request", "repo.write") {
+		t.Fatal("invalid request identity was accepted")
+	}
+
+	now := time.Unix(1_700_000_000, 0).UTC()
+	uses := []GrantUse{
+		{GrantID: "grant-1", RequestID: "reserved", Operation: "repo.write", State: UseReserved, Revision: 1, CreatedAt: now, UpdatedAt: now},
+		{GrantID: "grant-1", RequestID: "committed", Operation: "repo.write", State: UseCommitted, Revision: 2, CreatedAt: now, UpdatedAt: now.Add(time.Second), SettledAt: now.Add(time.Second)},
+		{GrantID: "grant-1", RequestID: "released", Operation: "repo.write", State: UseReleased, Revision: 2, CreatedAt: now, UpdatedAt: now.Add(2 * time.Second), SettledAt: now.Add(2 * time.Second)},
+		{GrantID: "grant-1", RequestID: "retained", Operation: "repo.write", State: UseRetained, Revision: 1, CreatedAt: now, UpdatedAt: now.Add(3 * time.Second)},
+	}
+	grant := aggregateGrantUses(Grant{ID: "grant-1", Operation: "repo.write"}, uses)
+	grant.UseRevision = grant.UsedCount
+	grant.ReservationRevision = useRevisionTotal(grant.ID, uses)
+	if err := validateLoadedUses([]Grant{grant}, uses); err != nil {
+		t.Fatalf("valid aggregate error = %v", err)
+	}
+	grant.ReservationRevision++
+	if !errors.Is(validateLoadedUses([]Grant{grant}, uses), ErrUnsupportedState) {
+		t.Fatal("invalid reservation revision was accepted")
+	}
+	if !errors.Is(validateLoadedUses(nil, uses), ErrUnsupportedState) {
+		t.Fatal("use without owning grant was accepted")
+	}
+}
+
+func TestGrantAndUseLifecycleDeadlines(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	pending := Grant{Status: StatusPending, PendingExpiresAt: now.Add(time.Minute)}
+	active := Grant{Status: StatusActive, ExpiresAt: now.Add(2 * time.Minute)}
+	if got := grantLifecycleDeadline(pending); got != pending.PendingExpiresAt {
+		t.Fatalf("pending deadline = %v", got)
+	}
+	if got := grantLifecycleDeadline(active); got != active.ExpiresAt {
+		t.Fatalf("active deadline = %v", got)
+	}
+	if got := grantLifecycleDeadline(Grant{Status: StatusRevoked}); !got.IsZero() {
+		t.Fatalf("revoked deadline = %v", got)
+	}
+	if got := earlierDeadline(active.ExpiresAt, pending.PendingExpiresAt); got != pending.PendingExpiresAt {
+		t.Fatalf("earlier deadline = %v", got)
+	}
+	if got := earlierDeadline(pending.PendingExpiresAt, time.Time{}); got != pending.PendingExpiresAt {
+		t.Fatalf("zero candidate changed deadline = %v", got)
+	}
+
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{ReservationTimeout: time.Minute})
+	reserved := GrantUse{State: UseReserved, UpdatedAt: now}
+	if got := store.useLifecycleDeadline(reserved, active, now); got != now.Add(time.Minute) {
+		t.Fatalf("reservation deadline = %v", got)
+	}
+	if got := store.useLifecycleDeadline(GrantUse{State: UseCommitted}, active, now); !got.IsZero() {
+		t.Fatalf("settled use deadline = %v", got)
+	}
+	stale := reserved
+	stale.UpdatedAt = now.Add(-2 * time.Minute)
+	if got := store.useLifecycleDeadline(stale, active, now); got != now {
+		t.Fatalf("stale reservation deadline = %v", got)
 	}
 }
 

@@ -159,13 +159,9 @@ func (s *Server) authorizeInference(w http.ResponseWriter, client string, operat
 }
 
 func (s *Server) reserveInferenceGrant(id, client string, operation policy.Operation, target string, attrs map[string]any, requestIdentity string) (grants.UseReservation, error) {
-	grant, err := s.grants.Get(id)
-	if err != nil || !s.inferenceGrantMatches(grant, client, operation, target) {
-		return grants.UseReservation{}, errors.New("inference grant is not usable")
-	}
-	values, err := hfgrant.Attrs(grant)
-	if err != nil || !policy.AttrValuesMatch(values, attrs) {
-		return grants.UseReservation{}, errors.New("inference grant does not match the request")
+	grant, err := s.matchInferenceGrant(id, client, operation, target, attrs)
+	if err != nil {
+		return grants.UseReservation{}, err
 	}
 	requestID, err := grants.DeriveUseRequestID(grant.ID, requestIdentity)
 	if err != nil {
@@ -176,6 +172,18 @@ func (s *Server) reserveInferenceGrant(id, client string, operation policy.Opera
 		return grants.UseReservation{}, errors.Join(err, grants.ErrUseSettled)
 	}
 	return reservation, nil
+}
+
+func (s *Server) matchInferenceGrant(id, client string, operation policy.Operation, target string, attrs map[string]any) (grants.Grant, error) {
+	grant, err := s.grants.Get(id)
+	if err != nil || !s.inferenceGrantMatches(grant, client, operation, target) {
+		return grants.Grant{}, errors.New("inference grant is not usable")
+	}
+	values, err := hfgrant.Attrs(grant)
+	if err != nil || !policy.AttrValuesMatch(values, attrs) {
+		return grants.Grant{}, errors.New("inference grant does not match the request")
+	}
+	return grant, nil
 }
 
 func (s *Server) inferenceGrantMatches(grant grants.Grant, client string, operation policy.Operation, target string) bool {

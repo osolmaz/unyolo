@@ -365,27 +365,38 @@ func (s *Store) nextLifecycleDelay() (time.Duration, bool, error) {
 		return 0, false, err
 	}
 	now := s.opts.Now().UTC()
-	var earliest time.Time
-	for _, grant := range data.Grants {
-		candidate := grantLifecycleDeadline(grant)
-		if !candidate.IsZero() && (earliest.IsZero() || candidate.Before(earliest)) {
-			earliest = candidate
-		}
-	}
-	for _, use := range data.Uses {
-		_, grant, findErr := findGrant(data.Grants, use.GrantID)
-		if findErr != nil {
-			return 0, false, findErr
-		}
-		candidate := s.useLifecycleDeadline(use, grant, now)
-		if !candidate.IsZero() && (earliest.IsZero() || candidate.Before(earliest)) {
-			earliest = candidate
-		}
-	}
-	if earliest.IsZero() {
-		return 0, false, nil
+	earliest := earliestGrantDeadline(data.Grants)
+	earliest, err = s.earliestUseDeadline(data, now, earliest)
+	if err != nil || earliest.IsZero() {
+		return 0, false, err
 	}
 	return max(earliest.Sub(now), 0), true, nil
+}
+
+func earliestGrantDeadline(grants []Grant) time.Time {
+	var earliest time.Time
+	for _, grant := range grants {
+		earliest = earlierDeadline(earliest, grantLifecycleDeadline(grant))
+	}
+	return earliest
+}
+
+func (s *Store) earliestUseDeadline(data fileData, now, earliest time.Time) (time.Time, error) {
+	for _, use := range data.Uses {
+		_, grant, err := findGrant(data.Grants, use.GrantID)
+		if err != nil {
+			return time.Time{}, err
+		}
+		earliest = earlierDeadline(earliest, s.useLifecycleDeadline(use, grant, now))
+	}
+	return earliest, nil
+}
+
+func earlierDeadline(current, candidate time.Time) time.Time {
+	if candidate.IsZero() || !current.IsZero() && !candidate.Before(current) {
+		return current
+	}
+	return candidate
 }
 
 func grantLifecycleDeadline(grant Grant) time.Time {

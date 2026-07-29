@@ -121,6 +121,10 @@ func (r *Runtime[I, P, A]) settleRecoveredApproval(operation agentv1.Operation) 
 	if operation.ApprovalID == "" {
 		return true
 	}
+	return r.settleBoundRecoveredApproval(operation)
+}
+
+func (r *Runtime[I, P, A]) settleBoundRecoveredApproval(operation agentv1.Operation) bool {
 	grant, err := r.options.Grants.Get(operation.ApprovalID)
 	if err != nil || r.options.ValidateExecution(grant) != nil {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")

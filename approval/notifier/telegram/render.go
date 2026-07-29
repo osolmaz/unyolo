@@ -99,16 +99,27 @@ func reduceLimit(value *int, step, minimum int) bool {
 }
 
 func validateApproval(approval approvalnotify.Approval) error {
-	if !safeLine(approval.Broker, 200, true) || !safeLine(approval.Requester, 80, true) || !safeLine(approval.Operation, 500, true) {
+	if !validApprovalIdentity(approval) {
 		return errors.New("approval identity is invalid")
 	}
-	if approval.Mode != "window" && approval.Mode != "execution" {
+	if !validApprovalMode(approval.Mode) {
 		return errors.New("approval mode is invalid")
 	}
-	if !safeText(approval.Reason, 2_000) || approval.RequestedDurationSeconds <= 0 || approval.PendingExpiresAt.IsZero() {
+	if !validApprovalBounds(approval) {
 		return errors.New("approval bounds are invalid")
 	}
 	return approvalview.Validate(approval.Presentation)
+}
+
+func validApprovalIdentity(approval approvalnotify.Approval) bool {
+	return safeLine(approval.Broker, 200, true) && safeLine(approval.Requester, 80, true) &&
+		safeLine(approval.Operation, 500, true)
+}
+
+func validApprovalMode(mode string) bool { return mode == "window" || mode == "execution" }
+
+func validApprovalBounds(approval approvalnotify.Approval) bool {
+	return safeText(approval.Reason, 2_000) && approval.RequestedDurationSeconds > 0 && !approval.PendingExpiresAt.IsZero()
 }
 
 func renderPending(approval approvalnotify.Approval, limits renderLimits) string {

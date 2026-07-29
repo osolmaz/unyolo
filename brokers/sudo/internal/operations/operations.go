@@ -183,19 +183,39 @@ func (commandAdapter) Present(value Plan) agentv1.Presentation {
 }
 
 func (commandAdapter) BindReservation(value Plan, reservation grants.UseReservation) (Plan, error) {
-	grant := reservation.Grant
-	mode := corepolicy.GrantMode(grant.Metadata[grants.MetadataMode])
-	if grant.ID == "" || grant.Revision < 1 || grant.ExpiresAt.IsZero() || reservation.Use.State != grants.UseReserved ||
-		reservation.Use.GrantID != grant.ID || reservation.Use.Operation != value.Authorization.Operation ||
-		!reservationMatchesCommandPlan(grant, value.Authorization) ||
-		(mode == corepolicy.GrantModeExecution && grant.ClientRequestID != value.ExecutionID) ||
-		(mode != corepolicy.GrantModeExecution && mode != corepolicy.GrantModeWindow) {
+	if !validCommandReservation(value, reservation) {
 		return Plan{}, errors.New("sudo execution reservation is invalid")
 	}
-	value.GrantID = grant.ID
+	value.GrantID = reservation.Grant.ID
 	value.ReservationID = reservation.Use.RequestID
-	value.GrantExpiresAt = grant.ExpiresAt.UTC()
+	value.GrantExpiresAt = reservation.Grant.ExpiresAt.UTC()
 	return value, nil
+}
+
+func validCommandReservation(value Plan, reservation grants.UseReservation) bool {
+	return validReservationGrant(reservation.Grant) && validReservationUse(value, reservation) &&
+		reservationMatchesCommandPlan(reservation.Grant, value.Authorization) &&
+		reservationModeMatchesExecution(reservation.Grant, value.ExecutionID)
+}
+
+func validReservationGrant(grant grants.Grant) bool {
+	return grant.ID != "" && grant.Revision >= 1 && !grant.ExpiresAt.IsZero()
+}
+
+func validReservationUse(value Plan, reservation grants.UseReservation) bool {
+	return reservation.Use.State == grants.UseReserved && reservation.Use.GrantID == reservation.Grant.ID &&
+		reservation.Use.Operation == value.Authorization.Operation
+}
+
+func reservationModeMatchesExecution(grant grants.Grant, executionID string) bool {
+	switch corepolicy.GrantMode(grant.Metadata[grants.MetadataMode]) {
+	case corepolicy.GrantModeExecution:
+		return grant.ClientRequestID == executionID
+	case corepolicy.GrantModeWindow:
+		return true
+	default:
+		return false
+	}
 }
 
 func reservationMatchesCommandPlan(grant grants.Grant, request corepolicy.Request) bool {

@@ -503,6 +503,17 @@ func TestRetainedReservationPreservesOtherRuntimeUses(t *testing.T) {
 	if !activeGrantMatchesIgnoringRef(retained, "agent", policy.OpGitPushForce, "dataset/acme/repo", refChangeAttrs("non_fast_forward")) {
 		t.Fatal("activeGrantMatchesIgnoringRef() omitted remaining authority after a retained use")
 	}
+	refs := map[string]bool{"refs/heads/main": true}
+	if !retainedHFPushMatches(retained, "dataset/acme/repo", refs) {
+		t.Fatal("retainedHFPushMatches() omitted its exact retained request")
+	}
+	if retainedHFPushMatches(retained, "dataset/other/repo", refs) {
+		t.Fatal("retainedHFPushMatches() widened the retained target")
+	}
+	retained.ReservationRetained = false
+	if retainedHFPushMatches(retained, "dataset/acme/repo", refs) {
+		t.Fatal("retainedHFPushMatches() matched an ordinary active grant")
+	}
 }
 
 func TestMalformedGrantStoreReturnsInternalServerError(t *testing.T) {

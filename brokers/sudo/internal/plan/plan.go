@@ -151,11 +151,13 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 }
 
 func validBuildRequest(request grants.Request, resolved catalog.Resolved, identity Identity) bool {
-	mode := corepolicy.GrantMode(request.Metadata[grants.MetadataMode])
-	usesValid := mode == corepolicy.GrantModeExecution && request.MaxUses == usebudget.SingleUse ||
-		mode == corepolicy.GrantModeWindow && request.MaxUses >= 0 && request.MaxUses <= usebudget.MaxFiniteUses
-	return request.Operation == sudopolicy.OperationExecCommand && request.Client != "" && request.ClientRequestID != "" &&
-		request.Duration > 0 && usesValid && identity.Name == resolved.TargetUser
+	return validBuildRequestIdentity(request) && validAuthorizationUses(request.Metadata[grants.MetadataMode], request.MaxUses) &&
+		identity.Name == resolved.TargetUser
+}
+
+func validBuildRequestIdentity(request grants.Request) bool {
+	return request.Operation == sudopolicy.OperationExecCommand && request.Client != "" &&
+		request.ClientRequestID != "" && request.Duration > 0
 }
 
 func buildRequestMatchesResolved(request grants.Request, resolved catalog.Resolved) bool {
@@ -318,23 +320,8 @@ func (v Validator) ValidateInvocation(digest string, grant grants.Grant, request
 	if err != nil {
 		return Plan{}, err
 	}
-	mode := corepolicy.GrantMode(grant.Metadata[grants.MetadataMode])
-	switch mode {
-	case corepolicy.GrantModeExecution:
-		duration, maxUses := requestedGrantBounds(grant)
-		if digest != grant.Metadata[MetadataDigest] || requestID != grant.ClientRequestID ||
-			validateLoadedGrantPlan(value, grant, duration, maxUses) != nil {
-			return Plan{}, errors.New("sudo execution grant does not match its immutable plan")
-		}
-	case corepolicy.GrantModeWindow:
-		duration, maxUses := grant.Duration, grant.MaxUses
-		if value.RequestID != requestID || !planMatchesGrantScope(value, grant) || !planMatchesGrantShape(value, grant) || !grantSlotsMatch(value, grant) ||
-			value.RequestedDurationSeconds != int64(duration.Seconds()) || value.RequestedMaxUses != maxUses ||
-			value.RequestedMaxUsesDefaulted != grant.RequestedMaxUsesDefaulted || value.AuthorizationMode != string(mode) {
-			return Plan{}, errors.New("sudo window grant does not cover the immutable plan")
-		}
-	default:
-		return Plan{}, errors.New("sudo grant mode is invalid")
+	if err := validateInvocationGrantPlan(value, grant, digest, requestID); err != nil {
+		return Plan{}, err
 	}
 	if err := validateCatalogBinding(value, v.Catalog); err != nil {
 		return Plan{}, err
@@ -343,6 +330,47 @@ func (v Validator) ValidateInvocation(digest string, grant grants.Grant, request
 		return Plan{}, errors.New("sudo target identity changed after request")
 	}
 	return value, nil
+}
+
+func validateInvocationGrantPlan(value Plan, grant grants.Grant, digest, requestID string) error {
+	mode := corepolicy.GrantMode(grant.Metadata[grants.MetadataMode])
+	switch mode {
+	case corepolicy.GrantModeExecution:
+		return validateExecutionInvocationPlan(value, grant, digest, requestID)
+	case corepolicy.GrantModeWindow:
+		return validateWindowInvocationPlan(value, grant, requestID)
+	default:
+		return errors.New("sudo grant mode is invalid")
+	}
+}
+
+func validateExecutionInvocationPlan(value Plan, grant grants.Grant, digest, requestID string) error {
+	duration, maxUses := requestedGrantBounds(grant)
+	if digest != grant.Metadata[MetadataDigest] || requestID != grant.ClientRequestID {
+		return errors.New("sudo execution grant does not match its immutable plan")
+	}
+	if validateLoadedGrantPlan(value, grant, duration, maxUses) != nil {
+		return errors.New("sudo execution grant does not match its immutable plan")
+	}
+	return nil
+}
+
+func validateWindowInvocationPlan(value Plan, grant grants.Grant, requestID string) error {
+	if value.RequestID != requestID || !planMatchesGrantScope(value, grant) {
+		return errors.New("sudo window grant does not cover the immutable plan")
+	}
+	if !planMatchesGrantShape(value, grant) || !grantSlotsMatch(value, grant) {
+		return errors.New("sudo window grant does not cover the immutable plan")
+	}
+	if !planMatchesWindowBounds(value, grant) {
+		return errors.New("sudo window grant does not cover the immutable plan")
+	}
+	return nil
+}
+
+func planMatchesWindowBounds(value Plan, grant grants.Grant) bool {
+	return value.RequestedDurationSeconds == int64(grant.Duration.Seconds()) && value.RequestedMaxUses == grant.MaxUses &&
+		value.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted && value.AuthorizationMode == string(corepolicy.GrantModeWindow)
 }
 
 func (v Validator) validateGrant(grant grants.Grant, constraints grants.ApprovalConstraints) error {
@@ -565,15 +593,22 @@ func validSupplementaryGroups(values []uint32) bool {
 }
 
 func validPlanIdentity(value Plan) bool {
-	return value.Schema == SchemaV1 && boundedIdentifier(value.RequestID) && boundedIdentifier(value.ClientID) &&
-		value.Operation == sudopolicy.OperationExecCommand && validAuthorizationMode(value.AuthorizationMode) &&
-		boundedIdentifier(value.CommandID) && boundedIdentifier(value.TargetUser) &&
+	return validPlanRequestIdentity(value) && validPlanCommandIdentity(value) &&
 		absoluteClean(value.Executable) && absoluteClean(value.WorkingDirectory)
+}
+
+func validPlanRequestIdentity(value Plan) bool {
+	return value.Schema == SchemaV1 && boundedIdentifier(value.RequestID) && boundedIdentifier(value.ClientID) &&
+		value.Operation == sudopolicy.OperationExecCommand && validAuthorizationMode(value.AuthorizationMode)
+}
+
+func validPlanCommandIdentity(value Plan) bool {
+	return boundedIdentifier(value.CommandID) && boundedIdentifier(value.TargetUser)
 }
 
 func validPlanLimits(value Plan) bool {
 	return value.TimeoutSeconds > 0 && value.TimeoutSeconds <= 3600 && value.MaxOutputBytes <= 1<<20 && value.CatalogDigest != "" &&
-		value.RequestedDurationSeconds > 0 && value.RequestedDurationSeconds <= int64((24*time.Hour)/time.Second) &&
+		value.RequestedDurationSeconds > 0 && value.RequestedDurationSeconds <= int64((7*24*time.Hour)/time.Second) &&
 		validAuthorizationUses(value.AuthorizationMode, value.RequestedMaxUses) && !value.CreatedAt.IsZero()
 }
 

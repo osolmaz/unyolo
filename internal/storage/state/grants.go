@@ -339,26 +339,21 @@ func validateGrantSnapshotTransition(before, after GrantSnapshot) error {
 }
 
 func validateGrantRetention(before, after []GrantRecord) error {
-	afterGrants := make(map[string]bool, len(after))
-	for _, record := range after {
-		afterGrants[record.ID] = true
-	}
-	for _, record := range before {
-		if !afterGrants[record.ID] {
-			return errors.New("grant deletion is unsupported")
-		}
-	}
-	return nil
+	return validateRecordRetention(before, after, func(record GrantRecord) string { return record.ID }, "grant deletion is unsupported")
 }
 
 func validateGrantUseRetention(before, after []GrantUseRecord) error {
-	afterUses := make(map[string]bool, len(after))
+	return validateRecordRetention(before, after, func(record GrantUseRecord) string { return record.RequestID }, "grant use deletion is unsupported")
+}
+
+func validateRecordRetention[T any](before, after []T, key func(T) string, message string) error {
+	retained := make(map[string]bool, len(after))
 	for _, record := range after {
-		afterUses[record.RequestID] = true
+		retained[key(record)] = true
 	}
 	for _, record := range before {
-		if !afterUses[record.RequestID] {
-			return errors.New("grant use deletion is unsupported")
+		if !retained[key(record)] {
+			return errors.New(message)
 		}
 	}
 	return nil

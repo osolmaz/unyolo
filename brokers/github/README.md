@@ -349,7 +349,19 @@ repository operations allow up to `1000000` uses for seven days. Force pushes,
 ref deletions, and tag updates stay capped at 25 uses for one hour. Policy may
 select exact execution mode, which always uses one immutable plan once. Larger
 window budgets never widen the approved client, operation, repository, ref,
-path, or other attrs.
+path, or other attrs. Set exact execution mode on a request rule when each
+operation must receive its own approval:
+
+```json
+"grant_policy": {
+  "mode": "execution",
+  "default_minutes": 5,
+  "max_minutes": 5,
+  "request_ttl_minutes": 5,
+  "default_max_uses": 1,
+  "max_uses": 1
+}
+```
 
 `POST /api/grants` remains the explicit protocol endpoint for clients that
 need to request a Git grant before attempting a push.

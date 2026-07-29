@@ -46,8 +46,50 @@ func TestPlanBindsGrantAndValidatesActivationAndExecution(t *testing.T) {
 	if err != nil || got.CommandID != "scale" || helper.calls != 2 {
 		t.Fatalf("ValidateExecution() = %+v, %v calls=%d", got, err, helper.calls)
 	}
+	invocation, err := validator.ValidateInvocation(request.Metadata[MetadataDigest], created.Grant, request.ClientRequestID)
+	if err != nil || invocation.CommandID != "scale" {
+		t.Fatalf("ValidateInvocation(execution) = %+v, %v", invocation, err)
+	}
+	if _, err := validator.ValidateInvocation("wrong-digest", created.Grant, request.ClientRequestID); err == nil {
+		t.Fatal("execution invocation accepted a different plan")
+	}
 	if err := validator.ValidateActivation(context.Background(), created.Grant, grants.ApprovalConstraints{Duration: 10 * time.Minute}); !errors.Is(err, grants.ErrConstraintExceeded) {
 		t.Fatalf("widening error = %v", err)
+	}
+}
+
+func TestWindowGrantValidatesFreshInvocationPlan(t *testing.T) {
+	t.Parallel()
+	snapshot, resolved := testResolved(t)
+	request := testGrantRequest(resolved)
+	request.ClientRequestID = "window-request"
+	request.Metadata[grants.MetadataMode] = "window"
+	request.MaxUses = 3
+	identity := Identity{Name: "root", UID: 0, GID: 0}
+	value, err := Build(request, resolved, identity, time.Unix(1_700_000_000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, database := newTestPlanStore(t)
+	if err := plans.Bind(&request, value); err != nil {
+		t.Fatal(err)
+	}
+	digest := request.Metadata[MetadataDigest]
+	if digest == "" {
+		t.Fatal("window plan digest is empty")
+	}
+	grantStore := grants.NewDatabase(database, grants.Options{})
+	created, _, err := grantStore.Request(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator := Validator{Store: plans, Catalog: snapshot, Identities: fakeIdentities{identity: identity}, Helper: &fakeReadiness{}}
+	got, err := validator.ValidateInvocation(digest, created.Grant, request.ClientRequestID)
+	if err != nil || got.AuthorizationMode != "window" {
+		t.Fatalf("ValidateInvocation(window) = %+v, %v", got, err)
+	}
+	if _, err := validator.ValidateInvocation(digest, created.Grant, "different-request"); err == nil {
+		t.Fatal("window invocation accepted a different request identity")
 	}
 }
 

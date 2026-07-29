@@ -114,7 +114,11 @@ func TestCoordinatorActiveGrantModeFiltersReusableAuthority(t *testing.T) {
 	}
 	execution := create("execution-authority", policy.GrantModeExecution, 1)
 	window := create("window-authority", policy.GrantModeWindow, 2)
-	decision, found, err := coordinator.ActiveGrantMode(request, policy.GrantModeWindow)
+	decision, found, err := coordinator.ActiveGrant(request)
+	if err != nil || !found || decision.GrantID != execution.ID {
+		t.Fatalf("ActiveGrant() = %+v, %v, %v", decision, found, err)
+	}
+	decision, found, err = coordinator.ActiveGrantMode(request, policy.GrantModeWindow)
 	if err != nil || !found || decision.GrantID != window.ID {
 		t.Fatalf("window ActiveGrantMode() = %+v, %v, %v", decision, found, err)
 	}

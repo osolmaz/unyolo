@@ -2391,17 +2391,6 @@ func assertGrantUseState(t *testing.T, server *Server, grantID string, status gr
 	}
 }
 
-func assertNoActiveGrants(t *testing.T, server *Server) {
-	t.Helper()
-	active, err := server.grants.ActivePolicyGrants()
-	if err != nil {
-		t.Fatalf("ActivePolicyGrants() error = %v", err)
-	}
-	if len(active) != 0 {
-		t.Fatalf("active grants = %+v, want none", active)
-	}
-}
-
 type captureNotifier struct {
 	mu         sync.Mutex
 	messages   []approvalnotify.Approval

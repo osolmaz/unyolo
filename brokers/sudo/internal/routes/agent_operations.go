@@ -151,26 +151,40 @@ func sudoRuntimeGrantMode(preparation operations.Preparation) (corepolicy.GrantM
 
 func sudoRuntimeGrantBounds(preparation operations.Preparation, mode corepolicy.GrantMode) (time.Duration, time.Duration, usebudget.Limit, error) {
 	if preparation.ReusedGrant != nil {
-		grant := *preparation.ReusedGrant
-		if mode != corepolicy.GrantModeWindow {
-			return 0, 0, 0, errors.New("only sudo window grants may be reused")
-		}
-		duration := grant.Duration
-		if duration <= 0 {
-			duration = grant.RequestedDuration
-		}
-		return duration, grant.PendingTimeout, grant.MaxUses, nil
+		return reusedSudoGrantBounds(*preparation.ReusedGrant, mode)
 	}
-	policy := preparation.Decision.GrantPolicy
+	return newSudoGrantBounds(preparation.Decision.GrantPolicy, mode)
+}
+
+func reusedSudoGrantBounds(grant grants.Grant, mode corepolicy.GrantMode) (time.Duration, time.Duration, usebudget.Limit, error) {
+	if mode != corepolicy.GrantModeWindow {
+		return 0, 0, 0, errors.New("only sudo window grants may be reused")
+	}
+	duration := grant.Duration
+	if duration <= 0 {
+		duration = grant.RequestedDuration
+	}
+	return duration, grant.PendingTimeout, grant.MaxUses, nil
+}
+
+func newSudoGrantBounds(policy *corepolicy.GrantPolicy, mode corepolicy.GrantMode) (time.Duration, time.Duration, usebudget.Limit, error) {
 	if policy == nil || corepolicy.GrantMode(policy.Mode) != mode {
 		return 0, 0, 0, errors.New("sudo command policy approval mode is invalid")
 	}
-	if policy.DefaultMinutes < 1 || policy.DefaultMinutes > policy.MaxMinutes {
+	if !validSudoPolicyDuration(policy) {
 		return 0, 0, 0, errors.New("requested duration exceeds policy bounds")
 	}
-	maxUses := policy.DefaultMaxUses
-	if mode == corepolicy.GrantModeExecution && (maxUses != 1 || policy.MaxUses != 1) {
+	if !validSudoPolicyUses(policy, mode) {
 		return 0, 0, 0, errors.New("sudo execution policy must be single-use")
 	}
-	return time.Duration(policy.DefaultMinutes) * time.Minute, time.Duration(policy.RequestTTLMinutes) * time.Minute, maxUses, nil
+	return time.Duration(policy.DefaultMinutes) * time.Minute, time.Duration(policy.RequestTTLMinutes) * time.Minute,
+		policy.DefaultMaxUses, nil
+}
+
+func validSudoPolicyDuration(policy *corepolicy.GrantPolicy) bool {
+	return policy.DefaultMinutes >= 1 && policy.DefaultMinutes <= policy.MaxMinutes
+}
+
+func validSudoPolicyUses(policy *corepolicy.GrantPolicy, mode corepolicy.GrantMode) bool {
+	return mode != corepolicy.GrantModeExecution || policy.DefaultMaxUses == 1 && policy.MaxUses == 1
 }
