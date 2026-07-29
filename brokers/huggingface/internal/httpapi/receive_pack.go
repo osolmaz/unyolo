@@ -571,14 +571,18 @@ func (s *Server) hfPushTransactionRequestID(client, target, bodyDigest string, r
 	if err != nil {
 		return "", err
 	}
+	return nextGeneratedApprovalRequestID(base, items), nil
+}
+
+func nextGeneratedApprovalRequestID(base string, items []grants.Grant) string {
 	latest, generation := latestHFTransactionGrant(base, items)
 	if generation == 0 {
-		return base, nil
+		return base
 	}
 	if latest.Status == grants.StatusPending || latest.Status == grants.StatusActive {
-		return latest.ClientRequestID, nil
+		return latest.ClientRequestID
 	}
-	return fmt.Sprintf("%s-%d", base, generation+1), nil
+	return fmt.Sprintf("%s-%d", base, generation+1)
 }
 
 func latestHFTransactionGrant(base string, items []grants.Grant) (grants.Grant, int) {
