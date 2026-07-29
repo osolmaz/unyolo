@@ -452,12 +452,12 @@ func normalizeRequestValues(req Request) (Request, error) {
 	if err := validateValueMap("attr", req.Attrs); err != nil {
 		return Request{}, err
 	}
+	req.Metadata = normalizeRequestMetadata(req.Metadata)
 	if err := validateMetadata(req.Metadata); err != nil {
 		return Request{}, err
 	}
 	req.Target.Fields = copyx.CanonicalStringSliceMap(req.Target.Fields)
 	req.Attrs = copyx.CanonicalStringSliceMap(req.Attrs)
-	req.Metadata = copyx.StringMap(req.Metadata)
 	return req, nil
 }
 

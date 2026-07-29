@@ -202,7 +202,13 @@ func TestGrantMetadataIsDurableAndIdempotent(t *testing.T) {
 func TestGrantMetadataValidation(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	base := Request{Client: "bob", Operation: "git.push", Target: repoTarget("demo"), Reason: "metadata"}
+	defaulted, _, err := store.Request(base)
+	if err != nil || defaulted.Grant.Metadata[MetadataMode] != "window" {
+		t.Fatalf("Request(default mode) = %+v, %v", defaulted, err)
+	}
 	cases := []map[string]string{
+		{MetadataMode: ""},
+		{MetadataMode: "other"},
 		{"": "value"},
 		{" key": "value"},
 		{"key": " "},
