@@ -27,22 +27,32 @@ func normalizeRequestMetadata(metadata map[string]string) map[string]string {
 }
 
 func validateMetadata(metadata map[string]string) error {
-	mode := metadata[MetadataMode]
-	if mode != "window" && mode != "execution" {
+	if !validMetadataMode(metadata[MetadataMode]) {
 		return errors.New("grant metadata mode is invalid")
 	}
 	if len(metadata) > maxMetadataEntries {
 		return fmt.Errorf("grant metadata exceeds %d entries", maxMetadataEntries)
 	}
 	for key, value := range metadata {
-		if strings.TrimSpace(key) != key || key == "" || len(key) > maxMetadataKeyBytes {
-			return fmt.Errorf("grant metadata key %q is invalid", key)
-		}
-		if strings.TrimSpace(value) == "" || len(value) > maxMetadataValueBytes {
-			return fmt.Errorf("grant metadata value for %q is invalid", key)
+		if err := validateMetadataEntry(key, value); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validateMetadataEntry(key, value string) error {
+	if strings.TrimSpace(key) != key || key == "" || len(key) > maxMetadataKeyBytes {
+		return fmt.Errorf("grant metadata key %q is invalid", key)
+	}
+	if strings.TrimSpace(value) == "" || len(value) > maxMetadataValueBytes {
+		return fmt.Errorf("grant metadata value for %q is invalid", key)
+	}
+	return nil
+}
+
+func validMetadataMode(mode string) bool {
+	return mode == "window" || mode == "execution"
 }
 
 func stringMapsEqual(left, right map[string]string) bool {
