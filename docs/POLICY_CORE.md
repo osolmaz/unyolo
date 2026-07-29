@@ -6,6 +6,13 @@ and validation rules. Brokers use this core directly and do not keep local
 compatibility policy engines. See [OWNERSHIP.md](OWNERSHIP.md) for the broader
 unYOLO versus broker boundary.
 
+The accepted next contract keeps both grant modes, makes every grantable
+operation support both, and defaults every operation to `window`. Execution
+remains exact and single-use. See
+[ADR 0002](adr/0002-universal-reusable-grants.md) and the
+[reusable grants specification](REUSABLE_GRANTS_SPEC.md). The current behavior
+below remains authoritative for released binaries until implementation lands.
+
 ## Minimal policy file
 
 ```json
