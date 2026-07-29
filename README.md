@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-wordmark.svg" alt="unYOLO" width="640">
+  <img src="assets/logo.svg?v=2" alt="unYOLO" width="180" height="180">
 </p>
 
 # unYOLO
