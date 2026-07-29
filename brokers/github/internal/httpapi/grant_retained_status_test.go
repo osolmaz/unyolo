@@ -8,7 +8,7 @@ import (
 
 func TestGrantAPIStatusAndRemainingUses(t *testing.T) {
 	retained := grants.Grant{Status: grants.StatusActive, MaxUses: 3, ReservedCount: 1, ReservationRetained: true}
-	if apiGrantStatus(retained) != "retained" || grantUsesRemaining(retained) != 0 {
+	if apiGrantStatus(retained) != "retained" || grantUsesRemaining(retained) != 2 {
 		t.Fatalf("retained grant status=%q remaining=%d", apiGrantStatus(retained), grantUsesRemaining(retained))
 	}
 	active := grants.Grant{Status: grants.StatusActive, MaxUses: 3, UsedCount: 1, ReservedCount: 1}

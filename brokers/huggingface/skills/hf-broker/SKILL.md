@@ -56,6 +56,11 @@ Catalog commands wait by default. Keep that behavior for agent-driven work so
 the command returns after completion or the wait timeout. A timeout can leave
 the operation pending.
 
+Requestable operations default to reusable window grants. Each invocation still
+has its own immutable plan, operation ID, result, and audit record. Policy may
+select `execution` mode for an exact single-use approval. Do not assume a
+reused window skips plan validation or expands the approved target and attrs.
+
 Approval waiting is part of the same agent turn. Do not return control to the
 user while the operation remains pending. If a wait interval expires,
 immediately wait again with the same operation ID. Continue until the user

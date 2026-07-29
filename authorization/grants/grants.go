@@ -147,6 +147,7 @@ type Grant struct {
 type fileData struct {
 	Version         int                    `json:"version"`
 	Grants          []Grant                `json:"grants"`
+	Uses            []GrantUse             `json:"uses,omitempty"`
 	Events          []lifecycleEventRecord `json:"events,omitempty"`
 	NextEvent       uint64                 `json:"next_event,omitempty"`
 	DecisionRecords []decisionRecord       `json:"decision_records,omitempty"`
@@ -337,76 +338,6 @@ func (s *Store) Revoke(id string, approver string) (Grant, error) {
 		out, err = s.Get(out.ID)
 	}
 	return out, err
-}
-
-// ReserveUse durably reserves one active grant use before execution.
-func (s *Store) ReserveUse(id string) (Grant, error) {
-	return s.changeUse(id, func(grant Grant) (Grant, error) {
-		if !grantCanUse(grant, s.opts.Now().UTC()) {
-			return Grant{}, ErrNotActive
-		}
-		grant.ReservedAt = s.opts.Now().UTC()
-		grant.ReservationRevision++
-		grant.ReservedCount++
-		return grant, nil
-	})
-}
-
-// RetainUse preserves a reserved use for operator review after an ambiguous
-// execution result.
-func (s *Store) RetainUse(id string) (Grant, error) {
-	return s.changeUse(id, func(grant Grant) (Grant, error) {
-		if !grantCanCommitUse(grant) {
-			return Grant{}, ErrNotActive
-		}
-		grant.ReservationRetained = true
-		if grant.ReservedAt.IsZero() {
-			grant.ReservedAt = s.opts.Now().UTC()
-		}
-		return grant, nil
-	})
-}
-
-// CommitUse turns one reservation into a used grant budget.
-func (s *Store) CommitUse(id string) (Grant, error) {
-	return s.changeUse(id, func(grant Grant) (Grant, error) {
-		if !grantCanCommitUse(grant) {
-			return Grant{}, ErrNotActive
-		}
-		grant.ReservedCount--
-		grant.UsedCount++
-		grant.UseRevision++
-		grant.UsedAt = s.opts.Now().UTC()
-		if grant.ReservedCount == 0 {
-			grant.ReservedAt = time.Time{}
-			grant.ReservationRetained = false
-		} else {
-			grant.ReservedAt = s.opts.Now().UTC()
-		}
-		if grant.MaxUses.Exhausted(grant.UsedCount) {
-			if grant.Status != StatusRevoked {
-				grant.Status = StatusConsumed
-				grant.ExpiredFrom = ""
-			}
-		}
-		return grant, nil
-	})
-}
-
-// ReleaseUse releases one reserved grant use.
-func (s *Store) ReleaseUse(id string) (Grant, error) {
-	return s.changeUse(id, func(grant Grant) (Grant, error) {
-		if grant.ReservedCount > 0 {
-			grant.ReservedCount--
-		}
-		if grant.ReservedCount == 0 {
-			grant.ReservedAt = time.Time{}
-			grant.ReservationRetained = false
-		} else {
-			grant.ReservedAt = s.opts.Now().UTC()
-		}
-		return grant, nil
-	})
 }
 
 // ActivePolicyGrants returns active grant overlays for policy evaluation.
@@ -687,6 +618,9 @@ func (s *Store) load() (fileData, error) {
 		return fileData{}, err
 	}
 	if err := validateLoadedGrants(data.Grants); err != nil {
+		return fileData{}, err
+	}
+	if err := validateLoadedUses(data.Grants, data.Uses); err != nil {
 		return fileData{}, err
 	}
 	if err := normalizeLoadedEvents(&data); err != nil {

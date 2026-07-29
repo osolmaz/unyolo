@@ -91,6 +91,13 @@ command's output and exits with its exit code. For typed catalog slots,
 repeat `--arg-json NAME=JSON`. Reuse a stable `--operation-id` when retrying;
 never retry an ambiguous execution under a new id.
 
+Request rules default to reusable window grants. A later matching command gets
+its own immutable plan, operation ID, helper reservation, result, and audit
+record while using the remaining approved window budget. Set
+`"mode": "execution"` in `grant_policy` when one exact command must require a
+single-use approval. Both modes keep the catalog command, target user, typed
+slots, host identity, and catalog digest checks.
+
 When Telegram notifications are configured, sudo-broker supplies only the
 cataloged command description and target user. It also provides bounded
 arguments plus the timeout and risk. unYOLO renders the same escaped rich approval layout and fixed

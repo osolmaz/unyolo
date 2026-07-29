@@ -60,6 +60,17 @@ type Grant struct {
 	NotificationDeliveryUnresolved int64
 }
 
+type GrantUse struct {
+	RequestID string
+	GrantID   string
+	Operation string
+	State     string
+	Revision  int64
+	CreatedAt string
+	UpdatedAt string
+	SettledAt sql.NullString
+}
+
 type LifecycleEvent struct {
 	Sequence    int64
 	Cursor      string
@@ -114,4 +125,9 @@ type Plan struct {
 	SchemaName string
 	Canonical  []byte
 	CreatedAt  string
+}
+
+type StateContract struct {
+	Singleton int64
+	Contract  string
 }

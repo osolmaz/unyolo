@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/unyolo/agent/v1"
 	"github.com/osolmaz/unyolo/approval/notification"
 	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/operations"
@@ -50,13 +51,18 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloa
 	if preparation.Direct {
 		return unyoloauthorization.GrantIntent{}, errors.New("sudo operations require explicit approval")
 	}
-	duration, pending, err := grantBounds(preparation.Decision.GrantPolicy, 0)
+	mode, err := sudoRuntimeGrantMode(preparation)
+	if err != nil {
+		return unyoloauthorization.GrantIntent{}, err
+	}
+	duration, pending, maxUses, err := sudoRuntimeGrantBounds(preparation, mode)
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
 	request := grants.Request{Client: preparation.Client, ClientRequestID: preparation.OperationID,
 		Operation: preparation.DescriptorName, Target: preparation.Core.Target, Attrs: preparation.Core.Attrs,
-		Reason: preparation.Reason, Duration: duration, PendingTimeout: pending, MaxUses: 1, MaxUsesSpecified: true}
+		Metadata: map[string]string{grants.MetadataMode: string(mode)}, Reason: preparation.Reason,
+		Duration: duration, PendingTimeout: pending, MaxUses: maxUses, MaxUsesSpecified: true}
 	identity, err := s.identities.Lookup(preparation.Plan.Resolved.TargetUser)
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, errors.New("target user cannot be resolved")
@@ -69,7 +75,7 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloa
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
-	return unyoloauthorization.GrantIntent{Mode: corepolicy.GrantModeExecution, Authorization: preparation.Core,
+	return unyoloauthorization.GrantIntent{Mode: mode, Authorization: preparation.Core,
 		Request: request, Plan: immutable}, nil
 }
 
@@ -78,10 +84,10 @@ func (s *Server) loadRuntimePlan(operation agentv1.Operation, _ operations.Adapt
 		return operations.Plan{}, errors.New("sudo operation has no approval")
 	}
 	grant, err := s.grants.Get(operation.ApprovalID)
-	if err != nil || grant.Metadata[plan.MetadataDigest] != operation.PlanDigest {
+	if err != nil {
 		return operations.Plan{}, errors.New("sudo approval plan binding is invalid")
 	}
-	command, err := s.validator.ValidateGrant(grant)
+	command, err := s.validator.ValidateInvocation(operation.PlanDigest, grant, operation.ID)
 	if err != nil {
 		return operations.Plan{}, err
 	}
@@ -130,15 +136,41 @@ func (s *Server) startOperationRuntime(ctx context.Context) {
 	})
 }
 
-func grantBounds(policy *corepolicy.GrantPolicy, minutes int) (time.Duration, time.Duration, error) {
-	if policy == nil || policy.Mode != string(corepolicy.GrantModeExecution) || policy.DefaultMaxUses != 1 || policy.MaxUses != 1 {
-		return 0, 0, errors.New("sudo command policy must use one-shot execution grants")
+func sudoRuntimeGrantMode(preparation operations.Preparation) (corepolicy.GrantMode, error) {
+	mode := corepolicy.GrantModeWindow
+	if preparation.ReusedGrant != nil {
+		mode = corepolicy.GrantMode(preparation.ReusedGrant.Metadata[grants.MetadataMode])
+	} else if preparation.Decision.GrantPolicy != nil {
+		mode = corepolicy.GrantMode(preparation.Decision.GrantPolicy.Mode)
 	}
-	if minutes == 0 {
-		minutes = policy.DefaultMinutes
+	if mode != corepolicy.GrantModeWindow && mode != corepolicy.GrantModeExecution {
+		return "", errors.New("sudo command approval mode is invalid")
 	}
-	if minutes < 1 || minutes > policy.MaxMinutes {
-		return 0, 0, errors.New("requested duration exceeds policy bounds")
+	return mode, nil
+}
+
+func sudoRuntimeGrantBounds(preparation operations.Preparation, mode corepolicy.GrantMode) (time.Duration, time.Duration, usebudget.Limit, error) {
+	if preparation.ReusedGrant != nil {
+		grant := *preparation.ReusedGrant
+		if mode != corepolicy.GrantModeWindow {
+			return 0, 0, 0, errors.New("only sudo window grants may be reused")
+		}
+		duration := grant.Duration
+		if duration <= 0 {
+			duration = grant.RequestedDuration
+		}
+		return duration, grant.PendingTimeout, grant.MaxUses, nil
 	}
-	return time.Duration(minutes) * time.Minute, time.Duration(policy.RequestTTLMinutes) * time.Minute, nil
+	policy := preparation.Decision.GrantPolicy
+	if policy == nil || corepolicy.GrantMode(policy.Mode) != mode {
+		return 0, 0, 0, errors.New("sudo command policy approval mode is invalid")
+	}
+	if policy.DefaultMinutes < 1 || policy.DefaultMinutes > policy.MaxMinutes {
+		return 0, 0, 0, errors.New("requested duration exceeds policy bounds")
+	}
+	maxUses := policy.DefaultMaxUses
+	if mode == corepolicy.GrantModeExecution && (maxUses != 1 || policy.MaxUses != 1) {
+		return 0, 0, 0, errors.New("sudo execution policy must be single-use")
+	}
+	return time.Duration(policy.DefaultMinutes) * time.Minute, time.Duration(policy.RequestTTLMinutes) * time.Minute, maxUses, nil
 }

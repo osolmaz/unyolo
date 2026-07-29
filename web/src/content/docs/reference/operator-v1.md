@@ -36,7 +36,9 @@ and `limit`.
 
 Limits default to 50 and cannot exceed 100. Ordering is newest request first, then grant ID.
 Cursors are opaque and bound to the filter that produced them, so swapping filters mid-pagination
-is rejected rather than silently returning a different slice.
+is rejected rather than silently returning a different slice. Each request includes its grant
+mode. `window` identifies reusable scoped authority, while `execution` identifies one exact
+immutable action.
 
 ```sh
 curl -sS --unix-socket /run/unyolo/huggingface/operator/broker.sock \

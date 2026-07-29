@@ -60,18 +60,19 @@ type ruleGrantPolicy struct {
 }
 
 type authorizationMetadata struct {
-	Risk               opcatalog.Risk              `json:"risk"`
-	AuthorizationMode  opcatalog.AuthorizationMode `json:"authorization_mode"`
-	ExplicitOnly       bool                        `json:"explicit_only"`
-	Sealed             bool                        `json:"sealed"`
-	Internal           bool                        `json:"internal"`
-	AgentFacing        bool                        `json:"agent_facing"`
-	CredentialOutput   *string                     `json:"credential_output_kind,omitempty"`
-	TargetKind         string                      `json:"target_kind"`
-	TargetSchema       string                      `json:"target_schema,omitempty"`
-	MaxUses            int                         `json:"max_uses"`
-	RequestTTLSeconds  int                         `json:"request_ttl_seconds"`
-	ApprovalTTLSeconds int                         `json:"approval_ttl_seconds"`
+	Risk                     opcatalog.Risk                `json:"risk"`
+	DefaultAuthorizationMode opcatalog.AuthorizationMode   `json:"default_authorization_mode"`
+	AuthorizationModes       []opcatalog.AuthorizationMode `json:"authorization_modes"`
+	ExplicitOnly             bool                          `json:"explicit_only"`
+	Sealed                   bool                          `json:"sealed"`
+	Internal                 bool                          `json:"internal"`
+	AgentFacing              bool                          `json:"agent_facing"`
+	CredentialOutput         *string                       `json:"credential_output_kind,omitempty"`
+	TargetKind               string                        `json:"target_kind"`
+	TargetSchema             string                        `json:"target_schema,omitempty"`
+	MaxUses                  int                           `json:"max_uses"`
+	RequestTTLSeconds        int                           `json:"request_ttl_seconds"`
+	ApprovalTTLSeconds       int                           `json:"approval_ttl_seconds"`
 }
 
 func (renderer) ProviderID() string { return "huggingface" }
@@ -114,8 +115,9 @@ func (renderer) Operations() ([]shared.Operation, error) {
 	operations := make([]shared.Operation, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		digest, err := shared.AuthorizationDigest(authorizationMetadata{
-			Risk: descriptor.Risk, AuthorizationMode: descriptor.AuthorizationMode,
-			ExplicitOnly: descriptor.ExplicitOnly, Sealed: descriptor.Sealed, Internal: descriptor.Internal,
+			Risk: descriptor.Risk, DefaultAuthorizationMode: descriptor.DefaultAuthorizationMode,
+			AuthorizationModes: descriptor.AuthorizationModes,
+			ExplicitOnly:       descriptor.ExplicitOnly, Sealed: descriptor.Sealed, Internal: descriptor.Internal,
 			AgentFacing: descriptor.AgentFacing, CredentialOutput: descriptor.CredentialOutputKind,
 			TargetKind: descriptor.TargetKind, TargetSchema: descriptor.TargetSchema, MaxUses: descriptor.MaxUses,
 			RequestTTLSeconds: descriptor.RequestTTLSeconds, ApprovalTTLSeconds: descriptor.ApprovalTTLSeconds,
@@ -207,17 +209,11 @@ func renderRule(clients []string, descriptor opcatalog.Descriptor, effect shared
 }
 
 func grantPolicy(descriptor opcatalog.Descriptor) *ruleGrantPolicy {
-	mode := string(policy.GrantModeWindow)
-	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		mode = string(policy.GrantModeExecution)
-	}
 	maxMinutes := descriptor.ApprovalTTLSeconds / 60
-	maxUses := descriptor.MaxUses
-	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		maxUses = 1
-	}
 	return &ruleGrantPolicy{
-		Mode: mode, DefaultMinutes: min(policy.DefaultGrantMinutes, maxMinutes), MaxMinutes: maxMinutes,
-		RequestTTLMinutes: descriptor.RequestTTLSeconds / 60, DefaultMaxUses: maxUses, MaxUses: maxUses,
+		Mode:           string(descriptor.DefaultAuthorizationMode),
+		DefaultMinutes: min(policy.DefaultGrantMinutes, maxMinutes), MaxMinutes: maxMinutes,
+		RequestTTLMinutes: descriptor.RequestTTLSeconds / 60,
+		DefaultMaxUses:    descriptor.MaxUses, MaxUses: descriptor.MaxUses,
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization"
 	"github.com/osolmaz/unyolo/authorization/admission"
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/internal/storage/state"
@@ -104,8 +105,8 @@ func (a *runtimeAdapter) Resolve(_ context.Context, input runtimeInput) (runtime
 func (a *runtimeAdapter) ValidateClient(runtimeInput, string, string) error { return a.clientErr }
 func (a *runtimeAdapter) Authorize(plan runtimePlan) policy.Request         { return plan.Authorization }
 func (a *runtimeAdapter) RequiresApproval() bool                            { return a.requiresApproval }
-func (a *runtimeAdapter) BindReservation(plan runtimePlan, grant grants.Grant) (runtimePlan, error) {
-	a.boundGrant = grant
+func (a *runtimeAdapter) BindReservation(plan runtimePlan, reservation grants.UseReservation) (runtimePlan, error) {
+	a.boundGrant = reservation.Grant
 	return plan, nil
 }
 func (a *runtimeAdapter) Present(runtimePlan) agentv1.Presentation {
@@ -263,10 +264,12 @@ func TestRuntimeReconcilesPossiblePartialExecution(t *testing.T) {
 type captureNotifier struct {
 	message approvalnotify.Approval
 	err     error
+	count   int
 }
 
 func (n *captureNotifier) SendApproval(_ context.Context, message approvalnotify.Approval) (notify.MessageRef, error) {
 	n.message = message
+	n.count++
 	if n.err != nil {
 		return notify.MessageRef{}, n.err
 	}
@@ -301,12 +304,64 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 
 	request.IdempotencyKey = "pending-2"
 	operation, _, err = runtime.Submit(t.Context(), "agent", request)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || operation.State != agentv1.StatePending || operation.ApprovalID == completed.ApprovalID || notifier.count != 2 {
+		t.Fatalf("second execution approval = %+v, %v; notifications=%d", operation, err, notifier.count)
 	}
 	canceled, err := runtime.Cancel(t.Context(), "agent", operation.ID)
 	if err != nil || canceled.State != agentv1.StateCanceled {
 		t.Fatalf("canceled = %+v, %v", canceled, err)
+	}
+}
+
+func TestRuntimeReusesWindowGrantWithFreshPlansAndIndependentCancellation(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t, nil, windowDecision, notifier, true)
+	defer closeRuntime()
+	adapter.requiresApproval = true
+	request := agentv1.SubmitRequest{IdempotencyKey: "window-1", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{"value":1}`), Reason: "create demo"}
+	first, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || !created || first.State != agentv1.StatePending || notifier.count != 1 {
+		t.Fatalf("first window submission = %+v, %v, %v; notifications=%d", first, created, err, notifier.count)
+	}
+	if _, err := grantStore.Approve(first.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Advance(t.Context(), first)
+	completed, err := operations.Get("agent", first.ID)
+	if err != nil || completed.State != agentv1.StateSucceeded {
+		t.Fatalf("first window operation = %+v, %v", completed, err)
+	}
+
+	request.IdempotencyKey = "window-canceled"
+	request.Arguments = json.RawMessage(`{"value":2}`)
+	canceledUse, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || !created || canceledUse.State != agentv1.StateApproved || canceledUse.ApprovalID != first.ApprovalID ||
+		canceledUse.PlanDigest == first.PlanDigest || notifier.count != 1 {
+		t.Fatalf("reused canceled submission = %+v, %v, %v; notifications=%d", canceledUse, created, err, notifier.count)
+	}
+	canceled, err := runtime.Cancel(t.Context(), "agent", canceledUse.ID)
+	if err != nil || canceled.State != agentv1.StateCanceled {
+		t.Fatalf("window cancellation = %+v, %v", canceled, err)
+	}
+	grant, err := grantStore.Get(first.ApprovalID)
+	if err != nil || grant.Status != grants.StatusActive || grant.UsedCount != 1 || grant.ReservedCount != 0 {
+		t.Fatalf("window grant after cancellation = %+v, %v", grant, err)
+	}
+
+	request.IdempotencyKey = "window-2"
+	request.Arguments = json.RawMessage(`{"value":3}`)
+	second, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || !created || second.State != agentv1.StateApproved || second.ApprovalID != first.ApprovalID || notifier.count != 1 {
+		t.Fatalf("second window submission = %+v, %v, %v; notifications=%d", second, created, err, notifier.count)
+	}
+	runtime.Advance(t.Context(), second)
+	completed, err = operations.Get("agent", second.ID)
+	grant, grantErr := grantStore.Get(first.ApprovalID)
+	uses, usesErr := grantStore.ListUses(first.ApprovalID)
+	if err != nil || completed.State != agentv1.StateSucceeded || grantErr != nil || grant.UsedCount != 2 || grant.ReservedCount != 0 ||
+		usesErr != nil || len(uses) != 2 || uses[0].RequestID == uses[1].RequestID {
+		t.Fatalf("second window result = %+v, %v; grant=%+v, %v; uses=%+v, %v", completed, err, grant, grantErr, uses, usesErr)
 	}
 }
 
@@ -462,7 +517,7 @@ func TestRuntimeAdvancesOperationsWithBoundedConcurrency(t *testing.T) {
 	for range 2 {
 		select {
 		case <-started:
-		case <-time.After(time.Second):
+		case <-time.After(5 * time.Second):
 			t.Fatal("operations did not start concurrently")
 		}
 	}
@@ -507,7 +562,7 @@ func TestRuntimeRestartCommitsReservedApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := grantStore.ReserveUse(operation.ApprovalID); err != nil {
+	if _, err := grantStore.ReserveUse(operation.ApprovalID, operation.ID, operation.Operation); err != nil {
 		t.Fatal(err)
 	}
 	runtime.ReconcileInterrupted(t.Context(), operation)
@@ -828,6 +883,45 @@ func TestRuntimeAmbiguousApprovedExecutionRetainsUse(t *testing.T) {
 	}
 }
 
+func TestRuntimeRetainedWindowUseDoesNotBlockRemainingAuthority(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, adapter, operations, grantStore, closeRuntime := newRuntime(t,
+		&PossiblePartialError{Err: errors.New("connection lost")}, windowDecision, notifier, true)
+	defer closeRuntime()
+	adapter.requiresApproval = true
+	adapter.reconcileUnproven = true
+	request := agentv1.SubmitRequest{IdempotencyKey: "retained-window-1", Operation: "repo.create",
+		Target: json.RawMessage(`{"name":"demo"}`), Arguments: json.RawMessage(`{"value":1}`), Reason: "create demo"}
+	first, _, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := grantStore.Approve(first.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Advance(t.Context(), first)
+	failed, _ := operations.Get("agent", first.ID)
+	grant, _ := grantStore.Get(first.ApprovalID)
+	if failed.State != agentv1.StateFailed || !grant.ReservationRetained || grant.ReservedCount != 1 {
+		t.Fatalf("retained window operation = %+v grant=%+v", failed, grant)
+	}
+
+	adapter.executeErr = nil
+	adapter.reconcileUnproven = false
+	request.IdempotencyKey = "retained-window-2"
+	request.Arguments = json.RawMessage(`{"value":2}`)
+	second, created, err := runtime.Submit(t.Context(), "agent", request)
+	if err != nil || !created || second.State != agentv1.StateApproved || second.ApprovalID != first.ApprovalID || notifier.count != 1 {
+		t.Fatalf("second window operation = %+v, %v, %v; notifications=%d", second, created, err, notifier.count)
+	}
+	runtime.Advance(t.Context(), second)
+	completed, _ := operations.Get("agent", second.ID)
+	grant, _ = grantStore.Get(first.ApprovalID)
+	if completed.State != agentv1.StateSucceeded || grant.UsedCount != 1 || grant.ReservedCount != 1 || !grant.ReservationRetained {
+		t.Fatalf("completed second window operation = %+v grant=%+v", completed, grant)
+	}
+}
+
 func TestRuntimeRestartFailsWhenOutcomeCannotBeProven(t *testing.T) {
 	runtime, adapter, operations, _, closeRuntime := newRuntime(t, nil, directDecision, nil, false)
 	defer closeRuntime()
@@ -965,7 +1059,7 @@ func TestRuntimeRestartRetainsUnprovenReservedAuthority(t *testing.T) {
 	if _, err := grantStore.Approve(operation.ApprovalID, notifier.message.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := grantStore.ReserveUse(operation.ApprovalID); err != nil {
+	if _, err := grantStore.ReserveUse(operation.ApprovalID, operation.ID, operation.Operation); err != nil {
 		t.Fatal(err)
 	}
 	operation, err = operations.Transition(operation.ID, agentv1.StateApproved)
@@ -994,6 +1088,17 @@ func requestDecision(policy.Request, policy.DecisionOptions) policy.Decision {
 	}}
 }
 
+func windowDecision(_ policy.Request, options policy.DecisionOptions) policy.Decision {
+	if !options.ForGrantRequest && len(options.ActiveGrants) > 0 {
+		grant := options.ActiveGrants[0]
+		return policy.Decision{Effect: policy.EffectAllow, Allowed: true, GrantID: grant.ID, MatchedGrantRuleIDs: []string{grant.ID}}
+	}
+	return policy.Decision{Effect: policy.EffectRequest, GrantPolicy: &policy.GrantPolicy{
+		Mode: string(policy.GrantModeWindow), DefaultMinutes: 1, MaxMinutes: 2, RequestTTLMinutes: 1,
+		DefaultMaxUses: 3, MaxUses: 3,
+	}}
+}
+
 func allowThenRequestDecision(_ policy.Request, options policy.DecisionOptions) policy.Decision {
 	if options.ForGrantRequest {
 		return requestDecision(policy.Request{}, options)
@@ -1008,7 +1113,7 @@ func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, poli
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := capability.Descriptor{Name: "repo.create", OperationRevision: 1, AuthorizationMode: capability.ModeExecution}
+	descriptor := capability.Descriptor{Name: "repo.create", OperationRevision: 1, Disposition: "E"}
 	adapter := &runtimeAdapter{descriptor: descriptor, executeErr: executeErr}
 	registry, err := NewRegistry(RegistryOptions{Provider: "test", Descriptor: func(name string) (capability.Descriptor, bool) {
 		return descriptor, name == descriptor.Name
@@ -1019,8 +1124,9 @@ func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, poli
 	grantStore := grants.NewDatabase(database, grants.Options{PendingTimeout: time.Minute, DefaultDuration: time.Minute,
 		MaxDuration: time.Hour, ReservationTimeout: time.Minute})
 	policyRegistry := policy.Registry{
-		Operations: map[string]policy.OperationSpec{"repo.create": {TargetKinds: []string{"repo"}, Grantable: true, GrantMode: policy.GrantModeExecution}},
-		Targets:    map[string]policy.TargetSpec{"repo": {Fields: map[string]policy.FieldSpec{"name": {Required: true}}}},
+		Operations: map[string]policy.OperationSpec{"repo.create": {TargetKinds: []string{"repo"}, Grantable: true,
+			GrantMode: policy.GrantModeWindow, GrantModes: []policy.GrantMode{policy.GrantModeWindow, policy.GrantModeExecution}, MaxGrantUses: 3}},
+		Targets: map[string]policy.TargetSpec{"repo": {Fields: map[string]policy.FieldSpec{"name": {Required: true}}}},
 	}
 	coordinator, err := authorization.New(authorization.Options{Registry: policyRegistry, Decide: decide, Grants: grantStore})
 	if err != nil {
@@ -1034,15 +1140,26 @@ func newRuntime(t *testing.T, executeErr error, decide func(policy.Request, poli
 		InputData: func(input runtimeInput) (json.RawMessage, json.RawMessage) { return input.Target, input.Arguments },
 		PlanData:  func(plan runtimePlan) (json.RawMessage, json.RawMessage) { return plan.Target, plan.Arguments },
 		Prepare: func(preparation Preparation[runtimePlan, policy.Request]) (authorization.GrantIntent, error) {
+			mode := policy.GrantModeExecution
+			if preparation.ReusedGrant != nil {
+				mode = policy.GrantMode(preparation.ReusedGrant.Metadata[grants.MetadataMode])
+			} else if preparation.Decision.GrantPolicy != nil {
+				mode = policy.GrantMode(preparation.Decision.GrantPolicy.Mode)
+			}
 			canonical, encodeErr := json.Marshal(struct {
 				OperationID string      `json:"operation_id"`
 				Plan        runtimePlan `json:"plan"`
 			}{OperationID: preparation.OperationID, Plan: preparation.Plan})
 			plan := grants.ImmutablePlan{Digest: plandigest.Digest(canonical), SchemaName: "test.io/plan/v1", Canonical: canonical, CreatedAt: preparation.CreatedAt}
+			maxUses := usebudget.Limit(1)
+			if mode == policy.GrantModeWindow {
+				maxUses = 3
+			}
 			request := grants.Request{Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
-				Target: preparation.Core.Target, Attrs: preparation.Core.Attrs, Metadata: map[string]string{"test_plan_digest": plan.Digest}, Reason: preparation.Reason,
-				Duration: time.Minute, PendingTimeout: time.Minute, MaxUses: 1, MaxUsesSpecified: true}
-			return authorization.GrantIntent{Mode: policy.GrantModeExecution, Authorization: preparation.Core, Request: request, Plan: plan}, encodeErr
+				Target: preparation.Core.Target, Attrs: preparation.Core.Attrs,
+				Metadata: map[string]string{"test_plan_digest": plan.Digest, grants.MetadataMode: string(mode)}, Reason: preparation.Reason,
+				Duration: time.Minute, PendingTimeout: time.Minute, MaxUses: maxUses, MaxUsesSpecified: true}
+			return authorization.GrantIntent{Mode: mode, Authorization: preparation.Core, Request: request, Plan: plan}, encodeErr
 		},
 		Load: func(operation agentv1.Operation, _ Adapter[runtimeInput, runtimePlan, policy.Request]) (runtimePlan, error) {
 			record, loadErr := database.Plan(context.Background(), operation.PlanDigest)

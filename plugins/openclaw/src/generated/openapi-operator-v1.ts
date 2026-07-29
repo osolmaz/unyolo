@@ -144,6 +144,8 @@ export interface components {
       | "consumed"
       | "revoked";
     /** @enum {string} */
+    GrantMode: "window" | "execution";
+    /** @enum {string} */
     StatusGroup: "pending" | "active" | "history" | "all";
     Fact: {
       label: string;
@@ -196,6 +198,7 @@ export interface components {
       revision: number;
       requester: string;
       operation: string;
+      mode: components["schemas"]["GrantMode"];
       status: components["schemas"]["Status"];
       /** Format: date-time */
       requested_at: string;

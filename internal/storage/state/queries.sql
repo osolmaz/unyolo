@@ -55,6 +55,19 @@ UPDATE grants SET
     notification_delivery_unresolved = ?
 WHERE id = ? AND revision = ?;
 
+-- name: ListGrantUses :many
+SELECT * FROM grant_uses ORDER BY created_at, request_id;
+
+-- name: InsertGrantUse :exec
+INSERT INTO grant_uses (
+    request_id, grant_id, operation, state, revision, created_at, updated_at, settled_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: UpdateGrantUse :execrows
+UPDATE grant_uses SET
+    grant_id = ?, operation = ?, state = ?, revision = ?, created_at = ?, updated_at = ?, settled_at = ?
+WHERE request_id = ? AND revision = ?;
+
 -- name: ListGrantLifecycleEvents :many
 SELECT * FROM lifecycle_events
 WHERE subject_kind = 'grant'

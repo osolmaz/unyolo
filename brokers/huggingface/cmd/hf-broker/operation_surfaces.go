@@ -230,7 +230,7 @@ func validateOperationClientOptions(descriptor opcatalog.Descriptor, options ope
 	if err := validateOperationTransferOptions(descriptor, options); err != nil {
 		return err
 	}
-	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+	if !descriptor.HasExecutionDisposition() {
 		return validateWindowOperationClientOptions(options)
 	}
 	return validateExecutionOperationClientOptions(descriptor, options)
@@ -562,7 +562,7 @@ func catalogOperationInputSchemas(descriptor opcatalog.Descriptor) (map[string]a
 		setTargetKind(custom.Target, descriptor.TargetKind)
 		return custom.Target, custom.Arguments, custom.Sealed
 	}
-	if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+	if !descriptor.HasExecutionDisposition() {
 		target := operations.WindowTargetSchema()
 		setTargetKind(target, descriptor.TargetKind)
 		return target, nil, nil

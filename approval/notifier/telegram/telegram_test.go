@@ -140,7 +140,7 @@ func assertClosedDecisionMessage(t *testing.T, payload map[string]any, status st
 func validApproval() approvalnotify.Approval {
 	return approvalnotify.Approval{
 		GrantID: "grant-1", DecisionToken: "decision-token", Broker: "GitHub", Requester: "agent-a",
-		Operation: "repo.delete", Reason: "remove an obsolete test repository", RequestedDurationSeconds: 300,
+		Operation: "repo.delete", Mode: "execution", Reason: "remove an obsolete test repository", RequestedDurationSeconds: 300,
 		MaxUses: usebudget.Limit(1), PendingExpiresAt: time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC),
 		Presentation: approvalview.Presentation{Risk: approvalview.RiskCritical, Title: "Delete repository", Target: "example/project",
 			Summary: "Permanently delete the selected repository.", Facts: []approvalview.Fact{{Label: "Visibility", Value: "private"}},

@@ -30,7 +30,7 @@ func TestRunOperatorV1(t *testing.T) {
 	}
 	RunOperatorV1(t, Fixture{
 		Runtime: runtime, ClientToken: clientToken, OperatorToken: operatorToken,
-		Request: grants.Request{Client: "bob", Operation: "repo.read", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"owner/repo"}}}, Reason: "conformance"},
+		Request: grants.Request{Client: "bob", Operation: "repo.read", Metadata: map[string]string{grants.MetadataMode: "window"}, Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"owner/repo"}}}, Reason: "conformance"},
 	})
 }
 

@@ -19,7 +19,8 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 		t.Fatalf("catalog bounds = %d, %q, %q", len(values), values[0].Name, values[len(values)-1].Name)
 	}
 	deleteRepo, ok := ByName("repo.delete")
-	if !ok || deleteRepo.AuthorizationMode != ModeExecution || !deleteRepo.ExplicitOnly || deleteRepo.MaxUses != 1 || deleteRepo.MCPTool == nil {
+	if !ok || deleteRepo.DefaultAuthorizationMode != ModeWindow || !deleteRepo.AllowsAuthorizationMode(ModeExecution) ||
+		!deleteRepo.ExplicitOnly || deleteRepo.MaxUses != int(usebudget.MaxFiniteUses) || deleteRepo.MCPTool == nil {
 		t.Fatalf("repo.delete = %+v, %v", deleteRepo, ok)
 	}
 	if deleteRepo.DefaultPolicyEffect != DefaultEffectRequest {
@@ -45,18 +46,10 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 		t.Fatalf("bucket.object.write = %+v, %v", bucketWrite, ok)
 	}
 	for _, descriptor := range values {
-		if descriptor.AuthorizationMode != ModeWindow {
-			continue
-		}
-		sensitive := descriptor.Name == "git.push.force" || descriptor.Name == "git.ref.delete" || descriptor.Name == "git.tag.update"
-		if sensitive {
-			if descriptor.MaxUses != 25 || descriptor.ApprovalTTLSeconds != 60*60 {
-				t.Fatalf("sensitive window operation %s = %+v", descriptor.Name, descriptor)
-			}
-			continue
-		}
-		if descriptor.MaxUses != int(usebudget.MaxFiniteUses) || descriptor.ApprovalTTLSeconds != 7*24*60*60 {
-			t.Fatalf("routine window operation %s = %+v", descriptor.Name, descriptor)
+		if descriptor.DefaultAuthorizationMode != ModeWindow || !descriptor.AllowsAuthorizationMode(ModeWindow) ||
+			!descriptor.AllowsAuthorizationMode(ModeExecution) || descriptor.MaxUses != int(usebudget.MaxFiniteUses) ||
+			descriptor.ApprovalTTLSeconds != 7*24*60*60 {
+			t.Fatalf("universal reusable operation %s = %+v", descriptor.Name, descriptor)
 		}
 	}
 }
@@ -64,9 +57,12 @@ func TestCatalogIsCompleteAndSecurityMetadataIsCoherent(t *testing.T) {
 func TestValidateRejectsCatalogDrift(t *testing.T) {
 	values := MustAll()
 	tests := map[string]func([]Descriptor){
-		"duplicate":        func(items []Descriptor) { items[1] = items[0] },
-		"missing name":     func(items []Descriptor) { items[0].Name = "" },
-		"invalid mode":     func(items []Descriptor) { items[0].AuthorizationMode = "other" },
+		"duplicate":            func(items []Descriptor) { items[1] = items[0] },
+		"missing name":         func(items []Descriptor) { items[0].Name = "" },
+		"invalid default mode": func(items []Descriptor) { items[0].DefaultAuthorizationMode = "other" },
+		"missing execution mode": func(items []Descriptor) {
+			items[0].AuthorizationModes = []AuthorizationMode{ModeWindow}
+		},
 		"invalid status":   func(items []Descriptor) { items[0].Implementation = "other" },
 		"missing risk":     func(items []Descriptor) { items[0].Risk = "" },
 		"missing effect":   func(items []Descriptor) { items[0].DefaultPolicyEffect = "" },
@@ -87,14 +83,8 @@ func TestValidateRejectsCatalogDrift(t *testing.T) {
 		},
 		"invalid ttl":       func(items []Descriptor) { items[0].RequestTTLSeconds = 0 },
 		"family glob":       func(items []Descriptor) { item := find(items, "repo.delete"); item.FamilyGlobAllowed = true },
-		"execution uses":    func(items []Descriptor) { item := find(items, "repo.create"); item.MaxUses = 2 },
-		"sealed window":     func(items []Descriptor) { item := find(items, "space.secret.set"); item.AuthorizationMode = ModeWindow },
+		"window uses":       func(items []Descriptor) { item := find(items, "repo.create"); item.MaxUses = 1 },
 		"disposition drift": func(items []Descriptor) { item := find(items, "repo.delete"); item.ExplicitOnly = false },
-		"sealed nonexecution": func(items []Descriptor) {
-			item := find(items, "space.secret.set")
-			item.AuthorizationMode = ModeWindow
-			item.Disposition = strings.Replace(item.Disposition, "E", "W", 1)
-		},
 		"credential output kind": func(items []Descriptor) {
 			item := find(items, "service_account.token.create")
 			invalid := "INVALID"
@@ -133,7 +123,8 @@ func TestValidateExecutorBindingRejectsInvalidDispositions(t *testing.T) {
 	cases := []Descriptor{
 		{Name: "protocol", Implementation: StatusProtocol},
 		{Name: "blocked", Implementation: StatusBlockedUpstream, ExecutorKind: "inline"},
-		{Name: "bounded", Implementation: StatusImplemented, ExecutorKind: "bounded-stream", AuthorizationMode: ModeExecution},
+		{Name: "bounded", Implementation: StatusImplemented, ExecutorKind: "bounded-stream", Disposition: "E",
+			AuthorizationModes: []AuthorizationMode{ModeWindow, ModeExecution}},
 		{Name: "unknown", Implementation: StatusImplemented, ExecutorKind: "shell"},
 	}
 	for _, descriptor := range cases {

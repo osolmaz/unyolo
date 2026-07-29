@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 )
@@ -33,10 +34,10 @@ func operationInfos() map[Operation]operationInfo {
 		for _, descriptor := range descriptors {
 			spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
 			if spec.Grantable {
-				spec.GrantMode = corepolicy.GrantModeWindow
-				if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-					spec.GrantMode = corepolicy.GrantModeExecution
-				}
+				spec.GrantMode = corepolicy.GrantMode(descriptor.DefaultAuthorizationMode)
+				spec.GrantModes = authorizationModes(descriptor.AuthorizationModes)
+				spec.MaxGrantMinutes = descriptor.ApprovalTTLSeconds / 60
+				spec.MaxGrantUses = usebudget.Limit(descriptor.MaxUses)
 			}
 			operationInfoValues[Operation(descriptor.Name)] = operationInfo{
 				spec: spec, familyGlobAllowed: descriptor.AgentFacing && descriptor.FamilyGlobAllowed,

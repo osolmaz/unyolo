@@ -281,11 +281,12 @@ Grantable git capabilities are `git.push.force` for history rewrites,
 moving or deleting tags. Each one must be enabled separately with a
 `"effect": "request"` rule in `scope.json`.
 
-The default preset gives routine reusable repository and bucket operations a
-`1000000`-use, seven-day ceiling and uses that ceiling as the default. This
-supports large uploads without widening the approved operation, target, or
-attrs. Force pushes, ref deletions, and tag updates stay capped at 25 uses for
-one hour. Execution grants stay single-use.
+Every requestable operation in the default preset uses a reusable window.
+Routine repository and bucket operations receive a `1000000`-use, seven-day
+ceiling. Force pushes, ref deletions, and tag updates stay capped at 25 uses
+for one hour. Policy may select exact execution mode, which always uses one
+immutable plan once. Neither mode widens the approved operation, target, or
+attrs.
 
 ```json
 {

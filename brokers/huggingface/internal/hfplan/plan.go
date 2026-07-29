@@ -118,7 +118,7 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 		Target: target, Arguments: arguments, Preconditions: json.RawMessage(`{}`),
 		CredentialSelector: CredentialSelector{Name: "primary"},
 		Presentation:       agentv1.Presentation{Title: request.Operation, Summary: truncateUTF8(request.Reason, 500)},
-		Authorization: Authorization{Mode: request.Metadata["hf_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
+		Authorization: Authorization{Mode: request.Metadata[grants.MetadataMode], RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
 			Target: GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)}, Attributes: cloneValues(request.Attrs)},
 		CreatedAt: createdAt.UTC(), ExpiresAt: expiresAt.UTC(),
@@ -409,7 +409,7 @@ func planGrantAuthorizationMatches(plan Plan, grant grants.Grant, duration time.
 	return plan.Authorization.Target.Kind == grant.Target.Kind &&
 		reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) &&
 		reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
-		plan.Authorization.Mode == grant.Metadata["hf_grant_mode"] &&
+		plan.Authorization.Mode == grant.Metadata[grants.MetadataMode] &&
 		plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
 		plan.Authorization.RequestedMaxUses == maxUses &&
 		plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted

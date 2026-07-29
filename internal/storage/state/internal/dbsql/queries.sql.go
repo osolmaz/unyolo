@@ -442,6 +442,42 @@ func (q *Queries) InsertGrantLifecycleEvent(ctx context.Context, arg InsertGrant
 	return err
 }
 
+const insertGrantUse = `-- name: InsertGrantUse :exec
+INSERT INTO grant_uses (
+    request_id, grant_id, operation, state, revision, created_at, updated_at, settled_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertGrantUseParams struct {
+	RequestID string
+	GrantID   string
+	Operation string
+	State     string
+	Revision  int64
+	CreatedAt string
+	UpdatedAt string
+	SettledAt sql.NullString
+}
+
+// InsertGrantUse
+//
+//	INSERT INTO grant_uses (
+//	    request_id, grant_id, operation, state, revision, created_at, updated_at, settled_at
+//	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+func (q *Queries) InsertGrantUse(ctx context.Context, arg InsertGrantUseParams) error {
+	_, err := q.db.ExecContext(ctx, insertGrantUse,
+		arg.RequestID,
+		arg.GrantID,
+		arg.Operation,
+		arg.State,
+		arg.Revision,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.SettledAt,
+	)
+	return err
+}
+
 const insertNotificationOutbox = `-- name: InsertNotificationOutbox :exec
 INSERT INTO notification_outbox (
     grant_id, kind, payload_json, idempotency_key, status, attempts,
@@ -619,6 +655,45 @@ func (q *Queries) ListGrantLifecycleEvents(ctx context.Context) ([]LifecycleEven
 			&i.Revision,
 			&i.OccurredAt,
 			&i.PayloadJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGrantUses = `-- name: ListGrantUses :many
+SELECT request_id, grant_id, operation, state, revision, created_at, updated_at, settled_at FROM grant_uses ORDER BY created_at, request_id
+`
+
+// ListGrantUses
+//
+//	SELECT request_id, grant_id, operation, state, revision, created_at, updated_at, settled_at FROM grant_uses ORDER BY created_at, request_id
+func (q *Queries) ListGrantUses(ctx context.Context) ([]GrantUse, error) {
+	rows, err := q.db.QueryContext(ctx, listGrantUses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GrantUse{}
+	for rows.Next() {
+		var i GrantUse
+		if err := rows.Scan(
+			&i.RequestID,
+			&i.GrantID,
+			&i.Operation,
+			&i.State,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SettledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1060,6 +1135,47 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (int64
 		arg.NotificationClaimUntil,
 		arg.NotificationDeliveryUnresolved,
 		arg.ID,
+		arg.Revision_2,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateGrantUse = `-- name: UpdateGrantUse :execrows
+UPDATE grant_uses SET
+    grant_id = ?, operation = ?, state = ?, revision = ?, created_at = ?, updated_at = ?, settled_at = ?
+WHERE request_id = ? AND revision = ?
+`
+
+type UpdateGrantUseParams struct {
+	GrantID    string
+	Operation  string
+	State      string
+	Revision   int64
+	CreatedAt  string
+	UpdatedAt  string
+	SettledAt  sql.NullString
+	RequestID  string
+	Revision_2 int64
+}
+
+// UpdateGrantUse
+//
+//	UPDATE grant_uses SET
+//	    grant_id = ?, operation = ?, state = ?, revision = ?, created_at = ?, updated_at = ?, settled_at = ?
+//	WHERE request_id = ? AND revision = ?
+func (q *Queries) UpdateGrantUse(ctx context.Context, arg UpdateGrantUseParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateGrantUse,
+		arg.GrantID,
+		arg.Operation,
+		arg.State,
+		arg.Revision,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.SettledAt,
+		arg.RequestID,
 		arg.Revision_2,
 	)
 	if err != nil {

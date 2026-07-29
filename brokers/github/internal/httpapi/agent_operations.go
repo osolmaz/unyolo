@@ -69,7 +69,10 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloa
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
-	mode := runtimeGrantMode(descriptor)
+	mode, err := runtimeGrantMode(preparation, descriptor)
+	if err != nil {
+		return unyoloauthorization.GrantIntent{}, err
+	}
 	duration, pending, err := runtimeGrantBounds(adapter, preparation, mode)
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
@@ -105,11 +108,17 @@ func (s *Server) runtimePlanDescriptor(name string) (operations.Adapter, opcatal
 	return adapter, descriptor, nil
 }
 
-func runtimeGrantMode(descriptor opcatalog.Descriptor) corepolicy.GrantMode {
-	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		return corepolicy.GrantModeExecution
+func runtimeGrantMode(preparation operations.Preparation, descriptor opcatalog.Descriptor) (corepolicy.GrantMode, error) {
+	mode := corepolicy.GrantMode(descriptor.DefaultAuthorizationMode)
+	if preparation.ReusedGrant != nil {
+		mode = corepolicy.GrantMode(preparation.ReusedGrant.Metadata[grants.MetadataMode])
+	} else if !preparation.Direct && preparation.Decision.GrantPolicy != nil {
+		mode = corepolicy.GrantMode(preparation.Decision.GrantPolicy.Mode)
 	}
-	return corepolicy.GrantModeWindow
+	if !descriptor.AllowsAuthorizationMode(opcatalog.AuthorizationMode(mode)) {
+		return "", errors.New("operation does not support the selected approval mode")
+	}
+	return mode, nil
 }
 
 func runtimeGrantBounds(adapter operations.Adapter, preparation operations.Preparation, mode corepolicy.GrantMode) (time.Duration, time.Duration, error) {
@@ -125,12 +134,12 @@ func runtimeGrantBounds(adapter operations.Adapter, preparation operations.Prepa
 }
 
 func reusedRuntimeGrantBounds(grant grants.Grant, mode corepolicy.GrantMode) (time.Duration, time.Duration, error) {
-	if corepolicy.GrantMode(grant.Metadata["github_grant_mode"]) != mode || mode != corepolicy.GrantModeWindow {
+	if corepolicy.GrantMode(grant.Metadata[grants.MetadataMode]) != mode || mode != corepolicy.GrantModeWindow {
 		return 0, 0, errors.New("active grant approval mode does not match operation")
 	}
-	duration := grant.RequestedDuration
+	duration := grant.Duration
 	if duration <= 0 {
-		duration = grant.Duration
+		duration = grant.RequestedDuration
 	}
 	return duration, grant.PendingTimeout, nil
 }
@@ -150,7 +159,7 @@ func runtimeGrantRequest(preparation operations.Preparation, mode corepolicy.Gra
 		Client: preparation.Client, ClientRequestID: preparation.OperationID, Operation: preparation.DescriptorName,
 		Target: preparation.Core.Target, Attrs: preparation.Core.Attrs, Reason: preparation.Reason,
 		Duration: duration, PendingTimeout: pending, MaxUses: maxUses, MaxUsesSpecified: true,
-		Metadata: map[string]string{"github_grant_mode": string(mode)},
+		Metadata: map[string]string{grants.MetadataMode: string(mode)},
 	}
 }
 
@@ -159,7 +168,7 @@ func runtimeGrantUses(preparation operations.Preparation, mode corepolicy.GrantM
 		return 1
 	}
 	if preparation.ReusedGrant != nil {
-		return preparation.ReusedGrant.RequestedMaxUses
+		return preparation.ReusedGrant.MaxUses
 	}
 	return preparation.Decision.GrantPolicy.DefaultMaxUses
 }
@@ -192,7 +201,7 @@ func prepareAdapterPlan(provider operations.Plan, request grants.Request, presen
 		APIVersion: ghplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
 		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
 		Preconditions: provider.Preconditions, CredentialSelector: ghplan.CredentialSelector{Name: "primary", Kind: kind, Binding: binding}, Presentation: presentation,
-		Authorization: ghplan.Authorization{Mode: request.Metadata["github_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
+		Authorization: ghplan.Authorization{Mode: request.Metadata[grants.MetadataMode], RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
 			Target: ghplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
 			PolicyEffect: policyEffect, PolicyRuleIDs: append([]string(nil), policyRuleIDs...)},

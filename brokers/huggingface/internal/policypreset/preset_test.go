@@ -42,7 +42,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	forcePush := policy.Request{Client: "agent", Operation: policy.OpGitPushForce,
 		Target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo", Refs: []string{"refs/heads/main"}}}
 	decision = rendered.Decide(forcePush, nil, time.Now(), true)
-	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != 25 || decision.GrantPolicy.MaxUses != 25 {
+	if decision.GrantPolicy == nil || decision.GrantPolicy.DefaultMaxUses != usebudget.MaxFiniteUses || decision.GrantPolicy.MaxUses != usebudget.MaxFiniteUses {
 		t.Fatalf("force push grant policy = %+v", decision.GrantPolicy)
 	}
 }
@@ -159,7 +159,7 @@ func TestCatalogNeverDefaultsDangerousOperationsToAllow(t *testing.T) {
 		if descriptor.DefaultPolicyEffect != opcatalog.DefaultEffectAllow {
 			continue
 		}
-		if descriptor.Risk == opcatalog.RiskHigh || descriptor.Risk == opcatalog.RiskCritical || descriptor.AuthorizationMode == opcatalog.ModeExecution || descriptor.ExplicitOnly || descriptor.Sealed || descriptor.Internal || descriptor.CredentialOutputKind != nil || !descriptor.AgentFacing {
+		if descriptor.Risk == opcatalog.RiskHigh || descriptor.Risk == opcatalog.RiskCritical || descriptor.HasExecutionDisposition() || descriptor.ExplicitOnly || descriptor.Sealed || descriptor.Internal || descriptor.CredentialOutputKind != nil || !descriptor.AgentFacing {
 			t.Fatalf("dangerous operation defaults to allow: %+v", descriptor)
 		}
 	}

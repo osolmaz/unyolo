@@ -20,7 +20,7 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	fixedNow := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
 	plans := newTestPlanStore(t, func() time.Time { return fixedNow })
 	request := grants.Request{Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
-		Attrs: map[string][]string{"ref_change": {`"non_fast_forward"`}}, Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "repair", Duration: 5 * time.Minute, MaxUses: 2}
+		Attrs: map[string][]string{"ref_change": {`"non_fast_forward"`}}, Metadata: map[string]string{grants.MetadataMode: "window"}, Reason: "repair", Duration: 5 * time.Minute, MaxUses: 2}
 	if err := plans.Bind(&request); err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 		t.Fatalf("metadata = %+v", request.Metadata)
 	}
 	second := request
-	second.Metadata = map[string]string{"hf_grant_mode": "window"}
+	second.Metadata = map[string]string{grants.MetadataMode: "window"}
 	if err := plans.Bind(&second); err != nil || second.Metadata[MetadataDigest] != digest {
 		t.Fatalf("second bind = %+v, %v", second.Metadata, err)
 	}
@@ -65,7 +65,7 @@ func TestCanonicalPlanDigestFixture(t *testing.T) {
 	request := grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force",
 		Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
-		Attrs:  map[string][]string{"ref_change": {`"non_fast_forward"`}}, Metadata: map[string]string{"hf_grant_mode": "window"},
+		Attrs:  map[string][]string{"ref_change": {`"non_fast_forward"`}}, Metadata: map[string]string{grants.MetadataMode: "window"},
 		Duration: 5 * time.Minute, MaxUses: 2,
 	}
 	encoded, err := encode(FromRequest(request, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)))
@@ -83,7 +83,7 @@ func TestFromRequestBoundsLongReasonPresentation(t *testing.T) {
 	request := grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force",
 		Target:   policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: reason,
+		Metadata: map[string]string{grants.MetadataMode: "window"}, Reason: reason,
 		Duration: time.Minute, MaxUses: 1,
 	}
 	plan := FromRequest(request, time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC))
@@ -134,7 +134,7 @@ func TestStoreRejectsMissingAndCorruptPlans(t *testing.T) {
 	t.Parallel()
 	plans := newTestPlanStore(t, time.Now)
 	request := grants.Request{Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force", Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"model/acme/demo"}}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "test", Duration: time.Minute, MaxUses: 1}
+		Metadata: map[string]string{grants.MetadataMode: "window"}, Reason: "test", Duration: time.Minute, MaxUses: 1}
 	if err := plans.Bind(&request); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
 			"kind": {"bucket"}, "owner": {"alice"}, "name": {"artifacts"}, "keys": {"validation/**"},
 		}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: 7 * 24 * time.Hour, MaxUses: 25,
+		Metadata: map[string]string{grants.MetadataMode: "window"}, Duration: 7 * 24 * time.Hour, MaxUses: 25,
 	}, now)
 	plan.CredentialSelector.Binding = providercredential.Bind(snapshot)
 	requirement := func(string) (providercredential.Requirement, bool) {
@@ -420,7 +420,7 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
 			"name": {"dataset/alice/private"}, "refs": {"refs/heads/main"},
 		}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Duration: 5 * time.Minute, MaxUses: 1,
+		Metadata: map[string]string{grants.MetadataMode: "window"}, Duration: 5 * time.Minute, MaxUses: 1,
 	}, now)
 	repository.CredentialSelector.Binding = providercredential.Bind(snapshot)
 	if err := validator.ValidateCredential(repository); err != nil {
@@ -436,7 +436,7 @@ func validTestRequest() grants.Request {
 	return grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: "repo.delete",
 		Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}}},
-		Attrs:  map[string][]string{"visibility": {`"private"`}}, Metadata: map[string]string{"hf_grant_mode": "execution"},
+		Attrs:  map[string][]string{"visibility": {`"private"`}}, Metadata: map[string]string{grants.MetadataMode: "execution"},
 		Reason: "remove obsolete test repository", Duration: 5 * time.Minute, MaxUses: 1,
 	}
 }

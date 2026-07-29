@@ -29,7 +29,7 @@ const (
 	ModeWindow    = "window"
 	ModeExecution = "execution"
 
-	metadataMode     = "hf_grant_mode"
+	metadataMode     = grants.MetadataMode
 	targetKind       = "kind"
 	targetType       = "type"
 	targetOwner      = "owner"
@@ -392,6 +392,6 @@ func MatchActiveFunc(store *grants.Store, client, operation, target, ref string,
 }
 
 func usableGrant(grant grants.Grant, operation, target, ref string) bool {
-	return grant.Status == grants.StatusActive && !grant.ReservationRetained && grant.Operation == operation &&
+	return grant.Status == grants.StatusActive && grant.Operation == operation &&
 		Target(grant) == target && Ref(grant) == ref && grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount)
 }

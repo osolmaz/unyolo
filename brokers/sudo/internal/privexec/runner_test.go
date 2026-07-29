@@ -49,7 +49,7 @@ func TestRunnerStartsOnlyTrustedFixedExecutable(t *testing.T) {
 	if _, err := NewRunner("/usr/bin/true", uint32(os.Getuid())); err != nil { // #nosec G115 -- uid is non-negative.
 		t.Fatal(err)
 	}
-	value := plan.Plan{Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", CommandID: "true",
+	value := plan.Plan{Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", AuthorizationMode: "execution", CommandID: "true",
 		TargetUser: "current", TargetUID: uint32(os.Getuid()), TargetGID: uint32(os.Getgid()), Executable: "/usr/bin/true", // #nosec G115 -- ids are non-negative.
 		WorkingDirectory: "/", Environment: []string{"LANG=C", "LC_ALL=C"}, TimeoutSeconds: 5, MaxOutputBytes: 100,
 		CatalogDigest: strings.Repeat("a", 64), RequestedDurationSeconds: 60, RequestedMaxUses: 1, CreatedAt: time.Now().UTC()}
@@ -127,7 +127,7 @@ func TestInternalPlanDescriptorAndReadValidation(t *testing.T) {
 
 func testChildPlan() plan.Plan {
 	return plan.Plan{
-		Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", CommandID: "true",
+		Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", AuthorizationMode: "execution", CommandID: "true",
 		TargetUser: "current", TargetUID: uint32(os.Getuid()), TargetGID: uint32(os.Getgid()), Executable: "/usr/bin/true", // #nosec G115 -- ids are non-negative.
 		WorkingDirectory: "/", Environment: []string{"LANG=C", "LC_ALL=C"}, TimeoutSeconds: 5, MaxOutputBytes: 100,
 		CatalogDigest: strings.Repeat("a", 64), RequestedDurationSeconds: 60, RequestedMaxUses: 1, CreatedAt: time.Now().UTC(),

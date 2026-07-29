@@ -472,7 +472,7 @@ func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	}
 }
 
-func TestRetainedReservationDoesNotAuthorizeRuntimeRequest(t *testing.T) {
+func TestRetainedReservationPreservesOtherRuntimeUses(t *testing.T) {
 	request, err := hfgrant.CanonicalRequest(hfgrant.Input{
 		Client:          "agent",
 		ClientRequestID: "retained-reservation",
@@ -497,11 +497,11 @@ func TestRetainedReservationDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 		ReservedCount:       1,
 		ReservationRetained: true,
 	}
-	if _, ok := activeGrantRule(retained); ok {
-		t.Fatal("activeGrantRule() generated a rule for a retained reservation")
+	if _, ok := activeGrantRule(retained); !ok {
+		t.Fatal("activeGrantRule() omitted remaining authority after a retained use")
 	}
-	if activeGrantMatchesIgnoringRef(retained, "agent", policy.OpGitPushForce, "dataset/acme/repo", refChangeAttrs("non_fast_forward")) {
-		t.Fatal("activeGrantMatchesIgnoringRef() matched a retained reservation")
+	if !activeGrantMatchesIgnoringRef(retained, "agent", policy.OpGitPushForce, "dataset/acme/repo", refChangeAttrs("non_fast_forward")) {
+		t.Fatal("activeGrantMatchesIgnoringRef() omitted remaining authority after a retained use")
 	}
 }
 
@@ -1001,13 +1001,13 @@ func TestGrantBackedReceivePackRejectionRetainsReservationAndUpdatesMessage(t *t
 	if updated.Status != grants.StatusActive || updated.ReservedCount != 1 || updated.UsedCount != 0 || !updated.ReservationRetained {
 		t.Fatalf("grant after upstream rejection = %+v, want active with retained reservation", updated)
 	}
-	if _, ok, err := hfgrant.MatchActiveFunc(handler.grants, "agent", string(policy.OpGitPushForce), "dataset/acme/repo", "refs/heads/main", nil); err != nil || ok {
-		t.Fatalf("MatchActive() after retained reservation ok=%v err=%v, want false nil", ok, err)
+	if _, ok, err := hfgrant.MatchActiveFunc(handler.grants, "agent", string(policy.OpGitPushForce), "dataset/acme/repo", "refs/heads/main", nil); err != nil || !ok {
+		t.Fatalf("MatchActive() after retained reservation ok=%v err=%v, want true nil", ok, err)
 	}
 	rejectedHits := upstream.receivePackHits()
 	output, err = runClientGitErr(clone, "push", "--force", "origin", "main")
-	if err == nil || !strings.Contains(output, "hf-broker") {
-		t.Fatalf("retry after retained reservation err=%v output:\n%s", err, output)
+	if err == nil {
+		t.Fatalf("retry after retained reservation unexpectedly succeeded:\n%s", output)
 	}
 	if got := upstream.receivePackHits(); got != rejectedHits {
 		t.Fatalf("retry after retained reservation reached upstream: hits=%d want %d", got, rejectedHits)

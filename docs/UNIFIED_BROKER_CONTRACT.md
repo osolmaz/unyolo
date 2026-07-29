@@ -4,11 +4,11 @@ This is the shared contract for `hf-broker`, `gh-broker`, and `sudo-broker`.
 It defines one install, setup, config, policy, approval, audit, and release
 shape. Each broker keeps only its dangerous platform adapter.
 
-The accepted next contract makes `window` the default for every grantable
-operation and allows both `window` and exact, single-use `execution` mode. See
+Every grantable operation defaults to `window` and also supports exact,
+single-use `execution` mode. See
 [ADR 0002](adr/0002-universal-reusable-grants.md) and the
-[reusable grants specification](REUSABLE_GRANTS_SPEC.md). The sections below
-describe released behavior until the implementation plan is complete.
+[reusable grants specification](REUSABLE_GRANTS_SPEC.md). Release artifacts
+published before this change retain their earlier provider classifications.
 
 ## Boundary
 

@@ -51,7 +51,7 @@ func NewBoundAdapters(client boundClient) ([]Adapter, error) {
 	adapters := make([]Adapter, 0, len(bindings))
 	for _, binding := range bindings {
 		descriptor, found := opcatalog.ByName(binding.Operation)
-		if !found || descriptor.AuthorizationMode != opcatalog.ModeExecution || descriptor.Sealed {
+		if !found || !descriptor.HasExecutionDisposition() || descriptor.Sealed {
 			continue
 		}
 		adapters = append(adapters, &boundAdapter{descriptor: descriptor, binding: binding, client: client})

@@ -1,4 +1,11 @@
 -- +goose Up
+CREATE TABLE state_contract (
+    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+    contract TEXT NOT NULL CHECK(contract = 'unyolo-state-v1-grant-uses')
+) STRICT;
+
+INSERT INTO state_contract (singleton, contract) VALUES (1, 'unyolo-state-v1-grant-uses');
+
 CREATE TABLE plans (
     digest TEXT PRIMARY KEY CHECK(length(digest) = 64),
     schema_name TEXT NOT NULL CHECK(length(schema_name) BETWEEN 1 AND 128),
@@ -50,6 +57,19 @@ CREATE INDEX grants_status_created_idx ON grants(status, created_at DESC, id DES
 CREATE INDEX grants_operation_idx ON grants(operation, status);
 CREATE UNIQUE INDEX grants_idempotency_idx ON grants(client, client_request_id)
 WHERE client_request_id <> '' AND status <> 'canceled';
+
+CREATE TABLE grant_uses (
+    request_id TEXT PRIMARY KEY CHECK(length(request_id) BETWEEN 1 AND 128),
+    grant_id TEXT NOT NULL REFERENCES grants(id) ON DELETE CASCADE,
+    operation TEXT NOT NULL CHECK(length(operation) BETWEEN 1 AND 128),
+    state TEXT NOT NULL CHECK(state IN ('reserved','committed','released','retained')),
+    revision INTEGER NOT NULL CHECK(revision >= 1),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    settled_at TEXT
+) STRICT;
+
+CREATE INDEX grant_uses_grant_state_idx ON grant_uses(grant_id, state, created_at);
 
 CREATE TABLE operations (
     id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 128),
@@ -127,5 +147,7 @@ DROP TABLE notification_outbox;
 DROP TABLE decision_records;
 DROP TABLE lifecycle_events;
 DROP TABLE operations;
+DROP TABLE grant_uses;
 DROP TABLE grants;
 DROP TABLE plans;
+DROP TABLE state_contract;

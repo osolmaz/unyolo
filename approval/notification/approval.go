@@ -23,6 +23,7 @@ type Approval struct {
 	Broker                   string
 	Requester                string
 	Operation                string
+	Mode                     string
 	Reason                   string
 	RequestedDurationSeconds int64
 	MaxUses                  usebudget.Limit
@@ -44,8 +45,9 @@ func Project(ctx context.Context, broker string, presenter approvalview.Presente
 	}
 	return Approval{
 		GrantID: grant.ID, DecisionToken: decisionToken, Broker: broker, Requester: requester,
-		Operation: grant.Operation, Reason: grant.Reason, RequestedDurationSeconds: int64(duration / time.Second),
-		MaxUses: grant.MaxUses, PendingExpiresAt: grant.PendingExpiresAt,
+		Operation: grant.Operation, Mode: grant.Metadata[grants.MetadataMode], Reason: grant.Reason,
+		RequestedDurationSeconds: int64(duration / time.Second),
+		MaxUses:                  grant.MaxUses, PendingExpiresAt: grant.PendingExpiresAt,
 		Presentation: presentation, PresentationUnavailable: unavailable,
 	}
 }
@@ -58,13 +60,14 @@ func SnapshotJSON(approval Approval) string {
 		Broker                   string                    `json:"broker"`
 		Requester                string                    `json:"requester"`
 		Operation                string                    `json:"operation"`
+		Mode                     string                    `json:"mode"`
 		Reason                   string                    `json:"reason"`
 		RequestedDurationSeconds int64                     `json:"requested_duration_seconds"`
 		MaxUses                  usebudget.Limit           `json:"max_uses"`
 		PendingExpiresAt         time.Time                 `json:"pending_expires_at"`
 		Presentation             approvalview.Presentation `json:"presentation"`
 		PresentationUnavailable  bool                      `json:"presentation_unavailable,omitempty"`
-	}{approval.GrantID, approval.Broker, approval.Requester, approval.Operation, approval.Reason,
+	}{approval.GrantID, approval.Broker, approval.Requester, approval.Operation, approval.Mode, approval.Reason,
 		approval.RequestedDurationSeconds, approval.MaxUses, approval.PendingExpiresAt.UTC(), approval.Presentation,
 		approval.PresentationUnavailable}
 	var encoded bytes.Buffer

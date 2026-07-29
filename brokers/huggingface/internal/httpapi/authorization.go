@@ -13,6 +13,7 @@ import (
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/operation/digest"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
@@ -321,7 +322,7 @@ func activeGrantRule(grant grants.Grant) (policy.Rule, bool) {
 }
 
 func grantEligibleForRule(grant grants.Grant) bool {
-	return grant.Status == grants.StatusActive && !grant.ReservationRetained && runtimeWindowGrant(grant) && hasGrantUses(grant)
+	return grant.Status == grants.StatusActive && runtimeWindowGrant(grant) && hasGrantUses(grant)
 }
 
 func grantAttrConstraints(grant grants.Grant) (map[string]policy.AttrConstraint, error) {
@@ -389,7 +390,6 @@ func (s *Server) matchActiveGrantIgnoringRef(client string, operation policy.Ope
 
 func activeGrantMatchesIgnoringRef(grant grants.Grant, client string, operation policy.Operation, target string, attrs map[string]any) bool {
 	return grant.Status == grants.StatusActive &&
-		!grant.ReservationRetained &&
 		runtimeWindowGrant(grant) &&
 		grant.Client == client &&
 		grant.Operation == string(operation) &&
@@ -434,23 +434,31 @@ func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request
 		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant plan is invalid", 0)
 		return
 	}
-	reserved, err := s.grants.ReserveUse(grant.ID)
+	requestIdentity := plandigest.Digest([]byte(client + "\x00" + r.Method + "\x00" + r.URL.RequestURI() + "\x00" +
+		string(classified.operation) + "\x00" + target + "\x00" + plandigest.Digest(classified.body)))
+	requestID, err := grants.DeriveUseRequestID(grant.ID, requestIdentity)
 	if err != nil {
+		writePlain(w, http.StatusForbidden, "hf-broker: grant is not active\n")
+		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant is not active", 0)
+		return
+	}
+	reserved, err := s.grants.ReserveUse(grant.ID, requestID, grant.Operation)
+	if err != nil || !reserved.Acquired || reserved.Use.State != grants.UseReserved {
 		writePlain(w, http.StatusForbidden, "hf-broker: grant is not active\n")
 		s.record(client, string(classified.operation), target, audit.DecisionRefused, "grant is not active", 0)
 		return
 	}
 	statusCode, err := s.forward(w, r, client, classified.route, classified.body, classified.bodyRead)
 	if errors.Is(err, errInvalidLFSAction) {
-		_, _ = s.grants.ReleaseUse(reserved.ID)
+		_, _ = s.grants.ReleaseUse(reserved.Grant.ID, reserved.Use.RequestID)
 	} else if err != nil {
 		s.closeForwardGrantReservation(reserved, err)
 	}
 	if s.recordForwardError(w, client, classified, target, statusCode, err, policy.Decision{}) {
 		return
 	}
-	s.updateGrantMessages(s.commitGrantUses([]grants.Grant{reserved}), s.updateGrantUseMessage)
-	s.recordGrantUsed(client, string(classified.operation), target, statusCode, []string{reserved.ID})
+	s.updateGrantMessages(s.commitGrantUses([]grants.UseReservation{reserved}), s.updateGrantUseMessage)
+	s.recordGrantUsed(client, string(classified.operation), target, statusCode, []string{reserved.Grant.ID})
 }
 
 func (s *Server) recordForwardError(w http.ResponseWriter, client string, classified classifiedRequest, target string, statusCode int, err error, decision policy.Decision) bool {
@@ -471,12 +479,15 @@ func (s *Server) recordForwardError(w http.ResponseWriter, client string, classi
 	return false
 }
 
-func (s *Server) closeForwardGrantReservation(reserved grants.Grant, err error) {
+func (s *Server) closeForwardGrantReservation(reserved grants.UseReservation, err error) {
 	if forwardErrorBeforeUpstream(err) {
-		_, _ = s.grants.ReleaseUse(reserved.ID)
+		_, _ = s.grants.ReleaseUse(reserved.Grant.ID, reserved.Use.RequestID)
 		return
 	}
-	s.updateRetainedGrantReservationMessage(reserved)
+	current, retainErr := s.grants.RetainUse(reserved.Grant.ID, reserved.Use.RequestID)
+	if retainErr == nil {
+		s.updateGrantUseMessage(current.Grant)
+	}
 }
 
 func forwardErrorBeforeUpstream(err error) bool {

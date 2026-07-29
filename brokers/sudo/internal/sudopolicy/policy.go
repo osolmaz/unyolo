@@ -4,6 +4,7 @@ package sudopolicy
 import (
 	"sort"
 
+	usebudget "github.com/osolmaz/unyolo/authorization/budget"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
 )
@@ -28,7 +29,12 @@ func Registry(snapshot *catalog.Snapshot) corepolicy.Registry {
 	sort.Strings(attributeNames)
 	return corepolicy.Registry{
 		Operations: map[string]corepolicy.OperationSpec{
-			OperationExecCommand: {TargetKinds: []string{TargetUser}, Attrs: attributeNames, Grantable: true, GrantMode: corepolicy.GrantModeExecution},
+			OperationExecCommand: {
+				TargetKinds: []string{TargetUser}, Attrs: attributeNames, Grantable: true,
+				GrantMode:       corepolicy.GrantModeWindow,
+				GrantModes:      []corepolicy.GrantMode{corepolicy.GrantModeWindow, corepolicy.GrantModeExecution},
+				MaxGrantMinutes: 24 * 60, MaxGrantUses: usebudget.MaxFiniteUses,
+			},
 		},
 		Targets: map[string]corepolicy.TargetSpec{
 			TargetUser: {Fields: map[string]corepolicy.FieldSpec{TargetName: {Required: true}}},

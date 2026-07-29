@@ -188,7 +188,7 @@ func TestMCPCompatibilityManifestMatchesCatalog(t *testing.T) {
 	projected, windows := []string{}, 0
 	for _, descriptor := range agentFacingDescriptors() {
 		projection := mcpprojection.ForOperation(descriptor)
-		if descriptor.AuthorizationMode == opcatalog.ModeWindow {
+		if !descriptor.HasExecutionDisposition() {
 			windows++
 		}
 		if !projection.Arguments.Empty() {

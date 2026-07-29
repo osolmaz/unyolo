@@ -457,7 +457,7 @@ func TestLifecyclePreparationReportsPersistenceFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) // #nosec G302 -- private test directory restore.
 
-	_, err = store.ReserveUse(result.Grant.ID)
+	_, err = store.ReserveUse(result.Grant.ID, "expired-use", result.Grant.Operation)
 	if !errors.Is(err, ErrNotActive) || !strings.Contains(err.Error(), "create temp file") {
 		t.Fatalf("ReserveUse() error = %v, want joined lifecycle and persistence errors", err)
 	}
@@ -546,13 +546,13 @@ func TestReleaseUseRestoresOverlay(t *testing.T) {
 	if _, err := store.Approve(grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(grant.ID); err != nil {
+	if _, err := store.ReserveUse(grant.ID, "released-use", grant.Operation); err != nil {
 		t.Fatal(err)
 	}
 	if overlays, err := store.ActivePolicyGrants(); err != nil || len(overlays) != 0 {
 		t.Fatalf("reserved ActivePolicyGrants() = %+v err=%v, want none", overlays, err)
 	}
-	if _, err := store.ReleaseUse(grant.ID); err != nil {
+	if _, err := store.ReleaseUse(grant.ID, "released-use"); err != nil {
 		t.Fatal(err)
 	}
 	overlays, err := store.ActivePolicyGrants()
@@ -625,15 +625,19 @@ func assertIdempotency(t *testing.T, store *Store, req Request, grantID string) 
 
 func assertUseBudget(t *testing.T, store *Store, grantID string) {
 	t.Helper()
-	reserved, err := store.ReserveUse(grantID)
-	if err != nil || reserved.ReservedCount != 1 {
+	grant, err := store.Get(grantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserved, err := store.ReserveUse(grantID, "budget-use", grant.Operation)
+	if err != nil || reserved.Grant.ReservedCount != 1 {
 		t.Fatalf("ReserveUse() = %+v err=%v, want one reservation", reserved, err)
 	}
 	if overlays, err := store.ActivePolicyGrants(); err != nil || len(overlays) != 0 {
 		t.Fatalf("reserved ActivePolicyGrants() = %+v err=%v, want none", overlays, err)
 	}
-	used, err := store.CommitUse(grantID)
-	if err != nil || used.Status != StatusConsumed || used.UsedCount != 1 {
+	used, err := store.CommitUse(grantID, "budget-use")
+	if err != nil || used.Grant.Status != StatusConsumed || used.Grant.UsedCount != 1 {
 		t.Fatalf("CommitUse() = %+v err=%v, want consumed", used, err)
 	}
 }

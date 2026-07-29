@@ -3,13 +3,10 @@ package state
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/pressly/goose/v3"
 )
 
 func TestOpenConfiguresAndMigratesDatabase(t *testing.T) {
@@ -39,61 +36,44 @@ func TestOpenConfiguresAndMigratesDatabase(t *testing.T) {
 	}
 }
 
-func TestOpenClearsIncompleteVersionOneNotificationReferences(t *testing.T) {
+func TestOpenExistingRejectsSupersededStateFormat(t *testing.T) {
 	directory := t.TempDir()
-	database, err := openSQL(filepath.Join(directory, databaseFile), Options{})
+	database, err := Open(t.Context(), directory, Options{})
 	if err != nil {
 		t.Fatal(err)
-	}
-	migrations, err := fs.Sub(migrationFiles, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, database, migrations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(t.Context(), 1); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-	legacyNotification := `{"kind":"telegram","chat_id":42,"message_id":7,"text":"old reference"}`
-	currentNotification := `{"kind":"telegram","renderer":"telegram-html-v1","chat_id":42,"message_id":8,"text":"current reference","presentation_json":"{}","presentation_digest":"sha256:presentation","rendered_digest":"sha256:rendered"}`
-	insertGrant := `
-		INSERT INTO grants (
-			id, decision_token_verifier, client, operation, target_json, attrs_json, metadata_json,
-			reason, status, revision, created_at, pending_expires_at, duration_ns,
-			requested_duration_ns, pending_timeout_ns, notification_json, notification_status
-		) VALUES (?, ?, 'bob', 'git.fetch', '{}', '{}', '{}', '', 'expired', 1, ?, ?, 0, 0, 1, ?, 'expired')`
-	for _, record := range []struct {
-		id, verifier, notification string
-	}{
-		{"legacy-grant", "legacy-verifier", legacyNotification},
-		{"current-grant", "current-verifier", currentNotification},
-	} {
-		if _, err := database.ExecContext(t.Context(), insertGrant, record.id, record.verifier, now, now, record.notification); err != nil {
-			t.Fatal(err)
-		}
 	}
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
+	raw, err := openSQL(filepath.Join(directory, databaseFile), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(t.Context(), "UPDATE goose_db_version SET version_id = 2 WHERE is_applied = 1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenExisting(t.Context(), directory, Options{}); err == nil {
+		t.Fatal("OpenExisting() accepted a superseded state format")
+	}
+}
 
-	upgraded, err := Open(t.Context(), directory, Options{})
+func TestOpenRejectsSupersededVersionOneContract(t *testing.T) {
+	directory := t.TempDir()
+	database, err := Open(t.Context(), directory, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = upgraded.Close() })
-	if err := upgraded.ValidateCurrentFormat(t.Context()); err != nil {
+	if _, err := database.SQL().ExecContext(t.Context(), "DROP TABLE state_contract"); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := upgraded.GrantSnapshot(t.Context())
-	if err != nil {
+	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Grants) != 2 || snapshot.Grants[0].ID != "current-grant" || string(snapshot.Grants[0].NotificationJSON) != currentNotification ||
-		snapshot.Grants[1].ID != "legacy-grant" || len(snapshot.Grants[1].NotificationJSON) != 0 {
-		t.Fatalf("migrated grants = %+v, want current reference preserved and obsolete reference removed", snapshot.Grants)
+	if _, err := Open(t.Context(), directory, Options{}); err == nil {
+		t.Fatal("Open() accepted a superseded version-one state contract")
 	}
 }
 

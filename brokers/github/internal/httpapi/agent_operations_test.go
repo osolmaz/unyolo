@@ -86,6 +86,57 @@ func TestGeneratedAgentV1Conformance(t *testing.T) {
 	})
 }
 
+func TestGeneratedWindowGrantAuthorizesTwoIndependentOperations(t *testing.T) {
+	upstreamCalls := 0
+	server := newTestServerWithPolicyAndHandler(t, generatedRequestPolicy(t), func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/repos/osolmaz/gh-broker/pulls" {
+			t.Fatalf("unexpected upstream request %s", request.URL.Path)
+		}
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"number":42,"state":"open","url":"https://api.github.test/pulls/42"}`))
+	})
+	server.notifier = &captureNotifier{}
+	runtime, err := server.newOperationRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime = runtime
+
+	first, _, err := server.submitAgentOperation(t.Context(), "bob", generatedPullRequestSubmission("window-first"))
+	if err != nil || first.State != agentv1.StatePending {
+		t.Fatalf("first submission = %+v, %v", first, err)
+	}
+	grant, err := server.grants.Get(first.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-window",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime.Advance(t.Context(), first)
+	first, _ = server.operations.GetByID(first.ID)
+	if first.State != agentv1.StateSucceeded {
+		t.Fatalf("first operation = %+v", first)
+	}
+
+	second, _, err := server.submitAgentOperation(t.Context(), "bob", generatedPullRequestSubmission("window-second"))
+	if err != nil || second.State != agentv1.StateApproved || second.ApprovalID != grant.ID || second.PlanDigest == first.PlanDigest {
+		t.Fatalf("second submission = %+v, %v", second, err)
+	}
+	server.operationRuntime.Advance(t.Context(), second)
+	second, _ = server.operations.GetByID(second.ID)
+	stored, grantErr := server.grants.Get(grant.ID)
+	uses, usesErr := server.grants.ListUses(grant.ID)
+	if second.State != agentv1.StateSucceeded || upstreamCalls != 2 || grantErr != nil || stored.UsedCount != 2 ||
+		stored.ReservedCount != 0 || usesErr != nil || len(uses) != 2 {
+		t.Fatalf("second operation = %+v; calls=%d grant=%+v, %v uses=%+v, %v", second, upstreamCalls, stored, grantErr, uses, usesErr)
+	}
+}
+
 func TestAdminMergeRequiresApprovalAndExecutesExactRevision(t *testing.T) {
 	const headSHA = "1111111111111111111111111111111111111111"
 	const baseSHA = "2222222222222222222222222222222222222222"
@@ -182,22 +233,22 @@ func TestReusedRuntimeGrantBounds(t *testing.T) {
 		wantDuration time.Duration
 		wantErr      bool
 	}{
-		"requested duration": {
-			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeWindow)},
+		"approved duration": {
+			grant: grants.Grant{Metadata: map[string]string{grants.MetadataMode: string(corepolicy.GrantModeWindow)},
 				RequestedDuration: 5 * time.Minute, Duration: 10 * time.Minute, PendingTimeout: time.Minute},
-			mode: corepolicy.GrantModeWindow, wantDuration: 5 * time.Minute,
+			mode: corepolicy.GrantModeWindow, wantDuration: 10 * time.Minute,
 		},
 		"legacy duration fallback": {
-			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeWindow)},
+			grant: grants.Grant{Metadata: map[string]string{grants.MetadataMode: string(corepolicy.GrantModeWindow)},
 				Duration: 10 * time.Minute, PendingTimeout: time.Minute},
 			mode: corepolicy.GrantModeWindow, wantDuration: 10 * time.Minute,
 		},
 		"mismatched mode": {
-			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeExecution)}},
+			grant: grants.Grant{Metadata: map[string]string{grants.MetadataMode: string(corepolicy.GrantModeExecution)}},
 			mode:  corepolicy.GrantModeWindow, wantErr: true,
 		},
 		"execution grant": {
-			grant: grants.Grant{Metadata: map[string]string{"github_grant_mode": string(corepolicy.GrantModeExecution)}},
+			grant: grants.Grant{Metadata: map[string]string{grants.MetadataMode: string(corepolicy.GrantModeExecution)}},
 			mode:  corepolicy.GrantModeExecution, wantErr: true,
 		},
 	} {

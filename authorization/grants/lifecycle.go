@@ -367,7 +367,17 @@ func (s *Store) nextLifecycleDelay() (time.Duration, bool, error) {
 	now := s.opts.Now().UTC()
 	var earliest time.Time
 	for _, grant := range data.Grants {
-		candidate := s.grantLifecycleDeadline(grant, now)
+		candidate := grantLifecycleDeadline(grant)
+		if !candidate.IsZero() && (earliest.IsZero() || candidate.Before(earliest)) {
+			earliest = candidate
+		}
+	}
+	for _, use := range data.Uses {
+		_, grant, findErr := findGrant(data.Grants, use.GrantID)
+		if findErr != nil {
+			return 0, false, findErr
+		}
+		candidate := s.useLifecycleDeadline(use, grant, now)
 		if !candidate.IsZero() && (earliest.IsZero() || candidate.Before(earliest)) {
 			earliest = candidate
 		}
@@ -378,33 +388,25 @@ func (s *Store) nextLifecycleDelay() (time.Duration, bool, error) {
 	return max(earliest.Sub(now), 0), true, nil
 }
 
-func (s *Store) grantLifecycleDeadline(grant Grant, now time.Time) time.Time {
+func grantLifecycleDeadline(grant Grant) time.Time {
 	switch grant.Status {
 	case StatusPending:
 		return grant.PendingExpiresAt
 	case StatusActive:
-		reservationDeadline := s.reservationLifecycleDeadline(grant, now)
-		if !reservationDeadline.IsZero() && reservationDeadline.Before(grant.ExpiresAt) {
-			return reservationDeadline
-		}
 		return grant.ExpiresAt
-	case StatusExpired, StatusRevoked:
-		return s.reservationLifecycleDeadline(grant, now)
-	case StatusDenied, StatusConsumed, StatusCanceled:
-		return time.Time{}
 	default:
 		return time.Time{}
 	}
 }
 
-func (s *Store) reservationLifecycleDeadline(grant Grant, now time.Time) time.Time {
-	if grant.ReservedCount <= 0 || grant.ReservationRetained {
+func (s *Store) useLifecycleDeadline(use GrantUse, grant Grant, now time.Time) time.Time {
+	if use.State != UseReserved || !reservationCanSettle(grant.Status) {
 		return time.Time{}
 	}
-	if reservationIsStale(grant, now, s.opts.ReservationTimeout) || grant.ReservedAt.IsZero() {
+	if useReservationIsStale(use, grant, now, s.opts.ReservationTimeout) || use.UpdatedAt.IsZero() {
 		return now
 	}
-	return grant.ReservedAt.Add(s.opts.ReservationTimeout)
+	return use.UpdatedAt.Add(s.opts.ReservationTimeout)
 }
 
 func waitForLifecycleWake(ctx context.Context, signal <-chan struct{}, delay time.Duration, hasDeadline bool) (bool, error) {

@@ -66,6 +66,7 @@
       "Health": {"type": "object", "additionalProperties": false, "required": ["status", "contract_digest", "build_id"], "properties": {"status": {"type": "string", "minLength": 1, "maxLength": 128}, "contract_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "build_id": {"type": "string", "minLength": 1, "maxLength": 128}}},
       "Action": {"type": "string", "enum": ["approve", "deny", "revoke"]},
       "Status": {"type": "string", "enum": ["pending", "active", "denied", "canceled", "expired", "consumed", "revoked"]},
+      "GrantMode": {"type": "string", "enum": ["window", "execution"]},
       "StatusGroup": {"type": "string", "enum": ["pending", "active", "history", "all"]},
       "Fact": {"type": "object", "additionalProperties": false, "required": ["label", "value"], "properties": {"label": {"type": "string", "minLength": 1, "maxLength": 80}, "value": {"type": "string", "minLength": 1, "maxLength": 500}}},
       "Warning": {"type": "object", "additionalProperties": false, "required": ["severity", "text"], "properties": {"severity": {"$ref": "#/components/schemas/PresentationRisk"}, "text": {"type": "string", "minLength": 1, "maxLength": 500}}},
@@ -77,10 +78,10 @@
       "Decision": {"type": "object", "additionalProperties": false, "required": ["expected_revision", "idempotency_key"], "properties": {"expected_revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}, "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 200}, "on_behalf_of": {"type": "string", "maxLength": 200}, "constraints": {"$ref": "#/components/schemas/Constraints"}, "notification": {"$ref": "#/components/schemas/NotificationDecision"}}},
       "BrokerRequest": {
         "type": "object", "additionalProperties": false,
-        "required": ["id", "revision", "requester", "operation", "status", "requested_at", "requested_duration_seconds", "requested_max_uses", "granted_max_uses", "used_count", "presentation", "allowed_actions"],
+        "required": ["id", "revision", "requester", "operation", "mode", "status", "requested_at", "requested_duration_seconds", "requested_max_uses", "granted_max_uses", "used_count", "presentation", "allowed_actions"],
         "properties": {
           "id": {"type": "string", "minLength": 1, "maxLength": 128}, "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
-          "requester": {"type": "string", "minLength": 1, "maxLength": 80}, "operation": {"type": "string", "minLength": 1, "maxLength": 500}, "status": {"$ref": "#/components/schemas/Status"},
+          "requester": {"type": "string", "minLength": 1, "maxLength": 80}, "operation": {"type": "string", "minLength": 1, "maxLength": 500}, "mode": {"$ref": "#/components/schemas/GrantMode"}, "status": {"$ref": "#/components/schemas/Status"},
           "requested_at": {"type": "string", "format": "date-time"}, "pending_expires_at": {"type": "string", "format": "date-time"}, "active_expires_at": {"type": "string", "format": "date-time"},
           "requested_duration_seconds": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}, "requested_max_uses": {"type": ["integer", "null"], "minimum": 1, "maximum": 1000000}, "granted_max_uses": {"type": ["integer", "null"], "minimum": 1, "maximum": 1000000}, "used_count": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
           "request_reason": {"type": "string", "maxLength": 2000}, "decided_at": {"type": "string", "format": "date-time"}, "decided_by": {"type": "string", "maxLength": 200}, "decided_on_behalf_of": {"type": "string", "maxLength": 200},

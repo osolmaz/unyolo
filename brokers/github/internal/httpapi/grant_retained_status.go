@@ -10,7 +10,7 @@ func apiGrantStatus(grant grants.Grant) string {
 }
 
 func grantUsesRemaining(grant grants.Grant) int {
-	if grant.Status != grants.StatusActive || grant.ReservationRetained {
+	if grant.Status != grants.StatusActive {
 		return 0
 	}
 	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, grant.ReservedCount)

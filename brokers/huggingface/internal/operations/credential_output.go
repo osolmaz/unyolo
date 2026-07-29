@@ -44,7 +44,7 @@ func credentialOutputAdaptersForDescriptors(client credentialOutputClient, paylo
 			continue
 		}
 		binding, bound := opbinding.ByName(descriptor.Name)
-		if !bound || !descriptor.Sealed || descriptor.AuthorizationMode != opcatalog.ModeExecution {
+		if !bound || !descriptor.Sealed || !descriptor.HasExecutionDisposition() {
 			return nil, fmt.Errorf("credential output operation %q is not registered", descriptor.Name)
 		}
 		base, err := newSealedBoundAdapter(descriptor, binding, client, payloads)

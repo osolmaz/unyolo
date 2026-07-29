@@ -45,8 +45,9 @@ convention and exact by rule: there is no prefix matching and no wildcard expans
 operations list.
 
 The provider registry is the only place operation names exist. It declares valid names, which
-attrs each operation supports, whether the operation may be granted, the grant mode it defaults to,
-and the bounded set of modes it allows. The shared engine ships no built-in Hugging Face, GitHub,
+attrs each operation supports, whether the operation may be granted, its default mode, and its
+allowed modes. Every grantable operation defaults to `window` and allows both `window` and
+`execution`. The shared engine ships no built-in Hugging Face, GitHub,
 or Unix semantics, so an operation the registry does not declare fails policy loading.
 
 Operation naming carries meaning that matters when writing rules. On both Git-speaking brokers, an

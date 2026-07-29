@@ -4,11 +4,11 @@ unYOLO is the shared layer for broker-style access-control services. It
 makes repeated broker machinery reusable without hiding the dangerous
 provider-specific boundary.
 
-The accepted next grant contract makes every grantable operation default to
-window mode while preserving exact, single-use execution mode. See
-[ADR 0002](adr/0002-universal-reusable-grants.md) and the
-[reusable grants specification](REUSABLE_GRANTS_SPEC.md). Released binaries
-retain their current provider classifications until that plan is implemented.
+Every grantable operation defaults to window mode and also supports exact,
+single-use execution mode. See [ADR 0002](adr/0002-universal-reusable-grants.md)
+and the [reusable grants specification](REUSABLE_GRANTS_SPEC.md). Release
+artifacts published before this change retain their earlier provider
+classifications.
 
 `hf-broker`, `gh-broker`, and `sudo-broker` use unYOLO for the shared control
 plane. Provider directories contain only their platform-specific behavior.

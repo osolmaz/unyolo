@@ -408,7 +408,7 @@ func TestRoutineRepositoryWriteUsesHighVolumeGrantBounds(t *testing.T) {
 	}
 }
 
-func TestSensitiveRepositoryWriteKeepsNarrowGrantBounds(t *testing.T) {
+func TestSensitiveRepositoryWriteUsesReusableGrantBounds(t *testing.T) {
 	t.Parallel()
 	data, err := corePolicyJSON(Scope{Rules: []Rule{{
 		ID: "request-force-push", Effect: EffectRequest, Clients: []string{"agent"}, Operations: []Operation{OperationGitPushForce},
@@ -422,8 +422,8 @@ func TestSensitiveRepositoryWriteKeepsNarrowGrantBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	grantPolicy := doc.Rules[0].GrantPolicy
-	if grantPolicy == nil || grantPolicy.DefaultMaxUses != sensitiveWindowMaxUses || grantPolicy.MaxUses != sensitiveWindowMaxUses || grantPolicy.MaxMinutes != sensitiveWindowMaxMinutes {
-		t.Fatalf("grant policy = %+v, want sensitive repository bounds", grantPolicy)
+	if grantPolicy == nil || grantPolicy.DefaultMaxUses != usebudget.MaxFiniteUses || grantPolicy.MaxUses != usebudget.MaxFiniteUses || grantPolicy.MaxMinutes != routineWindowMaxMinutes {
+		t.Fatalf("grant policy = %+v, want universal reusable bounds", grantPolicy)
 	}
 }
 

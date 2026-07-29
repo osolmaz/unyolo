@@ -214,20 +214,17 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 		sealedInputPaths = append(sealedInputPaths, "input")
 	}
 	slices.Sort(sealedInputPaths)
-	mode, dispositionFlags, maxUses := capability.ModeWindow, "W", int(usebudget.MaxFiniteUses)
+	dispositionFlags := "W"
 	if mutation {
-		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
+		dispositionFlags = "E"
 	}
 	risk := operationRisk(name, classes, method)
 	explicit := mutation && (len(classes) > 0 || highOrCriticalRisk(risk)) || credentialOutput != nil
 	sealed := len(sealedInputPaths) > 0 || credentialOutput != nil
 	if sealed {
-		mode, dispositionFlags, maxUses = capability.ModeExecution, "E", 1
+		dispositionFlags = "E"
 	}
-	approvalTTLSeconds := 10 * 60
-	if mode == capability.ModeWindow {
-		approvalTTLSeconds = 7 * 24 * 60 * 60
-	}
+	approvalTTLSeconds := 7 * 24 * 60 * 60
 	internal := disposition == "internal"
 	if explicit {
 		dispositionFlags += "/X"
@@ -251,8 +248,11 @@ func descriptorForREST(name, method, path string, operation restOperation, dispo
 	}
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{
 		Name: name, OperationRevision: 1, Summary: operation.Summary, Disposition: dispositionFlags,
-		AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed, Internal: internal,
-		Implementation: implementationStatus(disposition, "rest-binding", agentFacing), Risk: risk, TargetKind: target, MaxUses: maxUses,
+		DefaultAuthorizationMode: capability.ModeWindow,
+		AuthorizationModes:       []capability.AuthorizationMode{capability.ModeWindow, capability.ModeExecution},
+		ExplicitOnly:             explicit, Sealed: sealed, Internal: internal,
+		Implementation: implementationStatus(disposition, "rest-binding", agentFacing), Risk: risk,
+		TargetKind: target, MaxUses: int(usebudget.MaxFiniteUses),
 		RequestTTLSeconds: 300, ApprovalTTLSeconds: approvalTTLSeconds, FamilyGlobAllowed: !explicit,
 		AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",

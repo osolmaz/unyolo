@@ -244,7 +244,7 @@ func recursiveResultScopes(values []string) []string {
 
 func validReservedResultGrant(grant grants.Grant, client string, operation policy.Operation,
 	validator hfplan.Validator, now time.Time) bool {
-	return grant.Status == grants.StatusActive && !grant.ReservationRetained && grant.ReservedCount > 0 &&
+	return grant.Status == grants.StatusActive && grant.ReservedCount > 0 &&
 		grant.Client == client && grant.Operation == string(operation) && runtimeWindowGrant(grant) &&
 		now.Before(grant.ExpiresAt) && validator.ValidateExecution(grant) == nil
 }
@@ -326,7 +326,7 @@ func attrsOrEmpty(attrs map[string]any) map[string]any {
 }
 
 func grantUsesRemaining(grant grants.Grant) int {
-	if !grantIsActive(grant) || grantIsRetained(grant) {
+	if !grantIsActive(grant) {
 		return 0
 	}
 	remaining, finite := grant.MaxUses.Remaining(grant.UsedCount, grant.ReservedCount)

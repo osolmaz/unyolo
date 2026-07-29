@@ -57,34 +57,35 @@ const (
 // Descriptor is provider-owned registration metadata. It contains no
 // credentials or requester-controlled values.
 type Descriptor struct {
-	Name                 string               `json:"name"`
-	OperationRevision    int                  `json:"operation_revision"`
-	Summary              string               `json:"summary,omitempty"`
-	Disposition          string               `json:"disposition"`
-	AuthorizationMode    AuthorizationMode    `json:"authorization_mode"`
-	ExplicitOnly         bool                 `json:"explicit_only"`
-	Sealed               bool                 `json:"sealed"`
-	CredentialOutputKind *string              `json:"credential_output_kind,omitempty"`
-	Internal             bool                 `json:"internal"`
-	Implementation       ImplementationStatus `json:"implementation_status"`
-	Risk                 Risk                 `json:"risk"`
-	DefaultPolicyEffect  DefaultPolicyEffect  `json:"default_policy_effect,omitempty"`
-	TargetKind           string               `json:"target_kind"`
-	MaxUses              int                  `json:"max_uses"`
-	RequestTTLSeconds    int                  `json:"request_ttl_seconds"`
-	ApprovalTTLSeconds   int                  `json:"approval_ttl_seconds"`
-	FamilyGlobAllowed    bool                 `json:"family_glob_allowed"`
-	AgentFacing          bool                 `json:"agent_facing"`
-	MCPTool              *string              `json:"mcp_tool"`
-	CLICommand           *string              `json:"cli_command"`
-	TargetSchema         string               `json:"target_schema,omitempty"`
-	ArgumentSchema       string               `json:"argument_schema,omitempty"`
-	ResultSchema         string               `json:"result_schema,omitempty"`
-	CredentialKind       string               `json:"credential_kind,omitempty"`
-	SealedInputPaths     []string             `json:"sealed_input_paths,omitempty"`
-	UpstreamBindingIDs   []string             `json:"upstream_binding_ids,omitempty"`
-	ExecutorKind         string               `json:"executor_kind,omitempty"`
-	ReconcilerKind       string               `json:"reconciler_kind,omitempty"`
+	Name                     string               `json:"name"`
+	OperationRevision        int                  `json:"operation_revision"`
+	Summary                  string               `json:"summary,omitempty"`
+	Disposition              string               `json:"disposition"`
+	DefaultAuthorizationMode AuthorizationMode    `json:"default_authorization_mode"`
+	AuthorizationModes       []AuthorizationMode  `json:"authorization_modes"`
+	ExplicitOnly             bool                 `json:"explicit_only"`
+	Sealed                   bool                 `json:"sealed"`
+	CredentialOutputKind     *string              `json:"credential_output_kind,omitempty"`
+	Internal                 bool                 `json:"internal"`
+	Implementation           ImplementationStatus `json:"implementation_status"`
+	Risk                     Risk                 `json:"risk"`
+	DefaultPolicyEffect      DefaultPolicyEffect  `json:"default_policy_effect,omitempty"`
+	TargetKind               string               `json:"target_kind"`
+	MaxUses                  int                  `json:"max_uses"`
+	RequestTTLSeconds        int                  `json:"request_ttl_seconds"`
+	ApprovalTTLSeconds       int                  `json:"approval_ttl_seconds"`
+	FamilyGlobAllowed        bool                 `json:"family_glob_allowed"`
+	AgentFacing              bool                 `json:"agent_facing"`
+	MCPTool                  *string              `json:"mcp_tool"`
+	CLICommand               *string              `json:"cli_command"`
+	TargetSchema             string               `json:"target_schema,omitempty"`
+	ArgumentSchema           string               `json:"argument_schema,omitempty"`
+	ResultSchema             string               `json:"result_schema,omitempty"`
+	CredentialKind           string               `json:"credential_kind,omitempty"`
+	SealedInputPaths         []string             `json:"sealed_input_paths,omitempty"`
+	UpstreamBindingIDs       []string             `json:"upstream_binding_ids,omitempty"`
+	ExecutorKind             string               `json:"executor_kind,omitempty"`
+	ReconcilerKind           string               `json:"reconciler_kind,omitempty"`
 }
 
 // ValidationOptions contains provider registration constraints without
@@ -195,14 +196,27 @@ func validLifecycle(value Descriptor) bool {
 }
 
 func validateAuthorization(value Descriptor) error {
-	if value.AuthorizationMode == ModeExecution {
-		if value.MaxUses != int(usebudget.SingleUse) || !strings.Contains(value.Disposition, "E") {
-			return fmt.Errorf("execution operation %q must be one-use E", value.Name)
-		}
-	} else if value.AuthorizationMode != ModeWindow || value.MaxUses < int(usebudget.SingleUse) || value.MaxUses > int(usebudget.MaxFiniteUses) || !strings.Contains(value.Disposition, "W") {
-		return fmt.Errorf("window operation %q has invalid use semantics", value.Name)
+	if value.DefaultAuthorizationMode != ModeWindow {
+		return fmt.Errorf("operation %q must default to window authorization", value.Name)
+	}
+	if !slices.Equal(value.AuthorizationModes, []AuthorizationMode{ModeWindow, ModeExecution}) {
+		return fmt.Errorf("operation %q must support window and execution authorization", value.Name)
+	}
+	if value.MaxUses < 2 || value.MaxUses > int(usebudget.MaxFiniteUses) {
+		return fmt.Errorf("operation %q has invalid reusable window use semantics", value.Name)
 	}
 	return nil
+}
+
+// AllowsAuthorizationMode reports whether the capability supports mode.
+func (value Descriptor) AllowsAuthorizationMode(mode AuthorizationMode) bool {
+	return slices.Contains(value.AuthorizationModes, mode)
+}
+
+// HasExecutionDisposition reports whether the provider operation performs a
+// bounded external action. Grant mode is independent of this property.
+func (value Descriptor) HasExecutionDisposition() bool {
+	return strings.Contains(value.Disposition, "E")
 }
 
 func validateDisposition(value Descriptor) error {
@@ -215,9 +229,6 @@ func validateDisposition(value Descriptor) error {
 func validateSecretDisposition(value Descriptor) error {
 	if value.ExplicitOnly && value.FamilyGlobAllowed {
 		return fmt.Errorf("explicit operation %q allows family globs", value.Name)
-	}
-	if value.Sealed && value.AuthorizationMode != ModeExecution {
-		return fmt.Errorf("sealed operation %q is not execution-scoped", value.Name)
 	}
 	if invalidCredentialOutput(value) {
 		return fmt.Errorf("credential output operation %q is invalid", value.Name)
@@ -260,7 +271,7 @@ func operationRequiresDefaultDeny(value Descriptor) bool {
 }
 
 func operationIsUnsafeDefaultAllow(value Descriptor) bool {
-	return value.Risk == RiskHigh || value.Risk == RiskCritical || value.AuthorizationMode == ModeExecution || value.ExplicitOnly || value.Sealed
+	return value.Risk == RiskHigh || value.Risk == RiskCritical || strings.Contains(value.Disposition, "E") || value.ExplicitOnly || value.Sealed
 }
 
 func validInternalSurface(value Descriptor) bool {

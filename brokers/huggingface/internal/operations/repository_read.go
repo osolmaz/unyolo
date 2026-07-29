@@ -144,12 +144,12 @@ func (a *repositoryReadAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentReconstructed(plan, a.reconstruct(plan))
 }
 
-func (a *repositoryReadAdapter) BindReservation(plan Plan, grant grants.Grant) (Plan, error) {
-	return bindReadReservation(plan, grant)
+func (a *repositoryReadAdapter) BindReservation(plan Plan, reservation grants.UseReservation) (Plan, error) {
+	return bindReadReservation(plan, reservation)
 }
 
-func bindReadReservation(plan Plan, grant grants.Grant) (Plan, error) {
-	plan.ReservedGrant = &grant
+func bindReadReservation(plan Plan, reservation grants.UseReservation) (Plan, error) {
+	plan.ReservedGrant = &reservation.Grant
 	return plan, nil
 }
 

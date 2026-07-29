@@ -16,23 +16,23 @@ The catalog stores an explicit `default_policy_effect` for each operation:
 | Effect | Behavior |
 |---|---|
 | `allow` | Safe reads and discovery plus inference run directly. |
-| `request` | Writes and administration plus destructive actions require operator approval. Execution-scoped actions receive exact, one-use grants. |
+| `request` | Writes, administration, and destructive actions require operator approval. Every requestable operation defaults to a reusable window grant. |
 | `deny` | Internal and non-agent operations plus credential-output operations cannot be requested by the agent. |
 
 These effects are data in the reviewed provider catalog. The renderer never
 guesses from an operation name or risk label. An operation marked
 `blocked-upstream` is always rendered as deny even if its future target effect
 would otherwise be allow or request. Catalog validation also prevents
-high-risk, critical, execution-scoped, explicit-only, or sealed operations from
-defaulting to `allow`.
+high-risk, critical, provider-executed, explicit-only, or sealed operations
+from defaulting to `allow`.
 
-Reusable window grants in this preset default to their catalog ceiling. Routine
+Window grants in this preset default to their catalog ceiling. Routine
 repository and bucket operations allow up to `1000000` uses for up to seven
 days, which avoids repeated approval during large uploads and artifact runs.
 `git.push.force`, `git.ref.delete`, and `git.tag.update` remain capped at 25
-uses for one hour. Execution-scoped operations remain single-use. Every grant
-keeps the exact client, operation, target, and attribute scope that was
-approved.
+uses for one hour. Policy may select exact execution mode, which always uses
+one immutable plan once. Every grant keeps the approved client, operation,
+target, and attribute scope.
 
 An operator can hard-deny additional exact operations:
 

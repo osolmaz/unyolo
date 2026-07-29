@@ -358,7 +358,8 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 		warnings = append(warnings, operatorwire.Warning{Severity: operatorwire.PresentationRisk(warning.Severity), Text: warning.Text})
 	}
 	request := operatorwire.BrokerRequest{
-		Id: item.ID, Revision: int(item.Revision), Requester: item.Client, Operation: item.Operation, Status: operatorwire.Status(item.Status),
+		Id: item.ID, Revision: int(item.Revision), Requester: item.Client, Operation: item.Operation,
+		Mode: operatorwire.GrantMode(item.Mode), Status: operatorwire.Status(item.Status),
 		RequestedAt: item.RequestedAt, RequestedDurationSeconds: int(item.RequestedDurationSeconds),
 		RequestedMaxUses: operatorv1wire.UseLimitToWire(item.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitToWire(item.MaxUses),
 		UsedCount: item.UsedCount, RequestReason: optional.NonZero(item.Reason),

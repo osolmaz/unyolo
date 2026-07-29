@@ -54,6 +54,12 @@ error.
 
 ## Approval behavior
 
+Requestable commands default to reusable window grants. Every invocation still
+gets its own immutable command plan, helper reservation, result, and audit
+record. Policy may select exact `execution` mode, which is always single-use.
+A reused window never permits a different command ID, target user, typed slot,
+host identity, or catalog digest.
+
 A pending request means the operation is waiting for an authorized decision;
 it does not mean the client credential is missing. Keep the request alive
 without ending the agent turn. Do not approve your own request, modify policy,

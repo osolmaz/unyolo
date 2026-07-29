@@ -59,16 +59,16 @@ type ClientBoundAdapter[I any] interface {
 
 // ApprovalRequiredAdapter marks an operation that cannot execute directly from
 // an allow rule. The runtime still evaluates request rules and creates the
-// ordinary one-use approval.
+// configured window or execution approval.
 type ApprovalRequiredAdapter interface {
 	RequiresApproval() bool
 }
 
-// ReservationBinder binds the exact reserved grant revision into a provider
-// plan immediately before dispatch. It is intended for executors whose replay
-// protection is part of the privileged execution protocol.
+// ReservationBinder binds the exact operation-owned reservation into a
+// provider plan immediately before dispatch. It is intended for executors
+// whose replay protection is part of the privileged execution protocol.
 type ReservationBinder[P any] interface {
-	BindReservation(P, grants.Grant) (P, error)
+	BindReservation(P, grants.UseReservation) (P, error)
 }
 
 // PlanCleaner removes transient provider material when an operation reaches a
@@ -112,7 +112,7 @@ func NewRegistry[I, P, A any](options RegistryOptions, adapters ...Adapter[I, P,
 }
 
 func defaultRequiresAdapter(descriptor capability.Descriptor) bool {
-	return descriptor.AuthorizationMode == capability.ModeExecution && descriptor.Implementation == capability.StatusImplemented
+	return descriptor.HasExecutionDisposition() && descriptor.Implementation == capability.StatusImplemented
 }
 
 func (r *Registry[I, P, A]) register(options RegistryOptions, adapter Adapter[I, P, A]) error {

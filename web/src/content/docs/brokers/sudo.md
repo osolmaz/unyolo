@@ -140,6 +140,10 @@ sudo-broker run nginx-reload \
 through the privileged helper, prints the command's output, and exits with its exit code. For typed
 catalog slots, repeat `--arg-json NAME=JSON`.
 
+Request rules default to reusable window grants. Each matching command still gets its own immutable
+plan, operation ID, helper reservation, result, and audit record. Set `"mode": "execution"` in
+`grant_policy` when one exact command must require a single-use approval.
+
 Reuse a stable `--operation-id` when retrying. Never retry an ambiguous execution under a new ID,
 because the broker cannot tell a retry from a second request and a privileged command that may
 already have run is exactly the case where a duplicate matters.

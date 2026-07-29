@@ -33,6 +33,7 @@
         "revision",
         "requester",
         "operation",
+        "mode",
         "status",
         "requested_at",
         "requested_duration_seconds",
@@ -62,6 +63,9 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 500
+        },
+        "mode": {
+          "$ref": "#/$defs/GrantMode"
         },
         "status": {
           "$ref": "#/$defs/Status"
@@ -168,6 +172,13 @@
           "maximum": 1000000
         }
       }
+    },
+    "GrantMode": {
+      "type": "string",
+      "enum": [
+        "window",
+        "execution"
+      ]
     },
     "Presentation": {
       "type": "object",

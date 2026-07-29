@@ -30,6 +30,7 @@ describe("BrokerRuntime", () => {
       revision: status === "pending" ? 1 : 2,
       requester: "bob",
       operation: "write",
+      mode: "window",
       status,
       requested_at: "2026-07-11T00:00:00Z",
       pending_expires_at: "2099-07-11T00:10:00Z",
@@ -125,7 +126,11 @@ describe("BrokerRuntime", () => {
       .poll(() => new Set(delivered.map((item) => item.channel)).size)
       .toBe(2);
     expect(
-      delivered.every((item) => item.text.includes("/unyolo approve")),
+      delivered.every(
+        (item) =>
+          item.text.includes("/unyolo approve") &&
+          item.text.includes("Grant mode: reusable window"),
+      ),
     ).toBe(true);
     await expect(
       runtime.decide(handle!, "approve", 1, "operator:onur", {

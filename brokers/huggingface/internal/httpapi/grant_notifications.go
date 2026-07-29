@@ -191,11 +191,7 @@ func (s *Server) updateGrantUseMessage(grant grants.Grant) {
 }
 
 func (s *Server) updateRetainedGrantReservationMessage(grant grants.Grant) {
-	current, err := s.grants.RetainUse(grant.ID)
-	if err != nil {
-		return
-	}
-	s.deliverGrantStatusUpdate(context.Background(), current.ID)
+	s.deliverGrantStatusUpdate(context.Background(), grant.ID)
 }
 
 func (s *Server) deliverGrantStatusUpdate(ctx context.Context, id string) {

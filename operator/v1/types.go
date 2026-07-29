@@ -57,6 +57,7 @@ type Request struct {
 	Revision                 int64           `json:"revision"`
 	Requester                string          `json:"requester"`
 	Operation                string          `json:"operation"`
+	Mode                     string          `json:"mode"`
 	Status                   grants.Status   `json:"status"`
 	RequestedAt              time.Time       `json:"requested_at"`
 	PendingExpiresAt         *time.Time      `json:"pending_expires_at,omitempty"`

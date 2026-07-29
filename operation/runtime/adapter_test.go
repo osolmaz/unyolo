@@ -32,7 +32,7 @@ func (contractAdapter) Reconcile(context.Context, json.RawMessage) (Outcome, err
 }
 
 func TestRegistryEnforcesProviderCatalogContract(t *testing.T) {
-	descriptor := capability.Descriptor{Name: "repo.create", OperationRevision: 1, AuthorizationMode: capability.ModeExecution}
+	descriptor := capability.Descriptor{Name: "repo.create", OperationRevision: 1, Disposition: "E"}
 	lookup := func(name string) (capability.Descriptor, bool) { return descriptor, name == descriptor.Name }
 	registry, err := NewRegistry(RegistryOptions{Provider: "test", Descriptor: lookup}, contractAdapter{descriptor: descriptor})
 	if err != nil || len(registry.Names()) != 1 {

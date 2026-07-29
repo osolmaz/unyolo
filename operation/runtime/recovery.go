@@ -31,11 +31,11 @@ func (r *Runtime[I, P, A]) settleApproval(operation agentv1.Operation, reserved 
 	var err error
 	switch settlement {
 	case approvalRetain:
-		_, err = r.options.Grants.RetainUse(operation.ApprovalID)
+		_, err = r.options.Grants.RetainUse(operation.ApprovalID, operation.ID)
 	case approvalRelease:
-		_, err = r.options.Grants.ReleaseUse(operation.ApprovalID)
+		_, err = r.options.Grants.ReleaseUse(operation.ApprovalID, operation.ID)
 	default:
-		_, err = r.options.Grants.CommitUse(operation.ApprovalID)
+		_, err = r.options.Grants.CommitUse(operation.ApprovalID, operation.ID)
 	}
 	if err == nil {
 		return true
@@ -104,9 +104,9 @@ func (r *Runtime[I, P, A]) retainRecoveredApproval(operation agentv1.Operation) 
 	if operation.ApprovalID == "" {
 		return
 	}
-	grant, err := r.options.Grants.Get(operation.ApprovalID)
-	if err == nil && grant.ReservedCount > 0 && !grant.ReservationRetained {
-		_, _ = r.options.Grants.RetainUse(grant.ID)
+	reservation, err := r.options.Grants.GetUse(operation.ApprovalID, operation.ID)
+	if err == nil && reservation.Use.State == grants.UseReserved {
+		_, _ = r.options.Grants.RetainUse(operation.ApprovalID, operation.ID)
 	}
 }
 
@@ -126,7 +126,12 @@ func (r *Runtime[I, P, A]) settleRecoveredApproval(operation agentv1.Operation) 
 		r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
 		return false
 	}
-	commit, valid := RecoveredApprovalCommit(grant)
+	reservation, err := r.options.Grants.GetUse(grant.ID, operation.ID)
+	if err != nil {
+		r.fail(operation.ID, agentv1.StateFailed, "approval_reservation_missing", "Approval was not reserved before execution")
+		return false
+	}
+	commit, valid := RecoveredApprovalCommit(reservation.Use)
 	if !valid {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_reservation_missing", "Approval was not reserved before execution")
 		return false
@@ -134,7 +139,7 @@ func (r *Runtime[I, P, A]) settleRecoveredApproval(operation agentv1.Operation) 
 	if !commit {
 		return true
 	}
-	if _, err := r.options.Grants.CommitUse(grant.ID); err != nil {
+	if _, err := r.options.Grants.CommitUse(grant.ID, operation.ID); err != nil {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_commit_failed", "Operation ran but approval accounting failed")
 		return false
 	}
@@ -143,11 +148,15 @@ func (r *Runtime[I, P, A]) settleRecoveredApproval(operation agentv1.Operation) 
 
 // RecoveredApprovalCommit reports whether restart recovery must commit a
 // reserved use and whether the recorded authority state is valid.
-func RecoveredApprovalCommit(grant grants.Grant) (commit, valid bool) {
-	if grant.UsedCount > 0 {
+func RecoveredApprovalCommit(use grants.GrantUse) (commit, valid bool) {
+	switch use.State {
+	case grants.UseCommitted:
 		return false, true
+	case grants.UseReserved, grants.UseRetained:
+		return true, true
+	default:
+		return false, false
 	}
-	return grant.ReservedCount > 0, grant.ReservedCount > 0
 }
 
 // Load loads and provider-validates an immutable operation plan.
@@ -165,21 +174,21 @@ func (r *Runtime[I, P, A]) Load(operation agentv1.Operation) (Adapter[I, P, A], 
 	return adapter, plan, nil
 }
 
-func (r *Runtime[I, P, A]) reserveApproval(operation agentv1.Operation) (grants.Grant, bool, bool) {
+func (r *Runtime[I, P, A]) reserveApproval(operation agentv1.Operation) (grants.UseReservation, bool, bool) {
 	if operation.ApprovalID == "" {
-		return grants.Grant{}, false, true
+		return grants.UseReservation{}, false, true
 	}
 	grant, err := r.options.Grants.Get(operation.ApprovalID)
 	if err != nil || r.options.ValidateExecution(grant) != nil {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approval no longer matches the operation")
-		return grants.Grant{}, false, false
+		return grants.UseReservation{}, false, false
 	}
-	reserved, err := r.options.Grants.ReserveUse(grant.ID)
-	if err != nil {
+	reservation, err := r.options.Grants.ReserveUse(grant.ID, operation.ID, operation.Operation)
+	if err != nil || reservation.Use.State != grants.UseReserved {
 		r.fail(operation.ID, agentv1.StateFailed, "approval_unavailable", "Approval could not be reserved")
-		return grants.Grant{}, false, false
+		return grants.UseReservation{}, false, false
 	}
-	return reserved, true, true
+	return reservation, true, true
 }
 
 func requiresApproval[I, P, A any](adapter Adapter[I, P, A]) bool {

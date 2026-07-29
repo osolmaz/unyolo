@@ -40,6 +40,12 @@ type GrantRecord struct {
 	NotificationDeliveryUnresolved                                bool
 }
 
+type GrantUseRecord struct {
+	RequestID, GrantID, Operation, State string
+	Revision                             int64
+	CreatedAt, UpdatedAt, SettledAt      time.Time
+}
+
 type GrantLifecycleRecord struct {
 	Sequence    uint64
 	Cursor      string
@@ -71,6 +77,7 @@ type NotificationOutboxRecord struct {
 
 type GrantSnapshot struct {
 	Grants    []GrantRecord
+	Uses      []GrantUseRecord
 	Events    []GrantLifecycleRecord
 	Decisions []GrantDecisionRecord
 	Outbox    []NotificationOutboxRecord
@@ -161,6 +168,9 @@ func loadGrantSnapshot(ctx context.Context, queries *dbsql.Queries) (GrantSnapsh
 	if err != nil {
 		return GrantSnapshot{}, err
 	}
+	if snapshot.Uses, err = loadGrantUses(ctx, queries); err != nil {
+		return GrantSnapshot{}, err
+	}
 	if snapshot.Events, err = loadGrantEvents(ctx, queries); err != nil {
 		return GrantSnapshot{}, err
 	}
@@ -187,6 +197,31 @@ func loadGrants(ctx context.Context, queries *dbsql.Queries) (GrantSnapshot, err
 		snapshot.Grants = append(snapshot.Grants, record)
 	}
 	return snapshot, nil
+}
+
+func loadGrantUses(ctx context.Context, queries *dbsql.Queries) ([]GrantUseRecord, error) {
+	rows, err := queries.ListGrantUses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]GrantUseRecord, 0, len(rows))
+	for _, row := range rows {
+		createdAt, err := parseTime(row.CreatedAt)
+		if err != nil {
+			return nil, errors.New("invalid grant use creation time")
+		}
+		updatedAt, err := parseTime(row.UpdatedAt)
+		if err != nil {
+			return nil, errors.New("invalid grant use update time")
+		}
+		settledAt, err := parseNullTime(row.SettledAt)
+		if err != nil {
+			return nil, errors.New("invalid grant use settlement time")
+		}
+		result = append(result, GrantUseRecord{RequestID: row.RequestID, GrantID: row.GrantID, Operation: row.Operation,
+			State: row.State, Revision: row.Revision, CreatedAt: createdAt, UpdatedAt: updatedAt, SettledAt: settledAt})
+	}
+	return result, nil
 }
 
 func loadGrantEvents(ctx context.Context, queries *dbsql.Queries) ([]GrantLifecycleRecord, error) {
@@ -247,6 +282,9 @@ func persistGrantChanges(ctx context.Context, queries *dbsql.Queries, before, af
 	if err := persistGrants(ctx, queries, before.Grants, after.Grants); err != nil {
 		return err
 	}
+	if err := persistGrantUses(ctx, queries, before.Uses, after.Uses); err != nil {
+		return err
+	}
 	if err := persistGrantEvents(ctx, queries, before.Events, after.Events); err != nil {
 		return err
 	}
@@ -288,6 +326,9 @@ func validateGrantSnapshotTransition(before, after GrantSnapshot) error {
 	if err := validateGrantRetention(before.Grants, after.Grants); err != nil {
 		return err
 	}
+	if err := validateGrantUseRetention(before.Uses, after.Uses); err != nil {
+		return err
+	}
 	if err := validateEventImmutability(before.Events, after.Events); err != nil {
 		return err
 	}
@@ -305,6 +346,19 @@ func validateGrantRetention(before, after []GrantRecord) error {
 	for _, record := range before {
 		if !afterGrants[record.ID] {
 			return errors.New("grant deletion is unsupported")
+		}
+	}
+	return nil
+}
+
+func validateGrantUseRetention(before, after []GrantUseRecord) error {
+	afterUses := make(map[string]bool, len(after))
+	for _, record := range after {
+		afterUses[record.RequestID] = true
+	}
+	for _, record := range before {
+		if !afterUses[record.RequestID] {
+			return errors.New("grant use deletion is unsupported")
 		}
 	}
 	return nil
@@ -356,6 +410,27 @@ func validateOutboxRetention(before, after []NotificationOutboxRecord) error {
 		}
 	}
 	return nil
+}
+
+func persistGrantUses(ctx context.Context, queries *dbsql.Queries, before, after []GrantUseRecord) error {
+	return persistIndexedRecords(before, after, func(record GrantUseRecord) string { return record.RequestID },
+		func(old map[string]GrantUseRecord, record GrantUseRecord) error {
+			previous, exists := old[record.RequestID]
+			if !exists {
+				return queries.InsertGrantUse(ctx, insertGrantUseParams(record))
+			}
+			if reflect.DeepEqual(previous, record) {
+				return nil
+			}
+			updated, err := queries.UpdateGrantUse(ctx, updateGrantUseParams(record, previous.Revision))
+			if err != nil {
+				return err
+			}
+			if updated != 1 {
+				return ErrGrantStateConflict
+			}
+			return nil
+		})
 }
 
 func persistGrantEvents(ctx context.Context, queries *dbsql.Queries, before, after []GrantLifecycleRecord) error {
@@ -528,6 +603,19 @@ func updateGrantParams(record GrantRecord, previousRevision int64) dbsql.UpdateG
 		NotificationJson: insert.NotificationJson, NotificationStatus: insert.NotificationStatus,
 		NotificationClaimedAt: insert.NotificationClaimedAt, NotificationClaimUntil: insert.NotificationClaimUntil,
 		NotificationDeliveryUnresolved: insert.NotificationDeliveryUnresolved, ID: record.ID, Revision_2: previousRevision}
+}
+
+func insertGrantUseParams(record GrantUseRecord) dbsql.InsertGrantUseParams {
+	return dbsql.InsertGrantUseParams{RequestID: record.RequestID, GrantID: record.GrantID, Operation: record.Operation,
+		State: record.State, Revision: record.Revision, CreatedAt: formatTime(record.CreatedAt),
+		UpdatedAt: formatTime(record.UpdatedAt), SettledAt: nullTime(record.SettledAt)}
+}
+
+func updateGrantUseParams(record GrantUseRecord, previousRevision int64) dbsql.UpdateGrantUseParams {
+	insert := insertGrantUseParams(record)
+	return dbsql.UpdateGrantUseParams{GrantID: insert.GrantID, Operation: insert.Operation, State: insert.State,
+		Revision: insert.Revision, CreatedAt: insert.CreatedAt, UpdatedAt: insert.UpdatedAt, SettledAt: insert.SettledAt,
+		RequestID: record.RequestID, Revision_2: previousRevision}
 }
 
 func nullTime(value time.Time) sql.NullString {

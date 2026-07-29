@@ -315,14 +315,12 @@ func hfRegistry() corepolicy.Registry {
 			Grantable:   info.mode != GrantModeNone,
 		}
 		if spec.Grantable {
-			spec.GrantModes = []corepolicy.GrantMode{corepolicy.GrantModeWindow, corepolicy.GrantModeExecution}
 			if descriptor, found := opcatalog.ByName(string(operation)); found {
+				spec.GrantMode = corepolicy.GrantMode(descriptor.DefaultAuthorizationMode)
+				spec.GrantModes = hfAuthorizationModes(descriptor.AuthorizationModes)
 				spec.MaxGrantMinutes = descriptor.ApprovalTTLSeconds / 60
 				spec.MaxGrantUses = usebudget.Limit(descriptor.MaxUses)
 			}
-		}
-		if info.mode == GrantModeExecution {
-			spec.GrantMode = corepolicy.GrantModeExecution
 		}
 		coreOperations[string(operation)] = spec
 	}
@@ -331,6 +329,14 @@ func hfRegistry() corepolicy.Registry {
 		Targets:    targets,
 		Attrs:      hfAttributeSpecs(),
 	}
+}
+
+func hfAuthorizationModes(values []opcatalog.AuthorizationMode) []corepolicy.GrantMode {
+	out := make([]corepolicy.GrantMode, len(values))
+	for index, value := range values {
+		out[index] = corepolicy.GrantMode(value)
+	}
+	return out
 }
 
 func hfAttributeSpecs() map[string]corepolicy.AttrSpec {

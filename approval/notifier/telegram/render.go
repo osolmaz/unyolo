@@ -102,6 +102,9 @@ func validateApproval(approval approvalnotify.Approval) error {
 	if !safeLine(approval.Broker, 200, true) || !safeLine(approval.Requester, 80, true) || !safeLine(approval.Operation, 500, true) {
 		return errors.New("approval identity is invalid")
 	}
+	if approval.Mode != "window" && approval.Mode != "execution" {
+		return errors.New("approval mode is invalid")
+	}
 	if !safeText(approval.Reason, 2_000) || approval.RequestedDurationSeconds <= 0 || approval.PendingExpiresAt.IsZero() {
 		return errors.New("approval bounds are invalid")
 	}
@@ -114,6 +117,7 @@ func renderPending(approval approvalnotify.Approval, limits renderLimits) string
 	sections = append(sections, strings.Join([]string{
 		"👤 <b>Requester:</b> " + escaped(approval.Requester, limits.requester),
 		"⚙️ <b>Operation:</b> " + escaped(approval.Operation, limits.operation),
+		"🔑 <b>Grant mode:</b> " + approvalModeText(approval.Mode),
 		"📍 <b>Target:</b> " + escaped(approval.Presentation.Target, limits.target),
 		"🛡️ <b>Risk:</b> " + escaped(string(approval.Presentation.Risk), 20),
 	}, "\n"))
@@ -163,6 +167,13 @@ func renderAccess(approval approvalnotify.Approval, reasonLimit int) string {
 		"🔁 <b>Uses:</b> " + usesText(approval.MaxUses),
 		"⌛ <b>Request expires:</b> " + approval.PendingExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
 	}, "\n")
+}
+
+func approvalModeText(mode string) string {
+	if mode == "execution" {
+		return "execution (exact, single-use)"
+	}
+	return "window (reusable)"
 }
 
 func renderWarnings(warnings []approvalview.Warning, count, textLimit int) string {

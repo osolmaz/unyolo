@@ -230,14 +230,14 @@ func TestAgentRepositoryDiscoveryReusesApprovedWindowGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reserved, err := handler.grants.ReserveUse(grant.ID)
+	reserved, err := handler.grants.ReserveUse(grant.ID, "manual-policy-check", grant.Operation)
 	if err != nil {
 		t.Fatal(err)
 	}
 	allowed := policyAllowsRepositoryResult("agent", handler.policy,
 		policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "alice", Name: "private"},
-		policy.OpRepoList, &reserved, handler.planValidator, handler.utcNow())
-	_, _ = handler.grants.ReleaseUse(grant.ID)
+		policy.OpRepoList, &reserved.Grant, handler.planValidator, handler.utcNow())
+	_, _ = handler.grants.ReleaseUse(grant.ID, reserved.Use.RequestID)
 	if !allowed {
 		t.Fatalf("reserved repository grant did not authorize its result: %+v", reserved)
 	}
@@ -252,6 +252,102 @@ func TestAgentRepositoryDiscoveryReusesApprovedWindowGrant(t *testing.T) {
 	grantsForClient, err := handler.grants.ListForClient("agent")
 	if err != nil || len(grantsForClient) != 1 || grantsForClient[0].UsedCount != 2 {
 		t.Fatalf("grants after reuse = %+v, %v", grantsForClient, err)
+	}
+}
+
+func TestAgentSealedJobRunReusesWindowAcrossFreshPayloads(t *testing.T) {
+	var jobHits int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+testToken {
+			t.Fatalf("upstream authorization was not the broker token")
+		}
+		switch r.URL.Path {
+		case "/api/whoami-v2":
+			writeJSON(w, http.StatusOK, map[string]string{"name": "alice"})
+		case "/api/jobs/alice":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			secrets, ok := payload["secrets"].(map[string]any)
+			if !ok || secrets["TOKEN"] != "hidden" || payload["flavor"] != "cpu-basic" {
+				t.Fatalf("job payload = %#v", payload)
+			}
+			jobHits++
+			writeJSON(w, http.StatusOK, map[string]any{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	policyJSON := `{"rules":[{"id":"run-job","effect":"request","clients":["agent"],"operations":["job.run"],"targets":[{"kind":"job","owner":"alice","name":"namespace=alice"}],"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":5,"max_uses":5}}]}`
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, policyJSON)
+	defer cancel()
+	defer server.Close()
+
+	submit := func(requestKey string) agentv1.Operation {
+		t.Helper()
+		headers := map[string]string{"Content-Type": "application/octet-stream", "X-Broker-Operation": "job.run", "X-Broker-Idempotency-Key": requestKey}
+		response, text := doRequestWithHeaders(t, http.MethodPost, server.URL+"/api/agent/v1/sealed-payloads", "Bearer "+testSecret,
+			headers, strings.NewReader(`{"secrets":{"TOKEN":"hidden"}}`))
+		if response.StatusCode != http.StatusCreated || strings.Contains(text, "hidden") {
+			t.Fatalf("sealed upload = %d %s", response.StatusCode, text)
+		}
+		var reference map[string]any
+		if err := json.Unmarshal([]byte(text), &reference); err != nil {
+			t.Fatal(err)
+		}
+		body, err := json.Marshal(map[string]any{
+			"idempotency_key": requestKey,
+			"operation":       "job.run",
+			"target":          map[string]any{"namespace": "alice"},
+			"arguments":       map[string]any{"public": map[string]any{"flavor": "cpu-basic"}, "sealed_payload": reference},
+			"reason":          "run a test job",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, text = doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(string(body)))
+		var operation agentv1.Operation
+		if (response.StatusCode != http.StatusAccepted && response.StatusCode != http.StatusOK) || json.Unmarshal([]byte(text), &operation) != nil {
+			t.Fatalf("submit = %d %s", response.StatusCode, text)
+		}
+		return operation
+	}
+
+	first := submit("job-window-1")
+	if first.State != agentv1.StatePending || first.ApprovalID == "" {
+		t.Fatalf("first job = %#v", first)
+	}
+	grant, err := handler.grants.Get(first.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grant.Metadata[grants.MetadataMode] != "window" || grant.MaxUses != 5 {
+		t.Fatalf("job grant = %#v", grant)
+	}
+	if _, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-job-window",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first = waitForTestOperation(t, server.URL, first.ID)
+	if first.State != agentv1.StateSucceeded {
+		t.Fatalf("first job = %#v", first)
+	}
+
+	second := submit("job-window-2")
+	if second.State == agentv1.StatePending || second.ApprovalID != grant.ID {
+		t.Fatalf("reused job = %#v", second)
+	}
+	second = waitForTestOperation(t, server.URL, second.ID)
+	if second.State != agentv1.StateSucceeded || jobHits != 2 {
+		t.Fatalf("second job = %#v, hits = %d", second, jobHits)
+	}
+	updated, err := handler.grants.Get(grant.ID)
+	if err != nil || updated.UsedCount != 2 {
+		t.Fatalf("reused job grant = %#v, %v", updated, err)
 	}
 }
 

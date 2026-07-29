@@ -142,14 +142,14 @@ func validateCredentialExecutor(value Descriptor) error {
 }
 
 func validateNativeExecutor(value Descriptor) error {
-	if value.AuthorizationMode != ModeWindow {
+	if !value.AllowsAuthorizationMode(ModeWindow) || value.HasExecutionDisposition() {
 		return fmt.Errorf("HF operation %q has an invalid native protocol executor", value.Name)
 	}
 	return nil
 }
 
 func validateBoundedStreamExecutor(value Descriptor) error {
-	if value.AuthorizationMode != ModeWindow || value.Sealed || value.CredentialOutputKind != nil {
+	if !value.AllowsAuthorizationMode(ModeWindow) || value.HasExecutionDisposition() || value.Sealed || value.CredentialOutputKind != nil {
 		return fmt.Errorf("HF operation %q has an invalid bounded stream executor", value.Name)
 	}
 	return nil

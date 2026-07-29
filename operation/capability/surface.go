@@ -103,7 +103,7 @@ func MCPToolSchema(descriptor Descriptor, options SurfaceOptions) map[string]any
 		"request_id": requestIDSchema(),
 	}
 	required := []string{"target", "reason"}
-	if descriptor.AuthorizationMode == ModeExecution || options.WindowSubmitsOperation {
+	if descriptor.HasExecutionDisposition() || options.WindowSubmitsOperation {
 		required = addExecutionToolProperties(properties, required, descriptor, options, argumentsSchema, sealedSchema)
 	} else {
 		addWindowToolProperties(properties, options.AttributeNames, projection.Attrs)

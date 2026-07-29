@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/osolmaz/unyolo/agent/v1"
+	usebudget "github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
@@ -180,14 +182,25 @@ func (commandAdapter) Present(value Plan) agentv1.Presentation {
 		Summary: fmt.Sprintf("Run %s once as %s", value.Resolved.CommandID, value.Resolved.TargetUser)}
 }
 
-func (commandAdapter) BindReservation(value Plan, grant grants.Grant) (Plan, error) {
-	if grant.ID == "" || grant.Revision < 1 || grant.ExpiresAt.IsZero() || grant.ClientRequestID != value.ExecutionID {
+func (commandAdapter) BindReservation(value Plan, reservation grants.UseReservation) (Plan, error) {
+	grant := reservation.Grant
+	mode := corepolicy.GrantMode(grant.Metadata[grants.MetadataMode])
+	if grant.ID == "" || grant.Revision < 1 || grant.ExpiresAt.IsZero() || reservation.Use.State != grants.UseReserved ||
+		reservation.Use.GrantID != grant.ID || reservation.Use.Operation != value.Authorization.Operation ||
+		!reservationMatchesCommandPlan(grant, value.Authorization) ||
+		(mode == corepolicy.GrantModeExecution && grant.ClientRequestID != value.ExecutionID) ||
+		(mode != corepolicy.GrantModeExecution && mode != corepolicy.GrantModeWindow) {
 		return Plan{}, errors.New("sudo execution reservation is invalid")
 	}
 	value.GrantID = grant.ID
-	value.ReservationID = fmt.Sprintf("%s:r%d", grant.ID, grant.Revision)
+	value.ReservationID = reservation.Use.RequestID
 	value.GrantExpiresAt = grant.ExpiresAt.UTC()
 	return value, nil
+}
+
+func reservationMatchesCommandPlan(grant grants.Grant, request corepolicy.Request) bool {
+	return grant.Client == request.Client && grant.Operation == request.Operation && grant.Target.Kind == request.Target.Kind &&
+		reflect.DeepEqual(grant.Target.Fields, request.Target.Fields) && reflect.DeepEqual(grant.Attrs, request.Attrs)
 }
 
 func (a commandAdapter) Execute(ctx context.Context, value Plan) (operationruntime.Outcome, error) {
@@ -259,9 +272,11 @@ func ExecutionFailure(executionErr, _ error) operationruntime.Failure {
 func commandDescriptor() capability.Descriptor {
 	mcpTool, cliCommand := "sudo_exec_command", "sudo-broker run"
 	return capability.Descriptor{Name: sudopolicy.OperationExecCommand, OperationRevision: 1, Summary: "Run one cataloged command as a Unix user",
-		Disposition: "EX", AuthorizationMode: capability.ModeExecution, ExplicitOnly: true, Implementation: capability.StatusImplemented,
+		Disposition: "EX", DefaultAuthorizationMode: capability.ModeWindow,
+		AuthorizationModes: []capability.AuthorizationMode{capability.ModeWindow, capability.ModeExecution},
+		ExplicitOnly:       true, Implementation: capability.StatusImplemented,
 		Risk: capability.RiskCritical, DefaultPolicyEffect: capability.DefaultEffectRequest, TargetKind: sudopolicy.TargetUser,
-		MaxUses: 1, RequestTTLSeconds: 24 * 60 * 60, ApprovalTTLSeconds: 24 * 60 * 60, AgentFacing: true,
+		MaxUses: int(usebudget.MaxFiniteUses), RequestTTLSeconds: 24 * 60 * 60, ApprovalTTLSeconds: 7 * 24 * 60 * 60, AgentFacing: true,
 		MCPTool: &mcpTool, CLICommand: &cliCommand, ExecutorKind: "privileged-helper"}
 }
 

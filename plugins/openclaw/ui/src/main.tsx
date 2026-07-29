@@ -134,6 +134,11 @@ export function App() {
             <div className="meta">
               <span>{request.request.requester}</span>
               <span>
+                {request.request.mode === "window"
+                  ? "Reusable window"
+                  : "Exact execution"}
+              </span>
+              <span>
                 {request.request.requested_max_uses === null
                   ? "Unlimited uses"
                   : `${request.request.requested_max_uses} use${request.request.requested_max_uses === 1 ? "" : "s"}`}
@@ -274,6 +279,7 @@ function DecisionDialog({
   }, [request, bounds]);
   if (!decision || !request) return null;
   const approve = decision.action === "approve";
+  const execution = request.request.mode === "execution";
   const title = `${capitalize(decision.action)} request`;
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -283,7 +289,8 @@ function DecisionDialog({
           <Dialog.Title>{title}</Dialog.Title>
           <Dialog.Description>
             {request.request.presentation.title} at revision{" "}
-            {request.request.revision}
+            {request.request.revision}. This approval grants{" "}
+            {execution ? "one exact execution" : "a reusable window"}.
           </Dialog.Description>
           <PresentationSafety
             presentation={request.request.presentation}
@@ -310,13 +317,13 @@ function DecisionDialog({
                   min={1}
                   max={bounds.max_uses ?? undefined}
                   value={maxUses ?? 1}
-                  disabled={maxUses === null}
+                  disabled={execution || maxUses === null}
                   onChange={(event) =>
                     setMaxUses(event.currentTarget.valueAsNumber)
                   }
                 />
               </label>
-              {bounds.max_uses === null && (
+              {!execution && bounds.max_uses === null && (
                 <label>
                   <input
                     type="checkbox"

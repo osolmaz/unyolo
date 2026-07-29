@@ -8,12 +8,12 @@
       "targets": [{ "kind": "user", "name": "root" }],
       "attrs": { "command_id": ["nginx-reload"] },
       "grant_policy": {
-        "mode": "execution",
-        "default_minutes": 5,
-        "max_minutes": 5,
+        "mode": "window",
+        "default_minutes": 60,
+        "max_minutes": 10080,
         "request_ttl_minutes": 10,
-        "default_max_uses": 1,
-        "max_uses": 1
+        "default_max_uses": 25,
+        "max_uses": 1000000
       }
     }
   ]

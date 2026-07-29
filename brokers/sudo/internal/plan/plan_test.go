@@ -232,7 +232,8 @@ func testGrantRequest(resolved catalog.Resolved) grants.Request {
 	policyRequest := sudopolicy.Request("bob", resolved)
 	return grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: policyRequest.Operation, Target: policyRequest.Target, Attrs: policyRequest.Attrs,
-		Reason: "scale release", Duration: 5 * time.Minute, PendingTimeout: time.Minute, MaxUses: 1,
+		Metadata: map[string]string{grants.MetadataMode: "execution"},
+		Reason:   "scale release", Duration: 5 * time.Minute, PendingTimeout: time.Minute, MaxUses: 1,
 	}
 }
 

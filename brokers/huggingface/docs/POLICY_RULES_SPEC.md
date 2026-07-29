@@ -409,8 +409,9 @@ Normalization fills `grant_policy` defaults before comparison:
   operations.
 - `max_uses` defaults to the same operation ceiling.
 
-Finite use budgets cannot exceed `1000000`. A provider operation may set a
-lower ceiling. Execution operations always default to and require one use.
+Finite window budgets cannot exceed `1000000`. A provider operation may set a
+lower ceiling. Every grantable operation defaults to `window` and supports
+`execution`; execution mode always requires one use.
 
 The broker does not intersect or merge different grant policies. Requiring
 identical request policies keeps operator prompts predictable and avoids
@@ -438,10 +439,10 @@ directly. Arbitrary partial operation globs such as `repo.*.read` or
 
 | Operation | Default grant mode | Meaning |
 |-----------|--------------------|---------|
-| `repo.list` | none | Query repositories for one exact owner and type, then disclose only policy-matching results. |
-| `repo.create` | execution | Create one exact model, dataset, or Space repository through the typed Agent Operations API. |
-| `repo.delete` | execution | Delete one exact repository after a one-use approval and absence reconciliation. |
-| `repo.metadata.read` | none | Read broker-exposed repository metadata: type, owner, and name only. |
+| `repo.list` | window | Query repositories for one exact owner and type, then disclose only policy-matching results. |
+| `repo.create` | window | Create one exact model, dataset, or Space repository through the typed Agent Operations API. |
+| `repo.delete` | window | Delete one exact repository with immutable planning and absence reconciliation. |
+| `repo.metadata.read` | window | Read broker-exposed repository metadata: type, owner, and name only. |
 | `repo.contents.read` | window | Read repo files, file listings, README/card text, branches, tags, commits, or raw blobs. |
 | `git.fetch` | window | Git clone/fetch. This is content read. |
 | `git.push.append` | window | Fast-forward push or new ref creation allowed by append-only policy. LFS upload support traffic uses the repo target because LFS requests do not carry the Git ref; `git-receive-pack` still enforces the actual ref before mutation. |
@@ -449,15 +450,16 @@ directly. Arbitrary partial operation globs such as `repo.*.read` or
 | `git.ref.delete` | window | Branch or non-tag ref deletion. |
 | `git.tag.update` | window | Tag move or tag deletion. |
 
-The complete operation list, authorization mode, risk, explicit-only flag,
-implementation disposition, and explicit `default_policy_effect` are generated
-in `docs/generated/capabilities.json`. The default effect is provider-owned
-catalog data used by local policy preset rendering; runtime policy evaluation
+The complete operation list, default and allowed authorization modes, risk,
+explicit-only flag, implementation disposition, and explicit
+`default_policy_effect` are generated in
+`docs/generated/capabilities.json`. The default effect is provider-owned catalog
+data used by local policy preset rendering; runtime policy evaluation
 still uses only the concrete rules in `scope.json`.
 Registration makes an operation understandable; policy no-match still denies
-it. Execution operations are one-use. Secret-bearing operations use sealed
-payload references, and generated credentials are written to an approved
-broker credential slot rather than returned to the requester.
+it. Policy may select exact execution mode, which is one-use. Secret-bearing
+operations use sealed payload references, and generated credentials are
+written to an approved broker credential slot rather than returned to the requester.
 
 The broker never grants generic Hugging Face HTTP proxying, arbitrary URLs or
 methods, arbitrary request bodies, raw upstream credentials, or unregistered
@@ -638,11 +640,11 @@ Fields:
 | `default_minutes` | no | integer | Default approved access duration in minutes. Default `5`, min `1`. |
 | `max_minutes` | no | integer | Maximum approved access duration in minutes. Default `60`, min `1`, max `60`. |
 | `request_ttl_minutes` | no | integer | How long a pending approval request stays actionable. Default `5`, min `1`, max `60`. |
-| `default_max_uses` | no | integer | Default use budget for window grants. Default `1`, min `1`. |
-| `max_uses` | no | integer | Maximum use budget. Defaults to the operation ceiling, min `1`, global max `1,000,000`. |
+| `default_max_uses` | no | integer | Finite default use budget. Defaults to the lowest catalog ceiling among the rule's operations, min `1`. |
+| `max_uses` | no | integer or `null` | Maximum window budget. Defaults to the operation ceiling, min `1`, global max `1,000,000`; `null` permits unlimited uses until expiry. |
 
-Execution grants ignore multi-use budgets and are single-use plans.
-Window grants require a use budget. Git push use accounting remains one
+Execution grants require one use. Window grants require a finite default and
+may have a finite or unlimited ceiling. Git push use accounting remains one
 receive-pack request per use, regardless of commit count.
 
 Approved access starts when the operator approves, not when the agent
@@ -684,7 +686,7 @@ Fields:
 | `target` | yes | One target object. |
 | `attrs` | no | Operation attributes. |
 | `minutes` | no | Requested approved access duration. Defaults from matching request rule. |
-| `max_uses` | no | Requested use budget for window grants. Defaults from matching request rule. |
+| `max_uses` | no | Requested use budget. Defaults from the matching request rule; execution mode requires `1`. |
 | `reason` | yes | Human-readable reason shown to the operator. Length `1..500`. |
 | `client_request_id` | yes | Idempotency key scoped to the authenticated client. Length `1..128`. |
 
@@ -944,15 +946,14 @@ active  -> retained
 ```
 
 Terminal statuses are `consumed`, `denied`, `expired`, and `revoked`.
-`retained` means a use reservation may have reached upstream and requires
-operator review before the broker can safely finalize it. Retained grants
-report `uses_remaining: 0` because no further operation is authorized while
-review is pending.
+`retained` means at least one operation-bound use may have reached upstream and
+requires operator review before that use can be finalized. The retained use
+continues to count against the budget. A window grant with remaining budget can
+still authorize a different request identity.
 
-Window grants reserve one use before forwarding the operation upstream.
-The reservation is committed to disk before forwarding. If the operation
-definitely did not reach upstream, the reservation may be released. If
-the broker cannot prove that, the reservation is retained fail-closed.
+Window grants create a durable operation-bound use before forwarding upstream.
+A definitive pre-dispatch failure releases that use. An ambiguous result retains
+it, and replaying the same request identity cannot dispatch again.
 
 Execution grants store a canonical plan hash and consume on successful
 execution. If an execution may have partially applied upstream, the grant
