@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -606,7 +607,53 @@ func (s *Server) activeAuthorizationGrants(request corepolicy.Request) ([]corepo
 	if err != nil {
 		return nil, err
 	}
-	return policy.AuthorizationGrants(rules), nil
+	active := policy.AuthorizationGrants(rules)
+	execution, err := s.activeExecutionAuthorizationGrants(request)
+	if err != nil {
+		return nil, err
+	}
+	return append(active, execution...), nil
+}
+
+func (s *Server) activeExecutionAuthorizationGrants(request corepolicy.Request) ([]corepolicy.Grant, error) {
+	values, err := s.grants.ListForClient(request.Client)
+	if err != nil {
+		return nil, err
+	}
+	var active []corepolicy.Grant
+	for _, grant := range values {
+		if grant.Status != grants.StatusActive || hfgrant.Mode(grant) != hfgrant.ModeExecution ||
+			!hasGrantUses(grant) || s.planValidator.ValidateExecution(grant) != nil {
+			continue
+		}
+		rule, ok := grantRule(grant)
+		if !ok {
+			continue
+		}
+		projected := policy.AuthorizationGrants([]policy.Rule{rule})
+		if len(projected) != 1 || !exactAuthorizationGrant(projected[0], request) {
+			continue
+		}
+		active = append(active, projected[0])
+	}
+	return active, nil
+}
+
+func exactAuthorizationGrant(grant corepolicy.Grant, request corepolicy.Request) bool {
+	return grant.Client == request.Client && grant.Operation == request.Operation &&
+		reflect.DeepEqual(grant.Target, request.Target) && exactAuthorizationValues(grant.Attrs, request.Attrs)
+}
+
+func exactAuthorizationValues(left, right map[string][]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, values := range left {
+		if !reflect.DeepEqual(values, right[name]) {
+			return false
+		}
+	}
+	return true
 }
 
 func newRouter(server *Server) *echo.Echo {

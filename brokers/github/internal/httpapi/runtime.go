@@ -11,6 +11,7 @@ import (
 	"github.com/osolmaz/unyolo/approval/notification"
 	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/config"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
@@ -128,11 +129,29 @@ func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.UseRese
 }
 
 func (s *Server) evaluateBrokerRequest(request policy.Request) (policy.Decision, error) {
-	active, err := s.grants.ActivePolicyGrants()
+	active, err := s.activeWindowPolicyGrants()
 	if err != nil {
 		return policy.Decision{}, err
 	}
 	return s.policy.Evaluate(request, active...), nil
+}
+
+func (s *Server) activeWindowPolicyGrants() ([]corepolicy.Grant, error) {
+	active, err := s.grants.ActivePolicyGrants()
+	if err != nil {
+		return nil, err
+	}
+	windows := make([]corepolicy.Grant, 0, len(active))
+	for _, candidate := range active {
+		grant, getErr := s.grants.Get(candidate.ID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if grant.Metadata[grants.MetadataMode] == "window" {
+			windows = append(windows, candidate)
+		}
+	}
+	return windows, nil
 }
 
 func (s *Server) reserveNativeGrantUse(id string) ([]grants.UseReservation, error) {

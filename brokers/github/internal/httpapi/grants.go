@@ -175,12 +175,17 @@ func grantPolicyRequest(c echo.Context, payload grantCreateRequest) policy.Reque
 }
 
 func (p grantCreatePlan) storeRequest() grants.Request {
+	mode := ""
+	if p.decision.GrantPolicy != nil {
+		mode = p.decision.GrantPolicy.Mode
+	}
 	return grants.Request{
 		Client:          p.request.Client,
 		ClientRequestID: p.payload.ClientRequestID,
 		Operation:       string(p.request.Operation),
 		Target:          policy.CoreTarget(p.request.Target),
 		Attrs:           corepolicy.SingletonValues(p.request.Attrs),
+		Metadata:        map[string]string{grants.MetadataMode: mode},
 		Reason:          strings.TrimSpace(p.payload.Reason),
 		Duration:        p.duration,
 		PendingTimeout:  p.pendingTimeout,

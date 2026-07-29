@@ -430,7 +430,7 @@ func TestActiveGrantRequiresApprovedAttrs(t *testing.T) {
 	}
 }
 
-func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
+func TestExecutionModeGrantOnlyAuthorizesExactForwardRequest(t *testing.T) {
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	plans := testPlanStore(t)
 	grant, _, err := requestHFGrant(t, store, plans, hfgrant.Input{
@@ -467,8 +467,13 @@ func TestExecutionModeGrantDoesNotAuthorizeRuntimeRequest(t *testing.T) {
 	if len(rules) != 0 {
 		t.Fatalf("activeGrantRules() = %+v, want no execution-mode grants", rules)
 	}
-	if activeGrantMatchesIgnoringRef(active, "agent", policy.OpGitPushForce, "dataset/acme/repo", attrs) {
-		t.Fatalf("activeGrantMatchesIgnoringRef() matched execution-mode grant")
+	if !activeGrantMatchesIgnoringRef(active, "agent", policy.OpGitPushForce, "dataset/acme/repo", attrs) {
+		t.Fatalf("activeGrantMatchesIgnoringRef() did not match the exact execution request")
+	}
+	different := refChangeAttrs("non_fast_forward")
+	different["max_bytes"] = 10
+	if activeGrantMatchesIgnoringRef(active, "agent", policy.OpGitPushForce, "dataset/acme/repo", different) {
+		t.Fatalf("activeGrantMatchesIgnoringRef() matched a different execution request")
 	}
 }
 

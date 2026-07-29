@@ -160,7 +160,7 @@ func (s *Server) reserveInferenceGrant(id, client string, operation policy.Opera
 	if err != nil {
 		return grants.UseReservation{}, err
 	}
-	requestID, err := newNativeGrantUseRequestID(grant.ID)
+	requestID, err := newNativeGrantUseRequestID(grant)
 	if err != nil {
 		return grants.UseReservation{}, err
 	}

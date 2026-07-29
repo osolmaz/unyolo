@@ -237,12 +237,13 @@ func (s *Server) prepareForwardIntent(client string, operation policy.Operation,
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
-	id, err := approvalRequestID("http", authorizationRequest, decision.MatchedRequestRuleIDs)
+	id, err := s.forwardApprovalRequestID(client, authorizationRequest, decision.MatchedRequestRuleIDs)
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
+	mode := corepolicy.GrantMode(bounds.Mode)
 	request, plan, err := hfgrant.Prepare(s.grants, s.plans, hfgrant.Input{
-		Client: client, ClientRequestID: id, Operation: string(operation), Mode: hfgrant.ModeWindow,
+		Client: client, ClientRequestID: id, Operation: string(operation), Mode: bounds.Mode,
 		Target: target, Attrs: attrs, Reason: string(operation) + " requires approval",
 		RequestedDuration: time.Duration(bounds.DefaultMinutes) * time.Minute,
 		PendingTimeout:    time.Duration(bounds.RequestTTLMinutes) * time.Minute,
@@ -252,16 +253,32 @@ func (s *Server) prepareForwardIntent(client string, operation policy.Operation,
 		return unyoloauthorization.GrantIntent{}, err
 	}
 	return unyoloauthorization.GrantIntent{
-		Mode: corepolicy.GrantModeWindow, Authorization: authorizationRequest, Request: request, Plan: plan,
+		Mode: mode, Authorization: authorizationRequest, Request: request, Plan: plan,
 	}, nil
+}
+
+func (s *Server) forwardApprovalRequestID(client string, request corepolicy.Request, ruleIDs []string) (string, error) {
+	base, err := approvalRequestID("http", request, ruleIDs)
+	if err != nil {
+		return "", err
+	}
+	items, err := s.grants.ListForClient(client)
+	if err != nil {
+		return "", err
+	}
+	return nextGeneratedApprovalRequestID(base, items), nil
 }
 
 func (s *Server) forwardApprovalBounds(operation policy.Operation, bounds *corepolicy.GrantPolicy) (*corepolicy.GrantPolicy, error) {
 	if !s.hasApprovalChannel() {
 		return nil, errors.New("approval channel is not configured")
 	}
-	if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow || operationNeedsRef(operation) {
-		return nil, errors.New("operation requires an exact window approval")
+	mode := corepolicy.GrantMode("")
+	if bounds != nil {
+		mode = corepolicy.GrantMode(bounds.Mode)
+	}
+	if bounds == nil || (mode != corepolicy.GrantModeWindow && mode != corepolicy.GrantModeExecution) || operationNeedsRef(operation) {
+		return nil, errors.New("operation requires a supported exact approval")
 	}
 	return bounds, nil
 }
@@ -304,6 +321,10 @@ func activeGrantRule(grant grants.Grant) (policy.Rule, bool) {
 	if !grantEligibleForRule(grant) {
 		return policy.Rule{}, false
 	}
+	return grantRule(grant)
+}
+
+func grantRule(grant grants.Grant) (policy.Rule, bool) {
 	target := targetFromGrant(grant)
 	if target.Kind == "" {
 		return policy.Rule{}, false
@@ -350,7 +371,7 @@ func (s *Server) handleForwardWithActiveGrant(w http.ResponseWriter, r *http.Req
 	if policyDenyRefusesGrant(decision) {
 		return false
 	}
-	grant, matched, err := s.matchForwardActiveGrant(r, client, classified, target)
+	grant, matched, err := s.matchForwardActiveGrant(r, client, classified, target, decision.GrantID)
 	if err != nil {
 		writePlain(w, http.StatusInternalServerError, "hf-broker: could not inspect grants\n")
 		s.record(client, string(classified.operation), target, audit.DecisionRefused, "could not inspect grants", 0)
@@ -367,20 +388,24 @@ func (s *Server) handleForwardWithActiveGrant(w http.ResponseWriter, r *http.Req
 	return true
 }
 
-func (s *Server) matchForwardActiveGrant(r *http.Request, client string, classified classifiedRequest, target string) (grants.Grant, bool, error) {
+func (s *Server) matchForwardActiveGrant(r *http.Request, client string, classified classifiedRequest, target, grantID string) (grants.Grant, bool, error) {
 	if lfsUploadRequest(r, classified) {
-		return s.matchActiveGrantIgnoringRef(client, classified.operation, target, classified.attrs)
+		return s.matchActiveGrantIgnoringRefID(client, classified.operation, target, classified.attrs, grantID)
 	}
-	return s.matchActiveGrant(client, classified.operation, target, "", classified.attrs)
+	return hfgrant.MatchActiveFunc(s.grants, client, string(classified.operation), target, "", func(grant grants.Grant) bool {
+		values, err := hfgrant.Attrs(grant)
+		return grant.ID == grantID && err == nil && s.planValidator.ValidateExecution(grant) == nil &&
+			runtimeForwardGrant(grant) && policy.AttrValuesMatch(values, classified.attrs)
+	})
 }
 
-func (s *Server) matchActiveGrantIgnoringRef(client string, operation policy.Operation, target string, attrs map[string]any) (grants.Grant, bool, error) {
+func (s *Server) matchActiveGrantIgnoringRefID(client string, operation policy.Operation, target string, attrs map[string]any, grantID string) (grants.Grant, bool, error) {
 	clientGrants, err := s.grants.ListForClient(client)
 	if err != nil {
 		return grants.Grant{}, false, err
 	}
 	for _, grant := range clientGrants {
-		if activeGrantMatchesIgnoringRef(grant, client, operation, target, attrs) {
+		if (grantID == "" || grant.ID == grantID) && activeGrantMatchesIgnoringRef(grant, client, operation, target, attrs) {
 			return grant, true, nil
 		}
 	}
@@ -389,7 +414,7 @@ func (s *Server) matchActiveGrantIgnoringRef(client string, operation policy.Ope
 
 func activeGrantMatchesIgnoringRef(grant grants.Grant, client string, operation policy.Operation, target string, attrs map[string]any) bool {
 	return grant.Status == grants.StatusActive &&
-		runtimeWindowGrant(grant) &&
+		runtimeForwardGrant(grant) &&
 		grant.Client == client &&
 		grant.Operation == string(operation) &&
 		hfgrant.Target(grant) == target &&
@@ -397,9 +422,30 @@ func activeGrantMatchesIgnoringRef(grant grants.Grant, client string, operation 
 		grantAttrsMatchIgnoringRef(grant, attrs)
 }
 
+func runtimeForwardGrant(grant grants.Grant) bool {
+	mode := hfgrant.Mode(grant)
+	return mode == hfgrant.ModeWindow || mode == hfgrant.ModeExecution
+}
+
 func grantAttrsMatchIgnoringRef(grant grants.Grant, attrs map[string]any) bool {
 	values, err := hfgrant.Attrs(grant)
-	return err == nil && policy.AttrValuesMatch(refLessSupportGrantAttrs(values), attrs)
+	if err != nil {
+		return false
+	}
+	approved := refLessSupportGrantAttrs(values)
+	if hfgrant.Mode(grant) != hfgrant.ModeExecution {
+		return policy.AttrValuesMatch(approved, attrs)
+	}
+	actual := refLessSupportGrantAttrs(attrs)
+	if len(approved) != len(actual) {
+		return false
+	}
+	for name := range actual {
+		if _, ok := approved[name]; !ok {
+			return false
+		}
+	}
+	return policy.AttrValuesMatch(approved, actual)
 }
 
 func refLessSupportGrantAttrs(attrs map[string]any) map[string]any {
@@ -448,7 +494,7 @@ func (s *Server) reserveForwardGrant(grant grants.Grant) (grants.UseReservation,
 	if err := s.planValidator.ValidateExecution(grant); err != nil {
 		return grants.UseReservation{}, errForwardGrantPlanInvalid
 	}
-	requestID, err := newNativeGrantUseRequestID(grant.ID)
+	requestID, err := newNativeGrantUseRequestID(grant)
 	if err != nil {
 		return grants.UseReservation{}, err
 	}
@@ -459,12 +505,16 @@ func (s *Server) reserveForwardGrant(grant grants.Grant) (grants.UseReservation,
 	return reserved, nil
 }
 
-func newNativeGrantUseRequestID(grantID string) (string, error) {
-	requestIdentity, err := grants.NewUseRequestIdentity()
-	if err != nil {
-		return "", err
+func newNativeGrantUseRequestID(grant grants.Grant) (string, error) {
+	requestIdentity := grant.ClientRequestID
+	if hfgrant.Mode(grant) != hfgrant.ModeExecution {
+		var err error
+		requestIdentity, err = grants.NewUseRequestIdentity()
+		if err != nil {
+			return "", err
+		}
 	}
-	return grants.DeriveUseRequestID(grantID, requestIdentity)
+	return grants.DeriveUseRequestID(grant.ID, requestIdentity)
 }
 
 func (s *Server) refuseForwardGrant(w http.ResponseWriter, client string, operation policy.Operation, target string, cause error) {

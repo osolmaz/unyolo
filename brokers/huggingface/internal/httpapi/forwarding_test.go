@@ -118,6 +118,64 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 	)
 }
 
+func TestForwardedExecutionApprovalAuthorizesOneExactRetry(t *testing.T) {
+	dir := t.TempDir()
+	notifier := &captureGrantNotifier{}
+	scp, err := policy.Parse([]byte(`{"rules":[{
+		"id":"request-fetch-exact",
+		"effect":"request",
+		"clients":["agent"],
+		"operations":["git.fetch"],
+		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}],
+		"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}
+	}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Options{
+		Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+			StateDir: filepath.Join(dir, "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = handler.Close() }()
+
+	classified := classifiedRequest{route: route{repoType: policy.TypeDataset, owner: "acme", name: "repo"}, operation: policy.OpGitFetch}
+	request := httptest.NewRequest(http.MethodPost, "/datasets/acme/repo.git/git-upload-pack", nil)
+	const target = "dataset/acme/repo"
+	first, decision, err := handler.authorizeForwardRepo("agent", request, classified, target)
+	if err != nil || first.Request.Grant.ID == "" || first.Request.Grant.Metadata[grants.MetadataMode] != "execution" {
+		t.Fatalf("first authorization = %+v, %+v, %v", first, decision, err)
+	}
+	approved, err := handler.grants.Approve(first.Request.Grant.ID, first.Request.DecisionToken, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, decision, err := handler.authorizeForwardRepo("agent", request, classified, target)
+	if err != nil || second.Request.Grant.ID != "" || decision.Effect != policy.EffectAllow || decision.GrantID != approved.ID {
+		t.Fatalf("approved authorization = %+v, %+v, %v", second, decision, err)
+	}
+	matched, ok, err := handler.matchForwardActiveGrant(request, "agent", classified, target, decision.GrantID)
+	if err != nil || !ok || matched.ID != approved.ID {
+		t.Fatalf("matchForwardActiveGrant() = %+v, %v, %v", matched, ok, err)
+	}
+	reserved, err := handler.reserveForwardGrant(matched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled, err := handler.grants.CommitUse(reserved.Grant.ID, reserved.Use.RequestID)
+	if err != nil || settled.Grant.Status != grants.StatusConsumed || settled.Grant.UsedCount != 1 {
+		t.Fatalf("CommitUse() = %+v, %v", settled, err)
+	}
+	third, _, err := handler.authorizeForwardRepo("agent", request, classified, target)
+	if err != nil || third.Request.Grant.ID == "" || third.Request.Grant.ID == approved.ID ||
+		third.Request.Grant.ClientRequestID == approved.ClientRequestID {
+		t.Fatalf("authorization after consumption = %+v, %v", third, err)
+	}
+}
+
 func TestRewriteLFSBatchResponseRefusesXetWithoutLeakingActions(t *testing.T) {
 	t.Parallel()
 	server := &Server{lfsActions: map[string]lfsAction{}}

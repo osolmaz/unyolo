@@ -131,7 +131,7 @@ func (s *Server) prepareReceivePackTransaction(
 	if s.notifier == nil && !s.operatorConfigured {
 		return grants.Request{}, policy.Decision{}, echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
 	}
-	duration, pendingTimeout, err := receivePackApprovalBounds(items)
+	duration, pendingTimeout, mode, err := receivePackApprovalBounds(items)
 	if err != nil {
 		return grants.Request{}, policy.Decision{}, echo.NewHTTPError(http.StatusForbidden, err.Error())
 	}
@@ -145,25 +145,34 @@ func (s *Server) prepareReceivePackTransaction(
 	request := grants.Request{
 		Client: items[0].Request.Client, ClientRequestID: requestID,
 		Operation: string(highestRiskGitOperation(items)), Target: target, Attrs: attrs,
-		Reason: "Git push transaction requires approval", Duration: duration, PendingTimeout: pendingTimeout,
+		Metadata: map[string]string{grants.MetadataMode: string(mode)},
+		Reason:   "Git push transaction requires approval", Duration: duration, PendingTimeout: pendingTimeout,
 		MaxUses: usebudget.Limit(1), MaxUsesSpecified: true,
 	}
 	return request, policy.Decision{Effect: policy.EffectRequest, MatchedRuleIDs: ruleIDs}, nil
 }
 
-func receivePackApprovalBounds(items []requestableReceivePackRequest) (time.Duration, time.Duration, error) {
+func receivePackApprovalBounds(items []requestableReceivePackRequest) (time.Duration, time.Duration, corepolicy.GrantMode, error) {
 	var duration, pending time.Duration
+	mode := corepolicy.GrantModeWindow
 	for _, item := range items {
 		bounds := item.Decision.GrantPolicy
-		if bounds == nil || corepolicy.GrantMode(bounds.Mode) != corepolicy.GrantModeWindow || bounds.MaxUses < 1 {
-			return 0, 0, errors.New("git push approval policy is incompatible with one-use transactions")
+		if bounds == nil {
+			return 0, 0, "", errors.New("git push approval policy is incompatible with one-use transactions")
+		}
+		selected := corepolicy.GrantMode(bounds.Mode)
+		if selected != corepolicy.GrantModeWindow && selected != corepolicy.GrantModeExecution {
+			return 0, 0, "", errors.New("git push approval policy has an unsupported mode")
+		}
+		if selected == corepolicy.GrantModeExecution {
+			mode = selected
 		}
 		candidateDuration := time.Duration(bounds.DefaultMinutes) * time.Minute
 		candidatePending := time.Duration(bounds.RequestTTLMinutes) * time.Minute
 		duration = shorterNonZeroDuration(duration, candidateDuration)
 		pending = shorterNonZeroDuration(pending, candidatePending)
 	}
-	return duration, pending, nil
+	return duration, pending, mode, nil
 }
 
 func shorterNonZeroDuration(current, candidate time.Duration) time.Duration {
