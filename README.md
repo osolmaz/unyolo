@@ -1,6 +1,6 @@
-<p align="center">
-  <img src="assets/logo-wordmark.svg?v=3" alt="unYOLO" width="560">
-</p>
+<div align="center">
+  <img src="assets/logo-wordmark.svg?v=4" alt="unYOLO" width="560">
+</div>
 
 # unYOLO
 
