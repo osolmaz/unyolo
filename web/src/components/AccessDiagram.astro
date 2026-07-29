@@ -10,12 +10,17 @@
  * prefers-reduced-motion.
  */
 
-// Shared vertical positions for the four resources on the right of each row.
-const resources = [
-  { y: 40, name: "agent-a/parser-fix", note: "branch", allowed: true },
-  { y: 100, name: "main", note: "default branch", allowed: false },
-  { y: 160, name: "acme/api", note: "repository", allowed: false },
-  { y: 220, name: "acme/secrets", note: "private repo", allowed: false },
+// The right-hand column models the real hierarchy. Two branches sit inside
+// acme/api, which is itself a target because the repository can be deleted.
+// acme/secrets is a separate repository.
+const REPO_BOX = { x: 596, y: 16, w: 296, h: 146 };
+
+const targets = [
+  // `safe` is the work you actually wanted; it behaves the same in both rows.
+  { id: "branch", y: 90, endX: REPO_BOX.x, name: "agent-a/parser-fix", note: "branch", indent: true, safe: true },
+  { id: "main", y: 136, endX: REPO_BOX.x, name: "main", note: "default branch", indent: true },
+  { id: "repo", y: 44, endX: REPO_BOX.x, name: "acme/api", note: "repository" },
+  { id: "secrets", y: 208, endX: 608, name: "acme/secrets", note: "private repo" },
 ];
 
 /* ---- icons -------------------------------------------------------------
@@ -82,20 +87,20 @@ const cubeIcon = `
   <polygon fill="url(#gRight)" points="17,-10 17,7 0,16 0,-1"/>
 `;
 
-/** Wire from a hub on the left to a resource on the right. */
-const wire = (fromX: number, y: number) =>
-  `M ${fromX} 130 C ${fromX + 110} 130, ${fromX + 150} ${y}, 640 ${y}`;
+/** Wire from a hub on the left to a target on the right. */
+const wire = (fromX: number, y: number, endX: number) =>
+  `M ${fromX} 130 C ${fromX + 110} 130, ${fromX + 150} ${y}, ${endX} ${y}`;
 
 /**
  * Point on that cubic bezier at t, so a cut marker lands exactly on its wire
  * instead of being eyeballed. t = 0.6 is far enough along that the four wires
  * have fanned apart.
  */
-function pointOnWire(fromX: number, y: number, t = 0.6) {
+function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
   const p0 = { x: fromX, y: 130 };
   const p1 = { x: fromX + 110, y: 130 };
   const p2 = { x: fromX + 150, y };
-  const p3 = { x: 640, y };
+  const p3 = { x: endX, y };
   const u = 1 - t;
   const a = u * u * u;
   const b = 3 * u * u * t;
@@ -156,24 +161,32 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
     <figcaption class="scenario__caption">
       <span class="scenario__tag">Without a broker</span>
       <p class="scenario__line">
-        You hand the token to the agent. It reaches everything the token reaches, and nothing
-        checks any of it.
+        You hand the token to the agent. It does the work you wanted, and the same token reaches
+        everything else in your account.
       </p>
     </figcaption>
 
-    <svg class="scenario__svg" viewBox="0 0 900 248" role="img" aria-labelledby="loose-title">
+    <svg class="scenario__svg" viewBox="0 0 900 268" role="img" aria-labelledby="loose-title">
       <title id="loose-title">
-        You give your GitHub token to the agent, which can then reach your branch, the default
-        branch, the repository, and a private repository.
+        You give your GitHub token to the agent. It pushes the branch you wanted, and the same
+        token also reaches the default branch, the acme/api repository itself, and a separate
+        private repository.
       </title>
 
-      {/* live wires: agent out to every resource */}
+      {/* The work you wanted stays green in both rows; the rest is loose reach. */}
       {
-        resources.map((r) => (
+        targets.map((t) => (
           <>
-            <path class="wire wire--base" d={wire(330, r.y)} />
-            <path class="wire wire--danger" d={wire(330, r.y)} />
-            <circle class="spark spark--danger" r="3.5" style={`offset-path: path('${wire(330, r.y)}')`} />
+            <path class="wire wire--base" d={wire(330, t.y, t.endX)} />
+            <path
+              class={`wire ${t.safe ? "wire--live" : "wire--danger"}`}
+              d={wire(330, t.y, t.endX)}
+            />
+            <circle
+              class={`spark ${t.safe ? "spark--live" : "spark--danger"}`}
+              r="3.5"
+              style={`offset-path: path('${wire(330, t.y, t.endX)}')`}
+            />
           </>
         ))
       }
@@ -181,6 +194,7 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
       {/* you -> agent, carrying the token */}
       <path class="wire wire--base" d="M 132 130 L 270 130" />
       <path class="wire wire--danger" d="M 132 130 L 270 130" />
+      <circle class="spark spark--danger" r="3.5" style="offset-path: path('M 132 130 L 270 130')" />
       <g class="token" transform="translate(201 130)">
         <rect x="-27" y="-11" width="54" height="22" rx="11" />
         <text x="0" y="4">token</text>
@@ -191,15 +205,26 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
       <text class="node-label" x="90" y="196" text-anchor="middle">YOU</text>
       <text class="node-label" x="300" y="196" text-anchor="middle">AGENT</text>
 
+      {/* acme/api frame: the two branches live inside the repository */}
+      <rect
+        class="repo-frame"
+        x={REPO_BOX.x}
+        y={REPO_BOX.y}
+        width={REPO_BOX.w}
+        height={REPO_BOX.h}
+        rx="10"
+      />
+      <line class="repo-rule" x1={REPO_BOX.x + 14} y1="66" x2={REPO_BOX.x + REPO_BOX.w - 14} y2="66" />
+
       {
-        resources.map((r) => (
+        targets.map((t) => (
           <>
-            <g transform={`translate(662 ${r.y})`} set:html={cubeIcon} />
-            <text class="res-name" x="694" y={r.y - 1}>
-              {r.name}
+            <g transform={`translate(${t.indent ? 646 : 622} ${t.y})`} set:html={cubeIcon} />
+            <text class="res-name" x={t.indent ? 676 : 652} y={t.y - 1}>
+              {t.name}
             </text>
-            <text class="res-note" x="694" y={r.y + 13}>
-              {r.note}
+            <text class="res-note" x={t.indent ? 676 : 652} y={t.y + 13}>
+              {t.note}
             </text>
           </>
         ))
@@ -212,31 +237,35 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
     <figcaption class="scenario__caption">
       <span class="scenario__tag">With unYOLO</span>
       <p class="scenario__line">
-        The broker holds the token. The agent can only ask, and every request is checked against
-        the policy you wrote.
+        The broker holds the token. The agent asks for the same work, and the calls you never
+        authorized are refused.
       </p>
     </figcaption>
 
     <svg class="scenario__svg" viewBox="0 0 900 268" role="img" aria-labelledby="brokered-title">
       <title id="brokered-title">
         You give your GitHub token to the broker. The agent sends requests to the broker, which
-        checks them against your scope.json, allows the branch push and returns its result, and
-        cuts the other three paths.
+        checks them against your scope.json, allows the same branch push and returns its result,
+        and refuses the other three.
       </title>
 
       {
-        resources.map((r) => (
+        targets.map((t) => (
           <>
-            <path class="wire wire--base" d={wire(400, r.y)} />
-            {r.allowed ? (
+            <path class="wire wire--base" d={wire(400, t.y, t.endX)} />
+            {t.safe ? (
               <>
-                <path class="wire wire--live" d={wire(400, r.y)} />
-                <circle class="spark spark--live" r="3.5" style={`offset-path: path('${wire(400, r.y)}')`} />
+                <path class="wire wire--live" d={wire(400, t.y, t.endX)} />
+                <circle
+                  class="spark spark--live"
+                  r="3.5"
+                  style={`offset-path: path('${wire(400, t.y, t.endX)}')`}
+                />
               </>
             ) : (
               <g
                 class="cut"
-                transform={`translate(${pointOnWire(400, r.y).x.toFixed(1)} ${pointOnWire(400, r.y).y.toFixed(1)})`}
+                transform={`translate(${pointOnWire(400, t.y, t.endX).x.toFixed(1)} ${pointOnWire(400, t.y, t.endX).y.toFixed(1)})`}
               >
                 <line x1="-7" y1="-7" x2="7" y2="7" />
                 <line x1="7" y1="-7" x2="-7" y2="7" />
@@ -287,15 +316,26 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
       <text class="node-label" x="88" y="250" text-anchor="middle">AGENT</text>
       <text class="node-label" x="370" y="200" text-anchor="middle">BROKER</text>
 
+      {/* acme/api frame: the two branches live inside the repository */}
+      <rect
+        class="repo-frame"
+        x={REPO_BOX.x}
+        y={REPO_BOX.y}
+        width={REPO_BOX.w}
+        height={REPO_BOX.h}
+        rx="10"
+      />
+      <line class="repo-rule" x1={REPO_BOX.x + 14} y1="66" x2={REPO_BOX.x + REPO_BOX.w - 14} y2="66" />
+
       {
-        resources.map((r) => (
+        targets.map((t) => (
           <>
-            <g transform={`translate(662 ${r.y})`} set:html={cubeIcon} class:list={[!r.allowed && "is-dim"]} />
-            <text class="res-name" x="694" y={r.y - 1} class:list={[!r.allowed && "is-dim"]}>
-              {r.name}
+            <g transform={`translate(${t.indent ? 646 : 622} ${t.y})`} set:html={cubeIcon} class:list={[!t.safe && "is-dim"]} />
+            <text class:list={["res-name", !t.safe && "is-dim"]} x={t.indent ? 676 : 652} y={t.y - 1}>
+              {t.name}
             </text>
-            <text class="res-note" x="694" y={r.y + 13}>
-              {r.note}
+            <text class="res-note" x={t.indent ? 676 : 652} y={t.y + 13}>
+              {t.note}
             </text>
           </>
         ))
@@ -419,6 +459,18 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
     font-weight: 700;
     letter-spacing: 0.09em;
     fill: var(--text-faint);
+  }
+
+  .repo-frame {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 1.5;
+    rx: 10;
+  }
+
+  .repo-rule {
+    stroke: var(--border);
+    stroke-width: 1;
   }
 
   .res-name {
