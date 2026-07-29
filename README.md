@@ -1,4 +1,4 @@
-![unYOLO](assets/logo-wordmark.svg?v=5)
+![unYOLO](assets/logo-wordmark.svg?v=6)
 
 # unYOLO
 
