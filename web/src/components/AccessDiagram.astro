@@ -67,6 +67,14 @@ const brokerIcon = `
   </g>
 `;
 
+const policyIcon = `
+  <path fill="url(#gTop)" d="M -11,-13 L 5,-13 L 11,-7 L 11,13 L -11,13 Z"/>
+  <path fill="url(#gLeft)" d="M 5,-13 L 11,-7 L 5,-7 Z"/>
+  <rect class="iso-mark" x="-7" y="-5" width="14" height="1.6" rx="0.8"/>
+  <rect class="iso-mark" x="-7" y="-0.5" width="14" height="1.6" rx="0.8"/>
+  <rect class="iso-mark" x="-7" y="4" width="9" height="1.6" rx="0.8"/>
+`;
+
 const cubeIcon = `
   <ellipse class="iso-shadow" cx="0" cy="18" rx="17" ry="4.5"/>
   <polygon fill="url(#gTop)"   points="-17,-10 0,-19 17,-10 0,-1"/>
@@ -148,7 +156,8 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
     <figcaption class="scenario__caption">
       <span class="scenario__tag">Without a broker</span>
       <p class="scenario__line">
-        You hand the token to the agent. Now the agent reaches everything the token reaches.
+        You hand the token to the agent. It reaches everything the token reaches, and nothing
+        checks any of it.
       </p>
     </figcaption>
 
@@ -203,15 +212,16 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
     <figcaption class="scenario__caption">
       <span class="scenario__tag">With unYOLO</span>
       <p class="scenario__line">
-        The broker holds the token. The agent can only ask, and only the wire your policy allows
-        carries anything.
+        The broker holds the token. The agent can only ask, and every request is checked against
+        the policy you wrote.
       </p>
     </figcaption>
 
-    <svg class="scenario__svg" viewBox="0 0 900 260" role="img" aria-labelledby="brokered-title">
+    <svg class="scenario__svg" viewBox="0 0 900 268" role="img" aria-labelledby="brokered-title">
       <title id="brokered-title">
         You give your GitHub token to the broker. The agent sends requests to the broker, which
-        allows the branch push and cuts the other three paths.
+        checks them against your scope.json, allows the branch push and returns its result, and
+        cuts the other three paths.
       </title>
 
       {
@@ -247,16 +257,34 @@ function pointOnWire(fromX: number, y: number, t = 0.6) {
       {/* agent -> broker, carrying only a request */}
       <path class="wire wire--base" d="M 128 190 C 210 180, 250 166, 322 144" />
       <path class="wire wire--request" d="M 128 190 C 210 180, 250 166, 322 144" />
-      <g class="token token--muted" transform="translate(216 168)">
+      <g class="token token--muted" transform="translate(214 166)">
         <rect x="-33" y="-11" width="66" height="22" rx="11" />
         <text x="0" y="4">request</text>
       </g>
+
+      {/* broker -> agent, returning the result of the allowed call */}
+      <path class="wire wire--base" d="M 326 158 C 254 190, 214 206, 130 212" />
+      <path class="wire wire--live" d="M 326 158 C 254 190, 214 206, 130 212" />
+      <circle
+        class="spark spark--live"
+        r="3.2"
+        style="offset-path: path('M 326 158 C 254 190, 214 206, 130 212')"
+      />
+      <g class="token token--muted" transform="translate(224 202)">
+        <rect x="-27" y="-11" width="54" height="22" rx="11" />
+        <text x="0" y="4">result</text>
+      </g>
+
+      {/* the policy the broker checks against */}
+      <path class="wire wire--base" d="M 370 66 L 370 90" />
+      <g transform="translate(370 44)" set:html={policyIcon} />
+      <text class="res-note" x="370" y="70" text-anchor="middle">scope.json</text>
 
       <g transform="translate(88 74)" set:html={personIcon} />
       <g transform="translate(88 190)" set:html={agentIcon} />
       <g transform="translate(370 130)" set:html={brokerIcon} />
       <text class="node-label" x="88" y="130" text-anchor="middle">YOU</text>
-      <text class="node-label" x="88" y="246" text-anchor="middle">AGENT</text>
+      <text class="node-label" x="88" y="250" text-anchor="middle">AGENT</text>
       <text class="node-label" x="370" y="200" text-anchor="middle">BROKER</text>
 
       {
