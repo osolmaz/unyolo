@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo-wordmark.svg?v=8" alt="unYOLO">
+  <img src="assets/logo-wordmark.svg?v=9" alt="unYOLO">
 </div>
 
 # unYOLO
