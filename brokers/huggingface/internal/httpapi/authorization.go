@@ -13,7 +13,6 @@ import (
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
-	"github.com/osolmaz/unyolo/operation/digest"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 )
 
@@ -429,7 +428,7 @@ func (s *Server) forwardAndRecord(w http.ResponseWriter, r *http.Request, client
 }
 
 func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string, grant grants.Grant) {
-	reserved, err := s.reserveForwardGrant(r, client, classified, target, grant)
+	reserved, err := s.reserveForwardGrant(grant)
 	if err != nil {
 		s.refuseForwardGrant(w, client, classified.operation, target, err)
 		return
@@ -445,13 +444,11 @@ func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request
 
 var errForwardGrantPlanInvalid = errors.New("grant plan is invalid")
 
-func (s *Server) reserveForwardGrant(r *http.Request, client string, classified classifiedRequest, target string, grant grants.Grant) (grants.UseReservation, error) {
+func (s *Server) reserveForwardGrant(grant grants.Grant) (grants.UseReservation, error) {
 	if err := s.planValidator.ValidateExecution(grant); err != nil {
 		return grants.UseReservation{}, errForwardGrantPlanInvalid
 	}
-	requestIdentity := plandigest.Digest([]byte(client + "\x00" + r.Method + "\x00" + r.URL.RequestURI() + "\x00" +
-		string(classified.operation) + "\x00" + target + "\x00" + plandigest.Digest(classified.body)))
-	requestID, err := grants.DeriveUseRequestID(grant.ID, requestIdentity)
+	requestID, err := newNativeGrantUseRequestID(grant.ID)
 	if err != nil {
 		return grants.UseReservation{}, err
 	}
@@ -460,6 +457,14 @@ func (s *Server) reserveForwardGrant(r *http.Request, client string, classified 
 		return grants.UseReservation{}, errors.Join(err, grants.ErrUseSettled)
 	}
 	return reserved, nil
+}
+
+func newNativeGrantUseRequestID(grantID string) (string, error) {
+	requestIdentity, err := grants.NewUseRequestIdentity()
+	if err != nil {
+		return "", err
+	}
+	return grants.DeriveUseRequestID(grantID, requestIdentity)
 }
 
 func (s *Server) refuseForwardGrant(w http.ResponseWriter, client string, operation policy.Operation, target string, cause error) {

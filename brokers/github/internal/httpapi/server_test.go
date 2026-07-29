@@ -715,6 +715,39 @@ func TestGrantBackedReceivePackConsumesGrant(t *testing.T) {
 	assertGrantUseState(t, server, grantID, grants.StatusConsumed, 1, 0)
 }
 
+func TestNativeWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	request := grantsRequestForMainPush(t)
+	request.MaxUses = 2
+	result, _, err := server.requestGrant(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := server.reserveNativeGrantUse(approved.ID)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first reservation = %+v, %v", first, err)
+	}
+	if err := server.commitGrantUses(first); err != nil {
+		t.Fatal(err)
+	}
+	second, err := server.reserveNativeGrantUse(approved.ID)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second reservation = %+v, %v", second, err)
+	}
+	if first[0].Use.RequestID == second[0].Use.RequestID {
+		t.Fatal("independent native calls shared one use identity")
+	}
+	if err := server.commitGrantUses(second); err != nil {
+		t.Fatal(err)
+	}
+	assertGrantUseState(t, server, approved.ID, grants.StatusConsumed, 2, 0)
+}
+
 func TestGitReceivePackWaitsForApprovalAndContinues(t *testing.T) {
 	t.Parallel()
 	var upstreamCalls int

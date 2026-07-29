@@ -98,6 +98,14 @@ func TestLoadedGrantUseValidationRejectsMalformedRecords(t *testing.T) {
 }
 
 func TestGrantUseInputAndAggregateValidation(t *testing.T) {
+	firstIdentity, err := NewUseRequestIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondIdentity, err := NewUseRequestIdentity()
+	if err != nil || firstIdentity == secondIdentity || !validUseIdentity("grant", firstIdentity, "repo.write") {
+		t.Fatalf("native identities = %q/%q, %v", firstIdentity, secondIdentity, err)
+	}
 	if _, err := DeriveUseRequestID("", "request"); !errors.Is(err, ErrUseIdentityConflict) {
 		t.Fatalf("empty grant identity error = %v", err)
 	}

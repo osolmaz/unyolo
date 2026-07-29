@@ -18,6 +18,7 @@ import (
 	"github.com/osolmaz/unyolo/authorization/grants"
 	rootpolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 )
@@ -458,6 +459,41 @@ func TestMillionWriteBucketGrantRequest(t *testing.T) {
 	grant, err := handler.grants.Get(stored.ID)
 	if err != nil || grant.MaxUses != usebudget.MaxFiniteUses || grant.RequestedMaxUses != usebudget.MaxFiniteUses || !grant.RequestedMaxUsesDefaulted || grant.Duration != 24*time.Hour {
 		t.Fatalf("stored grant = %+v, err=%v", grant, err)
+	}
+}
+
+func TestForwardWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
+	handler := newTestHandler(t, t.TempDir(), "https://hub.example.test", &bytes.Buffer{}, emptyPolicyJSON())
+	target := policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "repo"}
+	requested, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
+		Client: "agent", Operation: string(policy.OpRepoContentsRead), Mode: hfgrant.ModeWindow,
+		PolicyTarget: &target, Attrs: map[string]any{"path": "README.md"}, Reason: "read twice",
+		RequestedDuration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 2, MaxUsesSpecified: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := handler.grants.Approve(requested.ID, requested.DecisionToken, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := handler.reserveForwardGrant(approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.grants.CommitUse(approved.ID, first.Use.RequestID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := handler.reserveForwardGrant(approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Use.RequestID == second.Use.RequestID {
+		t.Fatal("independent forwarded calls shared one use identity")
+	}
+	committed, err := handler.grants.CommitUse(approved.ID, second.Use.RequestID)
+	if err != nil || committed.Grant.UsedCount != 2 {
+		t.Fatalf("second commit = %+v, %v", committed, err)
 	}
 }
 
