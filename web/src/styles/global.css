@@ -3,8 +3,8 @@
 
    The palette is mostly monochrome. Greys are neutral rather than tinted
    toward the brand charcoal, solid UI (primary buttons, active markers) is
-   near-black, and the one accent colour — a warm rust drawn from the brand
-   ember — is reserved for links and the active item in a navigation rail.
+   near-black, and the one accent colour — a warm rust complementing the
+   brand red — is reserved for links and the active item in a navigation rail.
    The prohibition red stays inside the logo; nothing else uses it.
    ========================================================================= */
 
@@ -17,7 +17,6 @@
     "Liberation Mono", monospace;
 
   --charcoal: #211a16;
-  --ember: #c94f0a;
   --prohibition-red: #d92d20;
 
   --radius-sm: 4px;
