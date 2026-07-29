@@ -1,4 +1,6 @@
-![unYOLO](assets/logo-wordmark.svg)
+<p align="center">
+  <img src="assets/logo-wordmark.svg" alt="unYOLO" width="640">
+</p>
 
 # unYOLO
 
