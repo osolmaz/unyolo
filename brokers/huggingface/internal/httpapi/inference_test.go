@@ -262,22 +262,22 @@ func TestInferenceDefaultsToPolicyDeny(t *testing.T) {
 	}
 }
 
-func TestInferenceWindowGrantIsExactAndConsumedOnce(t *testing.T) {
+func TestInferenceWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
 	var hits atomic.Int32
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		_, _ = io.WriteString(w, `{}`)
 	}))
 	defer router.Close()
-	policyJSON := `{"rules":[{"id":"request-chat","effect":"request","clients":["agent"],"operations":["inference.chat.complete"],"targets":[{"kind":"inference","owner":"acme","name":"model"}],"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`
+	policyJSON := `{"rules":[{"id":"request-chat","effect":"request","clients":["agent"],"operations":["inference.chat.complete"],"targets":[{"kind":"inference","owner":"acme","name":"model"}],"grant_policy":{"mode":"window","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":2,"max_uses":2}}]}`
 	broker, _, handler := newInferenceBrokerWithPolicyHandler(t, router.URL, time.Second, policyJSON)
 	defer broker.Close()
 	body := `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`
 	target := policy.Target{Kind: policy.KindInference, Owner: "acme", Name: "model"}
 	requested, _, err := requestHFGrant(t, handler.grants, handler.plans, hfgrant.Input{
 		Client: "agent", Operation: string(policy.OpInferenceChat), Mode: hfgrant.ModeWindow,
-		PolicyTarget: &target, Attrs: map[string]any{"max_bytes": int64(len(body))}, Reason: "run one completion",
-		RequestedDuration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 1, MaxUsesSpecified: true,
+		PolicyTarget: &target, Attrs: map[string]any{"max_bytes": int64(len(body))}, Reason: "run two completions",
+		RequestedDuration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 2, MaxUsesSpecified: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -289,9 +289,12 @@ func TestInferenceWindowGrantIsExactAndConsumedOnce(t *testing.T) {
 	_ = first.Body.Close()
 	second := inferenceRequestToBroker(t, broker, body)
 	_ = second.Body.Close()
+	third := inferenceRequestToBroker(t, broker, body)
+	_ = third.Body.Close()
 	grant, err := handler.grants.Get(requested.ID)
-	if err != nil || first.StatusCode != http.StatusOK || second.StatusCode != http.StatusForbidden || grant.UsedCount != 1 || hits.Load() != 1 {
-		t.Fatalf("responses = %d/%d, grant = %#v, hits = %d, err = %v", first.StatusCode, second.StatusCode, grant, hits.Load(), err)
+	if err != nil || first.StatusCode != http.StatusOK || second.StatusCode != http.StatusOK || third.StatusCode != http.StatusForbidden ||
+		grant.UsedCount != 2 || hits.Load() != 2 {
+		t.Fatalf("responses = %d/%d/%d, grant = %#v, hits = %d, err = %v", first.StatusCode, second.StatusCode, third.StatusCode, grant, hits.Load(), err)
 	}
 }
 

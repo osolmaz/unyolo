@@ -135,6 +135,17 @@ func (s *Server) evaluateBrokerRequest(request policy.Request) (policy.Decision,
 	return s.policy.Evaluate(request, active...), nil
 }
 
+func (s *Server) reserveNativeGrantUse(id string) ([]grants.UseReservation, error) {
+	if id == "" {
+		return nil, nil
+	}
+	requestIdentity, err := grants.NewUseRequestIdentity()
+	if err != nil {
+		return nil, err
+	}
+	return s.reserveGrantUse(id, requestIdentity)
+}
+
 func (s *Server) reserveGrantUse(id, requestIdentity string) ([]grants.UseReservation, error) {
 	if id == "" {
 		return nil, nil

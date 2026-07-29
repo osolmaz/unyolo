@@ -1,9 +1,11 @@
 package grants
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -43,9 +45,19 @@ type UseReservation struct {
 	Acquired bool
 }
 
-// DeriveUseRequestID returns a bounded stable reservation identity for a
-// provider-native request and one grant. requestIdentity must already be a
-// secret-free canonical identity, such as a method/path/body digest.
+// NewUseRequestIdentity returns a distinct secret-free identity for one
+// provider-native invocation. Explicitly idempotent operation APIs should use
+// their stable operation ID instead.
+func NewUseRequestIdentity() (string, error) {
+	var value [18]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generate grant use identity: %w", err)
+	}
+	return "native_" + base64.RawURLEncoding.EncodeToString(value[:]), nil
+}
+
+// DeriveUseRequestID returns a bounded stable reservation identity for one
+// provider-native invocation and one grant.
 func DeriveUseRequestID(grantID, requestIdentity string) (string, error) {
 	if grantID == "" || requestIdentity == "" {
 		return "", ErrUseIdentityConflict
