@@ -1,6 +1,7 @@
 package grants
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -14,7 +15,22 @@ const (
 	maxMetadataValueBytes = 4096
 )
 
+func normalizeRequestMetadata(metadata map[string]string) map[string]string {
+	normalized := make(map[string]string, len(metadata)+1)
+	for key, value := range metadata {
+		normalized[key] = value
+	}
+	if _, specified := normalized[MetadataMode]; !specified {
+		normalized[MetadataMode] = "window"
+	}
+	return normalized
+}
+
 func validateMetadata(metadata map[string]string) error {
+	mode := metadata[MetadataMode]
+	if mode != "window" && mode != "execution" {
+		return errors.New("grant metadata mode is invalid")
+	}
 	if len(metadata) > maxMetadataEntries {
 		return fmt.Errorf("grant metadata exceeds %d entries", maxMetadataEntries)
 	}
