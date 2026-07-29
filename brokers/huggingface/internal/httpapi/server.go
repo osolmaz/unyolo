@@ -622,21 +622,32 @@ func (s *Server) activeExecutionAuthorizationGrants(request corepolicy.Request) 
 	}
 	var active []corepolicy.Grant
 	for _, grant := range values {
-		if grant.Status != grants.StatusActive || hfgrant.Mode(grant) != hfgrant.ModeExecution ||
-			!hasGrantUses(grant) || s.planValidator.ValidateExecution(grant) != nil {
-			continue
+		projected, ok := s.executionAuthorizationGrant(grant, request)
+		if ok {
+			active = append(active, projected)
 		}
-		rule, ok := grantRule(grant)
-		if !ok {
-			continue
-		}
-		projected := policy.AuthorizationGrants([]policy.Rule{rule})
-		if len(projected) != 1 || !exactAuthorizationGrant(projected[0], request) {
-			continue
-		}
-		active = append(active, projected[0])
 	}
 	return active, nil
+}
+
+func (s *Server) executionAuthorizationGrant(grant grants.Grant, request corepolicy.Request) (corepolicy.Grant, bool) {
+	if !s.eligibleExecutionAuthorizationGrant(grant) {
+		return corepolicy.Grant{}, false
+	}
+	rule, ok := grantRule(grant)
+	if !ok {
+		return corepolicy.Grant{}, false
+	}
+	projected := policy.AuthorizationGrants([]policy.Rule{rule})
+	if len(projected) != 1 {
+		return corepolicy.Grant{}, false
+	}
+	return projected[0], exactAuthorizationGrant(projected[0], request)
+}
+
+func (s *Server) eligibleExecutionAuthorizationGrant(grant grants.Grant) bool {
+	return grant.Status == grants.StatusActive && hfgrant.Mode(grant) == hfgrant.ModeExecution &&
+		hasGrantUses(grant) && s.planValidator.ValidateExecution(grant) == nil
 }
 
 func exactAuthorizationGrant(grant corepolicy.Grant, request corepolicy.Request) bool {
