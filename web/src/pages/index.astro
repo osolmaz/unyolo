@@ -166,8 +166,8 @@ const operatorTranscript = `<span class="t-prompt">$</span> curl -sS --unix-sock
 <span class="t-ok">200  state=active  uses_remaining=1</span>`;
 
 const description =
-  "unYOLO is an access-control framework for coding agents. It keeps provider credentials " +
-  "outside the agent and checks every requested operation against policy.";
+  "Run your coding agent with the approval prompts off. unYOLO controls exactly what it can " +
+  "reach, grants anything else for a bounded window, and refuses whatever you did not list.";
 ---
 
 <BaseLayout title="unYOLO" description={description} section="home">
@@ -176,11 +176,18 @@ const description =
     <section class="hero">
       <div class="wrap hero__inner">
         <div>
-          <h1>Credential boundaries for coding agents</h1>
+          <h1>YOLO safely with your agents</h1>
 
           <p>
-            unYOLO keeps provider credentials in separate broker processes. Your agent can use the
-            operations allowed by policy without receiving the token or privilege behind them.
+            Control exactly what your agent can reach, and hand it anything else only for as long
+            as it needs. Pushing to its own branches can be standing permission. Force-pushing
+            <code>main</code> can be five minutes and a single use.
+          </p>
+
+          <p>
+            The defaults refuse whatever you did not list, so an agent cannot delete a repository
+            or rewrite history by accident. Rules are a JSON file you edit, at a granularity
+            provider permissions do not reach.
           </p>
 
           <div class="hero__actions">
