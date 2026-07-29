@@ -715,6 +715,46 @@ func TestGrantBackedReceivePackConsumesGrant(t *testing.T) {
 	assertGrantUseState(t, server, grantID, grants.StatusConsumed, 1, 0)
 }
 
+func TestExecutionGrantOnlyAuthorizesExactNativeRequest(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestMainPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	request := grantsRequestForMainPush(t)
+	request.Metadata = map[string]string{grants.MetadataMode: "execution"}
+	result, _, err := server.requestGrant(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact := policy.Request{Client: "bob", Operation: policy.OperationGitPushForce,
+		Target: policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}, Attrs: map[string]string{"ref": "refs/heads/main"}}
+	decision, err := server.evaluateBrokerRequest(exact)
+	if err != nil || !decision.Allowed || decision.GrantID != approved.ID {
+		t.Fatalf("exact execution decision = %+v, %v", decision, err)
+	}
+	different := exact
+	different.Attrs = map[string]string{"ref": "refs/heads/other"}
+	decision, err = server.evaluateBrokerRequest(different)
+	if err != nil || decision.Allowed || decision.GrantID != "" {
+		t.Fatalf("different execution decision = %+v, %v", decision, err)
+	}
+	reserved, err := server.reserveAuthorizedGrants([]authorizedReceivePackRequest{{Request: exact, Decision: policy.Decision{GrantID: approved.ID}}}, "exact-native-request")
+	if err != nil || len(reserved) != 1 {
+		t.Fatalf("reserveAuthorizedGrants() = %+v, %v", reserved, err)
+	}
+	if err := server.commitGrantUses(reserved); err != nil {
+		t.Fatal(err)
+	}
+	decision, err = server.evaluateBrokerRequest(exact)
+	if err != nil || decision.Allowed || decision.GrantID != "" {
+		t.Fatalf("consumed execution decision = %+v, %v", decision, err)
+	}
+}
+
 func TestNativeWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)

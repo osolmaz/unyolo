@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 
@@ -129,29 +130,52 @@ func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.UseRese
 }
 
 func (s *Server) evaluateBrokerRequest(request policy.Request) (policy.Decision, error) {
-	active, err := s.activeWindowPolicyGrants()
+	active, err := s.activePolicyGrantsForRequest(request)
 	if err != nil {
 		return policy.Decision{}, err
 	}
 	return s.policy.Evaluate(request, active...), nil
 }
 
-func (s *Server) activeWindowPolicyGrants() ([]corepolicy.Grant, error) {
+func (s *Server) activePolicyGrantsForRequest(request policy.Request) ([]corepolicy.Grant, error) {
 	active, err := s.grants.ActivePolicyGrants()
 	if err != nil {
 		return nil, err
 	}
-	windows := make([]corepolicy.Grant, 0, len(active))
+	matched := make([]corepolicy.Grant, 0, len(active))
 	for _, candidate := range active {
 		grant, getErr := s.grants.Get(candidate.ID)
 		if getErr != nil {
 			return nil, getErr
 		}
-		if grant.Metadata[grants.MetadataMode] == "window" {
-			windows = append(windows, candidate)
+		switch grant.Metadata[grants.MetadataMode] {
+		case "window":
+			matched = append(matched, candidate)
+		case "execution":
+			if exactGitHubAuthorizationGrant(candidate, request) {
+				matched = append(matched, candidate)
+			}
 		}
 	}
-	return windows, nil
+	return matched, nil
+}
+
+func exactGitHubAuthorizationGrant(grant corepolicy.Grant, request policy.Request) bool {
+	return grant.Client == request.Client && grant.Operation == string(request.Operation) &&
+		reflect.DeepEqual(grant.Target, policy.CoreTarget(request.Target)) &&
+		exactGitHubAuthorizationValues(grant.Attrs, corepolicy.SingletonValues(request.Attrs))
+}
+
+func exactGitHubAuthorizationValues(left, right map[string][]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for name, values := range left {
+		if !reflect.DeepEqual(values, right[name]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) reserveNativeGrantUse(id string) ([]grants.UseReservation, error) {
