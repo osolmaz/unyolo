@@ -4,6 +4,12 @@ unYOLO is the shared layer for broker-style access-control services. It
 makes repeated broker machinery reusable without hiding the dangerous
 provider-specific boundary.
 
+The accepted next grant contract makes every grantable operation default to
+window mode while preserving exact, single-use execution mode. See
+[ADR 0002](adr/0002-universal-reusable-grants.md) and the
+[reusable grants specification](REUSABLE_GRANTS_SPEC.md). Released binaries
+retain their current provider classifications until that plan is implemented.
+
 `hf-broker`, `gh-broker`, and `sudo-broker` use unYOLO for the shared control
 plane. Provider directories contain only their platform-specific behavior.
 
@@ -108,7 +114,9 @@ MCP-enabled brokers also register provider-owned schemas, projections, and
 runtime adapters. `mcp/server` owns JSON-RPC mechanics, `agent/mcp` owns durable
 operation submission and recovery, and `agent/client` owns authenticated wire
 transport. Authorization mode remains policy data; it never selects a
-provider-specific MCP dispatch path.
+provider-specific MCP dispatch path. Under the accepted reusable-grant
+contract, every grantable operation supports both modes and defaults to window.
+Execution remains available for one exact immutable plan.
 
 `hf-broker` owns:
 

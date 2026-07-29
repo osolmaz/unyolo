@@ -11,6 +11,7 @@ unYOLO.
 - [Ownership boundaries](OWNERSHIP.md)
 - [Security threat model](security/THREAT_MODEL.md)
 - [Policy core](POLICY_CORE.md)
+- [Reusable grants specification](REUSABLE_GRANTS_SPEC.md)
 - [Operator inbox](OPERATOR_INBOX.md)
 - [Operations runtime](OPERATIONS_RUNTIME.md)
 
@@ -35,8 +36,14 @@ unYOLO.
 - [Failure drills](FAILURE_DRILLS.md)
 - [Observability](OBSERVABILITY.md)
 
+## Architecture decisions
+
+- [Universal reusable grants](adr/0002-universal-reusable-grants.md)
+- [Monorepo boundaries](adr/0001-monorepo-boundaries.md)
+
 ## Implementation records
 
+- [Universal reusable grants](2026-07-29-universal-reusable-grants-plan.md)
 - [Host deployment profile](2026-07-26-host-deployment-profile-plan.md)
 - [Atomic runtime bundle](2026-07-21-atomic-runtime-bundle-plan.md)
 - [Native Git client integration](2026-07-19-native-git-client-integration-plan.md)
