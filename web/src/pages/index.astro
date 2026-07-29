@@ -166,8 +166,8 @@ const operatorTranscript = `<span class="t-prompt">$</span> curl -sS --unix-sock
 <span class="t-ok">200  state=active  uses_remaining=1</span>`;
 
 const description =
-  "Run your coding agent with the approval prompts off. unYOLO controls exactly what it can " +
-  "reach, grants anything else for a bounded window, and refuses whatever you did not list.";
+  "Run your coding agent with the approval prompts off. Decide what it can reach, give it " +
+  "anything else for a few minutes at a time, and everything you did not list is refused.";
 ---
 
 <BaseLayout title="unYOLO" description={description} section="home">
@@ -179,15 +179,15 @@ const description =
           <h1>YOLO safely with your agents</h1>
 
           <p>
-            Control exactly what your agent can reach, and hand it anything else only for as long
-            as it needs. Pushing to its own branches can be standing permission. Force-pushing
-            <code>main</code> can be five minutes and a single use.
+            unYOLO sits between your agent and your accounts. You decide what it can reach. It can
+            push to its own branches any time, and force-pushing <code>main</code> lasts five
+            minutes and one use.
           </p>
 
           <p>
-            The defaults refuse whatever you did not list, so an agent cannot delete a repository
-            or rewrite history by accident. Rules are a JSON file you edit, at a granularity
-            provider permissions do not reach.
+            Anything you did not list is refused, so your agent cannot delete a repo or rewrite
+            history by accident. The rules live in one JSON file and go down to single branches
+            and paths.
           </p>
 
           <div class="hero__actions">
