@@ -1160,7 +1160,7 @@ func TestGrantPolicyDefaultsAndGrantability(t *testing.T) {
 	}
 }
 
-func TestNormalWritesMayUseWeekLongGrantBounds(t *testing.T) {
+func TestAllGrantableOperationsMayUseWeekLongGrantBounds(t *testing.T) {
 	t.Parallel()
 	for _, fixture := range []struct {
 		name      string
@@ -1189,8 +1189,8 @@ func TestNormalWritesMayUseWeekLongGrantBounds(t *testing.T) {
 		"targets":[{"kind":"bucket","owner":"acme","name":"artifacts"}],
 		"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":10080}
 	}]}`
-	if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), "max_minutes") {
-		t.Fatalf("Parse() error = %v, want operation duration bound", err)
+	if _, err := Parse([]byte(body)); err != nil {
+		t.Fatalf("execution Parse() error = %v", err)
 	}
 }
 

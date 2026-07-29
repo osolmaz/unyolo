@@ -26,14 +26,16 @@ func TestCatalogValidatesAndContainsCanonicalOperations(t *testing.T) {
 			t.Fatalf("operation %q missing", name)
 		}
 		if name == "repo.visibility.update" || name == "pull_request.merge" || name == "pull_request.merge_admin" {
-			if !value.ExplicitOnly || value.Risk != RiskHigh || value.MaxUses != 1 {
+			if !value.ExplicitOnly || value.Risk != RiskHigh || value.MaxUses != int(usebudget.MaxFiniteUses) {
 				t.Fatalf("high-risk descriptor=%+v", value)
 			}
 		}
 	}
 	for _, descriptor := range values {
-		if descriptor.AuthorizationMode == ModeWindow && (descriptor.MaxUses != int(usebudget.MaxFiniteUses) || descriptor.ApprovalTTLSeconds != 7*24*60*60) {
-			t.Fatalf("routine window operation %s = %+v", descriptor.Name, descriptor)
+		if descriptor.DefaultAuthorizationMode != ModeWindow || !descriptor.AllowsAuthorizationMode(ModeWindow) ||
+			!descriptor.AllowsAuthorizationMode(ModeExecution) || descriptor.MaxUses != int(usebudget.MaxFiniteUses) ||
+			descriptor.ApprovalTTLSeconds != 7*24*60*60 {
+			t.Fatalf("universal reusable operation %s = %+v", descriptor.Name, descriptor)
 		}
 	}
 	for _, removed := range []string{"pr.create", "pr.update", "pr.merge", "contents.read", "checks.read", "http.request", "graphql.execute"} {
@@ -163,7 +165,7 @@ func TestGitHubCatalogValidationFailsClosed(t *testing.T) {
 		}},
 		{"high risk", func(values []Descriptor) {
 			for index := range values {
-				if values[index].Risk == RiskHigh && values[index].AuthorizationMode == ModeExecution {
+				if values[index].Risk == RiskHigh && values[index].HasExecutionDisposition() {
 					values[index].ExplicitOnly = false
 					values[index].Disposition = strings.ReplaceAll(values[index].Disposition, "X", "")
 					return

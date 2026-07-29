@@ -29,7 +29,7 @@ func (p Presenter) Present(_ context.Context, grant grants.Grant) (approvalview.
 	facts := commandFacts(command, target, grant.Attrs)
 	presentationRisk := risk(command.Risk)
 	return approvalview.Presentation{
-		Risk: presentationRisk, Title: "Run privileged command", Summary: commandSummary(command, target, len(facts) > 4),
+		Risk: presentationRisk, Title: "Run privileged command", Summary: commandSummary(command, target, len(facts) > 4, grant),
 		Target: target, Facts: facts,
 		Warnings: []approvalview.Warning{{Severity: presentationRisk, Text: "This command runs with another user's privileges on the host. Review the target user and bounded arguments carefully."}},
 	}, nil
@@ -64,12 +64,19 @@ func commandFacts(command catalog.Command, target string, attrs map[string][]str
 	return facts
 }
 
-func commandSummary(command catalog.Command, target string, bounded bool) string {
+func commandSummary(command catalog.Command, target string, bounded bool, grant grants.Grant) string {
 	argumentSummary := "Arguments are fixed by the catalog."
 	if bounded {
 		argumentSummary = "Arguments are fixed or bounded by the catalog."
 	}
 	summary := fmt.Sprintf("Run %s once as %s. %s", command.ID, target, argumentSummary)
+	if corepolicy.GrantMode(grant.Metadata[grants.MetadataMode]) == corepolicy.GrantModeWindow {
+		if grant.MaxUses.IsUnlimited() {
+			summary = fmt.Sprintf("Allow matching %s runs as %s until the grant expires. %s", command.ID, target, argumentSummary)
+		} else {
+			summary = fmt.Sprintf("Allow up to %d matching %s runs as %s until the grant expires. %s", grant.MaxUses, command.ID, target, argumentSummary)
+		}
+	}
 	if command.Description != "" {
 		summary = command.Description + " " + summary
 	}

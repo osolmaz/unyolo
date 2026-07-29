@@ -162,7 +162,7 @@ func testServerAndRequest(t *testing.T) (*Server, executorprotocol.Request, *fak
 	resolved, _ := snapshot.Resolve("echo", "root", nil)
 	policyRequest := sudopolicy.Request("bob", resolved)
 	grantRequest := grants.Request{Client: "bob", ClientRequestID: "request-1", Operation: policyRequest.Operation, Target: policyRequest.Target,
-		Attrs: policyRequest.Attrs, Duration: 5 * time.Minute, MaxUses: 1}
+		Attrs: policyRequest.Attrs, Metadata: map[string]string{grants.MetadataMode: "execution"}, Duration: 5 * time.Minute, MaxUses: 1}
 	value, err := plan.Build(grantRequest, resolved, plan.Identity{Name: "root", UID: 0, GID: 0}, now)
 	if err != nil {
 		t.Fatal(err)

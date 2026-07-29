@@ -32,9 +32,9 @@ Choose names that make a policy file readable on its own. `gh-broker` uses `pull
 `contents.read`, and `git.push.fast_forward`. The distinction between `git.push.fast_forward` and
 `git.push.force` is doing real work: a reviewer scanning a policy can see which one an agent has.
 
-Declare grantability per operation. A grantable operation names its default grant mode and may name
-the bounded set of modes it allows. `window` authorizes an exact classified request for a bounded
-time and use budget. `execution` approves one exact provider-built action and is always single-use.
+Declare grantability per operation. Every grantable operation defaults to `window` and allows both
+`window` and `execution`. A window authorizes an exact classified request for a bounded time and
+use budget. Execution approves one exact provider-built action and is always single-use.
 
 ## Target kinds
 

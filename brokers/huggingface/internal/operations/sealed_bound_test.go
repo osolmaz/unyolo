@@ -162,7 +162,7 @@ func TestSecretBearingAdministrativeOperationsUseSealedInput(t *testing.T) {
 	}
 	for operation, paths := range tests {
 		descriptor, found := opcatalog.ByName(operation)
-		if !found || !descriptor.Sealed || descriptor.AuthorizationMode != opcatalog.ModeExecution {
+		if !found || !descriptor.Sealed || !descriptor.HasExecutionDisposition() {
 			t.Fatalf("%s descriptor = %+v, %v", operation, descriptor, found)
 		}
 		if got := SealedInputPaths(operation); !reflect.DeepEqual(got, paths) {

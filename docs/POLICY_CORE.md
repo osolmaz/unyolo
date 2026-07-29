@@ -6,12 +6,11 @@ and validation rules. Brokers use this core directly and do not keep local
 compatibility policy engines. See [OWNERSHIP.md](OWNERSHIP.md) for the broader
 unYOLO versus broker boundary.
 
-The accepted next contract keeps both grant modes, makes every grantable
-operation support both, and defaults every operation to `window`. Execution
-remains exact and single-use. See
+Every grantable operation supports both grant modes and defaults to `window`.
+Execution remains exact and single-use. See
 [ADR 0002](adr/0002-universal-reusable-grants.md) and the
-[reusable grants specification](REUSABLE_GRANTS_SPEC.md). The current behavior
-below remains authoritative for released binaries until implementation lands.
+[reusable grants specification](REUSABLE_GRANTS_SPEC.md). Release artifacts
+published before this change retain their earlier provider classifications.
 
 ## Minimal policy file
 
@@ -239,9 +238,9 @@ pass the raw token only to the approval notification path.
 
 `request` rules must include `grant_policy`.
 
-Each grantable operation declares a provider-owned default grant mode and may
-declare a bounded set of allowed modes. `window` grants authorize an exact
-classified request for a bounded time and use budget. `execution` grants
+Every grantable operation defaults to `window` and allows both `window` and
+`execution`. Window grants authorize an exact classified request for a bounded
+time and use budget. `execution` grants
 approve one exact provider-built action and are always single-use. A request
 rule may contain several operations only when they resolve to one mode that
 every operation allows.
@@ -270,9 +269,10 @@ single-use.
 
 Grant mode is authorization metadata, not a transport selector. Agent-facing
 MCP and CLI operation calls always submit through Agent Operations V1. During
-admission or execution, a matching active window grant can authorize the
-stored operation and reserve one use atomically. A requestable operation
-without an active grant creates one approval linked to that operation; an
+admission, a matching active window grant can authorize the stored operation
+and create a durable, operation-bound use reservation atomically. A
+requestable operation without an active grant creates one approval linked to
+that operation; an
 allowed operation executes directly; and a denied operation makes no provider
 request.
 

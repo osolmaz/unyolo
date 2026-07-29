@@ -97,13 +97,13 @@ func TestLifecycleEventsSurviveRestartAndWakeWaiters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(approved.ID); err != nil {
+	if _, err := store.ReserveUse(approved.ID, "event-use", approved.Operation); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.RecordExecution(approved.ID, EventExecutionSucceeded); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CommitUse(approved.ID); err != nil {
+	if _, err := store.CommitUse(approved.ID, "event-use"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -522,16 +522,19 @@ func TestLifecycleDeadlineVariantsAndSignalWake(t *testing.T) {
 		{Status: StatusDenied}, {Status: StatusConsumed}, {Status: StatusCanceled}, {Status: "unknown"},
 	}
 	for _, grant := range tests {
-		_ = store.grantLifecycleDeadline(grant, now)
+		_ = grantLifecycleDeadline(grant)
 	}
-	for _, grant := range []Grant{
+	for _, fixture := range []struct {
+		use   GrantUse
+		grant Grant
+	}{
 		{},
-		{ReservedCount: 1, ReservationRetained: true},
-		{Status: StatusActive, ReservedCount: 1, ReservedAt: now.Add(-2 * time.Minute)},
-		{Status: StatusActive, ReservedCount: 1},
-		{Status: StatusActive, ReservedCount: 1, ReservedAt: reservedAt},
+		{use: GrantUse{State: UseRetained}, grant: Grant{Status: StatusActive}},
+		{use: GrantUse{State: UseReserved, UpdatedAt: now.Add(-2 * time.Minute)}, grant: Grant{Status: StatusActive}},
+		{use: GrantUse{State: UseReserved}, grant: Grant{Status: StatusActive}},
+		{use: GrantUse{State: UseReserved, UpdatedAt: reservedAt}, grant: Grant{Status: StatusActive}},
 	} {
-		_ = store.reservationLifecycleDeadline(grant, now)
+		_ = store.useLifecycleDeadline(fixture.use, fixture.grant, now)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()

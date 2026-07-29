@@ -38,7 +38,7 @@ func TestClientExecutesCanonicalPlanAndTracksCallError(t *testing.T) {
 		request, _ := executorprotocol.ReadRequest(server)
 		_ = executorprotocol.WriteResponse(server, executorprotocol.NewCompleted(request.ExecutionID, executorprotocol.Outcome{Started: true}))
 	}()
-	commandPlan := plan.Plan{Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", CommandID: "true", TargetUser: "root",
+	commandPlan := plan.Plan{Schema: plan.SchemaV1, RequestID: "request", ClientID: "bob", Operation: "exec.command", AuthorizationMode: "execution", CommandID: "true", TargetUser: "root",
 		Executable: "/usr/bin/true", WorkingDirectory: "/", Environment: []string{"LANG=C", "LC_ALL=C"}, TimeoutSeconds: 1,
 		CatalogDigest: strings.Repeat("a", 64), RequestedDurationSeconds: 60, RequestedMaxUses: 1, CreatedAt: time.Now().UTC()}
 	response, err := value.Execute(t.Context(), "execution", commandPlan, "grant", "reservation", time.Now().Add(time.Minute))

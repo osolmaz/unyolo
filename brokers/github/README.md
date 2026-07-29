@@ -245,14 +245,16 @@ gh-broker operation submit pull_request.merge_admin \
   --wait
 ```
 
-Admin merge is a distinct high-risk, explicit, one-use operation and requests
-operator approval by default. unYOLO resolves the pull request itself,
-binds approval to the exact pull-request head commit, rechecks it before
-execution, and supplies it to GitHub as the mutation's atomic
+Admin merge is a distinct high-risk, explicit operation and requests operator
+approval by default. Its request rule uses a reusable window unless policy
+selects exact, single-use execution mode. unYOLO resolves the pull request
+itself, binds each invocation to the exact pull-request head commit, rechecks
+it before execution, and supplies it to GitHub as the mutation's atomic
 `expectedHeadOid` guard. Administrator
 privileges may bypass review, update, or merge-queue requirements, but do not
-bypass merge conflicts. A changed pull request must be submitted and approved
-again.
+bypass merge conflicts. A changed pull request must be submitted again. A
+matching active window may authorize its fresh plan; execution mode requires a
+new operator decision.
 
 unYOLO parses GitHub's documented error `message` fields, removes control
 characters, redacts credential-like values, and limits the text before returning
@@ -342,11 +344,12 @@ repeating the same push while it is pending reuses the same request. Approval
 creates a short-lived grant evaluated by the same policy path, and the next
 identical push consumes it. Deny rules still win over approved grants.
 
-Routine reusable repository operations default to a `1000000`-use grant and
-allow up to seven days. Force pushes, ref deletions, and tag updates stay
-capped at 25 uses for one hour. Execution grants stay single-use. These larger
-use budgets never widen the approved client, operation, repository, ref, path,
-or other attrs.
+Every requestable operation defaults to a reusable window grant. Routine
+repository operations allow up to `1000000` uses for seven days. Force pushes,
+ref deletions, and tag updates stay capped at 25 uses for one hour. Policy may
+select exact execution mode, which always uses one immutable plan once. Larger
+window budgets never widen the approved client, operation, repository, ref,
+path, or other attrs.
 
 `POST /api/grants` remains the explicit protocol endpoint for clients that
 need to request a Git grant before attempting a push.

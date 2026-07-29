@@ -25,6 +25,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorclient"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/executorprotocol"
+	"github.com/osolmaz/unyolo/brokers/sudo/internal/operations"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/sudopolicy"
 	"github.com/osolmaz/unyolo/internal/storage/state"
@@ -79,6 +80,65 @@ func TestSudoAgentV1Conformance(t *testing.T) {
 			}
 		},
 	})
+}
+
+func TestSudoWindowGrantAuthorizesTwoIndependentCommands(t *testing.T) {
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := &fakeHelper{status: executorprotocol.StatusCompleted}
+	policyDocument := `{"rules":[{"id":"request-scale","effect":"request","clients":["bob"],"operations":["exec.command"],
+		"targets":[{"kind":"user","name":"root"}],"attrs":{"command_id":["scale"],"argument.replicas":["2"]},
+		"grant_policy":{"mode":"window","default_minutes":2,"max_minutes":5,"request_ttl_minutes":2,"default_max_uses":3,"max_uses":3}}]}`
+	server, err := newTestServerWithPolicy(database, helper, t.TempDir(), policyDocument)
+	if err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	defer func() { _ = server.Close() }()
+
+	first, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("window-first"))
+	if err != nil || first.State != agentv1.StatePending {
+		t.Fatalf("first submission = %+v, %v", first, err)
+	}
+	grant, err := server.grants.Get(first.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, "operator", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-window",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server.operationRuntime.Advance(t.Context(), first)
+	first, _ = server.operations.GetByID(first.ID)
+	if first.State != agentv1.StateSucceeded {
+		t.Fatalf("first operation = %+v", first)
+	}
+
+	second, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("window-second"))
+	if err != nil || second.State != agentv1.StateApproved || second.ApprovalID != grant.ID || second.PlanDigest == first.PlanDigest {
+		t.Fatalf("second submission = %+v, %v", second, err)
+	}
+	server.operationRuntime.Advance(t.Context(), second)
+	second, _ = server.operations.GetByID(second.ID)
+	stored, grantErr := server.grants.Get(grant.ID)
+	uses, usesErr := server.grants.ListUses(grant.ID)
+	if second.State != agentv1.StateSucceeded || grantErr != nil || stored.Status != grants.StatusActive || stored.UsedCount != 2 ||
+		stored.ReservedCount != 0 || usesErr != nil || len(uses) != 2 || helper.executions != 2 {
+		t.Fatalf("second operation = %+v; grant=%+v, %v; uses=%+v, %v; executions=%d", second, stored, grantErr, uses, usesErr, helper.executions)
+	}
+
+	outside := validSubmission("window-outside")
+	outside.Arguments = json.RawMessage(`{"command_id":"scale","arguments":{"replicas":3}}`)
+	operation, _, err := server.submitAgentOperation(t.Context(), "bob", outside)
+	if err != nil || operation.State != agentv1.StateDenied {
+		t.Fatalf("out-of-scope submission = %+v, %v", operation, err)
+	}
+	if helper.executions != 2 {
+		t.Fatalf("out-of-scope command reached helper: executions=%d", helper.executions)
+	}
 }
 
 func TestSudoAgentValidationAndLegacyRouteRemoval(t *testing.T) {
@@ -453,7 +513,8 @@ func TestSudoNotificationFallbackAndPolicyBounds(t *testing.T) {
 		{Mode: string(corepolicy.GrantModeExecution), DefaultMinutes: 2, MaxMinutes: 1, RequestTTLMinutes: 1, DefaultMaxUses: 1, MaxUses: 1},
 		{Mode: string(corepolicy.GrantModeExecution), DefaultMinutes: 1, MaxMinutes: 1, RequestTTLMinutes: 1, DefaultMaxUses: 2, MaxUses: 2},
 	} {
-		if _, _, err := grantBounds(bounds, 0); err == nil {
+		preparation := operations.Preparation{Decision: corepolicy.Decision{GrantPolicy: bounds}}
+		if _, _, _, err := sudoRuntimeGrantBounds(preparation, corepolicy.GrantMode(bounds.Mode)); err == nil {
 			t.Fatalf("invalid bounds accepted: %#v", bounds)
 		}
 	}
@@ -558,15 +619,19 @@ func testServer(t *testing.T) (*Server, *fakeHelper, func()) {
 }
 
 func newTestServer(database *state.Database, helper *fakeHelper, directory string) (*Server, error) {
+	policyDocument := `{"rules":[{"id":"request-scale","effect":"request","clients":["bob"],"operations":["exec.command"],
+		"targets":[{"kind":"user","name":"root"}],"attrs":{"command_id":["scale"],"argument.replicas":["2"]},
+		"grant_policy":{"mode":"execution","default_minutes":2,"max_minutes":5,"request_ttl_minutes":2,"default_max_uses":1,"max_uses":1}}]}`
+	return newTestServerWithPolicy(database, helper, directory, policyDocument)
+}
+
+func newTestServerWithPolicy(database *state.Database, helper *fakeHelper, directory, policyDocument string) (*Server, error) {
 	snapshot, err := catalog.Parse([]byte(fmt.Sprintf(`{"version":1,"commands":[{
 		"id":"scale","executable":"/usr/bin/printf","arguments":[{"literal":"%%s"},{"slot":"replicas","type":"integer","minimum":1,"maximum":4}],
 		"target_users":["root"],"working_directory":%q,"timeout_seconds":5,"max_output_bytes":100,"risk":"high"}]}`, directory)))
 	if err != nil {
 		return nil, err
 	}
-	policyDocument := `{"rules":[{"id":"request-scale","effect":"request","clients":["bob"],"operations":["exec.command"],
-		"targets":[{"kind":"user","name":"root"}],"attrs":{"command_id":["scale"],"argument.replicas":["2"]},
-		"grant_policy":{"mode":"execution","default_minutes":2,"max_minutes":5,"request_ttl_minutes":2,"default_max_uses":1,"max_uses":1}}]}`
 	brokerPolicy, err := corepolicy.Parse([]byte(policyDocument), sudopolicy.Registry(snapshot))
 	if err != nil {
 		return nil, err

@@ -69,9 +69,10 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	if name == "pull_request.merge_admin" {
 		tool, command := "gh_pull_request_merge_admin", "pull_request merge_admin"
 		return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: name, OperationRevision: 1, Summary: "Admin merge a pull request",
-			Disposition: "E/X/O", AuthorizationMode: capability.ModeExecution, ExplicitOnly: true,
+			Disposition: "E/X/O", DefaultAuthorizationMode: capability.ModeWindow,
+			AuthorizationModes: []capability.AuthorizationMode{capability.ModeWindow, capability.ModeExecution}, ExplicitOnly: true,
 			Implementation: capability.StatusImplemented, Risk: capability.RiskHigh,
-			TargetKind: "pull_request", MaxUses: 1, RequestTTLSeconds: 300, ApprovalTTLSeconds: 600,
+			TargetKind: "pull_request", MaxUses: int(usebudget.MaxFiniteUses), RequestTTLSeconds: 300, ApprovalTTLSeconds: 7 * 24 * 60 * 60,
 			FamilyGlobAllowed: false, AgentFacing: true, MCPTool: &tool, CLICommand: &command,
 			TargetSchema: "target.pull_request.v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
 			CredentialKind: "user", UpstreamBindingIDs: []string{"graphql:" + digest},
@@ -79,20 +80,17 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	}
 	mutation := root == "mutation"
 	sealedInputPaths := sensitiveTopLevelPaths(variables)
-	mode, flags, maxUses := capability.ModeWindow, "W", int(usebudget.MaxFiniteUses)
+	flags := "W"
 	if mutation {
-		mode, flags, maxUses = capability.ModeExecution, "E", 1
+		flags = "E"
 	}
 	classes := classifyGraphQLRiskClasses(root, field.Name)
 	explicit := mutation && len(classes) > 0
 	sealed := len(sealedInputPaths) > 0
 	if sealed {
-		mode, flags, maxUses = capability.ModeExecution, "E", 1
+		flags = "E"
 	}
-	approvalTTLSeconds := 10 * 60
-	if mode == capability.ModeWindow {
-		approvalTTLSeconds = 7 * 24 * 60 * 60
-	}
+	approvalTTLSeconds := 7 * 24 * 60 * 60
 	if explicit {
 		flags += "/X"
 	}
@@ -114,9 +112,11 @@ func descriptorForGraphQL(name, root string, field introspectionField, digest, d
 	}
 	target := graphqlTargetKind(field.Name)
 	return opcatalog.Descriptor{Descriptor: capability.Descriptor{Name: name, OperationRevision: 1, Summary: nonEmpty(field.Description, "GitHub GraphQL "+field.Name),
-		Disposition: flags, AuthorizationMode: mode, ExplicitOnly: explicit, Sealed: sealed,
+		Disposition: flags, DefaultAuthorizationMode: capability.ModeWindow,
+		AuthorizationModes: []capability.AuthorizationMode{capability.ModeWindow, capability.ModeExecution},
+		ExplicitOnly:       explicit, Sealed: sealed,
 		Implementation: map[bool]capability.ImplementationStatus{true: capability.StatusInternal, false: capability.StatusOperatorOnly}[internal], Risk: riskFor(classes, map[bool]string{true: "POST", false: "GET"}[mutation]),
-		TargetKind: target, MaxUses: maxUses, RequestTTLSeconds: 300, ApprovalTTLSeconds: approvalTTLSeconds,
+		TargetKind: target, MaxUses: int(usebudget.MaxFiniteUses), RequestTTLSeconds: 300, ApprovalTTLSeconds: approvalTTLSeconds,
 		Internal: internal, FamilyGlobAllowed: !explicit, AgentFacing: agentFacing, MCPTool: tool, CLICommand: command,
 		TargetSchema: "target." + target + ".v1", ArgumentSchema: "arguments." + name + ".v1", ResultSchema: "result." + name + ".v1",
 		CredentialKind: "user", SealedInputPaths: sealedInputPaths, UpstreamBindingIDs: []string{"graphql:" + digest},

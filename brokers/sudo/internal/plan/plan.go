@@ -37,6 +37,7 @@ type Plan struct {
 	RequestID                 string            `json:"request_id"`
 	ClientID                  string            `json:"client_id"`
 	Operation                 string            `json:"operation"`
+	AuthorizationMode         string            `json:"authorization_mode"`
 	CommandID                 string            `json:"command_id"`
 	TargetUser                string            `json:"target_user"`
 	TargetUID                 uint32            `json:"target_uid"`
@@ -138,7 +139,8 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 	slices.Sort(supplementary)
 	return Plan{
 		Schema: SchemaV1, RequestID: request.ClientRequestID, ClientID: request.Client, Operation: request.Operation,
-		CommandID: resolved.CommandID, TargetUser: resolved.TargetUser, TargetUID: identity.UID, TargetGID: identity.GID,
+		AuthorizationMode: request.Metadata[grants.MetadataMode],
+		CommandID:         resolved.CommandID, TargetUser: resolved.TargetUser, TargetUID: identity.UID, TargetGID: identity.GID,
 		SupplementaryGIDs: supplementary, Executable: resolved.Executable,
 		Arguments: append([]string(nil), arguments[1:]...), WorkingDirectory: resolved.WorkingDirectory, Environment: environment,
 		TimeoutSeconds: uint32(resolved.TimeoutSeconds), MaxOutputBytes: uint32(resolved.MaxOutputBytes), // #nosec G115 -- catalog validation bounds both nonnegative values before resolution.
@@ -149,8 +151,11 @@ func Build(request grants.Request, resolved catalog.Resolved, identity Identity,
 }
 
 func validBuildRequest(request grants.Request, resolved catalog.Resolved, identity Identity) bool {
+	mode := corepolicy.GrantMode(request.Metadata[grants.MetadataMode])
+	usesValid := mode == corepolicy.GrantModeExecution && request.MaxUses == usebudget.SingleUse ||
+		mode == corepolicy.GrantModeWindow && request.MaxUses >= 0 && request.MaxUses <= usebudget.MaxFiniteUses
 	return request.Operation == sudopolicy.OperationExecCommand && request.Client != "" && request.ClientRequestID != "" &&
-		request.Duration > 0 && request.MaxUses == 1 && identity.Name == resolved.TargetUser
+		request.Duration > 0 && usesValid && identity.Name == resolved.TargetUser
 }
 
 func buildRequestMatchesResolved(request grants.Request, resolved catalog.Resolved) bool {
@@ -303,6 +308,43 @@ func (v Validator) ValidateGrant(grant grants.Grant) (Plan, error) {
 	return v.Store.Get(grant.Metadata[MetadataDigest])
 }
 
+// ValidateInvocation verifies one operation-owned immutable plan against its
+// execution or reusable window grant and current host bindings.
+func (v Validator) ValidateInvocation(digest string, grant grants.Grant, requestID string) (Plan, error) {
+	if err := v.validateGrantPlanInputs(grant); err != nil {
+		return Plan{}, err
+	}
+	value, err := v.Store.Get(digest)
+	if err != nil {
+		return Plan{}, err
+	}
+	mode := corepolicy.GrantMode(grant.Metadata[grants.MetadataMode])
+	switch mode {
+	case corepolicy.GrantModeExecution:
+		duration, maxUses := requestedGrantBounds(grant)
+		if digest != grant.Metadata[MetadataDigest] || requestID != grant.ClientRequestID ||
+			validateLoadedGrantPlan(value, grant, duration, maxUses) != nil {
+			return Plan{}, errors.New("sudo execution grant does not match its immutable plan")
+		}
+	case corepolicy.GrantModeWindow:
+		duration, maxUses := grant.Duration, grant.MaxUses
+		if value.RequestID != requestID || !planMatchesGrantScope(value, grant) || !planMatchesGrantShape(value, grant) || !grantSlotsMatch(value, grant) ||
+			value.RequestedDurationSeconds != int64(duration.Seconds()) || value.RequestedMaxUses != maxUses ||
+			value.RequestedMaxUsesDefaulted != grant.RequestedMaxUsesDefaulted || value.AuthorizationMode != string(mode) {
+			return Plan{}, errors.New("sudo window grant does not cover the immutable plan")
+		}
+	default:
+		return Plan{}, errors.New("sudo grant mode is invalid")
+	}
+	if err := validateCatalogBinding(value, v.Catalog); err != nil {
+		return Plan{}, err
+	}
+	if err := validateCurrentIdentity(v.Identities, value); err != nil {
+		return Plan{}, errors.New("sudo target identity changed after request")
+	}
+	return value, nil
+}
+
 func (v Validator) validateGrant(grant grants.Grant, constraints grants.ApprovalConstraints) error {
 	value, requestedDuration, err := v.loadGrantPlan(grant)
 	if err != nil {
@@ -314,7 +356,7 @@ func (v Validator) validateGrant(grant grants.Grant, constraints grants.Approval
 	if err := validateCurrentIdentity(v.Identities, value); err != nil {
 		return errors.New("sudo target identity changed after request")
 	}
-	if !constraintsWithinGrant(constraints, requestedDuration) {
+	if !constraintsWithinGrant(constraints, requestedDuration, requestedGrantMaxUses(grant)) {
 		return grants.ErrConstraintExceeded
 	}
 	return nil
@@ -376,9 +418,15 @@ func validatePlanIdentity(resolver IdentityResolver, value Plan, message string)
 	return nil
 }
 
-func constraintsWithinGrant(constraints grants.ApprovalConstraints, duration time.Duration) bool {
-	usesValid := (!constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite()) || constraints.MaxUses == 1
+func constraintsWithinGrant(constraints grants.ApprovalConstraints, duration time.Duration, maximum usebudget.Limit) bool {
+	usesValid := !constraints.MaxUsesSpecified && !constraints.MaxUses.IsFinite() ||
+		(maximum.IsUnlimited() || constraints.MaxUses.IsFinite() && constraints.MaxUses <= maximum)
 	return constraints.Duration <= duration && usesValid
+}
+
+func requestedGrantMaxUses(grant grants.Grant) usebudget.Limit {
+	_, maxUses := requestedGrantBounds(grant)
+	return maxUses
 }
 
 func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
@@ -396,12 +444,17 @@ func requestedGrantBounds(grant grants.Grant) (time.Duration, usebudget.Limit) {
 func planMatchesGrant(value Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return planMatchesGrantIdentity(value, grant) && planMatchesGrantShape(value, grant) &&
 		value.RequestedDurationSeconds == int64(duration.Seconds()) && value.RequestedMaxUses == maxUses &&
-		value.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted && maxUses == 1
+		value.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted &&
+		value.AuthorizationMode == grant.Metadata[grants.MetadataMode]
 }
 
 func planMatchesGrantIdentity(value Plan, grant grants.Grant) bool {
-	return value.RequestID == grant.ClientRequestID && value.ClientID == grant.Client && value.Operation == grant.Operation &&
-		value.Operation == sudopolicy.OperationExecCommand && value.TargetUser == corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName]) &&
+	return value.RequestID == grant.ClientRequestID && planMatchesGrantScope(value, grant)
+}
+
+func planMatchesGrantScope(value Plan, grant grants.Grant) bool {
+	return value.ClientID == grant.Client && value.Operation == grant.Operation && value.Operation == sudopolicy.OperationExecCommand &&
+		value.TargetUser == corepolicy.FirstValue(grant.Target.Fields[sudopolicy.TargetName]) &&
 		value.CommandID == corepolicy.FirstValue(grant.Attrs[sudopolicy.AttrCommandID])
 }
 
@@ -513,14 +566,27 @@ func validSupplementaryGroups(values []uint32) bool {
 
 func validPlanIdentity(value Plan) bool {
 	return value.Schema == SchemaV1 && boundedIdentifier(value.RequestID) && boundedIdentifier(value.ClientID) &&
-		value.Operation == sudopolicy.OperationExecCommand && boundedIdentifier(value.CommandID) && boundedIdentifier(value.TargetUser) &&
+		value.Operation == sudopolicy.OperationExecCommand && validAuthorizationMode(value.AuthorizationMode) &&
+		boundedIdentifier(value.CommandID) && boundedIdentifier(value.TargetUser) &&
 		absoluteClean(value.Executable) && absoluteClean(value.WorkingDirectory)
 }
 
 func validPlanLimits(value Plan) bool {
 	return value.TimeoutSeconds > 0 && value.TimeoutSeconds <= 3600 && value.MaxOutputBytes <= 1<<20 && value.CatalogDigest != "" &&
 		value.RequestedDurationSeconds > 0 && value.RequestedDurationSeconds <= int64((24*time.Hour)/time.Second) &&
-		value.RequestedMaxUses == 1 && !value.CreatedAt.IsZero()
+		validAuthorizationUses(value.AuthorizationMode, value.RequestedMaxUses) && !value.CreatedAt.IsZero()
+}
+
+func validAuthorizationMode(value string) bool {
+	mode := corepolicy.GrantMode(value)
+	return mode == corepolicy.GrantModeWindow || mode == corepolicy.GrantModeExecution
+}
+
+func validAuthorizationUses(mode string, uses usebudget.Limit) bool {
+	if corepolicy.GrantMode(mode) == corepolicy.GrantModeExecution {
+		return uses == usebudget.SingleUse
+	}
+	return corepolicy.GrantMode(mode) == corepolicy.GrantModeWindow && uses >= 0 && uses <= usebudget.MaxFiniteUses
 }
 
 func validPlanArguments(values []string) bool {

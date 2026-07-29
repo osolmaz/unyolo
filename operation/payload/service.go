@@ -95,7 +95,7 @@ func (s *Service) Upload(c echo.Context) error {
 		return s.reject(c, http.StatusBadRequest, "sealed_payload_invalid", "Sealed payload must be bounded binary content")
 	}
 	defer zero(payload)
-	expires := s.options.Now().Add(time.Duration(descriptor.RequestTTLSeconds+descriptor.ApprovalTTLSeconds+300) * time.Second)
+	expires := s.options.Now().Add(time.Duration(descriptor.RequestTTLSeconds+300) * time.Second)
 	reference, err := s.options.Store.PutForRequest(client, operation, requestKey, payload, expires)
 	if err != nil {
 		return s.reject(c, http.StatusInternalServerError, "sealed_payload_unavailable", "Could not seal operation payload")
@@ -106,7 +106,7 @@ func (s *Service) Upload(c echo.Context) error {
 }
 
 func validDescriptor(descriptor capability.Descriptor, found bool) bool {
-	return found && descriptor.Sealed && descriptor.AgentFacing && descriptor.AuthorizationMode == capability.ModeExecution
+	return found && descriptor.Sealed && descriptor.AgentFacing
 }
 
 func readPayload(source io.Reader) ([]byte, error) {

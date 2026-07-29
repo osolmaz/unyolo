@@ -29,7 +29,7 @@ func (r *Runtime[I, P, A]) submitDirectGrant(submission agentops.Submit, adapter
 
 func (r *Runtime[I, P, A]) submitWithAvailableGrant(ctx context.Context, submission agentops.Submit,
 	adapter Adapter[I, P, A], plan P, auth A, core policy.Request) (agentv1.Operation, bool, error) {
-	decision, found, err := r.options.Authorization.ActiveGrant(core)
+	decision, found, err := r.options.Authorization.ActiveGrantMode(core, policy.GrantModeWindow)
 	if err != nil {
 		r.cleanup(adapter, plan)
 		return agentv1.Operation{}, false, err
@@ -70,7 +70,8 @@ func (r *Runtime[I, P, A]) prepareActiveGrant(submission agentops.Submit, adapte
 }
 
 func (r *Runtime[I, P, A]) usableActiveGrant(grant grants.Grant, submission agentops.Submit) bool {
-	return grant.Status == grants.StatusActive && !grant.ReservationRetained && grant.Client == submission.ClientID &&
+	return grant.Metadata[grants.MetadataMode] == string(policy.GrantModeWindow) &&
+		grant.Status == grants.StatusActive && grant.Client == submission.ClientID &&
 		grant.Operation == submission.Operation && r.now().Before(grant.ExpiresAt) &&
 		grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount) && r.options.ValidateExecution(grant) == nil
 }

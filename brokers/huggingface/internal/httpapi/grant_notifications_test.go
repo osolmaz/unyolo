@@ -14,6 +14,7 @@ import (
 
 	"github.com/osolmaz/unyolo/approval"
 	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
@@ -74,7 +75,7 @@ func TestGrantRequestRetryNotifiesPendingGrantWithoutMessage(t *testing.T) {
 		Mode:              hfgrant.ModeWindow,
 		RequestedDuration: 5 * time.Minute,
 		PendingTimeout:    5 * time.Minute,
-		MaxUses:           25,
+		MaxUses:           int(usebudget.MaxFiniteUses),
 	}); err != nil {
 		t.Fatalf("preseed Request() error = %v", err)
 	}
@@ -426,7 +427,7 @@ func TestReserveGrantUseFailureRefusesBeforeUpstream(t *testing.T) {
 	}()
 	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 
-	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
+	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}}, "persistence-failure-use")
 	if err == nil {
 		t.Fatalf("reserveGrantUses() error = nil, want persistence failure")
 	}
@@ -461,7 +462,7 @@ func TestReleaseGrantUsesRestoresReservedGrant(t *testing.T) {
 	}
 	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
 
-	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
+	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}}, "released-reservation-use")
 	if err != nil {
 		t.Fatalf("reserveGrantUses() error = %v", err)
 	}
@@ -496,7 +497,7 @@ func TestRetainGrantUseReservationsPersistsReviewMarker(t *testing.T) {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	server := &Server{grants: store, plans: plans, planValidator: hfplan.Validator{Store: plans}}
-	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}})
+	reserved, err := server.reserveGrantUses([]grantUse{{grant: approved}}, "retained-reservation-use")
 	if err != nil {
 		t.Fatalf("reserveGrantUses() error = %v", err)
 	}
@@ -543,15 +544,19 @@ func TestUpdateRetainedGrantReservationMessageReloadsExpiredGrant(t *testing.T) 
 	if err := store.MarkNotificationStatus(grant.ID, string(grants.StatusActive)); err != nil {
 		t.Fatalf("MarkNotificationStatus(active) error = %v", err)
 	}
-	reserved, err := store.ReserveUse(approved.ID)
+	reserved, err := store.ReserveUse(approved.ID, "expired-notification-use", approved.Operation)
 	if err != nil {
 		t.Fatalf("ReserveUse() error = %v", err)
 	}
 	now = now.Add(2 * time.Minute)
+	retained, err := store.RetainUse(approved.ID, reserved.Use.RequestID)
+	if err != nil {
+		t.Fatalf("RetainUse() error = %v", err)
+	}
 	notifier := &captureGrantNotifier{}
 	server := &Server{grants: store, notifier: notifier}
 
-	server.updateRetainedGrantReservationMessage(reserved)
+	server.updateRetainedGrantReservationMessage(retained.Grant)
 
 	if len(notifier.updates) != 1 || notifier.updates[0].Kind != notify.StatusRetained {
 		t.Fatalf("retained reservation updates = %+v, want closed expired status", notifier.updates)

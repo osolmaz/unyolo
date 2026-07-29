@@ -54,7 +54,7 @@ func TestOperatorV1PreservesUnlimitedUseConstraints(t *testing.T) {
 	t.Parallel()
 	store, _, client := newOperatorServer(t, nil)
 	result, _, err := store.Request(grants.Request{
-		Client: "bob", ClientRequestID: "unlimited", Operation: "provider.write",
+		Client: "bob", ClientRequestID: "unlimited", Operation: "provider.write", Metadata: map[string]string{grants.MetadataMode: "window"},
 		Target: policy.Target{Kind: "repository", Fields: map[string][]string{"name": {"demo"}}},
 		Reason: "continuous maintenance", Duration: 5 * time.Minute,
 		MaxUses: usebudget.Unlimited, MaxUsesSpecified: true,
@@ -84,7 +84,7 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 		t.Fatalf("List() = %+v, %v", page, err)
 	}
 	request := page.Requests[0]
-	if request.ApprovalBounds == nil || request.ApprovalBounds.MaxUses != 2 || len(request.AllowedActions) != 2 {
+	if request.Mode != "window" || request.ApprovalBounds == nil || request.ApprovalBounds.MaxUses != 2 || len(request.AllowedActions) != 2 {
 		t.Fatalf("request = %+v", request)
 	}
 	command := operatorv1.Decision{ExpectedRevision: grant.Revision, IdempotencyKey: "decision-1", OnBehalfOf: "Onur",
@@ -106,7 +106,8 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 	store, _, client := newOperatorServer(t, nil)
 	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
-		Target: policy.Target{Kind: "repository"}, Reason: "test", Duration: time.Minute, MaxUses: 1})
+		Metadata: map[string]string{grants.MetadataMode: "execution"}, Target: policy.Target{Kind: "repository"},
+		Reason: "test", Duration: time.Minute, MaxUses: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +127,8 @@ func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
 func TestOperatorV1AcceptsBoundedEscapedTelegramText(t *testing.T) {
 	store, _, client := newOperatorServer(t, nil)
 	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
-		Target: policy.Target{Kind: "repository"}, Reason: "test", Duration: time.Minute, MaxUses: 1})
+		Metadata: map[string]string{grants.MetadataMode: "execution"}, Target: policy.Target{Kind: "repository"},
+		Reason: "test", Duration: time.Minute, MaxUses: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +282,7 @@ func newOperatorServer(t *testing.T, validator decision.ActivationValidator) (*g
 
 func requestGrant(t *testing.T, store *grants.Store, id string) grants.Grant {
 	t.Helper()
-	result, _, err := store.Request(grants.Request{Client: "bob", ClientRequestID: id, Operation: "provider.write",
+	result, _, err := store.Request(grants.Request{Client: "bob", ClientRequestID: id, Operation: "provider.write", Metadata: map[string]string{grants.MetadataMode: "window"},
 		Target: policy.Target{Kind: "repository", Fields: map[string][]string{"name": {"demo"}}}, Reason: "test request", Duration: 5 * time.Minute, MaxUses: 2})
 	if err != nil {
 		t.Fatal(err)

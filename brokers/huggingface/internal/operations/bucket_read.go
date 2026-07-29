@@ -188,8 +188,8 @@ func (a *bucketReadAdapter) Present(plan Plan) agentv1.Presentation {
 	return presentReconstructed(plan, a.reconstruct(plan))
 }
 
-func (a *bucketReadAdapter) BindReservation(plan Plan, grant grants.Grant) (Plan, error) {
-	return bindReadReservation(plan, grant)
+func (a *bucketReadAdapter) BindReservation(plan Plan, reservation grants.UseReservation) (Plan, error) {
+	return bindReadReservation(plan, reservation)
 }
 
 func (a *bucketReadAdapter) reconstruct(plan Plan) reconstructedPlan {

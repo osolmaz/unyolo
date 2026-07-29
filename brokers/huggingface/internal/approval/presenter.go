@@ -19,7 +19,7 @@ const (
 	targetKindField  = "kind"
 	targetTypeField  = "type"
 	targetOwnerField = "owner"
-	modeMetadata     = "hf_grant_mode"
+	modeMetadata     = unyologrants.MetadataMode
 )
 
 // Presenter renders Hugging Face-specific wording without exposing execution authority.

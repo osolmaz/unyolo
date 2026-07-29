@@ -121,7 +121,7 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 		Target: target, Arguments: arguments, Preconditions: json.RawMessage(`{}`),
 		CredentialSelector: CredentialSelector{Name: "primary", Kind: modeCredentialKind(request.Operation, "")},
 		Presentation:       agentv1.Presentation{Title: request.Operation, Summary: truncateUTF8(request.Reason, 500)},
-		Authorization: Authorization{Mode: modeForOperation(request.Operation, request.Metadata["github_grant_mode"]), RequestedDurationSeconds: int64(request.Duration.Seconds()),
+		Authorization: Authorization{Mode: modeForOperation(request.Operation, request.Metadata[grants.MetadataMode]), RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
 			Target: GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)}, Attributes: cloneValues(request.Attrs)},
 		CreatedAt: createdAt.UTC(), ExpiresAt: expiresAt.UTC(),
@@ -214,7 +214,7 @@ func (s *Store) PrepareBindAt(request *grants.Request, createdAt time.Time) (gra
 	if request.Metadata == nil {
 		request.Metadata = map[string]string{}
 	}
-	request.Metadata["github_grant_mode"] = modeForOperation(request.Operation, request.Metadata["github_grant_mode"])
+	request.Metadata[grants.MetadataMode] = modeForOperation(request.Operation, request.Metadata[grants.MetadataMode])
 	plan := FromRequest(*request, createdAt)
 	plan.CredentialSelector.Kind = modeCredentialKind(request.Operation, s.credentialSelector)
 	prepared, err := Prepare(plan)
@@ -338,7 +338,7 @@ func planMatchesGrantIdentity(plan Plan, grant grants.Grant) bool {
 
 func planMatchesGrantAuthorization(auth Authorization, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return auth.Target.Kind == grant.Target.Kind && reflect.DeepEqual(auth.Target.Fields, grant.Target.Fields) &&
-		reflect.DeepEqual(auth.Attributes, grant.Attrs) && auth.Mode == grant.Metadata["github_grant_mode"] &&
+		reflect.DeepEqual(auth.Attributes, grant.Attrs) && auth.Mode == grant.Metadata[grants.MetadataMode] &&
 		auth.RequestedDurationSeconds == int64(duration.Seconds()) && auth.RequestedMaxUses == maxUses &&
 		auth.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
 }
@@ -452,8 +452,8 @@ func modeForOperation(operation, value string) string {
 	if value == "window" || value == "execution" {
 		return value
 	}
-	if descriptor, found := opcatalog.ByName(operation); found && descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		return "execution"
+	if descriptor, found := opcatalog.ByName(operation); found {
+		return string(descriptor.DefaultAuthorizationMode)
 	}
 	return "window"
 }

@@ -137,7 +137,7 @@ func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
 	}
 	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateApproved)
 	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateExecuting)
-	if _, err := handler.grants.ReserveUse(approved.ID); err != nil {
+	if _, err := handler.grants.ReserveUse(approved.ID, operation.ID, operation.Operation); err != nil {
 		t.Fatal(err)
 	}
 	present.Store(true)

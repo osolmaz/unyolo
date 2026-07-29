@@ -41,8 +41,8 @@ the decision and the response does not lose the decision.
 
 ## Window grants
 
-A `window` grant is the general-purpose mode. It authorizes an exact classified request for a
-bounded time and a use budget:
+A `window` grant is the default for every grantable operation. It authorizes an exact classified
+request for a bounded time and a use budget:
 
 ```json
 {
@@ -58,9 +58,9 @@ bounded time and a use budget:
 ceiling no greater than `1000000`, or `null`. Providers may impose a lower operation-specific
 limit. Setting it to `null` permits a caller to request unlimited uses, which are still bounded by
 the required expiry, so "unlimited" means unlimited within the window rather than unlimited full
-stop. Omitting a requested `max_uses` selects the finite default. When a reusable policy omits
-both use fields, they default to the lowest provider ceiling among its operations. Execution
-grants always default to and require one use.
+stop. Omitting a requested `max_uses` selects the finite default. When a window policy omits both
+use fields, they default to the lowest provider ceiling among its operations. Policy may select
+execution mode, which always requires one use.
 
 ## Execution grants
 
@@ -76,12 +76,13 @@ guard. A pull request that changed after approval must be submitted and approved
 
 ## Use budgets and reservations
 
-Consuming a grant is not simply decrementing a counter after the fact. The broker reserves one use
-atomically as part of admission or execution, under the same grant-store lock that validates the
-activation. That ordering is what makes concurrent requests against a single-use grant resolve to
-exactly one execution.
+Consuming a grant is not simply decrementing a counter after the fact. Each invocation gets a
+durable use record bound to its immutable operation plan. The broker reserves that use atomically
+before dispatch, which prevents concurrent requests from spending the same finite slot.
 
-Reservations are private. Public resources and lifecycle events never expose decision-token
+A successful invocation commits its own use. Cancellation or a definitive pre-dispatch failure
+releases it. An ambiguous dispatch retains the use for reconciliation without revoking unrelated
+window authority. Reservations are private. Public resources and lifecycle events never expose decision-token
 verifiers, raw plans, credentials, provider bodies, command output, or reservation internals.
 
 If a provider execution ends ambiguously, the broker does not automatically retry the mutation.

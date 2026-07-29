@@ -70,7 +70,9 @@ terminal state so audit records show that it was withdrawn rather than refused.
 
 List filters are `status`, `requester`, `operation`, `target_kind`, repeated
 `target.<field>`, `cursor`, and `limit`. Limits default to 50 and cannot exceed
-100. Ordering is newest request first, then grant ID. Cursors are opaque.
+100. Ordering is newest request first, then grant ID. Cursors are opaque. Each
+request includes `mode`: `window` means reusable scoped authority, while
+`execution` means one exact immutable action.
 
 A decision body uses optimistic concurrency:
 

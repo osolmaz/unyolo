@@ -435,6 +435,7 @@ function notificationText(request: SafeRequest): string {
   return [
     `${request.source_label}: ${value.presentation.title}`,
     value.presentation.summary ?? "",
+    `Grant mode: ${value.mode === "window" ? "reusable window" : "exact execution"}`,
     `Handle: ${request.handle}`,
     ...value.allowed_actions.map(
       (action) => `/unyolo ${action} ${request.handle}`,

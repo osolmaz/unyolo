@@ -23,6 +23,7 @@ type Item struct {
 	Revision                 int64                     `json:"revision"`
 	Client                   string                    `json:"client"`
 	Operation                string                    `json:"operation"`
+	Mode                     string                    `json:"mode"`
 	Status                   grants.Status             `json:"status"`
 	RequestedAt              time.Time                 `json:"requested_at"`
 	PendingExpiresAt         time.Time                 `json:"pending_expires_at"`
@@ -105,7 +106,8 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 	}
 	item := Item{
 		ID: grant.ID, Revision: grant.Revision, Client: requester,
-		Operation: approvalview.SafeOrEmpty(grant.Operation, maxTargetBytes, false), Status: grant.Status,
+		Operation: approvalview.SafeOrEmpty(grant.Operation, maxTargetBytes, false),
+		Mode:      grant.Metadata[grants.MetadataMode], Status: grant.Status,
 		RequestedAt: grant.CreatedAt, PendingExpiresAt: grant.PendingExpiresAt,
 		RequestedDurationSeconds: int64(requestedDuration / time.Second), RequestedMaxUses: requestedMaxUses, MaxUses: grant.MaxUses,
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,

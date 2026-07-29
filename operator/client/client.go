@@ -359,7 +359,7 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 		}
 	}
 	result := operatorv1.Request{ID: input.Id, Revision: int64(input.Revision), Requester: input.Requester, Operation: input.Operation,
-		Status: grants.Status(input.Status), RequestedAt: input.RequestedAt, PendingExpiresAt: input.PendingExpiresAt,
+		Mode: string(input.Mode), Status: grants.Status(input.Status), RequestedAt: input.RequestedAt, PendingExpiresAt: input.PendingExpiresAt,
 		ActiveExpiresAt: input.ActiveExpiresAt, RequestedDurationSeconds: int64(input.RequestedDurationSeconds),
 		RequestedMaxUses: operatorv1wire.UseLimitFromWire(input.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitFromWire(input.GrantedMaxUses),
 		UsedCount: input.UsedCount, DecidedAt: input.DecidedAt,

@@ -122,6 +122,30 @@ func (c *Coordinator) ActiveGrant(request policy.Request) (policy.Decision, bool
 	return decision, decision.Allowed && decision.GrantID != "", nil
 }
 
+// ActiveGrantMode returns existing matching authority only for the requested
+// durable grant mode.
+func (c *Coordinator) ActiveGrantMode(request policy.Request, mode policy.GrantMode) (policy.Decision, bool, error) {
+	if err := c.registry.ValidateRequest(request); err != nil {
+		return policy.Decision{}, false, fmt.Errorf("%w: %w", ErrNoMatch, err)
+	}
+	active, err := c.activeGrants(request)
+	if err != nil {
+		return policy.Decision{}, false, fmt.Errorf("load active grants: %w", err)
+	}
+	filtered := make([]policy.Grant, 0, len(active))
+	for _, candidate := range active {
+		grant, getErr := c.grants.Get(candidate.ID)
+		if getErr != nil {
+			return policy.Decision{}, false, fmt.Errorf("load active grant mode: %w", getErr)
+		}
+		if policy.GrantMode(grant.Metadata[grants.MetadataMode]) == mode {
+			filtered = append(filtered, candidate)
+		}
+	}
+	decision := c.decide(request, policy.DecisionOptions{Now: c.now().UTC(), ActiveGrants: filtered})
+	return decision, decision.Allowed && decision.GrantID != "", nil
+}
+
 // RequestApproval explicitly requests a bounded approval even when an existing
 // grant could currently authorize the same capability.
 func (c *Coordinator) RequestApproval(request policy.Request, build IntentBuilder) (Result, error) {

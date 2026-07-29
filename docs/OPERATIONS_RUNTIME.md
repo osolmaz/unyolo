@@ -4,12 +4,13 @@ unYOLO owns the provider-neutral install, setup, service, and doctor logic
 used by the broker family. Component directories keep only thin command
 adapters and provider-specific service inputs.
 
-The accepted reusable-grant design makes active window grants available to
-every grantable operation while keeping exact, single-use execution grants.
-See [ADR 0002](adr/0002-universal-reusable-grants.md), the
+Active window grants are available to every grantable operation, while
+execution grants remain exact and single-use. See
+[ADR 0002](adr/0002-universal-reusable-grants.md), the
 [specification](REUSABLE_GRANTS_SPEC.md), and the
-[implementation plan](2026-07-29-universal-reusable-grants-plan.md). Released
-binaries retain their current provider classifications until implementation.
+[implementation plan](2026-07-29-universal-reusable-grants-plan.md). Release
+artifacts published before this change retain their earlier provider
+classifications.
 
 ## Installer
 

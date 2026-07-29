@@ -19,6 +19,7 @@ func TestRenderApprovalCanonicalLayout(t *testing.T) {
 
 👤 <b>Requester:</b> agent-a
 ⚙️ <b>Operation:</b> repo.delete
+🔑 <b>Grant mode:</b> execution (exact, single-use)
 📍 <b>Target:</b> example/project
 🛡️ <b>Risk:</b> critical
 
@@ -36,6 +37,19 @@ Permanently delete the selected repository.
 ⚠️ <b>Critical warning:</b> This operation permanently deletes the repository.`
 	if got != want {
 		t.Fatalf("RenderApproval() mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRenderApprovalDistinguishesReusableWindowMode(t *testing.T) {
+	approval := validApproval()
+	approval.Mode = "window"
+	approval.MaxUses = 25
+	text, err := RenderApproval(approval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Grant mode:</b> window (reusable)") || !strings.Contains(text, "Uses:</b> 25") {
+		t.Fatalf("window approval text = %q", text)
 	}
 }
 

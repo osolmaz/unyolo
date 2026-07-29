@@ -14,11 +14,11 @@ import (
 
 func TestProjectAndMemory(t *testing.T) {
 	grant := grants.Grant{ID: "grant-1", Client: "agent-a", Operation: "repo.delete", Reason: "cleanup",
-		Duration: 5 * time.Minute, MaxUses: 1, PendingExpiresAt: time.Unix(10, 0)}
+		Metadata: map[string]string{grants.MetadataMode: "window"}, Duration: 5 * time.Minute, MaxUses: 1, PendingExpiresAt: time.Unix(10, 0)}
 	approval := Project(t.Context(), "GitHub", approvalview.PresenterFunc(func(context.Context, grants.Grant) (approvalview.Presentation, error) {
 		return approvalview.Presentation{Risk: approvalview.RiskCritical, Title: "Delete repository", Target: "example/repo"}, nil
 	}), grant, "secret-token")
-	if approval.Broker != "GitHub" || approval.RequestedDurationSeconds != 300 || approval.Presentation.Target != "example/repo" {
+	if approval.Broker != "GitHub" || approval.Mode != "window" || approval.RequestedDurationSeconds != 300 || approval.Presentation.Target != "example/repo" {
 		t.Fatalf("Project() = %+v", approval)
 	}
 	notifier := &Memory{}

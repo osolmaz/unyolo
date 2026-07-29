@@ -31,7 +31,7 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := request.Metadata[MetadataDigest]
-	if digest == "" || request.Metadata[MetadataSchema] != SchemaV1 || request.Metadata["github_grant_mode"] != "window" {
+	if digest == "" || request.Metadata[MetadataSchema] != SchemaV1 || request.Metadata[grants.MetadataMode] != "window" {
 		t.Fatalf("metadata = %+v", request.Metadata)
 	}
 	second := testRequest()
@@ -140,7 +140,7 @@ func TestStoreRejectsMissingCorruptAndInvalidCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Metadata = map[string]string{MetadataSchema: SchemaV1, MetadataDigest: digest, "github_grant_mode": "window"}
+	request.Metadata = map[string]string{MetadataSchema: SchemaV1, MetadataDigest: digest, grants.MetadataMode: "window"}
 	grant := grants.Grant{Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation, Target: request.Target, Attrs: request.Attrs, Metadata: request.Metadata,
 		Duration: request.Duration, RequestedDuration: request.Duration, MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses}
 	if err := (Validator{Store: plans}).ValidateExecution(grant); err == nil {
@@ -212,7 +212,7 @@ func TestPlanProjectionAndFallbackBoundaries(t *testing.T) {
 	if got := truncateUTF8(multibyte, 160); !json.Valid([]byte(`"`+got+`"`)) || len(got) > 160 {
 		t.Fatalf("UTF-8 truncation = %q", got)
 	}
-	if modeForOperation("repo.delete", "") != "execution" || modeForOperation("repo.metadata.read", "execution") != "execution" {
+	if modeForOperation("repo.delete", "") != "window" || modeForOperation("repo.metadata.read", "execution") != "execution" {
 		t.Fatal("operation mode selection drifted")
 	}
 	if modeCredentialKind("repo.delete", "development-token") != "installation" || modeCredentialKind("git.fetch", "development-token") != "development-token" {

@@ -13,11 +13,11 @@ func TestDescriptorDrivenSurfaces(t *testing.T) {
 	credentialTool, credentialCommand := "hf_token_create", "token create"
 	credentialKind := "service-token"
 	descriptors := []Descriptor{
-		{Name: "repo.read", AuthorizationMode: ModeWindow, AgentFacing: true, ExecutorKind: "bounded-stream", MCPTool: &windowTool, CLICommand: &windowCommand},
-		{Name: "secret.set", AuthorizationMode: ModeExecution, AgentFacing: true, Sealed: true, MCPTool: &secretTool, CLICommand: &secretCommand},
-		{Name: "token.create", AuthorizationMode: ModeExecution, AgentFacing: true, Sealed: true,
+		{Name: "repo.read", Disposition: "W", AgentFacing: true, ExecutorKind: "bounded-stream", MCPTool: &windowTool, CLICommand: &windowCommand},
+		{Name: "secret.set", Disposition: "E", AgentFacing: true, Sealed: true, MCPTool: &secretTool, CLICommand: &secretCommand},
+		{Name: "token.create", Disposition: "E", AgentFacing: true, Sealed: true,
 			CredentialOutputKind: &credentialKind, MCPTool: &credentialTool, CLICommand: &credentialCommand},
-		{Name: "internal.sync", AuthorizationMode: ModeExecution},
+		{Name: "internal.sync", Disposition: "E"},
 	}
 	options := SurfaceOptions{
 		Descriptors: descriptors, AttributeNames: []string{"ref"},

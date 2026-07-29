@@ -16,7 +16,7 @@ func TestPresenterRendersSafeHFDetails(t *testing.T) {
 	presentation, err := (Presenter{}).Present(context.Background(), unyologrants.Grant{
 		ID: "grant-1", Operation: "git.push.force",
 		Target:   unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "refs": {"refs/heads/main"}}},
-		Metadata: map[string]string{"hf_grant_mode": "window"},
+		Metadata: map[string]string{unyologrants.MetadataMode: "window"},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -678,6 +678,7 @@ function safeRequest(): SafeRequest {
       revision: 1,
       requester: "bob",
       operation: "repo.update",
+      mode: "window",
       status: "pending",
       requested_at: "2026-07-11T00:00:00Z",
       pending_expires_at: "2026-07-11T00:10:00Z",

@@ -18,7 +18,7 @@ func TestUploadBindsPayloadToDescriptorAndRequester(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := capability.Descriptor{Name: "secret.set", AuthorizationMode: capability.ModeExecution, AgentFacing: true,
+	descriptor := capability.Descriptor{Name: "secret.set", AgentFacing: true,
 		Sealed: true, RequestTTLSeconds: 60, ApprovalTTLSeconds: 60}
 	service, err := New(Options{
 		Store:        store,
@@ -49,7 +49,7 @@ func TestUploadRejectsUnsealedPurpose(t *testing.T) {
 	service, err := New(Options{
 		Store: store,
 		Descriptor: func(string) (capability.Descriptor, bool) {
-			return capability.Descriptor{Name: "repo.read", AuthorizationMode: capability.ModeWindow, AgentFacing: true}, true
+			return capability.Descriptor{Name: "repo.read", AgentFacing: true}, true
 		},
 		Authenticate: func(http.ResponseWriter, *http.Request) (string, bool) { return "agent", true },
 		WriteFailure: func(w http.ResponseWriter, status int, _, _ string) { w.WriteHeader(status) },
@@ -68,7 +68,7 @@ func TestUploadRejectsUnsealedPurpose(t *testing.T) {
 }
 
 func TestUploadRejectsInvalidBoundaries(t *testing.T) {
-	descriptor := capability.Descriptor{Name: "secret.set", AuthorizationMode: capability.ModeExecution, AgentFacing: true,
+	descriptor := capability.Descriptor{Name: "secret.set", AgentFacing: true,
 		Sealed: true, RequestTTLSeconds: 60, ApprovalTTLSeconds: 60}
 	tests := []struct {
 		name          string

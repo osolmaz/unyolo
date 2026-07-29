@@ -22,6 +22,9 @@ func fileDataFromSQLite(snapshot state.GrantSnapshot) (fileData, error) {
 	if data.Grants, err = convertRecords(snapshot.Grants, grantFromSQLite); err != nil {
 		return fileData{}, err
 	}
+	if data.Uses, err = convertRecords(snapshot.Uses, useFromSQLite); err != nil {
+		return fileData{}, err
+	}
 	if data.Events, data.NextEvent, err = eventsFromSQLite(snapshot.Events); err != nil {
 		return fileData{}, err
 	}
@@ -61,6 +64,10 @@ func fileDataToSQLite(data fileData, previousOutbox []state.NotificationOutboxRe
 	if err != nil {
 		return state.GrantSnapshot{}, err
 	}
+	uses, err := convertRecords(data.Uses, useToSQLite)
+	if err != nil {
+		return state.GrantSnapshot{}, err
+	}
 	events, err := eventsToSQLite(data.Events)
 	if err != nil {
 		return state.GrantSnapshot{}, err
@@ -73,7 +80,18 @@ func fileDataToSQLite(data fileData, previousOutbox []state.NotificationOutboxRe
 	if err != nil {
 		return state.GrantSnapshot{}, err
 	}
-	return state.GrantSnapshot{Grants: grants, Events: events, Decisions: decisions, Outbox: outbox}, nil
+	return state.GrantSnapshot{Grants: grants, Uses: uses, Events: events, Decisions: decisions, Outbox: outbox}, nil
+}
+
+func useToSQLite(use GrantUse) (state.GrantUseRecord, error) {
+	return state.GrantUseRecord{RequestID: use.RequestID, GrantID: use.GrantID, Operation: use.Operation,
+		State: string(use.State), Revision: use.Revision, CreatedAt: use.CreatedAt, UpdatedAt: use.UpdatedAt, SettledAt: use.SettledAt}, nil
+}
+
+func useFromSQLite(record state.GrantUseRecord) (GrantUse, error) {
+	return GrantUse{RequestID: record.RequestID, GrantID: record.GrantID, Operation: record.Operation,
+		State: UseState(record.State), Revision: record.Revision, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		SettledAt: record.SettledAt}, nil
 }
 
 func eventsToSQLite(events []lifecycleEventRecord) ([]state.GrantLifecycleRecord, error) {

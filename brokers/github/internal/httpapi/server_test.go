@@ -30,6 +30,7 @@ import (
 	"github.com/osolmaz/unyolo/approval/notification"
 	"github.com/osolmaz/unyolo/approval/notifier"
 	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/brokers/github/internal/config"
 	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
@@ -958,7 +959,7 @@ func TestGrantBackedReceivePackRetainsGrantOnProxyError(t *testing.T) {
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, body = %s, want upstream proxy error", response.Code, response.Body.String())
 	}
-	assertGrantUseState(t, server, grantID, grants.StatusRevoked, 0, 1)
+	assertGrantUseState(t, server, grantID, grants.StatusActive, 0, 1)
 	grant, err := server.grants.Get(grantID)
 	if err != nil {
 		t.Fatalf("Get(%q) error = %v", grantID, err)
@@ -973,7 +974,11 @@ func TestGrantBackedReceivePackCommitFailureReturnsError(t *testing.T) {
 	var server *Server
 	var grantID string
 	server = newTestServerWithPolicyAndHandler(t, requestMainPushPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		if _, err := server.grants.ReleaseUse(grantID); err != nil {
+		uses, err := server.grants.ListUses(grantID)
+		if err != nil || len(uses) != 1 {
+			t.Fatalf("ListUses() = %+v, %v", uses, err)
+		}
+		if _, err := server.grants.ReleaseUse(grantID, uses[0].RequestID); err != nil {
 			t.Fatalf("ReleaseUse() error = %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -990,7 +995,7 @@ func TestGrantBackedReceivePackCommitFailureReturnsError(t *testing.T) {
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, body = %s, want grant commit error", response.Code, response.Body.String())
 	}
-	assertGrantUseState(t, server, grantID, grants.StatusRevoked, 0, 0)
+	assertGrantUseState(t, server, grantID, grants.StatusActive, 0, 0)
 }
 
 func TestTelegramApprovalActivatesGrant(t *testing.T) {
@@ -1217,10 +1222,10 @@ func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	if _, err := server.grants.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := server.grants.ReserveUse(result.Grant.ID, "retained-status-use", result.Grant.Operation); err != nil {
 		t.Fatalf("ReserveUse() error = %v", err)
 	}
-	if _, err := server.grants.RetainUse(result.Grant.ID); err != nil {
+	if _, err := server.grants.RetainUse(result.Grant.ID, "retained-status-use"); err != nil {
 		t.Fatalf("RetainUse() error = %v", err)
 	}
 
@@ -1230,7 +1235,7 @@ func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 	}
 }
 
-func TestRetainingMultiUseGrantClosesRemainingAccess(t *testing.T) {
+func TestRetainingMultiUseGrantPreservesRemainingAccess(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	request := grantsRequestForMainPush(t)
@@ -1242,21 +1247,24 @@ func TestRetainingMultiUseGrantClosesRemainingAccess(t *testing.T) {
 	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	reserved, err := server.grants.ReserveUse(result.Grant.ID)
+	reserved, err := server.grants.ReserveUse(result.Grant.ID, "multi-retained-use", result.Grant.Operation)
 	if err != nil {
 		t.Fatalf("ReserveUse() error = %v", err)
 	}
-	if err := server.retainGrantUses([]grants.Grant{reserved}); err != nil {
+	if err := server.retainGrantUses([]grants.UseReservation{reserved}); err != nil {
 		t.Fatalf("retainGrantUses() error = %v", err)
 	}
 	stored, err := server.grants.Get(result.Grant.ID)
 	if err != nil {
 		t.Fatalf("Get(%q) error = %v", result.Grant.ID, err)
 	}
-	if stored.Status != grants.StatusRevoked || !stored.ReservationRetained || stored.ReservedCount != 1 {
-		t.Fatalf("grant = %+v, want revoked retained reservation", stored)
+	if stored.Status != grants.StatusActive || !stored.ReservationRetained || stored.ReservedCount != 1 {
+		t.Fatalf("grant = %+v, want active retained reservation", stored)
 	}
-	assertNoActiveGrants(t, server)
+	active, err := server.grants.ActivePolicyGrants()
+	if err != nil || len(active) != 1 || active[0].UsesLeft != 2 {
+		t.Fatalf("active grants = %+v, %v; want two remaining uses", active, err)
+	}
 }
 
 func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
@@ -1269,14 +1277,14 @@ func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
 	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	reserved, err := server.grants.ReserveUse(result.Grant.ID)
+	reserved, err := server.grants.ReserveUse(result.Grant.ID, "predispatch-use", result.Grant.Operation)
 	if err != nil {
 		t.Fatalf("ReserveUse() error = %v", err)
 	}
 	c := server.echo.NewContext(httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", http.NoBody), httptest.NewRecorder())
 	request := policy.Request{Client: "bob", Operation: policy.OperationGitPushForce, Target: policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}}
 	decision := policy.Decision{GrantID: result.Grant.ID}
-	if err := server.runAuthorizedBrokerRequest(c, request, decision, []grants.Grant{reserved}, func(echo.Context) error {
+	if err := server.runAuthorizedBrokerRequest(c, request, decision, []grants.UseReservation{reserved}, func(echo.Context) error {
 		return errors.New("credential lookup failed")
 	}); err == nil {
 		t.Fatal("runAuthorizedBrokerRequest() error = nil")
@@ -1356,11 +1364,11 @@ func TestReleaseReservedGrantUse(t *testing.T) {
 	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
-	reserved, err := server.grants.ReserveUse(result.Grant.ID)
+	reserved, err := server.grants.ReserveUse(result.Grant.ID, "released-use", result.Grant.Operation)
 	if err != nil {
 		t.Fatalf("ReserveUse() error = %v", err)
 	}
-	server.releaseGrantUses([]grants.Grant{reserved})
+	server.releaseGrantUses([]grants.UseReservation{reserved})
 	assertGrantUseState(t, server, result.Grant.ID, grants.StatusActive, 0, 0)
 }
 
@@ -1655,7 +1663,7 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planGrantCreate() error = %v", err)
 	}
-	if plan.request.Client != "bob" || plan.maxUses != 25 || plan.duration != 5*time.Minute {
+	if plan.request.Client != "bob" || plan.maxUses != usebudget.MaxFiniteUses || plan.duration != 5*time.Minute {
 		t.Fatalf("plan = %+v, want requestable bob grant", plan)
 	}
 	notRequestable := `{"client_request_id":"request-2","operation":"git.fetch","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"reason":"fetch"}`

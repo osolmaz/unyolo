@@ -158,6 +158,24 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for GrantMode.
+const (
+	Execution GrantMode = "execution"
+	Window    GrantMode = "window"
+)
+
+// Valid indicates whether the value is a known member of the GrantMode enum.
+func (e GrantMode) Valid() bool {
+	switch e {
+	case Execution:
+		return true
+	case Window:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotificationDecisionKind.
 const (
 	Telegram NotificationDecisionKind = "telegram"
@@ -335,6 +353,7 @@ type BrokerRequest struct {
 	DecidedOnBehalfOf        *string                `json:"decided_on_behalf_of,omitempty"`
 	GrantedMaxUses           nullable.Nullable[int] `json:"granted_max_uses"`
 	Id                       string                 `json:"id"`
+	Mode                     GrantMode              `json:"mode"`
 	Operation                string                 `json:"operation"`
 	PendingExpiresAt         *time.Time             `json:"pending_expires_at,omitempty"`
 	Presentation             Presentation           `json:"presentation"`
@@ -395,6 +414,9 @@ type Fact struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 }
+
+// GrantMode defines model for GrantMode.
+type GrantMode string
 
 // Health defines model for Health.
 type Health struct {

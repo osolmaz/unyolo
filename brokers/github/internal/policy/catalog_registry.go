@@ -11,11 +11,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/github/internal/targetregistry"
 )
 
-const (
-	routineWindowMaxMinutes   = 7 * 24 * 60
-	sensitiveWindowMaxMinutes = 60
-	sensitiveWindowMaxUses    = usebudget.Limit(25)
-)
+const routineWindowMaxMinutes = 7 * 24 * 60
 
 var baseCatalogAttributeNames = []string{
 	"actor_id", "actor_login", "base_ref", "environment", "head_ref", "label", "merge_method",
@@ -60,11 +56,20 @@ func catalogOperationSpecs(descriptors []opcatalog.Descriptor) map[string]corepo
 func catalogOperationSpec(descriptor opcatalog.Descriptor) corepolicy.OperationSpec {
 	spec := corepolicy.OperationSpec{TargetKinds: []string{descriptor.TargetKind}, Attrs: catalogAttributesForOperation(descriptor.Name), Grantable: descriptor.AgentFacing}
 	if spec.Grantable {
-		spec.GrantMode = map[bool]corepolicy.GrantMode{true: corepolicy.GrantModeExecution, false: corepolicy.GrantModeWindow}[descriptor.AuthorizationMode == opcatalog.ModeExecution]
+		spec.GrantMode = corepolicy.GrantMode(descriptor.DefaultAuthorizationMode)
+		spec.GrantModes = authorizationModes(descriptor.AuthorizationModes)
 		spec.MaxGrantMinutes = descriptor.ApprovalTTLSeconds / 60
 		spec.MaxGrantUses = usebudget.Limit(descriptor.MaxUses)
 	}
 	return spec
+}
+
+func authorizationModes(values []opcatalog.AuthorizationMode) []corepolicy.GrantMode {
+	out := make([]corepolicy.GrantMode, len(values))
+	for index, value := range values {
+		out[index] = corepolicy.GrantMode(value)
+	}
+	return out
 }
 
 func catalogTargetSpecs(targets []targetregistry.Descriptor) map[string]corepolicy.TargetSpec {
@@ -98,20 +103,24 @@ func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
 
 func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 	return map[Operation]corepolicy.OperationSpec{
-		OperationGitFetch:         {TargetKinds: []string{"repo"}},
-		OperationGitLFSWrite:      {TargetKinds: []string{"repo"}},
-		OperationGitPushAdvertise: {TargetKinds: []string{"repo"}},
-		OperationGitPushBranchCreate: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
-			MaxGrantMinutes: routineWindowMaxMinutes, MaxGrantUses: usebudget.MaxFiniteUses},
-		OperationGitPushFastForward: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
-			MaxGrantMinutes: routineWindowMaxMinutes, MaxGrantUses: usebudget.MaxFiniteUses},
-		OperationGitPushForce: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
-			MaxGrantMinutes: sensitiveWindowMaxMinutes, MaxGrantUses: sensitiveWindowMaxUses},
-		OperationGitRefDelete: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
-			MaxGrantMinutes: sensitiveWindowMaxMinutes, MaxGrantUses: sensitiveWindowMaxUses},
-		OperationGitTagUpdate: {TargetKinds: []string{"repo"}, Attrs: []string{"ref"}, Grantable: true, GrantMode: corepolicy.GrantModeWindow,
-			MaxGrantMinutes: sensitiveWindowMaxMinutes, MaxGrantUses: sensitiveWindowMaxUses},
+		OperationGitFetch:             {TargetKinds: []string{"repo"}},
+		OperationGitLFSWrite:          {TargetKinds: []string{"repo"}},
+		OperationGitPushAdvertise:     {TargetKinds: []string{"repo"}},
+		OperationGitPushBranchCreate:  reusableProtocolOperation("ref"),
+		OperationGitPushFastForward:   reusableProtocolOperation("ref"),
+		OperationGitPushForce:         reusableProtocolOperation("ref"),
+		OperationGitRefDelete:         reusableProtocolOperation("ref"),
+		OperationGitTagUpdate:         reusableProtocolOperation("ref"),
 		OperationWebhookGitHubReceive: {TargetKinds: []string{"repo"}},
+	}
+}
+
+func reusableProtocolOperation(attrs ...string) corepolicy.OperationSpec {
+	return corepolicy.OperationSpec{
+		TargetKinds: []string{"repo"}, Attrs: attrs, Grantable: true,
+		GrantMode:       corepolicy.GrantModeWindow,
+		GrantModes:      []corepolicy.GrantMode{corepolicy.GrantModeWindow, corepolicy.GrantModeExecution},
+		MaxGrantMinutes: routineWindowMaxMinutes, MaxGrantUses: usebudget.MaxFiniteUses,
 	}
 }
 

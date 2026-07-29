@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -46,10 +47,10 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	if err != nil || decision.Grant.Status != StatusActive {
 		t.Fatalf("ApplyOperatorDecision() = %+v, %v", decision, err)
 	}
-	if _, err := store.ReserveUse(pending.ID); err != nil {
+	if _, err := store.ReserveUse(pending.ID, "sqlite-use", pending.Operation); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CommitUse(pending.ID); err != nil {
+	if _, err := store.CommitUse(pending.ID, "sqlite-use"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,12 +159,13 @@ func TestSQLiteStorePersistsUnlimitedUseBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range 3 {
-		if _, err := restarted.ReserveUse(approved.Grant.ID); err != nil {
+	for index := range 3 {
+		requestID := fmt.Sprintf("unlimited-use-%d", index)
+		if _, err := restarted.ReserveUse(approved.Grant.ID, requestID, approved.Grant.Operation); err != nil {
 			t.Fatal(err)
 		}
-		used, err := restarted.CommitUse(approved.Grant.ID)
-		if err != nil || used.Status != StatusActive {
+		used, err := restarted.CommitUse(approved.Grant.ID, requestID)
+		if err != nil || used.Grant.Status != StatusActive {
 			t.Fatalf("CommitUse() = %+v, %v", used, err)
 		}
 	}

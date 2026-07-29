@@ -6,6 +6,9 @@ import (
 )
 
 const (
+	// MetadataMode stores the provider-neutral grant authorization mode.
+	MetadataMode = "grant_mode"
+
 	maxMetadataEntries    = 32
 	maxMetadataKeyBytes   = 128
 	maxMetadataValueBytes = 4096

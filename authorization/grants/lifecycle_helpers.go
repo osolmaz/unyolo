@@ -18,32 +18,36 @@ func (s *Store) prepareLifecycle(data *fileData) bool {
 
 func (s *Store) retainStaleReservations(data *fileData) bool {
 	now := s.opts.Now().UTC()
-	changed := false
-	for index, grant := range data.Grants {
-		if !reservationIsStale(grant, now, s.opts.ReservationTimeout) {
+	changedGrants := make(map[string]int)
+	for index, use := range data.Uses {
+		_, grant, err := findGrant(data.Grants, use.GrantID)
+		if err != nil || !useReservationIsStale(use, grant, now, s.opts.ReservationTimeout) {
 			continue
 		}
-		grant.ReservationRetained = true
-		if grant.ReservedAt.IsZero() {
-			grant.ReservedAt = now
-		}
-		data.Grants[index] = grant
-		changed = true
+		use.State = UseRetained
+		use.Revision++
+		use.UpdatedAt = now
+		data.Uses[index] = use
+		changedGrants[use.GrantID]++
 	}
-	return changed
+	for grantID, revisionDelta := range changedGrants {
+		index, grant, err := findGrant(data.Grants, grantID)
+		if err != nil {
+			continue
+		}
+		grant.ReservationRevision += revisionDelta
+		data.Grants[index] = aggregateGrantUses(grant, data.Uses)
+	}
+	return len(changedGrants) > 0
 }
 
-func reservationIsStale(grant Grant, now time.Time, timeout time.Duration) bool {
-	if grant.ReservationRetained || grant.ReservedCount <= 0 ||
-		!reservationCanSettle(grant.Status) {
-		return false
-	}
-	return grant.ReservedAt.IsZero() || !now.Before(grant.ReservedAt.Add(timeout))
+func useReservationIsStale(use GrantUse, grant Grant, now time.Time, timeout time.Duration) bool {
+	return use.State == UseReserved && reservationCanSettle(grant.Status) &&
+		(use.UpdatedAt.IsZero() || !now.Before(use.UpdatedAt.Add(timeout)))
 }
 
 func grantCanUse(grant Grant, now time.Time) bool {
 	return grant.Status == StatusActive &&
-		!grant.ReservationRetained &&
 		now.Before(grant.ExpiresAt) &&
 		grant.MaxUses.Allows(grant.UsedCount, grant.ReservedCount)
 }

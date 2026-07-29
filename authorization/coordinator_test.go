@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/internal/storage/state"
@@ -94,6 +95,35 @@ func TestCoordinatorExplicitRequestIgnoresActiveGrant(t *testing.T) {
 	}
 }
 
+func TestCoordinatorActiveGrantModeFiltersReusableAuthority(t *testing.T) {
+	coordinator, closeStore := testCoordinator(t)
+	defer closeStore()
+	request := policy.Request{Client: "bob", Operation: "repo.write", Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}}}
+	create := func(requestID string, mode policy.GrantMode, maxUses int) grants.Grant {
+		result, _, err := coordinator.grants.Request(grants.Request{Client: request.Client, ClientRequestID: requestID,
+			Operation: request.Operation, Target: request.Target, Metadata: map[string]string{grants.MetadataMode: string(mode)},
+			Reason: "test mode filtering", Duration: time.Minute, PendingTimeout: time.Minute, MaxUses: usebudget.Limit(maxUses)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		approved, err := coordinator.grants.Approve(result.Grant.ID, result.DecisionToken, "operator")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return approved
+	}
+	execution := create("execution-authority", policy.GrantModeExecution, 1)
+	window := create("window-authority", policy.GrantModeWindow, 2)
+	decision, found, err := coordinator.ActiveGrantMode(request, policy.GrantModeWindow)
+	if err != nil || !found || decision.GrantID != window.ID {
+		t.Fatalf("window ActiveGrantMode() = %+v, %v, %v", decision, found, err)
+	}
+	decision, found, err = coordinator.ActiveGrantMode(request, policy.GrantModeExecution)
+	if err != nil || !found || decision.GrantID != execution.ID {
+		t.Fatalf("execution ActiveGrantMode() = %+v, %v, %v", decision, found, err)
+	}
+}
+
 func TestGrantBoundValidation(t *testing.T) {
 	bounds := &policy.GrantPolicy{Mode: string(policy.GrantModeWindow), MaxMinutes: 10, RequestTTLMinutes: 5, MaxUses: 2}
 	valid := testIntent(time.Now().UTC(), policy.Request{Client: "bob", Operation: "repo.write", Target: policy.Target{Kind: "repo"}})
@@ -146,8 +176,9 @@ func testCoordinator(t *testing.T) (*Coordinator, func()) {
 func testRegistry() policy.Registry {
 	return policy.Registry{
 		Operations: map[string]policy.OperationSpec{
-			"repo.read":  {TargetKinds: []string{"repo"}},
-			"repo.write": {TargetKinds: []string{"repo"}, Grantable: true, GrantMode: policy.GrantModeWindow},
+			"repo.read": {TargetKinds: []string{"repo"}},
+			"repo.write": {TargetKinds: []string{"repo"}, Grantable: true, GrantMode: policy.GrantModeWindow,
+				GrantModes: []policy.GrantMode{policy.GrantModeWindow, policy.GrantModeExecution}, MaxGrantUses: 2},
 		},
 		Targets: map[string]policy.TargetSpec{"repo": {Fields: map[string]policy.FieldSpec{"name": {Required: true}}}},
 	}
@@ -158,7 +189,7 @@ func testIntent(now time.Time, request policy.Request) GrantIntent {
 	digest := plandigest.Digest(canonical)
 	return GrantIntent{Mode: policy.GrantModeWindow, Authorization: request, Request: grants.Request{
 		Client: request.Client, ClientRequestID: "request-1", Operation: request.Operation,
-		Target: request.Target, Attrs: request.Attrs, Metadata: map[string]string{"test_plan_digest": digest},
+		Target: request.Target, Attrs: request.Attrs, Metadata: map[string]string{"test_plan_digest": digest, grants.MetadataMode: string(policy.GrantModeWindow)},
 		Reason: "test", Duration: 5 * time.Minute, PendingTimeout: 5 * time.Minute, MaxUses: 1,
 	}, Plan: grants.ImmutablePlan{Digest: digest, SchemaName: "test/v1", Canonical: canonical, CreatedAt: now}}
 }

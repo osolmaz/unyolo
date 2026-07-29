@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -487,23 +488,24 @@ func TestCancelPendingGrantAndIgnoreTerminalGrant(t *testing.T) {
 	}
 }
 
-func TestReservationIsStale(t *testing.T) {
+func TestUseReservationIsStale(t *testing.T) {
 	now := time.Now()
 	cases := []struct {
 		name  string
+		use   GrantUse
 		grant Grant
 		want  bool
 	}{
 		{name: "none", grant: Grant{Status: StatusActive}, want: false},
-		{name: "already retained", grant: Grant{Status: StatusActive, ReservedCount: 1, ReservationRetained: true}, want: false},
-		{name: "terminal", grant: Grant{Status: StatusConsumed, ReservedCount: 1}, want: false},
-		{name: "missing time", grant: Grant{Status: StatusActive, ReservedCount: 1}, want: true},
-		{name: "fresh", grant: Grant{Status: StatusActive, ReservedCount: 1, ReservedAt: now}, want: false},
-		{name: "stale expired", grant: Grant{Status: StatusExpired, ReservedCount: 1, ReservedAt: now.Add(-2 * time.Minute)}, want: true},
+		{name: "already retained", use: GrantUse{State: UseRetained, UpdatedAt: now.Add(-2 * time.Minute)}, grant: Grant{Status: StatusActive}, want: false},
+		{name: "terminal", use: GrantUse{State: UseReserved}, grant: Grant{Status: StatusConsumed}, want: false},
+		{name: "missing time", use: GrantUse{State: UseReserved}, grant: Grant{Status: StatusActive}, want: true},
+		{name: "fresh", use: GrantUse{State: UseReserved, UpdatedAt: now}, grant: Grant{Status: StatusActive}, want: false},
+		{name: "stale expired", use: GrantUse{State: UseReserved, UpdatedAt: now.Add(-2 * time.Minute)}, grant: Grant{Status: StatusExpired}, want: true},
 	}
 	for _, test := range cases {
-		if got := reservationIsStale(test.grant, now, time.Minute); got != test.want {
-			t.Fatalf("reservationIsStale(%s) = %v, want %v", test.name, got, test.want)
+		if got := useReservationIsStale(test.use, test.grant, now, time.Minute); got != test.want {
+			t.Fatalf("useReservationIsStale(%s) = %v, want %v", test.name, got, test.want)
 		}
 	}
 }
@@ -636,12 +638,12 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	reserved, err := store.ReserveUse(result.Grant.ID)
-	if err != nil || reserved.ReservedAt.IsZero() {
+	reserved, err := store.ReserveUse(result.Grant.ID, "stale-use", result.Grant.Operation)
+	if err != nil || reserved.Grant.ReservedAt.IsZero() {
 		t.Fatalf("ReserveUse() = %+v err=%v", reserved, err)
 	}
 	now = now.Add(2 * time.Minute)
-	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:1:0:1")
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:2:0:1")
 	if !update.Grant.ReservationRetained {
 		t.Fatalf("retained update = %+v, want retained reservation", update)
 	}
@@ -650,9 +652,9 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 	}
 
 	now = result.Grant.CreatedAt.Add(10 * time.Minute)
-	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusExpired, "reserved:expired:1:0:1")
-	committed, err := store.CommitUse(result.Grant.ID)
-	if err != nil || committed.UsedCount != 1 || committed.ReservedCount != 0 || committed.ReservationRetained {
+	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusExpired, "reserved:expired:2:0:1")
+	committed, err := store.CommitUse(result.Grant.ID, "stale-use")
+	if err != nil || committed.Grant.UsedCount != 1 || committed.Grant.ReservedCount != 0 || committed.Grant.ReservationRetained {
 		t.Fatalf("CommitUse(expired reservation) = %+v err=%v", committed, err)
 	}
 	assertSingleDueUpdate(t, store, StatusUpdateUsedExpired, StatusConsumed, NotificationStatusUsedExpired+":1")
@@ -661,10 +663,14 @@ func TestStaleReservationIsRetainedAcrossExpiry(t *testing.T) {
 func TestOverlappingReservationsAdvanceRecoveryClock(t *testing.T) {
 	cases := []struct {
 		name   string
-		settle func(*Store, string) (Grant, error)
+		settle func(*Store, string, string) (UseReservation, error)
 	}{
-		{name: "commit", settle: func(store *Store, id string) (Grant, error) { return store.CommitUse(id) }},
-		{name: "release", settle: func(store *Store, id string) (Grant, error) { return store.ReleaseUse(id) }},
+		{name: "commit", settle: func(store *Store, id, requestID string) (UseReservation, error) {
+			return store.CommitUse(id, requestID)
+		}},
+		{name: "release", settle: func(store *Store, id, requestID string) (UseReservation, error) {
+			return store.ReleaseUse(id, requestID)
+		}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -673,7 +679,7 @@ func TestOverlappingReservationsAdvanceRecoveryClock(t *testing.T) {
 	}
 }
 
-func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string) (Grant, error)) {
+func assertOverlappingReservationClock(t *testing.T, name string, settle func(*Store, string, string) (UseReservation, error)) {
 	t.Helper()
 	now := time.Date(2026, 7, 10, 3, 0, 0, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{
@@ -688,20 +694,20 @@ func assertOverlappingReservationClock(t *testing.T, name string, settle func(*S
 	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := store.ReserveUse(result.Grant.ID, "overlap-first", result.Grant.Operation); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(9 * time.Minute)
-	second, err := store.ReserveUse(result.Grant.ID)
-	if err != nil || !second.ReservedAt.Equal(now) || second.ReservationRevision != 2 {
+	second, err := store.ReserveUse(result.Grant.ID, "overlap-second", result.Grant.Operation)
+	if err != nil || !second.Grant.ReservedAt.Equal(result.Grant.CreatedAt) || second.Grant.ReservationRevision != 2 {
 		t.Fatalf("second ReserveUse() = %+v err=%v", second, err)
 	}
 	now = now.Add(2 * time.Minute)
-	settled, err := settle(store, result.Grant.ID)
-	if err != nil || settled.ReservedCount != 1 || !settled.ReservedAt.Equal(now) {
+	settled, err := settle(store, result.Grant.ID, "overlap-first")
+	if err != nil || settled.Grant.ReservedCount != 1 || !settled.Grant.ReservedAt.Equal(second.Use.UpdatedAt) {
 		t.Fatalf("%s overlapping reservation = %+v err=%v", name, settled, err)
 	}
-	now = now.Add(9 * time.Minute)
+	now = now.Add(7 * time.Minute)
 	if _, err := store.StatusUpdatesDue(); err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +715,7 @@ func assertOverlappingReservationClock(t *testing.T, name string, settle func(*S
 	if err != nil || fresh.ReservationRetained {
 		t.Fatalf("fresh overlapping reservation = %+v err=%v", fresh, err)
 	}
-	now = now.Add(2 * time.Minute)
+	now = now.Add(3 * time.Minute)
 	if _, err := store.StatusUpdatesDue(); err != nil {
 		t.Fatal(err)
 	}
@@ -725,38 +731,45 @@ func TestRetainUseAndReleaseClearReservationState(t *testing.T) {
 	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := store.ReserveUse(result.Grant.ID, "retain-release-use", result.Grant.Operation); err != nil {
 		t.Fatal(err)
 	}
-	retained, err := store.RetainUse(result.Grant.ID)
-	if err != nil || !retained.ReservationRetained {
+	retained, err := store.RetainUse(result.Grant.ID, "retain-release-use")
+	if err != nil || !retained.Grant.ReservationRetained {
 		t.Fatalf("RetainUse() = %+v err=%v", retained, err)
 	}
-	released, err := store.ReleaseUse(result.Grant.ID)
-	if err != nil || released.ReservedCount != 0 || released.ReservationRetained || !released.ReservedAt.IsZero() {
+	released, err := store.ReleaseUse(result.Grant.ID, "retain-release-use")
+	if err != nil || released.Grant.ReservedCount != 0 || released.Grant.ReservationRetained || !released.Grant.ReservedAt.IsZero() {
 		t.Fatalf("ReleaseUse() = %+v err=%v", released, err)
 	}
-	if _, err := store.RetainUse(result.Grant.ID); !errors.Is(err, ErrNotActive) {
-		t.Fatalf("RetainUse(without reservation) error=%v, want ErrNotActive", err)
+	if _, err := store.RetainUse(result.Grant.ID, "retain-release-use"); !errors.Is(err, ErrUseSettled) {
+		t.Fatalf("RetainUse(settled reservation) error=%v, want ErrUseSettled", err)
 	}
 }
 
-func TestRetainedReservationClosesGrantOverlay(t *testing.T) {
+func TestRetainedReservationPreservesRemainingGrantAuthority(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "retained-overlay", 2)
 	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := store.ReserveUse(result.Grant.ID, "retained-overlay-use", result.Grant.Operation); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.RetainUse(result.Grant.ID); err != nil {
+	if _, err := store.RetainUse(result.Grant.ID, "retained-overlay-use"); err != nil {
 		t.Fatal(err)
 	}
-	if active, err := store.ActivePolicyGrants(); err != nil || len(active) != 0 {
-		t.Fatalf("ActivePolicyGrants(retained) = %+v err=%v, want none", active, err)
+	if active, err := store.ActivePolicyGrants(); err != nil || len(active) != 1 || active[0].UsesLeft != 1 {
+		t.Fatalf("ActivePolicyGrants(retained) = %+v err=%v, want one remaining use", active, err)
 	}
-	if _, err := store.ReleaseUse(result.Grant.ID); err != nil {
+	second, err := store.ReserveUse(result.Grant.ID, "retained-overlay-second", result.Grant.Operation)
+	if err != nil || second.Grant.ReservedCount != 2 {
+		t.Fatalf("ReserveUse(second) = %+v err=%v", second, err)
+	}
+	if _, err := store.ReleaseUse(result.Grant.ID, "retained-overlay-second"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReleaseUse(result.Grant.ID, "retained-overlay-use"); err != nil {
 		t.Fatal(err)
 	}
 	if active, err := store.ActivePolicyGrants(); err != nil || len(active) != 1 {
@@ -771,25 +784,25 @@ func TestRevokedReservationCanBeSettled(t *testing.T) {
 		ReservationTimeout: time.Minute,
 	})
 	committed := approvedReservedGrant(t, store, "revoked-commit")
-	if _, err := store.Revoke(committed.ID, "operator"); err != nil {
+	if _, err := store.Revoke(committed.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	settled, err := store.CommitUse(committed.ID)
-	if err != nil || settled.Status != StatusRevoked || settled.UsedCount != 1 || settled.ReservedCount != 0 {
+	settled, err := store.CommitUse(committed.Grant.ID, committed.Use.RequestID)
+	if err != nil || settled.Grant.Status != StatusRevoked || settled.Grant.UsedCount != 1 || settled.Grant.ReservedCount != 0 {
 		t.Fatalf("CommitUse(revoked) = %+v err=%v", settled, err)
 	}
 
 	retained := approvedReservedGrant(t, store, "revoked-retain")
-	setTestNotification(t, store, retained.ID)
-	if _, err := store.Revoke(retained.ID, "operator"); err != nil {
+	setTestNotification(t, store, retained.Grant.ID)
+	if _, err := store.Revoke(retained.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked:1:0:1")
+	update := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusRevoked, "reserved:revoked:2:0:1")
 	if !update.Grant.ReservationRetained {
 		t.Fatalf("revoked stale reservation = %+v, want retained", update.Grant)
 	}
-	if _, err := store.ReleaseUse(retained.ID); err != nil {
+	if _, err := store.ReleaseUse(retained.Grant.ID, retained.Use.RequestID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -805,10 +818,10 @@ func TestCommittedUseRemainsDueAfterRestart(t *testing.T) {
 	if err := store.MarkNotificationStatus(result.Grant.ID, string(StatusActive)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := store.ReserveUse(result.Grant.ID, "restarted-used", result.Grant.Operation); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CommitUse(result.Grant.ID); err != nil {
+	if _, err := store.CommitUse(result.Grant.ID, "restarted-used"); err != nil {
 		t.Fatal(err)
 	}
 	restarted := New(path, Options{})
@@ -864,35 +877,35 @@ func TestRepeatedRetainedReservationsHaveDistinctDeliveryKeys(t *testing.T) {
 	if err := store.MarkNotificationStatus(result.Grant.ID, string(StatusActive)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := store.ReserveUse(result.Grant.ID, "repeated-first", result.Grant.Operation); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	first := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:1:0:1")
+	first := assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:2:0:1")
 	if err := store.MarkNotificationStatus(result.Grant.ID, first.NotificationStatusKey()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReleaseUse(result.Grant.ID); err != nil {
+	if _, err := store.ReleaseUse(result.Grant.ID, "repeated-first"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ReserveUse(result.Grant.ID); err != nil {
+	if _, err := store.ReserveUse(result.Grant.ID, "repeated-second", result.Grant.Operation); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:2:0:1")
+	assertSingleDueUpdate(t, store, StatusUpdateRetainedReservation, StatusActive, "reserved:active:5:0:1")
 }
 
 func TestRevokedLateCommitProducesUseUpdate(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
-	grant := approvedReservedGrant(t, store, "revoked-late-use")
-	setTestNotification(t, store, grant.ID)
-	if _, err := store.Revoke(grant.ID, "operator"); err != nil {
+	reservation := approvedReservedGrant(t, store, "revoked-late-use")
+	setTestNotification(t, store, reservation.Grant.ID)
+	if _, err := store.Revoke(reservation.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.MarkNotificationStatus(grant.ID, string(StatusRevoked)); err != nil {
+	if err := store.MarkNotificationStatus(reservation.Grant.ID, string(StatusRevoked)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CommitUse(grant.ID); err != nil {
+	if _, err := store.CommitUse(reservation.Grant.ID, reservation.Use.RequestID); err != nil {
 		t.Fatal(err)
 	}
 	assertSingleDueUpdate(t, store, StatusUpdateUsed, StatusRevoked, NotificationStatusUsed+":revoked:1")
@@ -948,14 +961,14 @@ func setTestNotification(t *testing.T, store *Store, id string) {
 	}
 }
 
-func approvedReservedGrant(t *testing.T, store *Store, requestID string) Grant {
+func approvedReservedGrant(t *testing.T, store *Store, requestID string) UseReservation {
 	t.Helper()
 	result := requestTestGrant(t, store, requestID, 1)
 	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reserved, err := store.ReserveUse(approved.ID)
+	reserved, err := store.ReserveUse(approved.ID, requestID+"-use", approved.Operation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -964,10 +977,15 @@ func approvedReservedGrant(t *testing.T, store *Store, requestID string) Grant {
 
 func commitTestUse(t *testing.T, store *Store, id string) {
 	t.Helper()
-	if _, err := store.ReserveUse(id); err != nil {
+	grant, err := store.Get(id)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CommitUse(id); err != nil {
+	requestID := fmt.Sprintf("test-use-%d", grant.ReservationRevision+1)
+	if _, err := store.ReserveUse(id, requestID, grant.Operation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitUse(id, requestID); err != nil {
 		t.Fatal(err)
 	}
 }

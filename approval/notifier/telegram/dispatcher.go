@@ -171,8 +171,9 @@ func semanticApproval(request operatorv1.Request, route, token string) (approval
 	}
 	return approvalnotify.Approval{
 		GrantID: request.ID, DecisionToken: token, Broker: broker, Requester: request.Requester,
-		Operation: request.Operation, Reason: request.RequestReason, RequestedDurationSeconds: request.RequestedDurationSeconds,
-		MaxUses: request.GrantedMaxUses, PendingExpiresAt: *request.PendingExpiresAt,
+		Operation: request.Operation, Mode: request.Mode, Reason: request.RequestReason,
+		RequestedDurationSeconds: request.RequestedDurationSeconds,
+		MaxUses:                  request.GrantedMaxUses, PendingExpiresAt: *request.PendingExpiresAt,
 		Presentation: approvalview.Presentation{Risk: approvalview.Risk(request.Presentation.Risk), Title: request.Presentation.Title,
 			Summary: request.Presentation.Summary, Target: request.Presentation.Target, Facts: facts, Warnings: warnings,
 			PlanHash: request.Presentation.PlanHash},

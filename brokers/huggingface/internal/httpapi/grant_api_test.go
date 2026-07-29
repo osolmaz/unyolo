@@ -192,12 +192,13 @@ func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
 	if decision.Answer != notify.AnswerApproved || decision.Retry {
 		t.Fatalf("approval = %+v", decision)
 	}
-	for range 3 {
-		if _, err := handler.grants.ReserveUse(created.ID); err != nil {
+	for index := range 3 {
+		requestID := fmt.Sprintf("api-use-%d", index)
+		if _, err := handler.grants.ReserveUse(created.ID, requestID, created.Operation); err != nil {
 			t.Fatal(err)
 		}
-		used, err := handler.grants.CommitUse(created.ID)
-		if err != nil || used.Status != grants.StatusActive {
+		used, err := handler.grants.CommitUse(created.ID, requestID)
+		if err != nil || used.Grant.Status != grants.StatusActive {
 			t.Fatalf("CommitUse() = %+v, %v", used, err)
 		}
 	}
@@ -340,7 +341,7 @@ func TestGrantRequestErrors(t *testing.T) {
 		{name: "bad ref", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "main", "recover", "", 0, 0), want: http.StatusBadRequest},
 		{name: "out of scope", method: http.MethodPost, body: apiGrantRequestForRepoJSON(policy.OpGitPushForce, "other", "refs/heads/main", "recover", "", 0, 0), want: http.StatusForbidden},
 		{name: "negative minutes", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", -1, 0), want: http.StatusBadRequest},
-		{name: "too many minutes", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", 61, 0), want: http.StatusBadRequest},
+		{name: "too many minutes", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", 10081, 0), want: http.StatusBadRequest},
 		{name: "negative max uses", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", 0, -1), want: http.StatusBadRequest},
 		{name: "too many uses", method: http.MethodPost, body: apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", 0, 3), want: http.StatusBadRequest},
 	}
@@ -523,19 +524,19 @@ func TestReservedBucketListGrantFiltersObjectsOutsideKeyScope(t *testing.T) {
 	if decision.Answer != notify.AnswerApproved || decision.Retry {
 		t.Fatalf("approval = %+v", decision)
 	}
-	reserved, err := handler.grants.ReserveUse(created.ID)
+	reserved, err := handler.grants.ReserveUse(created.ID, "bucket-policy-check", created.Operation)
 	if err != nil {
 		t.Fatal(err)
 	}
 	allows := func(key string) bool {
 		return policyAllowsRepositoryResult("agent", handler.policy, policy.Target{
 			Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{key},
-		}, policy.OpBucketObjectList, &reserved, handler.planValidator, handler.utcNow())
+		}, policy.OpBucketObjectList, &reserved.Grant, handler.planValidator, handler.utcNow())
 	}
 	if !allows("runs/result.json") || allows("secret/token.txt") {
 		t.Fatal("reserved bucket list grant did not preserve its runs/** key scope")
 	}
-	if _, err := handler.grants.ReleaseUse(created.ID); err != nil {
+	if _, err := handler.grants.ReleaseUse(created.ID, reserved.Use.RequestID); err != nil {
 		t.Fatal(err)
 	}
 }

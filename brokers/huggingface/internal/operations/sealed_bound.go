@@ -81,7 +81,7 @@ func sealedBoundAdaptersForBindings(client boundClient, store sealedPayloadStore
 	var adapters []Adapter
 	for _, binding := range bindings {
 		descriptor, found := opcatalog.ByName(binding.Operation)
-		if !found || descriptor.AuthorizationMode != opcatalog.ModeExecution || !descriptor.Sealed {
+		if !found || !descriptor.HasExecutionDisposition() || !descriptor.Sealed {
 			continue
 		}
 		if descriptor.CredentialOutputKind != nil {

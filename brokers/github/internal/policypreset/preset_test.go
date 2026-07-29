@@ -66,7 +66,7 @@ func TestCatalogNeverDefaultsDangerousOperationsToAllow(t *testing.T) {
 		if descriptor.DefaultPolicyEffect != opcatalog.DefaultEffectAllow {
 			continue
 		}
-		if descriptor.Risk == opcatalog.RiskHigh || descriptor.Risk == opcatalog.RiskCritical || descriptor.AuthorizationMode == opcatalog.ModeExecution || descriptor.ExplicitOnly || descriptor.Sealed || descriptor.Internal || descriptor.CredentialOutputKind != nil || !descriptor.AgentFacing {
+		if descriptor.Risk == opcatalog.RiskHigh || descriptor.Risk == opcatalog.RiskCritical || descriptor.HasExecutionDisposition() || descriptor.ExplicitOnly || descriptor.Sealed || descriptor.Internal || descriptor.CredentialOutputKind != nil || !descriptor.AgentFacing {
 			t.Fatalf("dangerous operation defaults to allow: %+v", descriptor)
 		}
 	}

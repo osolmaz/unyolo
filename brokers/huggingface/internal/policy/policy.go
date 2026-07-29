@@ -227,7 +227,7 @@ func catalogOperations() map[Operation]operationInfo {
 	result := make(map[Operation]operationInfo, len(values))
 	for _, descriptor := range values {
 		mode := GrantModeWindow
-		if descriptor.AuthorizationMode == opcatalog.ModeExecution {
+		if descriptor.DefaultAuthorizationMode == opcatalog.ModeExecution {
 			mode = GrantModeExecution
 		}
 		result[Operation(descriptor.Name)] = operationInfo{

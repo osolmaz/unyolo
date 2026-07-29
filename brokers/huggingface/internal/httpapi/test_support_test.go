@@ -121,7 +121,7 @@ func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg appro
 func testTelegramReference(t *testing.T, grantID string) notify.MessageRef {
 	t.Helper()
 	ref, err := unyolotelegram.ApprovalReference(approvalnotify.Approval{
-		GrantID: grantID, DecisionToken: "test-token", Broker: "Hugging Face", Requester: "agent", Operation: "test.operation",
+		GrantID: grantID, DecisionToken: "test-token", Broker: "Hugging Face", Requester: "agent", Operation: "test.operation", Mode: "window",
 		Reason: "test notification", RequestedDurationSeconds: 60, MaxUses: 1, PendingExpiresAt: time.Now().Add(time.Minute),
 		Presentation: approvalview.Presentation{Risk: approvalview.RiskLow, Title: "Test approval", Target: "test/repository"},
 	}, 1, 2)

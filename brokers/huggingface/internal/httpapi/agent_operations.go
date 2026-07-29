@@ -73,7 +73,10 @@ func (s *Server) prepareRuntimePlan(preparation operations.Preparation) (unyoloa
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
 	}
-	mode := runtimeGrantMode(descriptor)
+	mode, err := runtimeGrantMode(preparation, descriptor)
+	if err != nil {
+		return unyoloauthorization.GrantIntent{}, err
+	}
 	duration, pending, maxUses, err := preparationBounds(preparation, adapter, mode)
 	if err != nil {
 		return unyoloauthorization.GrantIntent{}, err
@@ -137,11 +140,17 @@ func runtimePolicyRuleIDs(preparation operations.Preparation) []string {
 	return preparation.Decision.MatchedRequestRuleIDs
 }
 
-func runtimeGrantMode(descriptor opcatalog.Descriptor) corepolicy.GrantMode {
-	if descriptor.AuthorizationMode == opcatalog.ModeExecution {
-		return corepolicy.GrantModeExecution
+func runtimeGrantMode(preparation operations.Preparation, descriptor opcatalog.Descriptor) (corepolicy.GrantMode, error) {
+	mode := corepolicy.GrantMode(descriptor.DefaultAuthorizationMode)
+	if preparation.ReusedGrant != nil {
+		mode = corepolicy.GrantMode(hfgrant.Mode(*preparation.ReusedGrant))
+	} else if !preparation.Direct && preparation.Decision.GrantPolicy != nil {
+		mode = corepolicy.GrantMode(preparation.Decision.GrantPolicy.Mode)
 	}
-	return corepolicy.GrantModeWindow
+	if !descriptor.AllowsAuthorizationMode(opcatalog.AuthorizationMode(mode)) {
+		return "", errors.New("operation does not support the selected approval mode")
+	}
+	return mode, nil
 }
 
 func preparationBounds(preparation operations.Preparation, descriptor operations.Adapter, mode corepolicy.GrantMode) (time.Duration, time.Duration, int, error) {
@@ -170,11 +179,11 @@ func reusedPreparationBounds(grant grants.Grant, mode corepolicy.GrantMode) (tim
 	if corepolicy.GrantMode(hfgrant.Mode(grant)) != mode || mode != corepolicy.GrantModeWindow {
 		return 0, 0, 0, errors.New("active grant approval mode does not match operation")
 	}
-	duration := grant.RequestedDuration
+	duration := grant.Duration
 	if duration <= 0 {
-		duration = grant.Duration
+		duration = grant.RequestedDuration
 	}
-	return duration, grant.PendingTimeout, int(grant.RequestedMaxUses), nil
+	return duration, grant.PendingTimeout, int(grant.MaxUses), nil
 }
 
 func prepareAdapterPlan(provider operations.Plan, request grants.Request, presentation agentv1.Presentation, policyEffect string, policyRuleIDs []string, createdAt time.Time, bindings ...providercredential.Binding) (grants.ImmutablePlan, error) {
@@ -187,7 +196,7 @@ func prepareAdapterPlan(provider operations.Plan, request grants.Request, presen
 		APIVersion: hfplan.SchemaV1, Operation: provider.Operation, OperationRevision: provider.OperationRevision,
 		ClientID: request.Client, ClientRequestID: request.ClientRequestID, Target: provider.Target, Arguments: provider.Arguments,
 		Preconditions: provider.Preconditions, CredentialSelector: hfplan.CredentialSelector{Name: "primary", Binding: binding}, Presentation: presentation,
-		Authorization: hfplan.Authorization{Mode: request.Metadata["hf_grant_mode"], RequestedDurationSeconds: int64(request.Duration.Seconds()),
+		Authorization: hfplan.Authorization{Mode: request.Metadata[grants.MetadataMode], RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
 			Target: hfplan.GrantTarget{Kind: request.Target.Kind, Fields: request.Target.Fields}, Attributes: request.Attrs,
 			PolicyEffect: policyEffect, PolicyRuleIDs: append([]string(nil), policyRuleIDs...)},

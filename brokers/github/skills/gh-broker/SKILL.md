@@ -102,10 +102,12 @@ gh-broker operation submit pull_request.merge_admin \
   --wait-timeout 15m
 ```
 
-The broker binds approval to the authenticated GitHub user, pull request node,
-current head commit, merge method, and one use. A changed head requires a new
-request and a new operator decision. Do not ask for a raw GitHub token or add a
-head SHA to the arguments.
+The broker binds each invocation to the authenticated GitHub user, pull request
+node, current head commit, and merge method. The default window grant can cover
+another matching immutable invocation while its budget remains. Policy may
+instead require exact execution mode, which is single-use. A changed head falls
+outside the approved plan and must be submitted again. Do not ask for a raw
+GitHub token or add a head SHA to the arguments.
 
 If execution reports an unknown upstream result, recover the existing
 operation and re-read the pull request. Do not submit another merge with a new

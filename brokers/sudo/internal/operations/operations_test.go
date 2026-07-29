@@ -41,7 +41,8 @@ func TestCommandAdapterResolveAndStoredPlanBinding(t *testing.T) {
 		t.Fatalf("resolved plan = %+v, %v", provider, err)
 	}
 	request := grants.Request{Client: "bob", ClientRequestID: "op-1", Operation: sudopolicy.OperationExecCommand,
-		Target: provider.Authorization.Target, Attrs: provider.Authorization.Attrs, Duration: time.Minute, MaxUses: 1}
+		Target: provider.Authorization.Target, Attrs: provider.Authorization.Attrs,
+		Metadata: map[string]string{grants.MetadataMode: "execution"}, Duration: time.Minute, MaxUses: 1}
 	command, err := sudoplan.Build(request, provider.Resolved, sudoplan.Identity{Name: "root"}, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
@@ -69,15 +70,27 @@ func TestCommandAdapterRejectsInvalidInputAndBindsReservation(t *testing.T) {
 			t.Fatalf("invalid input accepted: %s / %s", input.target, input.arguments)
 		}
 	}
-	value := Plan{ExecutionID: "op-1"}
-	grant := grants.Grant{ID: "grant-1", ClientRequestID: "op-1", Revision: 4, ExpiresAt: time.Now().Add(time.Minute)}
-	bound, err := adapter.BindReservation(value, grant)
-	if err != nil || bound.GrantID != grant.ID || bound.ReservationID != "grant-1:r4" || !bound.GrantExpiresAt.Equal(grant.ExpiresAt) {
+	authorization := sudopolicy.Request("bob", catalog.Resolved{CommandID: "scale", TargetUser: "root", SlotValues: map[string]string{"replicas": "3"}})
+	value := Plan{ExecutionID: "op-1", Authorization: authorization}
+	grant := grants.Grant{ID: "grant-1", Client: "bob", ClientRequestID: "op-1", Operation: authorization.Operation,
+		Target: authorization.Target, Attrs: authorization.Attrs, Metadata: map[string]string{grants.MetadataMode: "execution"},
+		Revision: 4, ExpiresAt: time.Now().Add(time.Minute)}
+	reservation := grants.UseReservation{Grant: grant, Use: grants.GrantUse{GrantID: grant.ID, RequestID: "op-1", Operation: grant.Operation, State: grants.UseReserved}}
+	bound, err := adapter.BindReservation(value, reservation)
+	if err != nil || bound.GrantID != grant.ID || bound.ReservationID != "op-1" || !bound.GrantExpiresAt.Equal(grant.ExpiresAt) {
 		t.Fatalf("reservation binding = %+v, %v", bound, err)
 	}
-	grant.ClientRequestID = "other"
-	if _, err := adapter.BindReservation(value, grant); err == nil {
-		t.Fatal("mismatched reservation was accepted")
+	reservation.Grant.ClientRequestID = "other"
+	if _, err := adapter.BindReservation(value, reservation); err == nil {
+		t.Fatal("mismatched execution reservation was accepted")
+	}
+	reservation.Grant.Metadata[grants.MetadataMode] = "window"
+	if _, err := adapter.BindReservation(value, reservation); err != nil {
+		t.Fatalf("matching window reservation was rejected: %v", err)
+	}
+	reservation.Grant.Attrs = map[string][]string{sudopolicy.AttrCommandID: {"different"}, sudopolicy.ArgumentPrefix + "replicas": {"3"}}
+	if _, err := adapter.BindReservation(value, reservation); err == nil {
+		t.Fatal("out-of-scope window reservation was accepted")
 	}
 }
 
@@ -151,7 +164,7 @@ func executablePlan() Plan {
 	return Plan{
 		ExecutionID: "op-1", GrantID: "grant-1", ReservationID: "grant-1:r1", GrantExpiresAt: now.Add(time.Minute),
 		Command: sudoplan.Plan{
-			Schema: sudoplan.SchemaV1, RequestID: "op-1", ClientID: "bob", Operation: sudopolicy.OperationExecCommand,
+			Schema: sudoplan.SchemaV1, RequestID: "op-1", ClientID: "bob", Operation: sudopolicy.OperationExecCommand, AuthorizationMode: "execution",
 			CommandID: "scale", TargetUser: "root", TargetUID: 0, TargetGID: 0, Executable: "/usr/bin/printf",
 			Arguments: []string{"%s"}, WorkingDirectory: "/", Environment: []string{"LANG=C", "LC_ALL=C"},
 			TimeoutSeconds: 5, MaxOutputBytes: 100, CatalogDigest: strings.Repeat("a", 64),

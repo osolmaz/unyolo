@@ -43,6 +43,7 @@ import (
 	"github.com/osolmaz/unyolo/internal/storage/state"
 	"github.com/osolmaz/unyolo/internal/storage/stream"
 	"github.com/osolmaz/unyolo/operation/capability"
+	"github.com/osolmaz/unyolo/operation/digest"
 	"github.com/osolmaz/unyolo/operation/payload"
 	unyoloaudit "github.com/osolmaz/unyolo/telemetry/audit"
 	"github.com/osolmaz/unyolo/transport/http"
@@ -667,7 +668,7 @@ func (s *Server) authorizeReceivePackCommands(c echo.Context, body []byte, comma
 }
 
 func (s *Server) proxyAuthorizedReceivePack(c echo.Context, body []byte, authorized []authorizedReceivePackRequest) error {
-	reserved, err := s.reserveAuthorizedGrants(authorized)
+	reserved, err := s.reserveAuthorizedGrants(authorized, githubNativeRequestIdentity(c, authorized[0].Request, body))
 	if err != nil {
 		s.releaseGrantUses(reserved)
 		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
@@ -717,7 +718,7 @@ func (s *Server) authorizeBrokerRequest(
 		s.audit(c, request, outcomeForDecision(decision), decision.Reason, 0, decision.MatchedRuleIDs)
 		return echo.NewHTTPError(statusForDecision(decision), decision.Reason)
 	}
-	reserved, err := s.reserveGrantUse(decision.GrantID)
+	reserved, err := s.reserveGrantUse(decision.GrantID, githubNativeRequestIdentity(c, request, nil))
 	if err != nil {
 		s.audit(c, request, "error", "grant is no longer active", 0, decision.MatchedRuleIDs)
 		return echo.NewHTTPError(http.StatusConflict, "grant is no longer active")
@@ -725,11 +726,25 @@ func (s *Server) authorizeBrokerRequest(
 	return s.runAuthorizedBrokerRequest(c, request, decision, reserved, run)
 }
 
+func githubNativeRequestIdentity(c echo.Context, request policy.Request, body []byte) string {
+	identity := struct {
+		Method     string         `json:"method"`
+		URI        string         `json:"uri"`
+		Request    policy.Request `json:"request"`
+		BodyDigest string         `json:"body_digest,omitempty"`
+	}{Method: c.Request().Method, URI: c.Request().URL.RequestURI(), Request: request}
+	if body != nil {
+		identity.BodyDigest = plandigest.Digest(body)
+	}
+	canonical, _ := json.Marshal(identity)
+	return plandigest.Digest(canonical)
+}
+
 func (s *Server) runAuthorizedBrokerRequest(
 	c echo.Context,
 	request policy.Request,
 	decision policy.Decision,
-	reserved []grants.Grant,
+	reserved []grants.UseReservation,
 	run func(echo.Context) error,
 ) error {
 	c.Set(githubOperationContextKey, string(request.Operation))

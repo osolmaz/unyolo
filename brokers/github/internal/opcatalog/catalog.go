@@ -128,7 +128,7 @@ func invalidPermissionlessInstallation(value Descriptor) bool {
 }
 
 func invalidHighRiskMetadata(value Descriptor) bool {
-	return (value.Risk == capability.RiskHigh || value.Risk == capability.RiskCritical) && value.AuthorizationMode == capability.ModeExecution && !value.ExplicitOnly
+	return (value.Risk == capability.RiskHigh || value.Risk == capability.RiskCritical) && value.HasExecutionDisposition() && !value.ExplicitOnly
 }
 
 func invalidDelegatedUserMetadata(value Descriptor) bool {

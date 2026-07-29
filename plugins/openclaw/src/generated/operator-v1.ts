@@ -2,7 +2,7 @@
 import type { components } from "./openapi-operator-v1.js";
 
 export const OPERATOR_V1_SCHEMA_SHA256 =
-  "sha256:8d3d17b02ba67cedf20143971abecede4601210a6b6380d117f9f473e01b1e5e";
+  "sha256:7c91ddff15b01e55d2443fa1d8d011c1f1e8150580ccb1e9dc55353b4674e9e4";
 export const operatorV1 = {
   apiVersion: "unyolo.io/operator/v1",
   statuses: [

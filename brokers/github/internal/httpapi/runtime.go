@@ -116,7 +116,7 @@ func (s *Server) deliverGrantStatusUpdates(ctx context.Context) {
 	}
 }
 
-func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.Grant, executionErr error) error {
+func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.UseReservation, executionErr error) error {
 	if !upstreamWasDispatched(c) {
 		s.releaseGrantUses(reserved)
 		return executionErr
@@ -135,97 +135,85 @@ func (s *Server) evaluateBrokerRequest(request policy.Request) (policy.Decision,
 	return s.policy.Evaluate(request, active...), nil
 }
 
-func (s *Server) reserveGrantUse(id string) ([]grants.Grant, error) {
+func (s *Server) reserveGrantUse(id, requestIdentity string) ([]grants.UseReservation, error) {
 	if id == "" {
 		return nil, nil
 	}
-	grant, err := s.reserveValidatedGrantUse(id)
+	reservation, err := s.reserveValidatedGrantUse(id, requestIdentity)
 	if err != nil {
 		return nil, err
 	}
-	return []grants.Grant{grant}, nil
+	return []grants.UseReservation{reservation}, nil
 }
 
-func (s *Server) reserveAuthorizedGrants(authorized []authorizedReceivePackRequest) ([]grants.Grant, error) {
+func (s *Server) reserveAuthorizedGrants(authorized []authorizedReceivePackRequest, requestIdentity string) ([]grants.UseReservation, error) {
 	seen := map[string]bool{}
-	var reserved []grants.Grant
+	var reserved []grants.UseReservation
 	for _, item := range authorized {
 		id := item.Decision.GrantID
 		if id == "" || seen[id] {
 			continue
 		}
-		grant, err := s.reserveValidatedGrantUse(id)
+		reservation, err := s.reserveValidatedGrantUse(id, requestIdentity)
 		if err != nil {
 			return reserved, err
 		}
 		seen[id] = true
-		reserved = append(reserved, grant)
+		reserved = append(reserved, reservation)
 	}
 	return reserved, nil
 }
 
-func (s *Server) reserveValidatedGrantUse(id string) (grants.Grant, error) {
-	grant, err := s.grants.ReserveUse(id)
+func (s *Server) reserveValidatedGrantUse(id, requestIdentity string) (grants.UseReservation, error) {
+	grant, err := s.grants.Get(id)
 	if err != nil {
-		return grants.Grant{}, err
+		return grants.UseReservation{}, err
 	}
 	if err := s.planValidator.ValidateExecution(grant); err != nil {
-		_, _ = s.grants.ReleaseUse(grant.ID)
-		return grants.Grant{}, err
+		return grants.UseReservation{}, err
 	}
-	return grant, nil
+	requestID, err := grants.DeriveUseRequestID(id, requestIdentity)
+	if err != nil {
+		return grants.UseReservation{}, err
+	}
+	reservation, err := s.grants.ReserveUse(id, requestID, grant.Operation)
+	if err != nil || !reservation.Acquired || reservation.Use.State != grants.UseReserved {
+		return grants.UseReservation{}, errors.Join(err, grants.ErrUseSettled)
+	}
+	return reservation, nil
 }
 
-func (s *Server) commitGrantUses(reserved []grants.Grant) error {
-	for _, grant := range reserved {
-		if _, err := s.grants.CommitUse(grant.ID); err != nil {
+func (s *Server) commitGrantUses(reserved []grants.UseReservation) error {
+	for _, reservation := range reserved {
+		if _, err := s.grants.CommitUse(reservation.Grant.ID, reservation.Use.RequestID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Server) releaseGrantUses(reserved []grants.Grant) {
-	for _, grant := range reserved {
-		_, _ = s.grants.ReleaseUse(grant.ID)
+func (s *Server) releaseGrantUses(reserved []grants.UseReservation) {
+	for _, reservation := range reserved {
+		_, _ = s.grants.ReleaseUse(reservation.Grant.ID, reservation.Use.RequestID)
 	}
 }
 
-func (s *Server) retainGrantUses(reserved []grants.Grant) error {
+func (s *Server) retainGrantUses(reserved []grants.UseReservation) error {
 	var retainedErr error
-	for _, grant := range reserved {
-		if err := s.retainGrantUse(grant.ID); err != nil {
+	for _, reservation := range reserved {
+		if _, err := s.grants.RetainUse(reservation.Grant.ID, reservation.Use.RequestID); err != nil {
 			retainedErr = errors.Join(retainedErr, err)
 		}
 	}
 	return retainedErr
 }
 
-func (s *Server) retainGrantUse(id string) error {
-	grant, err := s.grants.RetainUse(id)
-	if err != nil {
-		return err
-	}
-	if grant.Status != grants.StatusActive {
-		return nil
-	}
-	_, err = s.grants.Revoke(id, "broker:ambiguous-upstream-result")
-	return err
-}
-
-func (s *Server) closeGrantUsesAfterCommitFailure(reserved []grants.Grant) error {
+func (s *Server) closeGrantUsesAfterCommitFailure(reserved []grants.UseReservation) error {
 	var closeErr error
-	for _, reservedGrant := range reserved {
-		grant, err := s.grants.Get(reservedGrant.ID)
-		if err != nil {
-			closeErr = errors.Join(closeErr, err)
-			continue
-		}
-		switch {
-		case grant.ReservedCount > 0:
-			err = s.retainGrantUse(grant.ID)
-		case grant.Status == grants.StatusActive:
-			_, err = s.grants.Revoke(grant.ID, "broker:ambiguous-commit")
+	for _, reservation := range reserved {
+		current, err := s.grants.GetUse(reservation.Grant.ID, reservation.Use.RequestID)
+		if err == nil && current.Use.State == grants.UseReserved {
+			_, err = s.grants.RetainUse(reservation.Grant.ID, reservation.Use.RequestID)
 		}
 		if err != nil {
 			closeErr = errors.Join(closeErr, err)

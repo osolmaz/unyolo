@@ -74,7 +74,7 @@ func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
 func pendingOperatorRequest() operatorv1.Request {
 	expires := time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC)
 	return operatorv1.Request{
-		ID: "grant-1", Revision: 3, Requester: "agent-a", Operation: "repo.delete", Status: grants.StatusPending,
+		ID: "grant-1", Revision: 3, Requester: "agent-a", Operation: "repo.delete", Mode: "execution", Status: grants.StatusPending,
 		PendingExpiresAt: &expires, RequestedDurationSeconds: 300, GrantedMaxUses: 1, RequestReason: "cleanup",
 		Presentation: operatorv1.Presentation{Risk: "critical", Title: "Delete repository", Target: "example/project"},
 	}

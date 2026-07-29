@@ -326,9 +326,6 @@ func (r *Runtime[I, P, A]) submitResolved(ctx context.Context, client string, re
 	if directlyAllowed(decision, adapter) {
 		return r.submitDirectGrant(submission, adapter, plan, auth, core, decision)
 	}
-	if requiresApproval(adapter) {
-		return r.submitPending(ctx, submission, adapter, plan, auth, core)
-	}
 	return r.submitWithAvailableGrant(ctx, submission, adapter, plan, auth, core)
 }
 
@@ -433,7 +430,7 @@ func (r *Runtime[I, P, A]) cancelApproval(operation agentv1.Operation, client st
 	if err != nil {
 		return err
 	}
-	if grant.Status == grants.StatusActive && grant.ClientRequestID != operation.ID {
+	if grant.Status == grants.StatusActive && (grant.ClientRequestID != operation.ID || grant.Metadata[grants.MetadataMode] == string(policy.GrantModeWindow)) {
 		return nil
 	}
 	return r.cancelGrant(grant, client)
@@ -724,11 +721,11 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 		r.fail(operation.ID, agentv1.StateFailed, "invalid_stored_operation", "Stored operation is invalid")
 		return
 	}
-	grant, reserved, ok := r.reserveApproval(operation)
+	reservation, reserved, ok := r.reserveApproval(operation)
 	if !ok {
 		return
 	}
-	plan, ok = r.bindReservedPlan(operation, adapter, plan, grant, reserved)
+	plan, ok = r.bindReservedPlan(operation, adapter, plan, reservation, reserved)
 	if !ok {
 		return
 	}
@@ -736,7 +733,7 @@ func (r *Runtime[I, P, A]) Execute(ctx context.Context, operation agentv1.Operat
 }
 
 func (r *Runtime[I, P, A]) bindReservedPlan(operation agentv1.Operation, adapter Adapter[I, P, A], plan P,
-	grant grants.Grant, reserved bool) (P, bool) {
+	reservation grants.UseReservation, reserved bool) (P, bool) {
 	if !reserved {
 		return plan, true
 	}
@@ -744,11 +741,11 @@ func (r *Runtime[I, P, A]) bindReservedPlan(operation agentv1.Operation, adapter
 	if !bound {
 		return plan, true
 	}
-	boundPlan, err := binder.BindReservation(plan, grant)
+	boundPlan, err := binder.BindReservation(plan, reservation)
 	if err == nil {
 		return boundPlan, true
 	}
-	_, _ = r.options.Grants.ReleaseUse(grant.ID)
+	_, _ = r.options.Grants.ReleaseUse(reservation.Grant.ID, reservation.Use.RequestID)
 	r.fail(operation.ID, agentv1.StateFailed, "approval_invalid", "Approved operation binding is invalid")
 	return plan, false
 }

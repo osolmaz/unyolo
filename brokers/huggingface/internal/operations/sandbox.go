@@ -135,7 +135,7 @@ func NewSandboxAdapters(client sandboxClient, store sealedPayloadStore) ([]Adapt
 	adapters := make([]Adapter, 0, len(sandboxOperations))
 	for _, name := range sandboxOperations {
 		descriptor, found := opcatalog.ByName(name)
-		if !found || descriptor.AuthorizationMode != opcatalog.ModeExecution {
+		if !found || !descriptor.HasExecutionDisposition() {
 			return nil, fmt.Errorf("sandbox operation %q is absent from the execution catalog", name)
 		}
 		adapters = append(adapters, &sandboxAdapter{descriptor: descriptor, client: client, store: store})

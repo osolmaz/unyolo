@@ -7,7 +7,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
 
-func TestRetainedGrantAPIStatusIsUnavailable(t *testing.T) {
+func TestRetainedGrantAPIStatusKeepsRemainingBudget(t *testing.T) {
 	grant := grants.Grant{
 		Status:              grants.StatusActive,
 		MaxUses:             3,
@@ -15,7 +15,7 @@ func TestRetainedGrantAPIStatusIsUnavailable(t *testing.T) {
 		ReservationRetained: true,
 	}
 	body := apiGrantFromStore(grant, policy.Target{})
-	if body.Status != retainedGrantStatus || body.UsesRemaining != 0 {
+	if body.Status != retainedGrantStatus || body.UsesRemaining != 2 {
 		t.Fatalf("apiGrantFromStore(retained) = %+v", body)
 	}
 	if !validGrantStatusFilter(retainedGrantStatus) || !grantStatusMatchesFilter(grant, retainedGrantStatus) {

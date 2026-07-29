@@ -44,7 +44,7 @@ func TestUnyoloControlPlaneConformance(t *testing.T) {
 		Target: unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{
 			"name": {"dataset/acme/conformance"}, "ref": {"refs/heads/main"},
 		}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "verify shared control plane", Duration: 5 * time.Minute, MaxUses: 1,
+		Metadata: map[string]string{unyologrants.MetadataMode: "window"}, Reason: "verify shared control plane", Duration: 5 * time.Minute, MaxUses: 1,
 	}
 	if err := server.plans.Bind(&request); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	grantRequest := unyologrants.Request{
 		Client: "bob", ClientRequestID: "operator-test", Operation: "git.push.force",
 		Target:   unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{"name": {"dataset/acme/demo"}, "ref": {"refs/heads/main"}}},
-		Metadata: map[string]string{"hf_grant_mode": "window"}, Reason: "repair branch", Duration: 5 * time.Minute, MaxUses: 1,
+		Metadata: map[string]string{unyologrants.MetadataMode: "window"}, Reason: "repair branch", Duration: 5 * time.Minute, MaxUses: 1,
 	}
 	if err := server.plans.Bind(&grantRequest); err != nil {
 		t.Fatal(err)

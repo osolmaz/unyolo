@@ -1,11 +1,10 @@
 # Reusable grants specification
 
-Status: accepted target contract. Implementation is pending.
+Status: accepted and implemented in this source tree.
 
 This specification defines the grant-mode contract accepted in
-[ADR 0002](adr/0002-universal-reusable-grants.md). Released binaries still use
-the current provider classifications until the accompanying implementation
-plan is complete.
+[ADR 0002](adr/0002-universal-reusable-grants.md). Release artifacts published
+before this change retain their earlier provider classifications.
 
 ## Minimal request policy
 

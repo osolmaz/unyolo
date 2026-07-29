@@ -195,10 +195,12 @@ gh-broker operation submit pull_request.merge_admin \
   --wait
 ```
 
-Admin merge is a distinct high-risk, explicit, one-use operation and requests operator approval by
-default. unYOLO resolves the pull request itself, binds approval to the exact head commit,
-rechecks it before execution, and supplies it to GitHub as the mutation's atomic `expectedHeadOid`
-guard. A pull request that changed after approval must be submitted and approved again.
+Admin merge is a distinct high-risk, explicit operation and requests operator approval by default.
+Its request rule uses a reusable window unless policy selects exact, single-use execution mode.
+unYOLO resolves the pull request itself, binds each invocation to the exact head commit, rechecks
+it before execution, and supplies it to GitHub as the mutation's atomic `expectedHeadOid` guard.
+A changed pull request must be submitted again. A matching active window may authorize its fresh
+plan; execution mode requires a new operator decision.
 
 Administrator privileges may bypass review, update, or merge-queue requirements. They do not bypass
 merge conflicts.

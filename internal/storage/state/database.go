@@ -25,7 +25,8 @@ const (
 	leaseFile    = "state.lock"
 	// CurrentSchemaVersion is the only state format accepted by maintenance
 	// operations in this pre-release cutover.
-	CurrentSchemaVersion int64 = 2
+	CurrentSchemaVersion  int64 = 1
+	currentSchemaContract       = "unyolo-state-v1-grant-uses"
 )
 
 //go:embed migrations/*.sql
@@ -74,6 +75,10 @@ func openLeasedDatabase(ctx context.Context, directory string, options Options, 
 	}
 	result := &Database{sql: db, queries: dbsql.New(db), lease: lock, directory: directory}
 	if err := result.migrate(ctx); err != nil {
+		_ = result.Close()
+		return nil, err
+	}
+	if err := result.ValidateCurrentFormat(ctx); err != nil {
 		_ = result.Close()
 		return nil, err
 	}
@@ -281,6 +286,9 @@ func (d *Database) ValidateCurrentFormat(ctx context.Context) error {
 	if err := d.validateSchemaVersion(ctx); err != nil {
 		return err
 	}
+	if err := d.validateSchemaContract(ctx); err != nil {
+		return err
+	}
 	return d.validateQuickCheck(ctx)
 }
 
@@ -291,6 +299,17 @@ func (d *Database) validateSchemaVersion(ctx context.Context) error {
 	}
 	if !version.Valid || version.Int64 != CurrentSchemaVersion {
 		return fmt.Errorf("state schema version is %d, want %d", version.Int64, CurrentSchemaVersion)
+	}
+	return nil
+}
+
+func (d *Database) validateSchemaContract(ctx context.Context) error {
+	var contract string
+	if err := d.sql.QueryRowContext(ctx, "SELECT contract FROM state_contract WHERE singleton = 1").Scan(&contract); err != nil {
+		return errors.New("state format is unsupported; coordinated fresh state is required")
+	}
+	if contract != currentSchemaContract {
+		return errors.New("state format is unsupported; coordinated fresh state is required")
 	}
 	return nil
 }
