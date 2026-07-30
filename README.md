@@ -82,6 +82,18 @@ execution.
 Each broker has its own process, listener, credential domain, state directory,
 release artifact, and audit stream.
 
+## Install
+
+```sh
+curl -fsSL https://unyolo.io/install | sh -s github
+```
+
+Substitute `huggingface` or `sudo` for another broker. The installer resolves
+that broker's latest release to an exact commit and verifies release checksums
+and GitHub build attestations before installing to `$HOME/.local/bin`. To pin
+the bootstrap as well, see
+[installation](https://unyolo.io/docs/get-started/installation).
+
 ## Build
 
 Use the Go version declared in [go.mod](go.mod):
