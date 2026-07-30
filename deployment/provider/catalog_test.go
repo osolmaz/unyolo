@@ -23,6 +23,18 @@ func TestLoadDirectorySortsDefaultsAndRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestLoadDirectoryRejectsSymlinkEntry(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "github.json")
+	writeOption(t, filepath.Dir(outside), filepath.Base(outside), `{"api_version":"unyolo.io/setup-provider/v1","id":"github","label":"GitHub","selected":true}`)
+	if err := os.Symlink(outside, filepath.Join(root, "github.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadDirectory(root); err == nil {
+		t.Fatal("catalog accepted a symlink entry")
+	}
+}
+
 func TestRepositoryProviderCatalog(t *testing.T) {
 	root := t.TempDir()
 	for _, provider := range []string{"github", "huggingface", "sudo"} {

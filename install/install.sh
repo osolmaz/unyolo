@@ -10,6 +10,7 @@ COMPANION_BINARIES="${COMPANION_BINARIES:-}"
 PATH_COMPANION_BINARIES="${PATH_COMPANION_BINARIES:-}"
 LIBEXEC_DIR="${LIBEXEC_DIR:-}"
 DATA_FILES="${DATA_FILES:-}"
+DATA_PREFIXES="${DATA_PREFIXES:-}"
 DATA_DIR="${DATA_DIR:-}"
 UNYOLO_INSTALL_RECORD="${UNYOLO_INSTALL_RECORD:-}"
 UNYOLO_SOURCE_COMMIT="${UNYOLO_SOURCE_COMMIT:-}"
@@ -86,16 +87,26 @@ validate_inputs() {
       "" | /* | */ | *..* | *[!A-Za-z0-9._/-]*) fail "DATA_FILES contains an invalid relative path" ;;
     esac
   done
-  if [ -n "$DATA_FILES" ] && [ -z "$DATA_DIR" ]; then
-    fail "DATA_DIR is required when DATA_FILES is set"
+  for data_prefix in $DATA_PREFIXES; do
+    case "$data_prefix" in
+      "" | /* | *..* | *[!A-Za-z0-9._/-]*) fail "DATA_PREFIXES entries must be safe relative directory prefixes ending in /" ;;
+      */) ;;
+      *) fail "DATA_PREFIXES entries must end in /" ;;
+    esac
+  done
+  if { [ -n "$DATA_FILES" ] || [ -n "$DATA_PREFIXES" ]; } && [ -z "$DATA_DIR" ]; then
+    fail "DATA_DIR is required when release data is selected"
+  fi
+  if [ -n "$UNYOLO_SOURCE_COMMIT" ]; then
+    case "$UNYOLO_SOURCE_COMMIT" in *[!0-9a-f]*) fail "UNYOLO_SOURCE_COMMIT must be an exact commit SHA" ;; esac
+    [ "${#UNYOLO_SOURCE_COMMIT}" -eq 40 ] || fail "UNYOLO_SOURCE_COMMIT must be an exact commit SHA"
   fi
   if [ -n "$UNYOLO_INSTALL_RECORD" ]; then
     case "$UNYOLO_INSTALL_RECORD" in
       /*) case "$UNYOLO_INSTALL_RECORD/" in *"/../"* | *"/./"* | *"//"*) fail "UNYOLO_INSTALL_RECORD must be an absolute normalized path" ;; esac ;;
       *) fail "UNYOLO_INSTALL_RECORD must be an absolute normalized path" ;;
     esac
-    case "$UNYOLO_SOURCE_COMMIT" in *[!0-9a-f]*) fail "UNYOLO_SOURCE_COMMIT must be an exact commit SHA" ;; esac
-    [ "${#UNYOLO_SOURCE_COMMIT}" -eq 40 ] || fail "UNYOLO_SOURCE_COMMIT must be an exact commit SHA"
+    [ -n "$UNYOLO_SOURCE_COMMIT" ] || fail "UNYOLO_SOURCE_COMMIT is required for an install record"
   fi
 }
 
@@ -220,11 +231,20 @@ prepare_verifier() {
 verify_provenance() {
   verifier="$(prepare_verifier)"
   for subject in "$@"; do
-    "$verifier" attestation verify "$subject" \
-      --repo "$REPO" \
-      --signer-workflow "$REPO/.github/workflows/release.yml" \
-      --source-ref "refs/tags/$VERSION" \
-      --deny-self-hosted-runners >/dev/null
+    if [ -n "$UNYOLO_SOURCE_COMMIT" ]; then
+      "$verifier" attestation verify "$subject" \
+        --repo "$REPO" \
+        --signer-workflow "$REPO/.github/workflows/release.yml" \
+        --source-ref "refs/tags/$VERSION" \
+        --source-digest "$UNYOLO_SOURCE_COMMIT" \
+        --deny-self-hosted-runners >/dev/null
+    else
+      "$verifier" attestation verify "$subject" \
+        --repo "$REPO" \
+        --signer-workflow "$REPO/.github/workflows/release.yml" \
+        --source-ref "refs/tags/$VERSION" \
+        --deny-self-hosted-runners >/dev/null
+    fi
   done
 }
 
@@ -280,6 +300,9 @@ validate_archive() {
   archive="$1"
   listing="$2"
   tar -tzf "$archive" > "$listing"
+  tar -tvzf "$archive" > "${listing}.types"
+  awk 'substr($1, 1, 1) != "-" { exit 1 }' "${listing}.types" || fail "release archive entries must be regular files"
+  [ "$(wc -l < "$listing" | tr -d ' ')" -eq "$(wc -l < "${listing}.types" | tr -d ' ')" ] || fail "release archive listing is inconsistent"
   while IFS= read -r entry; do
     case "$entry" in
       "$BROKER" | README.md | LICENSE) ;;
@@ -291,6 +314,9 @@ validate_archive() {
         for data_file in $DATA_FILES; do
           if [ "$entry" = "$data_file" ]; then allowed=true; fi
         done
+        for data_prefix in $DATA_PREFIXES; do
+          case "$entry" in "$data_prefix"*) allowed=true ;; esac
+        done
         [ "$allowed" = true ] || fail "release archive contains unexpected path: ${entry}"
         ;;
     esac
@@ -301,6 +327,9 @@ validate_archive() {
   done
   for data_file in $DATA_FILES; do
     [ "$(awk -v name="$data_file" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${data_file} exactly once"
+  done
+  for data_prefix in $DATA_PREFIXES; do
+    [ "$(awk -v prefix="$data_prefix" 'index($0, prefix) == 1 { count++ } END { print count + 0 }' "$listing")" -gt 0 ] || fail "release archive contains no data below ${data_prefix}"
   done
 }
 
@@ -315,6 +344,7 @@ need head
 need mktemp
 need dirname
 need basename
+need wc
 
 os="$(normalize_os)"
 arch="$(normalize_arch)"
@@ -335,7 +365,15 @@ asset="${BROKER}_${os}_${arch}.tar.gz"
 base_url="${UNYOLO_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${VERSION}}"
 umask 077
 tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT INT TERM
+cleanup_install() {
+  status=$?
+  trap - 0 HUP INT TERM
+  rm -rf "$tmp_dir"
+  exit "$status"
+}
+trap cleanup_install 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
 
 echo "Downloading ${REPO} ${VERSION} for ${os}/${arch}"
 curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
@@ -369,11 +407,26 @@ for binary in $PATH_COMPANION_BINARIES; do
   echo "Installed ${binary} to ${main_dest_dir}/${binary}"
 done
 
-for data_file in $DATA_FILES; do
+install_data_file() {
+  data_file="$1"
   data_destination="${DATA_DIR}/${data_file}"
   mkdir -p "$(dirname "$data_destination")" || fail "cannot create data directory for ${data_file}"
   install -m 0644 "${tmp_dir}/${data_file}" "$data_destination" || fail "could not install data file ${data_file}"
+}
+for data_file in $DATA_FILES; do
+  install_data_file "$data_file"
 done
+if [ -n "$DATA_PREFIXES" ]; then
+  while IFS= read -r archive_entry; do
+    selected=false
+    for data_prefix in $DATA_PREFIXES; do
+      case "$archive_entry" in "$data_prefix"*) selected=true ;; esac
+    done
+    if [ "$selected" = true ]; then
+      install_data_file "$archive_entry"
+    fi
+  done < "${tmp_dir}/archive.list"
+fi
 
 if [ -n "$UNYOLO_INSTALL_RECORD" ]; then
   archive_digest="$(checksum_line "$asset" "${tmp_dir}/checksums.txt" | awk '{ print $1 }')"

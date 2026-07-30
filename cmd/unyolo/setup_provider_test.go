@@ -59,6 +59,25 @@ func TestProviderCancellationLeavesNoSetupState(t *testing.T) {
 	}
 }
 
+func TestProviderOptionsLoadBesideInstalledExecutable(t *testing.T) {
+	root := t.TempDir()
+	providers := filepath.Join(root, "providers")
+	if err := os.Mkdir(providers, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "unyolo"), []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	catalog := `{"api_version":"unyolo.io/setup-provider/v1","id":"github","label":"GitHub","selected":true}`
+	if err := os.WriteFile(filepath.Join(providers, "github.json"), []byte(catalog), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options, err := providerOptionsBesideExecutable(filepath.Join(root, "unyolo"))
+	if err != nil || len(options) != 1 || options[0].ID != "github" {
+		t.Fatalf("installed provider options = %+v, %v", options, err)
+	}
+}
+
 func TestProtectedWorkerStartsOnlyAfterActivation(t *testing.T) {
 	var events []string
 	worker := &fakeProtectedWorker{}

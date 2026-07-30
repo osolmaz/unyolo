@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/osolmaz/unyolo/deployment/provider"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
@@ -79,9 +80,6 @@ func Activate(ctx context.Context, options Options) error {
 	if err != nil {
 		return err
 	}
-	if err := verifyStagedVersion(ctx, filepath.Join(normalized.StageRoot, "bin", "unyolo"), version); err != nil {
-		return err
-	}
 	files := []struct {
 		source string
 		name   string
@@ -89,6 +87,20 @@ func Activate(ctx context.Context, options Options) error {
 	}{
 		{filepath.Join(normalized.StageRoot, "bin", "unyolo"), "unyolo", 0o755},
 		{filepath.Join(normalized.StageRoot, "libexec", "openclaw-unyolo-setup"), "openclaw-unyolo-setup", 0o755},
+	}
+	providerOptions, err := provider.LoadDirectory(filepath.Join(normalized.StageRoot, "share", "providers"))
+	if err != nil {
+		return err
+	}
+	for _, option := range providerOptions {
+		files = append(files, struct {
+			source string
+			name   string
+			mode   os.FileMode
+		}{
+			source: filepath.Join(normalized.StageRoot, "share", "providers", option.ID+".json"),
+			name:   filepath.Join("providers", option.ID+".json"), mode: 0o644,
+		})
 	}
 	manifest := Manifest{
 		APIVersion: ManifestAPIVersion, Release: record.Release, SourceCommit: record.SourceCommit,
@@ -101,7 +113,13 @@ func Activate(ctx context.Context, options Options) error {
 		}
 		manifest.Files = append(manifest.Files, File{Path: file.name, SHA256: digest})
 	}
+	if err := verifyStagedVersion(ctx, files[0].source, version); err != nil {
+		return err
+	}
 
+	if err := ensureOwnedDirectory(normalized.DataHome, 0o755); err != nil {
+		return fmt.Errorf("prepare user data directory: %w", err)
+	}
 	root := filepath.Join(normalized.DataHome, "unyolo")
 	releases := filepath.Join(root, "releases")
 	if err := ensureOwnedDirectory(releases, 0o700); err != nil {
@@ -154,9 +172,16 @@ func validateOptions(options Options) (Options, StageRecord, string, error) {
 			return Options{}, StageRecord{}, "", errors.New("user installation roots must be absolute and clean")
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(options.StageRoot, "stage.json")) // #nosec G304 -- fixed file below the validated private stage.
+	recordPath := filepath.Join(options.StageRoot, "stage.json")
+	if _, err := verifySourceFile(recordPath); err != nil {
+		return Options{}, StageRecord{}, "", fmt.Errorf("inspect bootstrap stage record: %w", err)
+	}
+	data, err := os.ReadFile(recordPath) // #nosec G304 -- fixed regular file below the validated private stage.
 	if err != nil {
 		return Options{}, StageRecord{}, "", fmt.Errorf("read bootstrap stage record: %w", err)
+	}
+	if len(data) > 16*1024 {
+		return Options{}, StageRecord{}, "", errors.New("bootstrap stage record exceeds size limit")
 	}
 	var record StageRecord
 	if err := strictjson.Decode(data, &record, true); err != nil {
@@ -280,6 +305,9 @@ func verifyExistingRelease(root string, expected Manifest) error {
 }
 
 func copyRegular(source, destination string, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		return err
+	}
 	input, err := os.Open(source) // #nosec G304 -- source passed from fixed verified stage entries.
 	if err != nil {
 		return err
@@ -341,6 +369,10 @@ func ensureOwnedDirectory(path string, mode os.FileMode) error {
 }
 
 func verifyOwnedDirectory(path string) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || filepath.Clean(resolved) != filepath.Clean(path) {
+		return errors.New("directory path must not contain symbolic links")
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
