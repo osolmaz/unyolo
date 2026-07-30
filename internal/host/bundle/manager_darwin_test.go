@@ -37,6 +37,12 @@ func TestLaunchdManagerLifecycleAndStatus(t *testing.T) {
 	if err := manager.Start(t.Context(), "io.unyolo.github"); err != nil {
 		t.Fatal(err)
 	}
+	if err := manager.Enable(t.Context(), "io.unyolo.github"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Disable(t.Context(), "io.unyolo.retired"); err != nil {
+		t.Fatal(err)
+	}
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}

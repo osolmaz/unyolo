@@ -28,6 +28,14 @@ func (m *systemdManager) Start(ctx context.Context, service string) error {
 	return m.serviceAction(ctx, "start", service)
 }
 
+func (m *systemdManager) Enable(ctx context.Context, service string) error {
+	return m.serviceAction(ctx, "enable", service)
+}
+
+func (m *systemdManager) Disable(ctx context.Context, service string) error {
+	return m.serviceAction(ctx, "disable", service)
+}
+
 func (m *systemdManager) serviceAction(ctx context.Context, action, service string) error {
 	_, err := m.runner.Run(ctx, "systemctl", action, service)
 	return err

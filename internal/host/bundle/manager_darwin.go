@@ -26,6 +26,11 @@ func (m *launchdManager) Start(ctx context.Context, service string) error {
 	return m.serviceAction(ctx, "kickstart", "-k", service)
 }
 
+// launchd services remain registered by their loaded system domain definitions.
+func (m *launchdManager) Enable(context.Context, string) error { return nil }
+
+func (m *launchdManager) Disable(context.Context, string) error { return nil }
+
 func (m *launchdManager) serviceAction(ctx context.Context, action, option, service string) error {
 	_, err := m.runner.Run(ctx, "launchctl", action, option, "system/"+service)
 	return err

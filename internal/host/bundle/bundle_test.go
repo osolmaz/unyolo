@@ -341,12 +341,16 @@ func TestActivateOrdersServicesAndRollsBackCompleteRelease(t *testing.T) {
 	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
 		t.Fatal(err)
 	}
+	assertCurrentBundle(t, root, "bundle-one")
+	if strings.Join(manager.actions, ",") != "reload,enable:gh.service,enable:telegram.service,start:gh.service,start:telegram.service" {
+		t.Fatalf("first activation order = %v", manager.actions)
+	}
+	manager.actions = nil
 	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
 		t.Fatalf("idempotent activation failed: %v", err)
 	}
-	assertCurrentBundle(t, root, "bundle-one")
-	if strings.Join(manager.actions, ",") != "reload,start:gh.service,start:telegram.service" {
-		t.Fatalf("first activation order = %v", manager.actions)
+	if strings.Join(manager.actions, ",") != "enable:gh.service,enable:telegram.service" {
+		t.Fatalf("idempotent activation did not repair service enablement: %v", manager.actions)
 	}
 	manager.actions = nil
 	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
@@ -355,13 +359,26 @@ func TestActivateOrdersServicesAndRollsBackCompleteRelease(t *testing.T) {
 	}
 	assertCurrentBundle(t, root, "bundle-one")
 	actions := strings.Join(manager.actions, ",")
-	if !strings.HasPrefix(actions, "stop:telegram.service,stop:gh.service,reload,start:gh.service,start:telegram.service") ||
-		!strings.HasSuffix(actions, "stop:telegram.service,stop:gh.service,reload,start:gh.service,start:telegram.service") {
+	if !strings.HasPrefix(actions, "stop:telegram.service,stop:gh.service,reload,enable:gh.service,enable:telegram.service,start:gh.service,start:telegram.service") ||
+		!strings.HasSuffix(actions, "stop:telegram.service,stop:gh.service,reload,enable:gh.service,enable:telegram.service,start:gh.service,start:telegram.service") {
 		t.Fatalf("upgrade and rollback order = %s", actions)
 	}
 	report, err := installer.Status(t.Context())
 	if err != nil || !report.Healthy || report.Activation.ActiveBundleID != "bundle-one" {
 		t.Fatalf("Status() = %+v, %v", report, err)
+	}
+}
+
+func TestSynchronizeEnabledServicesDisablesRetiredUnits(t *testing.T) {
+	manager := &fakeManager{}
+	installer := Installer{Manager: manager}
+	previous := Manifest{Components: []Component{{Role: RoleProvider, Services: []string{"old.service", "shared.service"}}}}
+	candidate := Manifest{Components: []Component{{Role: RoleProvider, Services: []string{"new.service", "shared.service"}}}}
+	if err := installer.synchronizeEnabledServices(t.Context(), previous, candidate); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(manager.actions, ","); got != "enable:new.service,enable:shared.service,disable:old.service" {
+		t.Fatalf("service enablement actions = %s", got)
 	}
 }
 
@@ -387,7 +404,7 @@ func TestActivateWaitsForProvidersBeforeStartingConsumers(t *testing.T) {
 	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
 		t.Fatal(err)
 	}
-	if providerAttempts < 3 || strings.Join(manager.actions, ",") != "reload,start:gh.service,start:telegram.service" {
+	if providerAttempts < 3 || strings.Join(manager.actions, ",") != "reload,enable:gh.service,enable:telegram.service,start:gh.service,start:telegram.service" {
 		t.Fatalf("provider attempts = %d, actions = %v", providerAttempts, manager.actions)
 	}
 }
@@ -806,6 +823,7 @@ type fakeManager struct {
 	root            string
 	destinations    map[string]string
 	active          map[string]bool
+	enabled         map[string]bool
 	actions         []string
 	deleted         string
 	failStartBundle string
@@ -832,6 +850,23 @@ func (m *fakeManager) Start(_ context.Context, service string) error {
 		}
 	}
 	m.active[service] = true
+	return nil
+}
+
+func (m *fakeManager) Enable(_ context.Context, service string) error {
+	m.actions = append(m.actions, "enable:"+service)
+	if m.enabled == nil {
+		m.enabled = map[string]bool{}
+	}
+	m.enabled[service] = true
+	return nil
+}
+
+func (m *fakeManager) Disable(_ context.Context, service string) error {
+	m.actions = append(m.actions, "disable:"+service)
+	if m.enabled != nil {
+		m.enabled[service] = false
+	}
 	return nil
 }
 

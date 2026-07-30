@@ -29,9 +29,11 @@ import (
 
 type fakeManager struct{}
 
-func (fakeManager) Stop(context.Context, string) error  { return nil }
-func (fakeManager) Start(context.Context, string) error { return nil }
-func (fakeManager) Reload(context.Context) error        { return nil }
+func (fakeManager) Stop(context.Context, string) error    { return nil }
+func (fakeManager) Start(context.Context, string) error   { return nil }
+func (fakeManager) Enable(context.Context, string) error  { return nil }
+func (fakeManager) Disable(context.Context, string) error { return nil }
+func (fakeManager) Reload(context.Context) error          { return nil }
 func (fakeManager) Status(context.Context, string) (bundle.ServiceStatus, error) {
 	return bundle.ServiceStatus{Active: true}, nil
 }

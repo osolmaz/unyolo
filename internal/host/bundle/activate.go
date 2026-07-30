@@ -50,6 +50,8 @@ var runtimeGOOS = func() string { return runtime.GOOS }
 type ServiceManager interface {
 	Stop(context.Context, string) error
 	Start(context.Context, string) error
+	Enable(context.Context, string) error
+	Disable(context.Context, string) error
 	Reload(context.Context) error
 	Status(context.Context, string) (ServiceStatus, error)
 }
@@ -146,7 +148,13 @@ func (i Installer) activateLocked(ctx context.Context, manifest Manifest, manife
 		return err
 	}
 	if baseline.bundleID == manifest.BundleID {
-		return errors.Join(i.verifyRelease(manifest, release), i.verifyRuntime(ctx, manifest))
+		if err := i.verifyRelease(manifest, release); err != nil {
+			return err
+		}
+		if err := i.enableServices(ctx, manifest); err != nil {
+			return err
+		}
+		return i.verifyRuntime(ctx, manifest)
 	}
 	return i.commitActivation(ctx, manifest, baseline.bundleID, baseline.manifest, baseline.activation)
 }
@@ -190,6 +198,9 @@ func (i Installer) commitActivation(ctx context.Context, manifest Manifest, prev
 		return i.failActivation(err, transaction, previousManifest, manifest)
 	}
 	activationErr := i.Manager.Reload(ctx)
+	if activationErr == nil {
+		activationErr = i.synchronizeEnabledServices(ctx, previousManifest, manifest)
+	}
 	if activationErr == nil {
 		activationErr = i.startAndVerify(ctx, manifest)
 	}
@@ -589,6 +600,9 @@ func (i Installer) restore(previous string, oldManifest, candidate Manifest) err
 	reloadErr := i.Manager.Reload(recoveryCtx)
 	var activationErr error
 	if reloadErr == nil {
+		activationErr = i.synchronizeEnabledServices(recoveryCtx, candidate, oldManifest)
+	}
+	if reloadErr == nil && activationErr == nil {
 		activationErr = i.startAndVerify(recoveryCtx, oldManifest)
 	}
 	return errors.Join(stopErr, stateErr, switchErr, reloadErr, activationErr)
@@ -712,6 +726,34 @@ func (i Installer) stop(ctx context.Context, manifest Manifest) error {
 		result = errors.Join(result, i.Manager.Stop(ctx, service))
 	}
 	return result
+}
+
+func (i Installer) enableServices(ctx context.Context, manifest Manifest) error {
+	for _, service := range orderedServices(manifest, false) {
+		if err := i.Manager.Enable(ctx, service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (i Installer) synchronizeEnabledServices(ctx context.Context, previous, candidate Manifest) error {
+	if err := i.enableServices(ctx, candidate); err != nil {
+		return err
+	}
+	candidateServices := map[string]bool{}
+	for _, service := range orderedServices(candidate, false) {
+		candidateServices[service] = true
+	}
+	for _, service := range orderedServices(previous, true) {
+		if candidateServices[service] {
+			continue
+		}
+		if err := i.Manager.Disable(ctx, service); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func orderedServices(manifest Manifest, stopping bool) []string {
