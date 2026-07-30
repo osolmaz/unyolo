@@ -22,6 +22,7 @@ import (
 	"github.com/osolmaz/unyolo/authorization/admission"
 	"github.com/osolmaz/unyolo/internal/config/secretfile"
 	"github.com/osolmaz/unyolo/transport/endpoint"
+	clienthttp "github.com/osolmaz/unyolo/transport/http/client"
 )
 
 // MinSecretBytes is the minimum accepted client secret length.
@@ -64,6 +65,7 @@ type Config struct {
 	UpstreamRouterURL string
 	XetPython         string
 	TelegramBotToken  string
+	TelegramAPIBase   string
 	TelegramChatID    int64
 	Admission         admission.Config
 }
@@ -289,8 +291,12 @@ func loadTelegram(getenv func(string) string, cfg *Config) error {
 		return err
 	}
 	cfg.TelegramBotToken = token
+	cfg.TelegramAPIBase, err = loadTelegramAPIBase(brokerEnv(getenv, "TELEGRAM_API_BASE"))
+	if err != nil {
+		return err
+	}
 	rawChatID := brokerEnv(getenv, "TELEGRAM_CHAT_ID")
-	if cfg.TelegramBotToken == "" && rawChatID == "" {
+	if cfg.TelegramBotToken == "" && rawChatID == "" && cfg.TelegramAPIBase == "" {
 		return nil
 	}
 	if cfg.TelegramBotToken == "" || rawChatID == "" {
@@ -302,6 +308,17 @@ func loadTelegram(getenv func(string) string, cfg *Config) error {
 	}
 	cfg.TelegramChatID = chatID
 	return nil
+}
+
+func loadTelegramAPIBase(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := clienthttp.ParseBaseURL(value)
+	if err != nil {
+		return "", fmt.Errorf("%s is invalid: %w", brokerEnvName("TELEGRAM_API_BASE"), err)
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
 func loadTelegramToken(getenv func(string) string) (string, error) {
