@@ -13,8 +13,8 @@ import (
 	"testing"
 )
 
-// endpointScript is the short installer served from https://unyolo.io/install.
-const endpointScript = "../web/public/install"
+// endpointScript is the short installer served from https://unyolo.io/install.sh.
+const endpointScript = "../web/public/install.sh"
 
 var endpointBrokerCase = regexp.MustCompile(`(?m)^\s*([a-z0-9-]+(?:\s*\|\s*[a-z0-9-]+)*)\)\s*;;`)
 
@@ -65,13 +65,31 @@ func TestWebInstallEndpointRunsTheBrokerBootstrap(t *testing.T) {
 	}
 }
 
-func TestWebInstallEndpointRejectsMissingAndUnknownBrokers(t *testing.T) {
-	for _, name := range []string{"", "gitlab", "../etc"} {
-		args := []string(nil)
-		if name != "" {
-			args = append(args, name)
-		}
-		output, err := endpointCommand(t, "http://127.0.0.1:1", args...).CombinedOutput()
+// With no argument the endpoint installs the GitHub broker, which is the one
+// the docs lead with everywhere else.
+func TestWebInstallEndpointDefaultsToGitHub(t *testing.T) {
+	var requested string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = r.URL.Path
+		fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n")
+	}))
+	defer server.Close()
+
+	output, err := endpointCommand(t, server.URL).CombinedOutput()
+	if err != nil {
+		t.Fatalf("endpoint failed: %v\n%s", err, output)
+	}
+	if requested != "/main/brokers/github/install.sh" {
+		t.Fatalf("endpoint fetched %q", requested)
+	}
+	if !strings.Contains(string(output), "installing the github broker") {
+		t.Fatalf("endpoint did not say which broker it picked: %s", output)
+	}
+}
+
+func TestWebInstallEndpointRejectsUnknownBrokers(t *testing.T) {
+	for _, name := range []string{"gitlab", "../etc"} {
+		output, err := endpointCommand(t, "http://127.0.0.1:1", name).CombinedOutput()
 		if err == nil {
 			t.Fatalf("broker %q was accepted: %s", name, output)
 		}

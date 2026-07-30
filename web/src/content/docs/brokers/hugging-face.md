@@ -26,7 +26,7 @@ never leave the broker, and `git push` prints the reason at the terminal:
 ## Install
 
 ```sh
-curl -fsSL https://unyolo.io/install | sh -s huggingface
+curl -fsSL https://unyolo.io/install.sh | sh -s huggingface
 ```
 
 Pin a release with `VERSION=<version>` or choose a target directory with

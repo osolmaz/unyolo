@@ -41,7 +41,7 @@ performs the identity transition.
 ## Install
 
 ```sh
-curl -fsSL https://unyolo.io/install | sh -s sudo
+curl -fsSL https://unyolo.io/install.sh | sh -s sudo
 ```
 
 The frontend goes into the selected binary directory. The helper goes into the adjacent `libexec`
