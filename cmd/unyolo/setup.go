@@ -35,10 +35,10 @@ type protectedSetupWorker interface {
 	Close() error
 }
 
-type setupWorkerStarter func(context.Context, string, io.Writer) (protectedSetupWorker, error)
+type setupWorkerStarter func(context.Context, string, string, io.Writer) (protectedSetupWorker, error)
 
-var startSetupWorker setupWorkerStarter = func(ctx context.Context, release string, stderr io.Writer) (protectedSetupWorker, error) {
-	return privilege.Start(ctx, release, stderr)
+var startSetupWorker setupWorkerStarter = func(ctx context.Context, release, githubCLI string, stderr io.Writer) (protectedSetupWorker, error) {
+	return privilege.Start(ctx, release, githubCLI, stderr)
 }
 
 //nolint:cyclop // Setup dispatch keeps cancellation and terminal cleanup in one lifecycle boundary.
@@ -85,6 +85,7 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 			options.DeploymentKits = filepath.Join(*bootstrapStage, "share", "deployment-kits")
 			options.RuntimeArtifacts = filepath.Join(*bootstrapStage, "share", "deployment-kits", "artifacts")
 		}
+		options.GitHubCLI = filepath.Join(*bootstrapStage, "libexec", "gh-attestation-verifier")
 		options.Activate = func(activateCtx context.Context) error {
 			return userinstall.Activate(activateCtx, userinstall.Options{StageRoot: *bootstrapStage})
 		}
@@ -96,6 +97,20 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 		options.ProviderOptions = providerOptions
 		options.DeploymentKits = filepath.Join(releaseRoot, "deployment-kits")
 		options.RuntimeArtifacts = filepath.Join(releaseRoot, "deployment-kits", "artifacts")
+		options.GitHubCLI = filepath.Join(releaseRoot, "gh-attestation-verifier")
+	} else {
+		executable, executableErr := os.Executable()
+		if executableErr != nil {
+			return executableErr
+		}
+		resolved, resolveErr := filepath.EvalSymlinks(executable)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		options.GitHubCLI = filepath.Join(filepath.Dir(resolved), "gh-attestation-verifier")
+	}
+	if err := validateGitHubCLI(options.GitHubCLI); err != nil {
+		return err
 	}
 	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
 	defer func() { _ = prompter.Close() }()
@@ -111,6 +126,7 @@ type setupOptions struct {
 	DeploymentKits   string
 	RuntimeArtifacts string
 	Operator         string
+	GitHubCLI        string
 	Activate         func(context.Context) error
 }
 
@@ -217,7 +233,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return err
 	}
 	if options.PlanOnly {
-		return prompter.Outro(ctx, "Profile ready. Run unyolo system plan as a trusted administrator.")
+		return finishPlanOnly(ctx, prompter, options.Activate)
 	}
 	confirmation := flow.ConfirmPrompt{
 		Message: "Continue to protected host planning?", Description: "No host mutation occurs until the exact plan digest is shown and confirmed.", Safe: true,
@@ -233,7 +249,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if !confirmed {
 		return flow.CancelledError{}
 	}
-	worker, err := prepareProtectedWorker(ctx, prompter, options.Activate, startSetupWorker)
+	worker, err := prepareProtectedWorker(ctx, prompter, options.Activate, options.GitHubCLI, startSetupWorker)
 	if err != nil {
 		return err
 	}
@@ -364,6 +380,17 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	return created, nil
 }
 
+func validateGitHubCLI(path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("verified GitHub attestation CLI path is invalid")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("verified GitHub attestation CLI is missing or unsafe")
+	}
+	return nil
+}
+
 func installedProviderOptions() ([]provider.Option, string, error) {
 	executable, err := os.Executable()
 	if err != nil {
@@ -388,17 +415,44 @@ func providerOptionsBesideExecutable(executable string) ([]provider.Option, stri
 	return options, releaseRoot, err
 }
 
-func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, start setupWorkerStarter) (protectedSetupWorker, error) {
+func finishPlanOnly(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error) error {
 	if activate != nil {
-		activationProgress := prompter.Progress("Installing the verified unYOLO CLI")
-		if err := activate(ctx); err != nil {
-			activationProgress.Fail("CLI installation failed before protected host planning")
-			return nil, err
+		confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+			Message:     "Install the verified unYOLO CLI for later protected planning?",
+			Description: "The CLI is required for the unyolo system plan command shown next.", Safe: true,
+		})
+		if err != nil {
+			return err
 		}
-		activationProgress.Stop("Verified unYOLO CLI installed")
+		if !confirmed {
+			return flow.CancelledError{}
+		}
+		if err := activateVerifiedCLI(ctx, prompter, activate); err != nil {
+			return err
+		}
+	}
+	return prompter.Outro(ctx, "Profile ready. Run unyolo system plan as a trusted administrator.")
+}
+
+func activateVerifiedCLI(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error) error {
+	if activate == nil {
+		return nil
+	}
+	progress := prompter.Progress("Installing the verified unYOLO CLI")
+	if err := activate(ctx); err != nil {
+		progress.Fail("CLI installation failed before protected host planning")
+		return err
+	}
+	progress.Stop("Verified unYOLO CLI installed")
+	return nil
+}
+
+func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, githubCLI string, start setupWorkerStarter) (protectedSetupWorker, error) {
+	if err := activateVerifiedCLI(ctx, prompter, activate); err != nil {
+		return nil, err
 	}
 	workerProgress := prompter.Progress("Starting the verified root-owned setup worker")
-	worker, err := start(ctx, privilegedReleaseVersion(buildinfo.Version), os.Stderr)
+	worker, err := start(ctx, privilegedReleaseVersion(buildinfo.Version), githubCLI, os.Stderr)
 	if err != nil {
 		workerProgress.Fail("Could not start the verified setup worker")
 		return nil, err

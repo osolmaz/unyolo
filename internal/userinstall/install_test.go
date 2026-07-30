@@ -43,7 +43,7 @@ func TestActivatePublishesOneVerifiedRelease(t *testing.T) {
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Release != "unyolo/v1.2.3" || manifest.InstalledAt != now || len(manifest.Files) != 5 {
+	if manifest.Release != "unyolo/v1.2.3" || manifest.InstalledAt != now || len(manifest.Files) != 6 {
 		t.Fatalf("manifest = %+v", manifest)
 	}
 	if _, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "providers", "github.json")); err != nil {
@@ -427,7 +427,7 @@ func writeStage(t *testing.T, version string) string {
 		}
 	}
 	cli := "#!/bin/sh\nif [ \"${1:-}\" = --version ]; then echo '" + version + "'; fi\n"
-	companions := []string{"openclaw-unyolo-setup"}
+	companions := []string{"openclaw-unyolo-setup", "gh-attestation-verifier"}
 	files := map[string]string{filepath.Join("bin", "unyolo"): cli}
 	for _, name := range companions {
 		files[filepath.Join("libexec", name)] = "#!/bin/sh\necho companion\n"

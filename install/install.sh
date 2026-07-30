@@ -18,6 +18,7 @@ UNYOLO_SOURCE_COMMIT="${UNYOLO_SOURCE_COMMIT:-}"
 UNYOLO_VERIFY_ONLY="${UNYOLO_VERIFY_ONLY:-false}"
 UNYOLO_VERIFY_RELEASE_SET="${UNYOLO_VERIFY_RELEASE_SET:-false}"
 UNYOLO_VERIFIER_FILE="${UNYOLO_VERIFIER_FILE:-}"
+ATTESTATION_VERIFIER_NAME="${ATTESTATION_VERIFIER_NAME:-}"
 
 GH_VERIFIER_VERSION="2.96.0"
 GH_VERIFIER_RELEASE="https://github.com/cli/cli/releases/download/v${GH_VERIFIER_VERSION}"
@@ -83,6 +84,10 @@ validate_inputs() {
       "" | *[!a-z0-9-]* | "$BROKER") fail "COMPANION_BINARIES contains an invalid binary name" ;;
     esac
   done
+  case "$ATTESTATION_VERIFIER_NAME" in
+    "") ;;
+    *[!a-z0-9-]* | "$BROKER") fail "ATTESTATION_VERIFIER_NAME contains an invalid binary name" ;;
+  esac
   for data_file in $DATA_FILES; do
     case "$data_file" in
       "" | /* | */ | *..* | *[!A-Za-z0-9._/-]*) fail "DATA_FILES contains an invalid relative path" ;;
@@ -209,7 +214,7 @@ verifier_archive() {
 
 prepare_verifier() {
   if [ -n "$UNYOLO_VERIFIER_FILE" ]; then
-    echo "$UNYOLO_VERIFIER_FILE"
+    verifier="$UNYOLO_VERIFIER_FILE"
     return
   fi
 
@@ -233,11 +238,10 @@ prepare_verifier() {
   verifier_root="${verifier_root%.zip}"
   verifier="${tmp_dir}/${verifier_root}/bin/gh"
   [ -x "$verifier" ] || fail "pinned provenance verifier is missing its executable"
-  echo "$verifier"
 }
 
 verify_provenance() {
-  verifier="$(prepare_verifier)"
+  prepare_verifier
   for subject in "$@"; do
     if [ -n "$UNYOLO_SOURCE_COMMIT" ]; then
       "$verifier" attestation verify "$subject" \
@@ -401,13 +405,20 @@ tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
 main_dest_dir="$(choose_install_dir)"
 install_binary "${tmp_dir}/${BROKER}" "$main_dest_dir" "$BROKER"
 
-if [ -n "$COMPANION_BINARIES" ]; then
+libexec_dir=
+if [ -n "$COMPANION_BINARIES" ] || [ -n "$ATTESTATION_VERIFIER_NAME" ]; then
   libexec_dir="$(choose_libexec_dir "$main_dest_dir")"
+fi
+if [ -n "$COMPANION_BINARIES" ]; then
   for binary in $COMPANION_BINARIES; do
     install_binary "${tmp_dir}/${binary}" "$libexec_dir" "$binary"
     echo "Installed ${binary} to ${libexec_dir}/${binary}"
     "${libexec_dir}/${binary}" --version
   done
+fi
+if [ -n "$ATTESTATION_VERIFIER_NAME" ]; then
+  install_binary "$verifier" "$libexec_dir" "$ATTESTATION_VERIFIER_NAME"
+  echo "Installed ${ATTESTATION_VERIFIER_NAME} to ${libexec_dir}/${ATTESTATION_VERIFIER_NAME}"
 fi
 
 for binary in $PATH_COMPANION_BINARIES; do

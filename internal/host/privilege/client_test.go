@@ -101,7 +101,7 @@ func TestDownloadAndChecksum(t *testing.T) {
 
 func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
 	t.Setenv("GH_TOKEN", "environment-value")
-	token, err := githubToken(t.Context())
+	token, err := githubToken(t.Context(), "/unused")
 	if err != nil || string(token) != "environment-value" {
 		t.Fatalf("environment token = %q, %v", token, err)
 	}
@@ -114,11 +114,14 @@ func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	token, err = githubToken(t.Context())
+	if digest, digestErr := trustedGitHubCLI(gh); digestErr != nil || len(digest) != 64 {
+		t.Fatalf("trusted verifier digest = %q, %v", digest, digestErr)
+	}
+	token, err = githubToken(t.Context(), gh)
 	if err != nil || string(token) != "configured-value" {
 		t.Fatalf("configured token = %q, %v", token, err)
 	}
-	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), "0.4.1", "unyolo/v0.4.1", token)
+	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), gh, strings.Repeat("b", 64), "0.4.1", "unyolo/v0.4.1", token)
 	for _, argument := range command.Args {
 		if strings.Contains(argument, string(token)) {
 			t.Fatal("GitHub token was included in a process argument")
@@ -139,13 +142,13 @@ func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
 	clear(token)
 
 	t.Setenv("GH_TOKEN", strings.Repeat("x", maxGitHubTokenBytes+1))
-	if token, err := githubToken(t.Context()); err == nil || token != nil {
+	if token, err := githubToken(t.Context(), gh); err == nil || token != nil {
 		t.Fatal("oversized GitHub token was accepted")
 	}
 }
 
 func TestClientRejectsInvalidWorkerData(t *testing.T) {
-	if client, err := Start(t.Context(), "latest", io.Discard); err == nil || client != nil {
+	if client, err := Start(t.Context(), "latest", "", io.Discard); err == nil || client != nil {
 		t.Fatal("invalid release was accepted")
 	}
 	client := &Client{input: &bufferCloser{}, output: framedReader(t, Response{APIVersion: "old"})}

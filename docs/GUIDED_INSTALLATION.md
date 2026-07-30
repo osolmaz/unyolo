@@ -79,7 +79,8 @@ then performs these checks before executing the staged CLI:
 3. GitHub build attestations bind the archive and checksum manifest to the unYOLO release workflow
    and selected tag.
 4. The archive contains exactly the declared regular files with no links or path escapes.
-5. The CLI build version, release tag, activation manifest, and setup runtime version agree.
+5. The pinned GitHub CLI used for attestation checks matches the checksum embedded in the verified installer.
+6. The CLI build version, release tag, activation manifest, and setup runtime version agree.
 
 A failed check removes staging and returns a nonzero status. No file from an unverified archive may
 be executed or copied to an installation directory.
@@ -87,9 +88,10 @@ be executed or copied to an installation directory.
 ## Staged setup
 
 Verification extracts the CLI and its declared companion files into a directory owned by the
-invoking operator with mode `0700`. The bootstrap runs that CLI with `/dev/tty` as its interactive
-input and output. The script itself does not collect configuration or credentials and never runs as
-root.
+invoking operator with mode `0700`. It also retains the checksum-verified GitHub CLI used for
+attestation checks, so protected setup does not depend on a system `gh` installation. The bootstrap
+runs the staged unYOLO CLI with `/dev/tty` as its interactive input and output. The script itself does
+not collect configuration or credentials and never runs as root.
 
 The staged CLI may keep a nonsecret resumable setup session after the operator has made the first
 choice. The UI must say when that session is saved. Credentials remain outside the session and
@@ -110,6 +112,8 @@ Install the verified unYOLO CLI and continue to protected host planning?
 A negative answer or Ctrl-C leaves no active CLI installation and starts no root worker. A positive
 answer commits the user-level installation. Activation must finish before setup copies a root
 bootstrap, pins a runtime trust key, creates a service account, or changes any protected host path.
+A bootstrap run with `--plan-only` asks a narrower installation confirmation and activates the same
+verified CLI before it tells the operator to run `unyolo system plan`.
 
 This boundary gives failures a usable recovery path. If user-level activation fails, setup stops
 before protected mutation. If planning or apply fails after activation, the verified CLI and
@@ -127,6 +131,7 @@ A release is activated as one immutable file set. The default XDG layout is:
 ~/.local/share/unyolo/releases/v<version>/
   unyolo
   openclaw-unyolo-setup
+  gh-attestation-verifier
   providers/
   deployment-kits/
     artifacts/

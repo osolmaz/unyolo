@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 )
@@ -52,22 +53,26 @@ func (buffer *boundedTokenBuffer) Write(value []byte) (int, error) {
 
 // Start verifies the release-published root bootstrap as the operator, then
 // asks root to copy, rehash, and execute only the root-owned copy.
-func Start(ctx context.Context, release string, stderr io.Writer) (*Client, error) {
+func Start(ctx context.Context, release, githubCLI string, stderr io.Writer) (*Client, error) {
 	if !releasePattern.MatchString(release) {
 		return nil, errors.New("setup worker requires an exact release version")
 	}
-	temporary, bootstrap, expected, err := prepareRootBootstrap(ctx, release, stderr)
+	verifierDigest, err := trustedGitHubCLI(githubCLI)
 	if err != nil {
 		return nil, err
 	}
-	token, err := githubToken(ctx)
+	temporary, bootstrap, expected, err := prepareRootBootstrap(ctx, release, githubCLI, stderr)
+	if err != nil {
+		return nil, err
+	}
+	token, err := githubToken(ctx, githubCLI)
 	if err != nil {
 		_ = os.RemoveAll(temporary)
 		return nil, err
 	}
 	tag := "unyolo/" + release
 	build := strings.TrimPrefix(release, "v")
-	command := rootWorkerCommand(ctx, bootstrap, expected, build, tag, token)
+	command := rootWorkerCommand(ctx, bootstrap, expected, githubCLI, verifierDigest, build, tag, token)
 	clear(token)
 	input, err := command.StdinPipe()
 	if err != nil {
@@ -94,14 +99,44 @@ func Start(ctx context.Context, release string, stderr io.Writer) (*Client, erro
 	return &Client{command: command, input: input, output: output, temporary: temporary}, nil
 }
 
-func githubToken(ctx context.Context) ([]byte, error) {
+func trustedGitHubCLI(path string) (string, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return "", errors.New("GitHub attestation verifier path must be absolute and clean")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !validGitHubCLIMetadata(info) {
+		return "", errors.New("GitHub attestation verifier is missing or unsafe")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Geteuid() {
+		return "", errors.New("GitHub attestation verifier is not owned by the invoking operator")
+	}
+	file, err := os.Open(path) // #nosec G304 -- validated operator-owned verifier path.
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil || closeErr != nil {
+		return "", errors.Join(copyErr, closeErr)
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func validGitHubCLIMetadata(info os.FileInfo) bool {
+	return info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 && info.Mode().Perm()&0o022 == 0 &&
+		info.Mode().Perm()&0o111 != 0 && info.Size() >= 1 && info.Size() <= 256*1024*1024
+}
+
+func githubToken(ctx context.Context, githubCLI string) ([]byte, error) {
 	if value := strings.TrimSpace(os.Getenv("GH_TOKEN")); value != "" {
 		if len(value) > maxGitHubTokenBytes {
 			return nil, errors.New("GitHub authentication token exceeds size limit")
 		}
 		return []byte(value), nil
 	}
-	command := exec.CommandContext(ctx, "gh", "auth", "token")
+	command := exec.CommandContext(ctx, githubCLI, "auth", "token") // #nosec G204 -- executable is the validated pinned verifier.
 	output := boundedTokenBuffer{maximum: maxGitHubTokenBytes}
 	command.Stdout = &output
 	command.Stderr = io.Discard
@@ -116,9 +151,9 @@ func githubToken(ctx context.Context) ([]byte, error) {
 	return data, nil
 }
 
-func rootWorkerCommand(ctx context.Context, bootstrap, expected, build, tag string, token []byte) *exec.Cmd {
-	script := `set -eu; src=$1; expected=$2; build=$3; tag=$4; destination="/opt/unyolo/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$src" "$destination/bootstrap-root.sh.new"; actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); [ "$actual" = "$expected" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; exec "$destination/bootstrap-root.sh" "$tag"`
-	command := exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, build, tag) // #nosec G204 -- fixed staging command with verified release-derived values.
+func rootWorkerCommand(ctx context.Context, bootstrap, expected, githubCLI, verifierDigest, build, tag string, token []byte) *exec.Cmd {
+	script := `set -eu; bootstrap=$1; bootstrap_digest=$2; verifier=$3; verifier_digest=$4; build=$5; tag=$6; destination="/opt/unyolo/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$bootstrap" "$destination/bootstrap-root.sh.new"; install -o root -g root -m 0500 "$verifier" "$destination/gh-attestation-verifier.new"; bootstrap_actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || bootstrap_actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); verifier_actual=$(sha256sum "$destination/gh-attestation-verifier.new" 2>/dev/null | awk '{print $1}') || verifier_actual=$(shasum -a 256 "$destination/gh-attestation-verifier.new" | awk '{print $1}'); [ "$bootstrap_actual" = "$bootstrap_digest" ]; [ "$verifier_actual" = "$verifier_digest" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; mv -f "$destination/gh-attestation-verifier.new" "$destination/gh-attestation-verifier"; UNYOLO_GH_VERIFIER="$destination/gh-attestation-verifier" exec "$destination/bootstrap-root.sh" "$tag"`
+	command := exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, githubCLI, verifierDigest, build, tag) // #nosec G204 -- fixed staging command with verified release-derived values.
 	environment := make([]string, 0, len(os.Environ())+1)
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(value, "GH_TOKEN=") {
@@ -129,7 +164,7 @@ func rootWorkerCommand(ctx context.Context, bootstrap, expected, build, tag stri
 	return command
 }
 
-func prepareRootBootstrap(ctx context.Context, release string, stderr io.Writer) (string, string, string, error) {
+func prepareRootBootstrap(ctx context.Context, release, githubCLI string, stderr io.Writer) (string, string, string, error) {
 	temporary, err := os.MkdirTemp("", "unyolo-root-bootstrap.*")
 	if err != nil {
 		return "", "", "", err
@@ -160,7 +195,7 @@ func prepareRootBootstrap(ctx context.Context, release string, stderr io.Writer)
 		return fail(errors.New("root bootstrap checksum mismatch"))
 	}
 	workflow := "osolmaz/unyolo/.github/workflows/release.yml"
-	command := exec.CommandContext(ctx, "gh", "attestation", "verify", bootstrap,
+	command := exec.CommandContext(ctx, githubCLI, "attestation", "verify", bootstrap,
 		"--repo", "osolmaz/unyolo", "--signer-workflow", workflow,
 		"--source-ref", "refs/tags/unyolo/"+release, "--deny-self-hosted-runners") // #nosec G204 -- fixed verifier and validated release.
 	command.Stdout, command.Stderr = io.Discard, stderr
