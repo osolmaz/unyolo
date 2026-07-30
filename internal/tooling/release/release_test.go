@@ -13,6 +13,7 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
 func TestValidate(t *testing.T) {
@@ -54,6 +55,45 @@ func TestValidateDeploymentKitOptions(t *testing.T) {
 				t.Fatal("invalid deployment kit release options were accepted")
 			}
 		})
+	}
+}
+
+func TestRepositoryDeploymentReleaseInputsExist(t *testing.T) {
+	repository := filepath.Clean(filepath.Join("..", "..", ".."))
+	descriptors := []string{
+		"brokers/github/deployment/release.json",
+		"brokers/huggingface/deployment/release.json",
+		"brokers/sudo/deployment/release.json",
+		"brokers/sudo/deployment/release-exec.json",
+	}
+	for _, relative := range descriptors {
+		descriptorPath := filepath.Join(repository, filepath.FromSlash(relative))
+		data, err := os.ReadFile(descriptorPath)
+		if err != nil {
+			t.Fatalf("read %s: %v", relative, err)
+		}
+		var descriptor deploymentReleaseComponent
+		if err := strictjson.Decode(data, &descriptor, true); err != nil {
+			t.Fatalf("decode %s: %v", relative, err)
+		}
+		directory := filepath.Dir(descriptorPath)
+		sources := make([]string, 0, len(descriptor.AdditionalProfileFiles)+1)
+		if descriptor.Profile != "" {
+			sources = append(sources, descriptor.Profile)
+		}
+		for _, file := range descriptor.AdditionalProfileFiles {
+			sources = append(sources, file.Source)
+		}
+		for _, source := range sources {
+			path := filepath.Join(directory, filepath.FromSlash(source))
+			info, err := os.Lstat(path)
+			if err != nil {
+				t.Fatalf("release input %s referenced by %s: %v", source, relative, err)
+			}
+			if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+				t.Fatalf("release input %s referenced by %s is not a regular file", source, relative)
+			}
+		}
 	}
 }
 
