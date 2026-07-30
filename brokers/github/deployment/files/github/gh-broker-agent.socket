@@ -1,0 +1,15 @@
+[Unit]
+Description=gh-broker agent socket
+
+[Socket]
+ListenStream=/run/unyolo/github/agent/broker.sock
+FileDescriptorName=agent
+SocketUser=gh-broker
+SocketGroup=gh-broker-agent
+SocketMode=0660
+DirectoryMode=0750
+Service=gh-broker.service
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

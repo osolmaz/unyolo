@@ -1,0 +1,23 @@
+[Unit]
+Description=sudo-broker approval frontend
+After=network-online.target sudo-broker-exec.service sudo-broker-agent.socket sudo-broker-operator.socket
+Wants=network-online.target
+Requires=sudo-broker-exec.service sudo-broker-agent.socket sudo-broker-operator.socket
+
+[Service]
+Type=simple
+User=sudo-broker
+Group=sudo-broker
+EnvironmentFile=/etc/sudo-broker/frontend.env
+ExecStart=/opt/unyolo/current/bin/sudo-broker serve --policy /etc/sudo-broker/policy.json --catalog /etc/sudo-broker/catalog.json --secrets /etc/sudo-broker/secrets --operator-secrets /etc/sudo-broker/operator-secrets --state /var/lib/sudo-broker/frontend --helper-socket /run/sudo-broker/helper.sock --agent-endpoint activation://agent --operator-endpoint activation://operator
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sudo-broker/frontend
+ReadOnlyPaths=/etc/sudo-broker
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,170 @@
+{
+  "api_version": "unyolo.io/github-deployment/v1",
+  "accounts": [
+    {
+      "name": "gh-broker",
+      "group": "gh-broker",
+      "home": "/var/lib/gh-broker",
+      "shell": "/usr/sbin/nologin"
+    }
+  ],
+  "groups": [
+    {
+      "name": "gh-broker"
+    },
+    {
+      "name": "gh-broker-agent",
+      "members": [
+        "$UNYOLO_AGENT"
+      ]
+    },
+    {
+      "name": "gh-broker-operator",
+      "members": [
+        "$UNYOLO_OPERATOR"
+      ]
+    }
+  ],
+  "directories": [
+    {
+      "id": "config",
+      "destination": "/etc/gh-broker",
+      "mode": 488,
+      "owner": "root",
+      "group": "gh-broker"
+    },
+    {
+      "id": "state",
+      "destination": "/var/lib/gh-broker",
+      "mode": 448,
+      "owner": "gh-broker",
+      "group": "gh-broker"
+    }
+  ],
+  "files": [
+    {
+      "id": "scope-json",
+      "source": {
+        "path": "files/github/scope.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/gh-broker/scope.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "gh-broker",
+      "restart": true
+    },
+    {
+      "id": "policy-profile-json",
+      "source": {
+        "path": "files/github/policy-profile.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/gh-broker/policy-profile.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "gh-broker",
+      "restart": true
+    },
+    {
+      "id": "policy-manifest-json",
+      "source": {
+        "path": "files/github/policy-manifest.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/gh-broker/policy-manifest.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "gh-broker",
+      "restart": true
+    },
+    {
+      "id": "env",
+      "source": {
+        "path": "files/github/env",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/gh-broker/env",
+      "mode": 416,
+      "owner": "root",
+      "group": "gh-broker",
+      "restart": true
+    },
+    {
+      "id": "gh-broker-service",
+      "source": {
+        "path": "files/github/gh-broker.service",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/gh-broker.service",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "gh-broker-agent-socket",
+      "source": {
+        "path": "files/github/gh-broker-agent.socket",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/gh-broker-agent.socket",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "gh-broker-operator-socket",
+      "source": {
+        "path": "files/github/gh-broker-operator.socket",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/gh-broker-operator.socket",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    }
+  ],
+  "credentials": [
+    {
+      "slot": "github-provider-token",
+      "destination": "/etc/gh-broker/github-token",
+      "mode": 384,
+      "owner": "gh-broker",
+      "group": "gh-broker",
+      "encoding": "raw"
+    },
+    {
+      "slot": "github-agent-secret",
+      "destination": "/etc/gh-broker/secrets",
+      "mode": 384,
+      "owner": "gh-broker",
+      "group": "gh-broker",
+      "encoding": "client_secret_file",
+      "client_id": "agent"
+    },
+    {
+      "slot": "github-operator-secret",
+      "destination": "/etc/gh-broker/operator-secrets",
+      "mode": 384,
+      "owner": "gh-broker",
+      "group": "gh-broker",
+      "encoding": "client_secret_file",
+      "client_id": "operator"
+    }
+  ],
+  "clients": [
+    {
+      "agent_id": "agent",
+      "broker_name": "gh-broker",
+      "env_prefix": "GH_BROKER",
+      "secret_slot": "github-agent-secret",
+      "endpoint": "unix:///run/unyolo/github/agent/broker.sock"
+    }
+  ],
+  "services": [
+    "gh-broker.service"
+  ]
+}

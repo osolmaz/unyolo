@@ -23,19 +23,22 @@ var supportedTargets = []Target{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin
 
 var (
 	brokerNamePattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-	archivePathPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$`)
+	archivePathPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._+-]+)*$`)
+	commitPattern      = regexp.MustCompile(`^[0-9a-f]{40}$`)
 )
 
 // Options configures release asset generation.
 type Options struct {
-	Directory     string
-	Broker        string
-	Command       string
-	Version       string
-	Dist          string
-	ExtraCommands map[string]string
-	ExtraFiles    map[string]string
-	Targets       []Target
+	Directory            string
+	Broker               string
+	Command              string
+	Version              string
+	Dist                 string
+	SourceCommit         string
+	ExtraCommands        map[string]string
+	ExtraFiles           map[string]string
+	DeploymentComponents []string
+	Targets              []Target
 }
 
 // Target identifies one natively built release platform.
@@ -186,7 +189,25 @@ func validate(options Options) error {
 	if err := validateExtraCommands(options.Broker, options.ExtraCommands); err != nil {
 		return err
 	}
+	if err := validateDeploymentOptions(options); err != nil {
+		return err
+	}
 	return validateExtraFiles(options.Broker, options.ExtraCommands, options.ExtraFiles)
+}
+
+func validateDeploymentOptions(options Options) error {
+	if len(options.DeploymentComponents) == 0 {
+		return nil
+	}
+	if options.Broker != "unyolo" || !commitPattern.MatchString(options.SourceCommit) {
+		return errors.New("deployment kits require the unyolo release and an exact source commit")
+	}
+	for _, path := range options.DeploymentComponents {
+		if strings.TrimSpace(path) == "" {
+			return errors.New("deployment component descriptors must use nonempty paths")
+		}
+	}
+	return nil
 }
 
 func requiredReleaseOptions(options Options) bool {
@@ -208,8 +229,7 @@ func validateExtraFiles(broker string, commands, files map[string]string) error 
 		seen[name] = true
 	}
 	for name, source := range files {
-		clean := filepath.ToSlash(filepath.Clean(name))
-		if clean != name || !archivePathPattern.MatchString(name) || name == "." || filepath.IsAbs(name) || strings.HasPrefix(name, "../") || seen[name] || strings.TrimSpace(source) == "" {
+		if !safeArchivePath(name) || seen[name] || strings.TrimSpace(source) == "" {
 			return errors.New("extra files must use unique safe relative names and nonempty sources")
 		}
 		seen[name] = true
@@ -223,26 +243,59 @@ func build(ctx context.Context, options Options, goos, goarch string) (string, e
 		return "", err
 	}
 	defer func() { _ = os.RemoveAll(work) }()
-	binaries := make(map[string]string, len(options.ExtraCommands)+1)
-	binary := filepath.Join(work, options.Broker)
-	if err := buildExecutable(ctx, options, options.Command, binary, goos, goarch); err != nil {
+	binaries, err := buildReleaseBinaries(ctx, work, options, goos, goarch)
+	if err != nil {
 		return "", err
 	}
-	binaries[options.Broker] = binary
-	names := make([]string, 0, len(options.ExtraCommands))
-	for name := range options.ExtraCommands {
+	if len(options.DeploymentComponents) > 0 {
+		if err := attachDeploymentKits(work, &options, binaries, goos, goarch); err != nil {
+			return "", err
+		}
+	}
+	asset := filepath.Join(options.Dist, fmt.Sprintf("%s_%s_%s.tar.gz", options.Broker, goos, goarch))
+	return asset, archiveBinaries(asset, options, binaries)
+}
+
+func buildReleaseBinaries(ctx context.Context, work string, options Options, goos, goarch string) (map[string]string, error) {
+	binaries := make(map[string]string, len(options.ExtraCommands)+1)
+	commands := make(map[string]string, len(options.ExtraCommands)+1)
+	commands[options.Broker] = options.Command
+	for name, command := range options.ExtraCommands {
+		commands[name] = command
+	}
+	names := make([]string, 0, len(commands))
+	for name := range commands {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
 		path := filepath.Join(work, name)
-		if err := buildExecutable(ctx, options, options.ExtraCommands[name], path, goos, goarch); err != nil {
-			return "", err
+		if err := buildExecutable(ctx, options, commands[name], path, goos, goarch); err != nil {
+			return nil, err
 		}
 		binaries[name] = path
 	}
-	asset := filepath.Join(options.Dist, fmt.Sprintf("%s_%s_%s.tar.gz", options.Broker, goos, goarch))
-	return asset, archiveBinaries(asset, options, binaries)
+	return binaries, nil
+}
+
+func attachDeploymentKits(work string, options *Options, binaries map[string]string, goos, goarch string) error {
+	generated, runtimeBinaries, err := generateDeploymentKits(work, *options, binaries, goos, goarch)
+	if err != nil {
+		return err
+	}
+	if options.ExtraFiles == nil {
+		options.ExtraFiles = map[string]string{}
+	}
+	for name, source := range generated {
+		if _, exists := options.ExtraFiles[name]; exists {
+			return fmt.Errorf("generated deployment file %q conflicts with an extra file", name)
+		}
+		options.ExtraFiles[name] = source
+	}
+	for name := range runtimeBinaries {
+		delete(binaries, name)
+	}
+	return nil
 }
 
 func buildExecutable(ctx context.Context, options Options, command string, binary string, goos string, goarch string) error {
@@ -313,7 +366,11 @@ func archiveFiles(options Options, binaries map[string]string) []archiveFile {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		files = append(files, archiveFile{options.ExtraFiles[name], name, 0o644})
+		mode := int64(0o644)
+		if strings.HasPrefix(name, "deployment-kits/artifacts/") {
+			mode = 0o755
+		}
+		files = append(files, archiveFile{options.ExtraFiles[name], name, mode})
 	}
 	files = append(files,
 		archiveFile{filepath.Join(options.Directory, "README.md"), "README.md", 0o644},

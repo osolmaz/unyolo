@@ -28,10 +28,11 @@ reviews the selected pack in place.
 
 Setup shows the deployment review before asking whether to install the verified
 CLI and continue to protected planning. CLI activation finishes before the root
-worker starts. The root phase separately verifies and pins the attested unYOLO
-runtime public key before any deployment adapter can run. Production validation
-and planning reject a missing or different key. The CLI refuses interactive
-root execution. Setup validates every signed component
+worker starts. The root phase independently verifies the release archive's
+GitHub attestation and stores its exact runtime templates below the root-owned
+host state. Production validation and planning reject a runtime manifest,
+signature, or public key that differs from those attested templates. The CLI
+refuses interactive root execution. Setup validates every signed component
 adapter and shows the complete plan. Only then does it start the matching
 root-owned worker. Credential values move
 through one-use anonymous pipes and are not written to the setup session or

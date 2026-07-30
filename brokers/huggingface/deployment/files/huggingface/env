@@ -1,0 +1,8 @@
+HF_BROKER_HF_TOKEN_FILE=/etc/hf-broker/hf-token
+HF_BROKER_SECRETS_FILE=/etc/hf-broker/secrets
+HF_BROKER_SCOPE_FILE=/etc/hf-broker/scope.json
+HF_BROKER_STATE_DIR=/var/lib/hf-broker
+HF_BROKER_XET_PYTHON=python3
+HF_BROKER_AGENT_ENDPOINT=activation://agent
+HF_BROKER_OPERATOR_SECRETS_FILE=/etc/hf-broker/operator-secrets
+HF_BROKER_OPERATOR_ENDPOINT=activation://operator

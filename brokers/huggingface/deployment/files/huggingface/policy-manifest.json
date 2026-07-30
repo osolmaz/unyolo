@@ -1,0 +1,1822 @@
+{
+  "version": 1,
+  "provider": "huggingface",
+  "preset": "request-all-agent-operations",
+  "catalog_digest": "sha256:69419dac8e027d431291252e04702237af9351980876d17e5338f39372b66fa5",
+  "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
+  "policy_digest": "sha256:f1f1d00a3299708531351b4e3b27f775a2043a8571cdf26e6928aa6bbf0829cc",
+  "operation_counts": {
+    "total": 258,
+    "allow": 8,
+    "request": 141,
+    "deny": 109
+  },
+  "operations": [
+    {
+      "name": "auth.permission.check",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:3779e86798cdbfeb8f44ef4a94dbf4e89ba6c542ce0364ade0ce8bfcb110f2f9",
+      "effect": "deny"
+    },
+    {
+      "name": "bucket.batch.apply",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6c915f90b6e6fadabbb4dbc34009ffea530f15919cb9be7793d02d4d25546070",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6c915f90b6e6fadabbb4dbc34009ffea530f15919cb9be7793d02d4d25546070",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:60e17ef4d1f7582d224a88098a4944affd88dc0c4088c117c93f5889f3923184",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.list",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:8bee6e0740777ec3a47a20fdeb19335341763cecba62286f9d557fa4c21935b7",
+      "effect": "allow"
+    },
+    {
+      "name": "bucket.metadata.read",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:8bee6e0740777ec3a47a20fdeb19335341763cecba62286f9d557fa4c21935b7",
+      "effect": "allow"
+    },
+    {
+      "name": "bucket.move",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:3c2ca8f5030cab38628b7c09c426045860bde990cbe6e412496d4cdcc69b5b8a",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.object.copy",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6c915f90b6e6fadabbb4dbc34009ffea530f15919cb9be7793d02d4d25546070",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.object.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:60e17ef4d1f7582d224a88098a4944affd88dc0c4088c117c93f5889f3923184",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.object.list",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:8bee6e0740777ec3a47a20fdeb19335341763cecba62286f9d557fa4c21935b7",
+      "effect": "allow"
+    },
+    {
+      "name": "bucket.object.read",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:8bee6e0740777ec3a47a20fdeb19335341763cecba62286f9d557fa4c21935b7",
+      "effect": "allow"
+    },
+    {
+      "name": "bucket.object.write",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:891f286a23d72773e11ad886d3ba9a3e1eb2bdaff482dfef6b00348c5f48f83b",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.resource_group.set",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:3c2ca8f5030cab38628b7c09c426045860bde990cbe6e412496d4cdcc69b5b8a",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.sync.apply",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6c915f90b6e6fadabbb4dbc34009ffea530f15919cb9be7793d02d4d25546070",
+      "effect": "request"
+    },
+    {
+      "name": "bucket.visibility.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6c915f90b6e6fadabbb4dbc34009ffea530f15919cb9be7793d02d4d25546070",
+      "effect": "request"
+    },
+    {
+      "name": "catalog.agent_harness.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.dataset.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.docs.search",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.kernel.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.model.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.paper.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.quicksearch",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "catalog.space.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:35ad1e3c58c478dab6729bc04852b78d195e8cc80e4583abed31c539ce42f734",
+      "effect": "deny"
+    },
+    {
+      "name": "collection.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e5c09560e949ecdf8e4cea076c9ad80645e82e8abb9fe2d4d249b20ad0cc4011",
+      "effect": "request"
+    },
+    {
+      "name": "collection.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:07136fd35be05c8a934317b2d6501c9a6bcda95a14d91694570380a7ca4303ac",
+      "effect": "request"
+    },
+    {
+      "name": "collection.item.add",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e5c09560e949ecdf8e4cea076c9ad80645e82e8abb9fe2d4d249b20ad0cc4011",
+      "effect": "request"
+    },
+    {
+      "name": "collection.item.batch",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e5c09560e949ecdf8e4cea076c9ad80645e82e8abb9fe2d4d249b20ad0cc4011",
+      "effect": "request"
+    },
+    {
+      "name": "collection.item.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:140da007eb3ced71aa11658b7ce290e6f58f79f50e674a37840719fa9b61d7fd",
+      "effect": "request"
+    },
+    {
+      "name": "collection.item.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e5c09560e949ecdf8e4cea076c9ad80645e82e8abb9fe2d4d249b20ad0cc4011",
+      "effect": "request"
+    },
+    {
+      "name": "collection.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:995e1a9e097803dc7dfc21daaf5439fd8aeeb1ca6c094181c5f7313c146cf546",
+      "effect": "deny"
+    },
+    {
+      "name": "collection.metadata.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e5c09560e949ecdf8e4cea076c9ad80645e82e8abb9fe2d4d249b20ad0cc4011",
+      "effect": "request"
+    },
+    {
+      "name": "collection.resource_group.set",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:9e6d63c62750da91a2487a1fb8086061acfeffee5a9a1185f50c01522e356f05",
+      "effect": "request"
+    },
+    {
+      "name": "dataset.leaderboard.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:4d3ab26c8fdd13b3459b159607c5a59d10f5f54daf6adae268a96395f874eb4d",
+      "effect": "deny"
+    },
+    {
+      "name": "dataset.parquet.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:4d3ab26c8fdd13b3459b159607c5a59d10f5f54daf6adae268a96395f874eb4d",
+      "effect": "deny"
+    },
+    {
+      "name": "discussion.comment.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.comment.edit",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.comment.hide",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "discussion.pin.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "discussion.status.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "discussion.title.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.catalog.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:7052f4343eda3e9bb65af40d57dc3e9c0f40d49a8ce16e5cb419d892669bfd21",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.catalog.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e305ec126187fddd1ca21a433f6332c3cfc980a462e95b69125c38fc060ca1ee",
+      "effect": "deny"
+    },
+    {
+      "name": "endpoint.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1fa804163b6b902974c68d853ba025ca9a0c4d94b972d46ffe84d0d9147b1433",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:422e3228919fa6af064643a7a712d574eb1b726ca81a8680fda2135b1eb4aaee",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e305ec126187fddd1ca21a433f6332c3cfc980a462e95b69125c38fc060ca1ee",
+      "effect": "deny"
+    },
+    {
+      "name": "endpoint.pause",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f1041a45bbc979a6ac41a89798aaf3a5f53beb74ef74fb78dd3206575c46c519",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e305ec126187fddd1ca21a433f6332c3cfc980a462e95b69125c38fc060ca1ee",
+      "effect": "deny"
+    },
+    {
+      "name": "endpoint.resume",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:7052f4343eda3e9bb65af40d57dc3e9c0f40d49a8ce16e5cb419d892669bfd21",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.scale_to_zero",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f1041a45bbc979a6ac41a89798aaf3a5f53beb74ef74fb78dd3206575c46c519",
+      "effect": "request"
+    },
+    {
+      "name": "endpoint.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1fa804163b6b902974c68d853ba025ca9a0c4d94b972d46ffe84d0d9147b1433",
+      "effect": "request"
+    },
+    {
+      "name": "git.fetch",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "git.push.append",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:30da084c80e847951a7c97c09936b9e06b95eb38c4bd9dae0633ed2c8e04f36b",
+      "effect": "request"
+    },
+    {
+      "name": "git.push.force",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:804b4ca614e434427db1fd82e3e14f51c310854134ce7b912f089e493d626759",
+      "effect": "request"
+    },
+    {
+      "name": "git.ref.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:804b4ca614e434427db1fd82e3e14f51c310854134ce7b912f089e493d626759",
+      "effect": "request"
+    },
+    {
+      "name": "git.tag.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:09b3a2b18165d5e7990e5ca9d10e502d19ac143ddae6fe073b0e01fb3c4fb17a",
+      "effect": "request"
+    },
+    {
+      "name": "identity.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:1b48acef772455dff41c6fc462d09dd17c9db4c9a473140f39152ecdec8924ad",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.audio.classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.audio.transcribe",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.audio.transform",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.chat.complete",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.document_question_answer",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.endpoint.health",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.endpoint.info",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.feature.extract",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.fill_mask",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.image.caption",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.image.classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.image.segment",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.image.transform",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.image_to_video",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.models.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.object.detect",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.question_answer",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.sentence_similarity",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.table_question_answer",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.tabular.classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.tabular.regress",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text.classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text.generate",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text.summarize",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text.translate",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text_to_image",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text_to_speech",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.text_to_video",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.token.classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.visual_question_answer",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.zero_shot.classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "inference.zero_shot.image_classify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
+      "effect": "deny"
+    },
+    {
+      "name": "job.cancel",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c0ca2fdf0cb9f0dbed48d8d1918ab3cd4d42ad8403e1853c5225fe6f3b47b124",
+      "effect": "request"
+    },
+    {
+      "name": "job.duplicate",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:06b2b67d43ba5eaaed3a2003736e3c2d7ce3c141df384452bd696c7a73b117ed",
+      "effect": "request"
+    },
+    {
+      "name": "job.hardware.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
+      "effect": "deny"
+    },
+    {
+      "name": "job.labels.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c0ca2fdf0cb9f0dbed48d8d1918ab3cd4d42ad8403e1853c5225fe6f3b47b124",
+      "effect": "request"
+    },
+    {
+      "name": "job.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
+      "effect": "deny"
+    },
+    {
+      "name": "job.logs.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
+      "effect": "deny"
+    },
+    {
+      "name": "job.metrics.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
+      "effect": "deny"
+    },
+    {
+      "name": "job.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
+      "effect": "deny"
+    },
+    {
+      "name": "job.run",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:06b2b67d43ba5eaaed3a2003736e3c2d7ce3c141df384452bd696c7a73b117ed",
+      "effect": "request"
+    },
+    {
+      "name": "job.uv.run",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:06b2b67d43ba5eaaed3a2003736e3c2d7ce3c141df384452bd696c7a73b117ed",
+      "effect": "request"
+    },
+    {
+      "name": "notification.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6f198601b0002510bab1f65fe82cd8fbb8b869b4a74de327f55335fd8a816f3c",
+      "effect": "request"
+    },
+    {
+      "name": "notification.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:1bc512bcdf2847ee22ccb94294aa4d7de4d6091a0da05c0d62a45066dfbcb713",
+      "effect": "deny"
+    },
+    {
+      "name": "notification.read_status.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a5dc602a066a3df6468a3b36fca53fb45313153629cbc2615ae76c75a268af3",
+      "effect": "request"
+    },
+    {
+      "name": "notification.settings.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a5dc602a066a3df6468a3b36fca53fb45313153629cbc2615ae76c75a268af3",
+      "effect": "request"
+    },
+    {
+      "name": "organization.audit.export",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:0d110b1617a257f4f433b078cd296c98ed00e920f87d07045c4454ed46e57124",
+      "effect": "deny"
+    },
+    {
+      "name": "organization.billing.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:0d110b1617a257f4f433b078cd296c98ed00e920f87d07045c4454ed46e57124",
+      "effect": "deny"
+    },
+    {
+      "name": "organization.member.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:47955e671f5008a116d41493ba362328b2ad60dbddfba1acb4823b61e83c8557",
+      "effect": "deny"
+    },
+    {
+      "name": "organization.member.role.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:59ae68ff751114e5b68f1f30786313c180443df7f2ea05284591db9e8af6ee5b",
+      "effect": "request"
+    },
+    {
+      "name": "organization.member.token.revoke",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:5c04eff398db0a4e82eaedced0880db7fc324c7bb9baa3249fe423069f2c0c04",
+      "effect": "request"
+    },
+    {
+      "name": "organization.network_security.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:0d110b1617a257f4f433b078cd296c98ed00e920f87d07045c4454ed46e57124",
+      "effect": "deny"
+    },
+    {
+      "name": "organization.network_security.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:59ae68ff751114e5b68f1f30786313c180443df7f2ea05284591db9e8af6ee5b",
+      "effect": "request"
+    },
+    {
+      "name": "organization.overview.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:47955e671f5008a116d41493ba362328b2ad60dbddfba1acb4823b61e83c8557",
+      "effect": "deny"
+    },
+    {
+      "name": "organization.repositories.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:47955e671f5008a116d41493ba362328b2ad60dbddfba1acb4823b61e83c8557",
+      "effect": "deny"
+    },
+    {
+      "name": "paper.authorship.claim",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:d199759fe51b9fb799a2e252860cd3bb68ff69ab435b45516ab74345ad4f5c6a",
+      "effect": "request"
+    },
+    {
+      "name": "paper.index",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:d199759fe51b9fb799a2e252860cd3bb68ff69ab435b45516ab74345ad4f5c6a",
+      "effect": "request"
+    },
+    {
+      "name": "paper.links.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:d199759fe51b9fb799a2e252860cd3bb68ff69ab435b45516ab74345ad4f5c6a",
+      "effect": "request"
+    },
+    {
+      "name": "provisioning.account.request",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:449f7c063d3fb84135cb8a4ec4eb98ccbcbb334bc0c1b91ecb81916cc3c07109",
+      "effect": "request"
+    },
+    {
+      "name": "provisioning.deep_link.create",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:df48f40ddb9edc6cea26e24e2e69f7cf16aff490a2026a722d98fdda5b922418",
+      "effect": "deny"
+    },
+    {
+      "name": "provisioning.resource.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:3867a15334a08256dea5ed571e8cd22bbe5ae4aa29fc88decc3fbe17ce3419cb",
+      "effect": "request"
+    },
+    {
+      "name": "provisioning.resource.credentials.rotate",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:7722cacfeeb0bdfb1fac810c49bc6c50ed6b029f136b2d1dc1b5015f66ce10b9",
+      "effect": "deny"
+    },
+    {
+      "name": "provisioning.resource.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:bad3b0866c6c3c29f42154012a00ce9efa192241ef7099ef14bc11bea0d0fe19",
+      "effect": "deny"
+    },
+    {
+      "name": "provisioning.resource.remove",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:aafdeb036fc97219edb3b1b1cfd24f28ccb4e87fa19c748ba32e48140dddf830",
+      "effect": "request"
+    },
+    {
+      "name": "provisioning.resource.service.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:3867a15334a08256dea5ed571e8cd22bbe5ae4aa29fc88decc3fbe17ce3419cb",
+      "effect": "request"
+    },
+    {
+      "name": "provisioning.service.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:bad3b0866c6c3c29f42154012a00ce9efa192241ef7099ef14bc11bea0d0fe19",
+      "effect": "deny"
+    },
+    {
+      "name": "pull_request.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "pull_request.merge",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "pull_request.ref.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "pull_request.storage.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.access.grant",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.access.report.export",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:09b3a2b18165d5e7990e5ca9d10e502d19ac143ddae6fe073b0e01fb3c4fb17a",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.access.request.accept",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.access.request.batch",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.access.request.cancel",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.access.request.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.access.request.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.access.request.reject",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.branch.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.branch.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "repo.checksums.verify",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.commit.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.commits.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.contents.read",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "allow"
+    },
+    {
+      "name": "repo.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "repo.duplicate",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:abb881acb8465b5ce2b334fd6ea3033046d52ed6021a4a80890ad67457282949",
+      "effect": "request"
+    },
+    {
+      "name": "repo.exists",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.file.copy",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.file.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "repo.file.exists",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.file.metadata.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.file.upload",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.gating.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.history.super_squash",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "repo.lfs.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.lfs.permanent_delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "repo.list",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "allow"
+    },
+    {
+      "name": "repo.metadata.read",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "allow"
+    },
+    {
+      "name": "repo.move",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.notebook.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.refs.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.resource_group.set",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0a689082a97f8024d59287cb2f7249a91fb33b5ffa3f24f0bcc1319fef38acc3",
+      "effect": "request"
+    },
+    {
+      "name": "repo.revision.exists",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.security.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.snapshot.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "deny"
+    },
+    {
+      "name": "repo.tag.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "repo.tag.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:19dd7b3cc9562a7ec5d4aa7a86f39565cd8cd266d0b0c9bc8eb3f60ad6ac1bc6",
+      "effect": "request"
+    },
+    {
+      "name": "repo.tree.list",
+      "operation_revision": 1,
+      "default_effect": "allow",
+      "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
+      "effect": "allow"
+    },
+    {
+      "name": "repo.visibility.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1a4ee365d637cec5ce061620179e3cc9161470805060c3e04359943cbadf8c86",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.auto_join.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:4d6afdad36ee86d6cd6291a8843a14cfbc3eba20ae90a3d55310e45a62569406",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:4d6afdad36ee86d6cd6291a8843a14cfbc3eba20ae90a3d55310e45a62569406",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:269d6410ff950847f07968bef51a1f2506e59f54007da3539603b5c4bd672d99",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:fd9fe5edbcba021abe9eff344adb9e3827b7f6c039d0327cfcd887953d66987f",
+      "effect": "deny"
+    },
+    {
+      "name": "resource_group.member.add",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:4d6afdad36ee86d6cd6291a8843a14cfbc3eba20ae90a3d55310e45a62569406",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.member.remove",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:269d6410ff950847f07968bef51a1f2506e59f54007da3539603b5c4bd672d99",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.member.role.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:4d6afdad36ee86d6cd6291a8843a14cfbc3eba20ae90a3d55310e45a62569406",
+      "effect": "request"
+    },
+    {
+      "name": "resource_group.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:4d6afdad36ee86d6cd6291a8843a14cfbc3eba20ae90a3d55310e45a62569406",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.connect",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:9e627a3dd7bfee2c00eefc6ffdee20e455c5f23d97129c78a483dc5fbd11b85e",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1e6be0d3787c0d0403393a7b39c66f398a95ebc5122fb8bc7100ef6393f75b90",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.file.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1e6be0d3787c0d0403393a7b39c66f398a95ebc5122fb8bc7100ef6393f75b90",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.file.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.file.mkdir",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0918d3a6a587c2c8e7e62450ae22fb6cf7c1e46af79b26ee8564633c106da564",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.file.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.file.write",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0918d3a6a587c2c8e7e62450ae22fb6cf7c1e46af79b26ee8564633c106da564",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.pool.connect",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.pool.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1e6be0d3787c0d0403393a7b39c66f398a95ebc5122fb8bc7100ef6393f75b90",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.pool.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1e6be0d3787c0d0403393a7b39c66f398a95ebc5122fb8bc7100ef6393f75b90",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.pool.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.pool.warm",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0918d3a6a587c2c8e7e62450ae22fb6cf7c1e46af79b26ee8564633c106da564",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.port.proxy",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:606808818714fc32bf9ed1ca635f4007e5186a8397875d7d884277d15544bd7f",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.process.kill",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0918d3a6a587c2c8e7e62450ae22fb6cf7c1e46af79b26ee8564633c106da564",
+      "effect": "request"
+    },
+    {
+      "name": "sandbox.process.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "sandbox.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:e929f2a3115abc9f001da292c60c9f55e1c994e5dcb1b6ad062ee859d4117a14",
+      "effect": "deny"
+    },
+    {
+      "name": "scheduled_job.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e3e5e15217ddda721697f2a965d802826792629e1eb718469482fb59afc47fa4",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:0c9cd828e9243b22d6c07b72c7693441285f55bbc44cf874aa306491b046470c",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.labels.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:5b4bbe5f69cb0eff413ff65f6c10ae7484f320fbba03b30c3c8b5b113df96789",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:cc9aa1c6c30a23b6bd28a27dcb56b43f48557c4f0935da5ab1572b5ab66dc454",
+      "effect": "deny"
+    },
+    {
+      "name": "scheduled_job.resume",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:5b4bbe5f69cb0eff413ff65f6c10ae7484f320fbba03b30c3c8b5b113df96789",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.schedule.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:8cb93da93d2c89955a4a95194a8d993011d0de43698381205e045188de24c664",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.suspend",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:5b4bbe5f69cb0eff413ff65f6c10ae7484f320fbba03b30c3c8b5b113df96789",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.trigger",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:8cb93da93d2c89955a4a95194a8d993011d0de43698381205e045188de24c664",
+      "effect": "request"
+    },
+    {
+      "name": "scheduled_job.uv.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e3e5e15217ddda721697f2a965d802826792629e1eb718469482fb59afc47fa4",
+      "effect": "request"
+    },
+    {
+      "name": "scim.capabilities.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:76e767853e67397b6bc4e822bb833274c0fe9a4dd271eb9267d3f2527ed3807e",
+      "effect": "deny"
+    },
+    {
+      "name": "scim.group.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c3652d65de9ec1c8ec847ef8c4d5d0d092f12cef1d9aa15bf8f0abbb261eba41",
+      "effect": "request"
+    },
+    {
+      "name": "scim.group.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:96e9a080ea9a7df7280599f1e5a8eaf9df0565ad6cd9b90fa01f9b784ca0ce58",
+      "effect": "request"
+    },
+    {
+      "name": "scim.group.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:76e767853e67397b6bc4e822bb833274c0fe9a4dd271eb9267d3f2527ed3807e",
+      "effect": "deny"
+    },
+    {
+      "name": "scim.group.patch",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c3652d65de9ec1c8ec847ef8c4d5d0d092f12cef1d9aa15bf8f0abbb261eba41",
+      "effect": "request"
+    },
+    {
+      "name": "scim.group.replace",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c3652d65de9ec1c8ec847ef8c4d5d0d092f12cef1d9aa15bf8f0abbb261eba41",
+      "effect": "request"
+    },
+    {
+      "name": "scim.user.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c3652d65de9ec1c8ec847ef8c4d5d0d092f12cef1d9aa15bf8f0abbb261eba41",
+      "effect": "request"
+    },
+    {
+      "name": "scim.user.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:96e9a080ea9a7df7280599f1e5a8eaf9df0565ad6cd9b90fa01f9b784ca0ce58",
+      "effect": "request"
+    },
+    {
+      "name": "scim.user.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:76e767853e67397b6bc4e822bb833274c0fe9a4dd271eb9267d3f2527ed3807e",
+      "effect": "deny"
+    },
+    {
+      "name": "scim.user.patch",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c3652d65de9ec1c8ec847ef8c4d5d0d092f12cef1d9aa15bf8f0abbb261eba41",
+      "effect": "request"
+    },
+    {
+      "name": "scim.user.replace",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:c3652d65de9ec1c8ec847ef8c4d5d0d092f12cef1d9aa15bf8f0abbb261eba41",
+      "effect": "request"
+    },
+    {
+      "name": "service_account.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e8aea800fca8916e7df8ec7f7009ecee07f2c2b226d7b041b3f1a53f759d2f9c",
+      "effect": "request"
+    },
+    {
+      "name": "service_account.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:7eda1f8d671f34e0169815ead6f158094afe90b83ffd86de294c2ca2cbc3126b",
+      "effect": "request"
+    },
+    {
+      "name": "service_account.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:beed21a3e7c850801508406c38981d6670b5415c5d9f7db154d3cf303ce8fa33",
+      "effect": "deny"
+    },
+    {
+      "name": "service_account.token.create",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:334f8a6dacba5a84fb15f40bed394cef81ce530e8c0fa2a6038c57919d33cf39",
+      "effect": "deny"
+    },
+    {
+      "name": "service_account.token.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:7eda1f8d671f34e0169815ead6f158094afe90b83ffd86de294c2ca2cbc3126b",
+      "effect": "request"
+    },
+    {
+      "name": "service_account.token.rotate",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:334f8a6dacba5a84fb15f40bed394cef81ce530e8c0fa2a6038c57919d33cf39",
+      "effect": "deny"
+    },
+    {
+      "name": "service_account.token.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:e8aea800fca8916e7df8ec7f7009ecee07f2c2b226d7b041b3f1a53f759d2f9c",
+      "effect": "request"
+    },
+    {
+      "name": "space.dev_mode.disable",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f4b8f3783e7be58f90125dba71cff4df028a28ec79a43fff831bc1f198cefd98",
+      "effect": "request"
+    },
+    {
+      "name": "space.dev_mode.enable",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f4b8f3783e7be58f90125dba71cff4df028a28ec79a43fff831bc1f198cefd98",
+      "effect": "request"
+    },
+    {
+      "name": "space.events.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:da38a659ec72e80f2f6cea85ac2b5605f9288917c176860b048a18284d6150e3",
+      "effect": "deny"
+    },
+    {
+      "name": "space.hardware.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f4b8f3783e7be58f90125dba71cff4df028a28ec79a43fff831bc1f198cefd98",
+      "effect": "request"
+    },
+    {
+      "name": "space.hot_reload.apply",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f4b8f3783e7be58f90125dba71cff4df028a28ec79a43fff831bc1f198cefd98",
+      "effect": "request"
+    },
+    {
+      "name": "space.hot_reload.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:315f38103df6252fe33479a4c56f20f7c34ff3d75a0c143ac90b44306bf896e9",
+      "effect": "deny"
+    },
+    {
+      "name": "space.logs.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:da38a659ec72e80f2f6cea85ac2b5605f9288917c176860b048a18284d6150e3",
+      "effect": "deny"
+    },
+    {
+      "name": "space.metrics.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:da38a659ec72e80f2f6cea85ac2b5605f9288917c176860b048a18284d6150e3",
+      "effect": "deny"
+    },
+    {
+      "name": "space.pause",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:2d555d449183b931a062c883205469d9110d65b9c7673f3e6d187922129240e8",
+      "effect": "request"
+    },
+    {
+      "name": "space.restart",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:2d555d449183b931a062c883205469d9110d65b9c7673f3e6d187922129240e8",
+      "effect": "request"
+    },
+    {
+      "name": "space.runtime.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:da38a659ec72e80f2f6cea85ac2b5605f9288917c176860b048a18284d6150e3",
+      "effect": "deny"
+    },
+    {
+      "name": "space.secret.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:cd5a8833faf6652800ad12122cb16beb014b97202a523f4ce2d4b6c9e1fb8f3f",
+      "effect": "request"
+    },
+    {
+      "name": "space.secret.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:da38a659ec72e80f2f6cea85ac2b5605f9288917c176860b048a18284d6150e3",
+      "effect": "deny"
+    },
+    {
+      "name": "space.secret.set",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:039e78279069de7ab348e05c150c11cd9f5e72436877f677c7f2315d2cfbccc3",
+      "effect": "request"
+    },
+    {
+      "name": "space.sleep_time.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:2d555d449183b931a062c883205469d9110d65b9c7673f3e6d187922129240e8",
+      "effect": "request"
+    },
+    {
+      "name": "space.variable.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:cd125eeef076c54d74098ddd683c0c5c6b4fa7773778843a39148aed3d692649",
+      "effect": "request"
+    },
+    {
+      "name": "space.variable.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:da38a659ec72e80f2f6cea85ac2b5605f9288917c176860b048a18284d6150e3",
+      "effect": "deny"
+    },
+    {
+      "name": "space.variable.set",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:2d555d449183b931a062c883205469d9110d65b9c7673f3e6d187922129240e8",
+      "effect": "request"
+    },
+    {
+      "name": "space.volume.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:cd5a8833faf6652800ad12122cb16beb014b97202a523f4ce2d4b6c9e1fb8f3f",
+      "effect": "request"
+    },
+    {
+      "name": "space.volume.set",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f4b8f3783e7be58f90125dba71cff4df028a28ec79a43fff831bc1f198cefd98",
+      "effect": "request"
+    },
+    {
+      "name": "sql_embed.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1bf4d757b85c952e4430aefe00bba12d612701985267bc708209dd02c3f08c53",
+      "effect": "request"
+    },
+    {
+      "name": "sql_embed.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:5b02d5023751c7957f615ca6665e688cf02d8112c3a5ac7114f5b8ccdfefad11",
+      "effect": "request"
+    },
+    {
+      "name": "sql_embed.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:1bf4d757b85c952e4430aefe00bba12d612701985267bc708209dd02c3f08c53",
+      "effect": "request"
+    },
+    {
+      "name": "user.billing.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:5822ed669b7e13302518dc5da9ea7d394eb52ebe831702213fb3c42d90a670b7",
+      "effect": "deny"
+    },
+    {
+      "name": "user.likes.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:1f7dcd2747f144a2f74906f806b126852544ea40e896dcec1e43dcd05442d58e",
+      "effect": "deny"
+    },
+    {
+      "name": "user.mcp_tools.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:1f7dcd2747f144a2f74906f806b126852544ea40e896dcec1e43dcd05442d58e",
+      "effect": "deny"
+    },
+    {
+      "name": "user.overview.read",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:1f7dcd2747f144a2f74906f806b126852544ea40e896dcec1e43dcd05442d58e",
+      "effect": "deny"
+    },
+    {
+      "name": "user.repo.unlike",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6452a8ae3cf70ba127a4be27f59ea2cb13a050bf87ebf2a39fb4264115e32817",
+      "effect": "request"
+    },
+    {
+      "name": "watch.settings.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:6fa34986df4f23b8736226678a3c6b9aaf4748c6614a22ac49ce044094390380",
+      "effect": "request"
+    },
+    {
+      "name": "webhook.create",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:a40328e0096bc6e85583d4d180efde56f2842a4c3804cd643e71fdc2fd7ef34e",
+      "effect": "request"
+    },
+    {
+      "name": "webhook.delete",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:f377e8e492b210dba776089b4054525c77635cddb395cf2091182a637176b5b5",
+      "effect": "request"
+    },
+    {
+      "name": "webhook.delivery.replay",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:d25234a6d8f2e017fe009e5044696f33c4af8d15e56e79a4ba5ad961170f6b02",
+      "effect": "request"
+    },
+    {
+      "name": "webhook.disable",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:ff0ff132ba702e34c9bf91b68b4fa15277adee5a57c4d227cf05d97288fa7b71",
+      "effect": "request"
+    },
+    {
+      "name": "webhook.enable",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:ff0ff132ba702e34c9bf91b68b4fa15277adee5a57c4d227cf05d97288fa7b71",
+      "effect": "request"
+    },
+    {
+      "name": "webhook.list",
+      "operation_revision": 1,
+      "default_effect": "deny",
+      "authorization_digest": "sha256:3b8f6e987cfd0b1e7a5221c3515290c43c65c5763ab08b02b976bc45fed40df5",
+      "effect": "deny"
+    },
+    {
+      "name": "webhook.update",
+      "operation_revision": 1,
+      "default_effect": "request",
+      "authorization_digest": "sha256:a40328e0096bc6e85583d4d180efde56f2842a4c3804cd643e71fdc2fd7ef34e",
+      "effect": "request"
+    }
+  ]
+}

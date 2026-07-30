@@ -331,13 +331,8 @@ func (engine *Engine) verifySnapshotTrust(snapshot profile.Snapshot) error {
 	if engine.options.Development {
 		return nil
 	}
-	proposed := filepath.Join(snapshot.Root, filepath.FromSlash(snapshot.Deployment.Runtime.PublicKey.Path))
-	_, needsPin, err := bundle.TrustedPublicKey(engine.options.Paths.StateDir, proposed)
-	if err != nil {
-		return fmt.Errorf("verify deployment runtime trust root: %w", err)
-	}
-	if needsPin {
-		return errors.New("deployment runtime trust root is not pinned; run the verified unYOLO bootstrap")
+	if err := verifyAttestedReleaseTemplate(engine.options.Paths.StateDir, snapshot); err != nil {
+		return fmt.Errorf("verify deployment runtime release: %w", err)
 	}
 	return nil
 }

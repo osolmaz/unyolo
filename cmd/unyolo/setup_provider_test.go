@@ -11,6 +11,7 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/deployment/provider"
+	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 )
 
@@ -72,9 +73,32 @@ func TestProviderOptionsLoadBesideInstalledExecutable(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(providers, "github.json"), []byte(catalog), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	options, err := providerOptionsBesideExecutable(filepath.Join(root, "unyolo"))
-	if err != nil || len(options) != 1 || options[0].ID != "github" {
-		t.Fatalf("installed provider options = %+v, %v", options, err)
+	options, releaseRoot, err := providerOptionsBesideExecutable(filepath.Join(root, "unyolo"))
+	if err != nil || releaseRoot != root || len(options) != 1 || options[0].ID != "github" {
+		t.Fatalf("installed provider options = %+v, %q, %v", options, releaseRoot, err)
+	}
+}
+
+func TestChooseSetupProfileUsesSelectedVerifiedReleaseKit(t *testing.T) {
+	root := t.TempDir()
+	template := filepath.Join(root, "templates", "github+huggingface")
+	artifacts := filepath.Join(root, "artifacts")
+	for _, path := range []string{template, artifacts} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	value := session.Session{Answers: map[string][]string{"providers": {"huggingface", "github"}}}
+	path, releaseTemplate, artifactRoot, err := chooseSetupProfile(t.Context(), &recordingPrompter{}, setupOptions{
+		ProviderOptions: testProviderOptions(), DeploymentKits: root, RuntimeArtifacts: artifacts,
+	}, value)
+	if err != nil || !releaseTemplate || path != template || artifactRoot != artifacts {
+		t.Fatalf("selected release kit = %q, %v, %q, %v", path, releaseTemplate, artifactRoot, err)
+	}
+	if _, _, _, err := chooseSetupProfile(t.Context(), &recordingPrompter{}, setupOptions{
+		ProviderOptions: testProviderOptions(), DeploymentKits: filepath.Join(root, "missing"), RuntimeArtifacts: artifacts,
+	}, value); err == nil {
+		t.Fatal("missing selected release kit was accepted")
 	}
 }
 

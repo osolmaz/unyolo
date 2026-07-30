@@ -26,6 +26,7 @@ jobs:
       extra: ${{ steps.component.outputs.extra }}
       files: ${{ steps.component.outputs.files }}
       data_prefixes: ${{ steps.component.outputs.data_prefixes }}
+      data_executable_prefixes: ${{ steps.component.outputs.data_executable_prefixes }}
       version: ${{ steps.component.outputs.version }}
     steps:
       - name: Select component
@@ -40,6 +41,7 @@ jobs:
           extra=""
           files=""
           data_prefixes=""
+          data_executable_prefixes=""
           case "$tag" in
             hf-broker/*)
               echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
@@ -71,9 +73,10 @@ jobs:
               echo "broker=unyolo" >> "$GITHUB_OUTPUT"
               echo "directory=." >> "$GITHUB_OUTPUT"
               echo "command=./cmd/unyolo" >> "$GITHUB_OUTPUT"
-              extra="--extra-command=openclaw-unyolo-setup=./plugins/openclaw/deployment/cmd/openclaw-unyolo-setup"
+              extra="--extra-command=openclaw-unyolo-setup=./plugins/openclaw/deployment/cmd/openclaw-unyolo-setup --extra-command=gh-broker=./brokers/github/cmd/gh-broker --extra-command=hf-broker=./brokers/huggingface/cmd/hf-broker --extra-command=sudo-broker=./brokers/sudo/cmd/sudo-broker --extra-command=sudo-broker-exec=./brokers/sudo/cmd/sudo-broker-exec --deployment-component=brokers/github/deployment/release.json --deployment-component=brokers/huggingface/deployment/release.json --deployment-component=brokers/sudo/deployment/release.json --deployment-component=brokers/sudo/deployment/release-exec.json"
               files="--extra-file=providers/github.json=brokers/github/deployment/provider.json --extra-file=providers/huggingface.json=brokers/huggingface/deployment/provider.json --extra-file=providers/sudo.json=brokers/sudo/deployment/provider.json"
-              data_prefixes="providers/"
+              data_prefixes="providers/ deployment-kits/"
+              data_executable_prefixes="deployment-kits/artifacts/"
               companions="openclaw-unyolo-setup"
               ;;
             *) exit 64 ;;
@@ -83,6 +86,7 @@ jobs:
           echo "extra=$extra" >> "$GITHUB_OUTPUT"
           echo "files=$files" >> "$GITHUB_OUTPUT"
           echo "data_prefixes=$data_prefixes" >> "$GITHUB_OUTPUT"
+          echo "data_executable_prefixes=$data_executable_prefixes" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
@@ -102,7 +106,7 @@ jobs:
         with:
           go-version: "1.26.5"
           cache: true
-      - name: Build reproducible archives
+      - name: Build release archives
         shell: bash
         run: |
           set -euo pipefail
@@ -111,6 +115,7 @@ jobs:
             --directory '${{ needs.prepare.outputs.directory }}' \
             --command '${{ needs.prepare.outputs.command }}' \
             --version '${{ needs.prepare.outputs.version }}' \
+            --source-commit "$GITHUB_SHA" \
             --dist "$GITHUB_WORKSPACE/dist" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             ${{ needs.prepare.outputs.extra }} \
@@ -137,9 +142,8 @@ jobs:
         run: |
           set -euo pipefail
           cp install/bootstrap-root.sh dist/unyolo-bootstrap-root.sh
-          cp install/runtime-release.pub dist/unyolo-runtime-release.pub
           cd dist
-          sha256sum ./*.tar.gz ./unyolo-bootstrap-root.sh ./unyolo-runtime-release.pub | sed 's#  \./#  #' > checksums.txt
+          sha256sum ./*.tar.gz ./unyolo-bootstrap-root.sh | sed 's#  \./#  #' > checksums.txt
       - name: Generate SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
@@ -165,6 +169,7 @@ jobs:
           COMPANION_BINARIES: ${{ needs.prepare.outputs.companions }}
           PATH_COMPANION_BINARIES: ${{ needs.prepare.outputs.path_companions }}
           DATA_PREFIXES: ${{ needs.prepare.outputs.data_prefixes }}
+          DATA_EXECUTABLE_PREFIXES: ${{ needs.prepare.outputs.data_executable_prefixes }}
           DATA_DIR: /tmp/unyolo-release-data
           GH_TOKEN: ${{ github.token }}
         run: sh install/install.sh

@@ -1,0 +1,174 @@
+{
+  "api_version": "unyolo.io/sudo-deployment/v1",
+  "accounts": [
+    {
+      "name": "sudo-broker",
+      "group": "sudo-broker",
+      "home": "/var/lib/sudo-broker",
+      "shell": "/usr/sbin/nologin"
+    }
+  ],
+  "groups": [
+    {
+      "name": "sudo-broker"
+    },
+    {
+      "name": "sudo-broker-agent",
+      "members": [
+        "$UNYOLO_AGENT"
+      ]
+    },
+    {
+      "name": "sudo-broker-operator",
+      "members": [
+        "$UNYOLO_OPERATOR"
+      ]
+    }
+  ],
+  "directories": [
+    {
+      "id": "config",
+      "destination": "/etc/sudo-broker",
+      "mode": 488,
+      "owner": "root",
+      "group": "sudo-broker"
+    },
+    {
+      "id": "state",
+      "destination": "/var/lib/sudo-broker",
+      "mode": 448,
+      "owner": "sudo-broker",
+      "group": "sudo-broker"
+    }
+  ],
+  "files": [
+    {
+      "id": "catalog-json",
+      "source": {
+        "path": "files/sudo/catalog.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/sudo-broker/catalog.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "sudo-broker",
+      "restart": true
+    },
+    {
+      "id": "policy-json",
+      "source": {
+        "path": "files/sudo/policy.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/sudo-broker/policy.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "sudo-broker",
+      "restart": true
+    },
+    {
+      "id": "frontend-env",
+      "source": {
+        "path": "files/sudo/frontend.env",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/sudo-broker/frontend.env",
+      "mode": 416,
+      "owner": "root",
+      "group": "sudo-broker",
+      "restart": true
+    },
+    {
+      "id": "helper-env",
+      "source": {
+        "path": "files/sudo/helper.env",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/sudo-broker/helper.env",
+      "mode": 416,
+      "owner": "root",
+      "group": "sudo-broker",
+      "restart": true
+    },
+    {
+      "id": "sudo-broker-service",
+      "source": {
+        "path": "files/sudo/sudo-broker.service",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/sudo-broker.service",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "sudo-broker-exec-service",
+      "source": {
+        "path": "files/sudo/sudo-broker-exec.service",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/sudo-broker-exec.service",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "sudo-broker-agent-socket",
+      "source": {
+        "path": "files/sudo/sudo-broker-agent.socket",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/sudo-broker-agent.socket",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "sudo-broker-operator-socket",
+      "source": {
+        "path": "files/sudo/sudo-broker-operator.socket",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/sudo-broker-operator.socket",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    }
+  ],
+  "credentials": [
+    {
+      "slot": "sudo-agent-secret",
+      "destination": "/etc/sudo-broker/secrets",
+      "mode": 416,
+      "owner": "root",
+      "group": "sudo-broker",
+      "encoding": "client_secret_file",
+      "client_id": "agent"
+    },
+    {
+      "slot": "sudo-operator-secret",
+      "destination": "/etc/sudo-broker/operator-secrets",
+      "mode": 416,
+      "owner": "root",
+      "group": "sudo-broker",
+      "encoding": "client_secret_file",
+      "client_id": "operator"
+    }
+  ],
+  "clients": [
+    {
+      "agent_id": "agent",
+      "broker_name": "sudo-broker",
+      "env_prefix": "SUDO_BROKER",
+      "secret_slot": "sudo-agent-secret",
+      "endpoint": "unix:///run/unyolo/sudo/agent/broker.sock"
+    }
+  ],
+  "services": [
+    "sudo-broker.service"
+  ]
+}

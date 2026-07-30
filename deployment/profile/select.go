@@ -22,18 +22,11 @@ func MaterializeComponents(snapshot Snapshot, destination string, deploymentName
 	if err != nil {
 		return "", err
 	}
-	parent := filepath.Dir(destination)
-	if err := ensureMaterializationParent(parent); err != nil {
-		return "", err
-	}
-	staging, err := os.MkdirTemp(parent, ".unyolo-deployment-*")
+	parent, staging, err := createMaterializationStaging(destination)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = os.RemoveAll(staging) }()
-	if err := os.Chmod(staging, 0o700); err != nil { // #nosec G302 -- owner-only deployment staging.
-		return "", err
-	}
 	paths, err := materializationPaths(snapshot)
 	if err != nil {
 		return "", err
@@ -53,34 +46,7 @@ func MaterializeComponents(snapshot Snapshot, destination string, deploymentName
 	if err := os.WriteFile(filepath.Join(staging, EntryFilename), append(data, '\n'), 0o600); err != nil {
 		return "", err
 	}
-	if err := Lock(staging, true); err != nil {
-		return "", fmt.Errorf("verify selected deployment lock: %w", err)
-	}
-	candidate, err := Load(staging)
-	if err != nil {
-		return "", fmt.Errorf("verify selected deployment: %w", err)
-	}
-	for _, component := range candidate.Manifest.Components {
-		if _, err := candidate.VerifyArtifact(component.Source, component.SHA256); err != nil {
-			return "", fmt.Errorf("verify selected runtime artifact: %w", err)
-		}
-	}
-	if _, statErr := os.Lstat(destination); statErr == nil {
-		existing, loadErr := Load(destination)
-		if loadErr != nil {
-			return "", fmt.Errorf("inspect deployment destination: %w", loadErr)
-		}
-		if existing.Digest == candidate.Digest {
-			return destination, nil
-		}
-		return "", errors.New("deployment destination contains a different locked pack")
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return "", fmt.Errorf("inspect deployment destination: %w", statErr)
-	}
-	if err := os.Rename(staging, destination); err != nil {
-		return "", err
-	}
-	return destination, syncMaterializationDirectory(parent)
+	return finalizeMaterializedPack(staging, destination, parent, true)
 }
 
 //nolint:cyclop // Selection validates and filters components, agents, bindings, and integrations together.

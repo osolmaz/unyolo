@@ -1,0 +1,15 @@
+[Unit]
+Description=hf-broker operator socket
+
+[Socket]
+ListenStream=/run/unyolo/huggingface/operator/broker.sock
+FileDescriptorName=operator
+SocketUser=hf-broker
+SocketGroup=hf-broker-operator
+SocketMode=0660
+DirectoryMode=0750
+Service=hf-broker.service
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

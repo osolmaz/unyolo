@@ -30,8 +30,10 @@ set without replacing it.
 
 Setup validates every signed component adapter and shows the deployment review. The next
 confirmation atomically activates the same verified CLI release before the root worker starts. The
-root phase separately verifies and pins the attested runtime public key. Production validation and
-planning reject a missing or different key, and the CLI refuses interactive root execution.
+root phase independently verifies the release archive's GitHub attestation and stores its exact
+runtime templates in root-owned host state. Production validation and planning reject a runtime
+manifest, signature, or public key that differs from those templates, and the CLI refuses
+interactive root execution.
 
 Credential values move through one-use anonymous pipes. They are never written to the setup session
 or into the pack.

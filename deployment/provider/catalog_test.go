@@ -35,6 +35,22 @@ func TestLoadDirectoryRejectsSymlinkEntry(t *testing.T) {
 	}
 }
 
+func TestSelectionKeyIsStableAndBoundToCatalog(t *testing.T) {
+	options := []Option{
+		{APIVersion: APIVersion, ID: "github", Label: "GitHub", Selected: true},
+		{APIVersion: APIVersion, ID: "huggingface", Label: "Hugging Face", Selected: true},
+	}
+	key, err := SelectionKey(options, []string{"huggingface", "github"})
+	if err != nil || key != "github+huggingface" {
+		t.Fatalf("SelectionKey() = %q, %v", key, err)
+	}
+	for _, selected := range [][]string{nil, {"github", "github"}, {"sudo"}} {
+		if _, err := SelectionKey(options, selected); err == nil {
+			t.Fatalf("SelectionKey accepted %v", selected)
+		}
+	}
+}
+
 func TestRepositoryProviderCatalog(t *testing.T) {
 	root := t.TempDir()
 	for _, provider := range []string{"github", "huggingface", "sudo"} {

@@ -86,6 +86,16 @@ func TestSetupHelpersAndNoninteractiveRefusal(t *testing.T) {
 	if len(values) != 1 {
 		t.Fatalf("values = %v", values)
 	}
+	if err := validateSetupSecretPairs(map[string][]byte{
+		"github-agent-secret": []byte("same"), "github-operator-secret": []byte("same"),
+	}); err == nil {
+		t.Fatal("matching agent and operator credentials were accepted")
+	}
+	if err := validateSetupSecretPairs(map[string][]byte{
+		"github-agent-secret": []byte("agent"), "github-operator-secret": []byte("operator"),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	secrets := map[string][]byte{"token": []byte("secret")}
 	clearSetupSecrets(secrets)
 	for _, value := range secrets["token"] {

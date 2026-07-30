@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": "nginx-reload",
+      "executable": "/usr/bin/systemctl",
+      "arguments": [
+        { "literal": "reload" },
+        { "literal": "nginx.service" }
+      ],
+      "target_users": ["root"],
+      "working_directory": "/",
+      "timeout_seconds": 30,
+      "max_output_bytes": 65536,
+      "description": "Reload nginx after a reviewed configuration change.",
+      "risk": "high"
+    }
+  ]
+}

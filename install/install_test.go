@@ -135,8 +135,9 @@ func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
 	asset := "test-broker_linux_amd64.tar.gz"
 	releaseDir := t.TempDir()
 	writeReleaseAssetEntries(t, filepath.Join(releaseDir, asset), map[string]string{
-		"test-broker":         "#!/bin/sh\necho v1.2.3\n",
-		"providers/test.json": "{\"id\":\"test\"}\n",
+		"test-broker":                          "#!/bin/sh\necho v1.2.3\n",
+		"providers/test.json":                  "{\"id\":\"test\"}\n",
+		"deployment-kits/artifacts/test-agent": "#!/bin/sh\nexit 0\n",
 	})
 	writeChecksums(t, releaseDir, asset)
 	server := releaseServer(t, releaseDir, asset)
@@ -145,7 +146,7 @@ func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "stage.json")
 	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
 	command.Env = append(command.Env,
-		"DATA_PREFIXES=providers/", "DATA_DIR="+dataDir,
+		"DATA_PREFIXES=providers/ deployment-kits/", "DATA_EXECUTABLE_PREFIXES=deployment-kits/artifacts/", "DATA_DIR="+dataDir,
 		"UNYOLO_INSTALL_RECORD="+record, "UNYOLO_SOURCE_COMMIT="+strings.Repeat("a", 40),
 	)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -153,6 +154,9 @@ func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(dataDir, "providers", "test.json")); err != nil || !strings.Contains(string(data), `"id":"test"`) {
 		t.Fatalf("installed data = %q, %v", data, err)
+	}
+	if info, err := os.Stat(filepath.Join(dataDir, "deployment-kits", "artifacts", "test-agent")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("installed executable release data = %+v, %v", info, err)
 	}
 	recordData, err := os.ReadFile(record)
 	if err != nil || !strings.Contains(string(recordData), `"release":"v1.2.3"`) || !strings.Contains(string(recordData), `"archive_sha256":"sha256:`) {

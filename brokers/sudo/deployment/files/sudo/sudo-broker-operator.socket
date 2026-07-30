@@ -1,0 +1,15 @@
+[Unit]
+Description=sudo-broker operator socket
+
+[Socket]
+ListenStream=/run/unyolo/sudo/operator/broker.sock
+FileDescriptorName=operator
+SocketUser=sudo-broker
+SocketGroup=sudo-broker-operator
+SocketMode=0660
+DirectoryMode=0750
+Service=sudo-broker.service
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

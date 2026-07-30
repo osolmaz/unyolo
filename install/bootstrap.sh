@@ -105,7 +105,7 @@ else
   curl -fsSL "${raw_base}/${source_commit}/install/install.sh" -o "$installer"
 fi
 
-mkdir -p "$temporary/bin" "$temporary/libexec" "$temporary/share/providers"
+mkdir -p "$temporary/bin" "$temporary/libexec" "$temporary/share/providers" "$temporary/share/deployment-kits"
 BROKER=unyolo \
 REPO="$repo" \
 TAG_PREFIX=unyolo/ \
@@ -113,7 +113,8 @@ VERSION="$release" \
 INSTALL_DIR="$temporary/bin" \
 LIBEXEC_DIR="$temporary/libexec" \
 COMPANION_BINARIES=openclaw-unyolo-setup \
-DATA_PREFIXES="providers/" \
+DATA_PREFIXES="providers/ deployment-kits/" \
+DATA_EXECUTABLE_PREFIXES="deployment-kits/artifacts/" \
 DATA_DIR="$temporary/share" \
 UNYOLO_INSTALL_RECORD="$temporary/stage.json" \
 UNYOLO_SOURCE_COMMIT="$source_commit" \

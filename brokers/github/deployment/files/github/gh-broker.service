@@ -1,0 +1,23 @@
+[Unit]
+Description=gh-broker GitHub credential broker
+After=network-online.target gh-broker-agent.socket gh-broker-operator.socket
+Wants=network-online.target
+Requires=gh-broker-agent.socket gh-broker-operator.socket
+
+[Service]
+Type=simple
+User=gh-broker
+Group=gh-broker
+EnvironmentFile=/etc/gh-broker/env
+ExecStart=/opt/unyolo/current/bin/gh-broker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gh-broker
+ReadOnlyPaths=/etc/gh-broker
+
+[Install]
+WantedBy=multi-user.target
