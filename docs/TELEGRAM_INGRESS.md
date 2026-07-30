@@ -1,7 +1,9 @@
 # Telegram approval ingress
 
-unYOLO uses one `unyolo-telegram` ingress process for each Telegram bot
-token. Provider brokers supply bounded semantic approval data and send durable
+unYOLO uses one `unyolo-telegram` ingress process for each Telegram Bot API
+endpoint. By default, that endpoint is the physical Telegram bot. It can also
+be a loopback multiplexer client endpoint when another application shares the
+same physical bot. Provider brokers supply bounded semantic approval data and send durable
 status updates, but they do not format Telegram HTML or call `getUpdates`. The
 shared Telegram renderer owns layout, escaping, emoji, fixed Approve and Deny
 buttons, terminal wording, and message limits. The ingress owns the bot update
@@ -57,6 +59,25 @@ The managed configuration has this shape:
 The route keys are `h` for Hugging Face, `g` for GitHub, and `s` for sudo.
 Configuration rejects duplicate or unknown fields, unsupported routes, relative
 secret paths, and malformed endpoints.
+
+## Sharing a physical bot
+
+A physical Telegram bot token can have only one `getUpdates` owner. To share a
+bot with another application, run a durable Bot API multiplexer and give unYOLO
+its own local client token and API base. For example:
+
+```sh
+sudo unyolo-telegram setup systemd \
+  --telegram-bot-token-file ./unyolo-mux-client-token \
+  --telegram-api-base http://127.0.0.1:8080/client/unyolo \
+  --telegram-chat-id 123456789 \
+  --hf-operator-token-file ./hf-operator-secret
+```
+
+The token file contains the local multiplexer client token in this mode, not
+the BotFather token. `telegram_api_base` is optional in the managed JSON
+configuration. HTTPS is required for remote API bases; plain HTTP is accepted
+only for loopback addresses.
 
 Setup creates the inbox encryption key once and preserves it on every rerun.
 The key is readable only by the ingress service. Losing or rotating it while

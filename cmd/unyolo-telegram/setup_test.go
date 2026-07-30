@@ -23,11 +23,14 @@ import (
 func TestParseSetupOptionsCapturesConfiguredRoutes(t *testing.T) {
 	bot, operator := setupSecretFiles(t)
 	opts, err := parseSetupOptions([]string{
-		"--binary", os.Args[0], "--telegram-bot-token-file", bot, "--telegram-chat-id", "42",
+		"--binary", os.Args[0], "--telegram-bot-token-file", bot, "--telegram-api-base", "http://127.0.0.1:8080/client/unyolo", "--telegram-chat-id", "42",
 		"--hf-operator-token-file", operator, "--hf-operator-endpoint", "unix:///tmp/hf.sock",
 	}, &strings.Builder{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if opts.TelegramAPIBase != "http://127.0.0.1:8080/client/unyolo" {
+		t.Fatalf("Telegram API base = %q", opts.TelegramAPIBase)
 	}
 	if got := opts.Routes[telegram.RouteHuggingFace]; got.TokenFile != operator || got.Endpoint != "unix:///tmp/hf.sock" {
 		t.Fatalf("HF route = %+v", got)
@@ -48,6 +51,7 @@ func TestIngressInstallPlanManagesConfigSecretsAndAccess(t *testing.T) {
 	opts.User, opts.Group = account.Username, account.Username
 	opts.ConfigDir, opts.StateDir, opts.SystemdDir = filepath.Join(dir, "etc"), filepath.Join(dir, "state"), filepath.Join(dir, "systemd")
 	opts.BinaryPath, opts.TelegramBotTokenFile, opts.TelegramChatID = os.Args[0], bot, 42
+	opts.TelegramAPIBase = "http://127.0.0.1:8080/client/unyolo"
 	hf := opts.Routes[telegram.RouteHuggingFace]
 	hf.TokenFile = operator
 	opts.Routes[telegram.RouteHuggingFace] = hf
@@ -71,7 +75,7 @@ func TestIngressInstallPlanManagesConfigSecretsAndAccess(t *testing.T) {
 	if err := json.Unmarshal(configFile.Data, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Routes["h"].OperatorTokenFile != filepath.Join(opts.ConfigDir, "operator-token-h") {
+	if cfg.TelegramAPIBase != opts.TelegramAPIBase || cfg.Routes["h"].OperatorTokenFile != filepath.Join(opts.ConfigDir, "operator-token-h") {
 		t.Fatalf("managed config = %+v", cfg)
 	}
 	if managedFile(t, plan.Files, "telegram-bot-token").Owner != service.ManagedFileOwnerService ||

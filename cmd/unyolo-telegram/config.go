@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +21,7 @@ const maxConfigBytes = 64 * 1024
 
 type ingressConfig struct {
 	TelegramBotTokenFile string                 `json:"telegram_bot_token_file"`
+	TelegramAPIBase      string                 `json:"telegram_api_base,omitempty"`
 	TelegramChatID       int64                  `json:"telegram_chat_id"`
 	InboxPath            string                 `json:"inbox_path"`
 	InboxKeyFile         string                 `json:"inbox_key_file"`
@@ -52,16 +55,23 @@ func validateIngressConfig(cfg ingressConfig) error {
 	if !filepath.IsAbs(cfg.TelegramBotTokenFile) {
 		return errors.New("telegram_bot_token_file must be absolute")
 	}
+	if err := validateTelegramAPIBase(cfg.TelegramAPIBase); err != nil {
+		return err
+	}
 	if cfg.TelegramChatID == 0 {
 		return errors.New("telegram_chat_id is required")
 	}
 	if !filepath.IsAbs(cfg.InboxPath) || !filepath.IsAbs(cfg.InboxKeyFile) {
 		return errors.New("inbox_path and inbox_key_file must be absolute")
 	}
-	if len(cfg.Routes) == 0 {
+	return validateIngressRoutes(cfg.Routes)
+}
+
+func validateIngressRoutes(routes map[string]routeConfig) error {
+	if len(routes) == 0 {
 		return errors.New("at least one Telegram route is required")
 	}
-	for route, source := range cfg.Routes {
+	for route, source := range routes {
 		if !supportedRoute(route) {
 			return fmt.Errorf("unsupported Telegram route %q", route)
 		}
@@ -73,6 +83,31 @@ func validateIngressConfig(cfg ingressConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateTelegramAPIBase(value string) error {
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("telegram_api_base must be an absolute HTTP URL without query or fragment")
+	}
+	if parsed.Scheme == "https" {
+		return nil
+	}
+	if parsed.Scheme != "http" || !loopbackHost(parsed.Hostname()) {
+		return errors.New("telegram_api_base may use HTTP only for loopback")
+	}
+	return nil
+}
+
+func loopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func supportedRoute(route string) bool {
@@ -90,7 +125,7 @@ func buildIngress(ctx context.Context, cfg ingressConfig) (*telegram.Client, *te
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("read Telegram bot token: %w", err)
 	}
-	client, err := telegram.New(botToken, cfg.TelegramChatID, nil, "")
+	client, err := telegram.New(botToken, cfg.TelegramChatID, nil, cfg.TelegramAPIBase)
 	if err != nil {
 		return nil, nil, nil, err
 	}

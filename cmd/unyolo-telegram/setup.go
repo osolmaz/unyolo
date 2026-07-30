@@ -38,6 +38,7 @@ type setupOptions struct {
 	SystemdDir           string
 	BinaryPath           string
 	TelegramBotTokenFile string
+	TelegramAPIBase      string
 	TelegramChatID       int64
 	Routes               map[string]setupRoute
 	DryRun               bool
@@ -125,6 +126,7 @@ func parseSetupOptions(args []string, stderr io.Writer) (setupOptions, error) {
 	flags.StringVar(&opts.SystemdDir, "systemd-dir", opts.SystemdDir, "systemd unit directory")
 	flags.StringVar(&opts.BinaryPath, "binary", opts.BinaryPath, "unyolo-telegram executable")
 	flags.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
+	flags.StringVar(&opts.TelegramAPIBase, "telegram-api-base", "", "Telegram Bot API base URL")
 	flags.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	bindRouteFlags(flags, opts.Routes, telegram.RouteHuggingFace, "hf")
 	bindRouteFlags(flags, opts.Routes, telegram.RouteGitHub, "gh")
@@ -179,6 +181,9 @@ func bindRouteStringFlag(flags *flag.FlagSet, routes map[string]setupRoute, rout
 func validateSetupOptions(opts setupOptions) error {
 	if opts.TelegramBotTokenFile == "" || opts.TelegramChatID == 0 {
 		return errors.New("--telegram-bot-token-file and --telegram-chat-id are required")
+	}
+	if err := validateTelegramAPIBase(opts.TelegramAPIBase); err != nil {
+		return err
 	}
 	if len(configuredRoutes(opts)) == 0 {
 		return errors.New("at least one --*-operator-token-file is required")
@@ -237,6 +242,7 @@ func ingressInstallPlan(opts setupOptions) (unyoloservice.SystemdInstallPlan, er
 	}
 	managedConfig := ingressConfig{
 		TelegramBotTokenFile: filepath.Join(opts.ConfigDir, "telegram-bot-token"),
+		TelegramAPIBase:      opts.TelegramAPIBase,
 		TelegramChatID:       opts.TelegramChatID,
 		InboxPath:            filepath.Join(opts.StateDir, "callbacks.db"),
 		InboxKeyFile:         filepath.Join(opts.ConfigDir, "inbox-key"),

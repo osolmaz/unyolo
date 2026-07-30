@@ -15,6 +15,7 @@ func TestLoadIngressConfigStrictly(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 	writeTestFile(t, path, `{
   "telegram_bot_token_file": "/etc/unyolo-telegram/telegram-bot-token",
+  "telegram_api_base": "http://127.0.0.1:8080/client/unyolo",
   "telegram_chat_id": 42,
   "inbox_path": "/var/lib/unyolo-telegram/callbacks.db",
   "inbox_key_file": "/etc/unyolo-telegram/inbox-key",
@@ -24,7 +25,7 @@ func TestLoadIngressConfigStrictly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.TelegramChatID != 42 || cfg.Routes[telegram.RouteHuggingFace].OperatorEndpoint != "unix:///run/hf/operator.sock" {
+	if cfg.TelegramChatID != 42 || cfg.TelegramAPIBase != "http://127.0.0.1:8080/client/unyolo" || cfg.Routes[telegram.RouteHuggingFace].OperatorEndpoint != "unix:///run/hf/operator.sock" {
 		t.Fatalf("loadIngressConfig() = %+v", cfg)
 	}
 
@@ -55,6 +56,19 @@ func TestValidateIngressConfigRejectsIncompleteAndUnknownRoutes(t *testing.T) {
 		mutate(&cfg)
 		if err := validateIngressConfig(cfg); err == nil {
 			t.Fatalf("case %d accepted: %+v", index, cfg)
+		}
+	}
+}
+
+func TestValidateTelegramAPIBase(t *testing.T) {
+	for _, value := range []string{"", "https://bots.example.test/client/unyolo", "http://127.0.0.1:8080/client/unyolo", "http://[::1]:8080/client/unyolo"} {
+		if err := validateTelegramAPIBase(value); err != nil {
+			t.Fatalf("validateTelegramAPIBase(%q) = %v", value, err)
+		}
+	}
+	for _, value := range []string{"http://example.test", "ftp://127.0.0.1", "/relative", "https://example.test?token=secret"} {
+		if err := validateTelegramAPIBase(value); err == nil {
+			t.Fatalf("validateTelegramAPIBase(%q) succeeded", value)
 		}
 	}
 }
