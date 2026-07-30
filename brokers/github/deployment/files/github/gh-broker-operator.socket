@@ -7,7 +7,7 @@ FileDescriptorName=operator
 SocketUser=gh-broker
 SocketGroup=gh-broker-operator
 SocketMode=0660
-DirectoryMode=0750
+DirectoryMode=0711
 Service=gh-broker.service
 RemoveOnStop=true
 

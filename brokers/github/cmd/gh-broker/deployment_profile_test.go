@@ -15,6 +15,18 @@ func TestReleaseDeploymentProfileMatchesGitHubAdapter(t *testing.T) {
 	validateReleaseDeploymentProfile(t, "../../deployment/profile.json", "github", githubDeploymentConfig())
 }
 
+func TestReleaseSocketDirectoriesAllowClientTraversal(t *testing.T) {
+	for _, path := range []string{"../../deployment/files/github/gh-broker-agent.socket", "../../deployment/files/github/gh-broker-operator.socket"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(data, []byte("DirectoryMode=0711\n")) {
+			t.Fatalf("%s does not allow client traversal", path)
+		}
+	}
+}
+
 func validateReleaseDeploymentProfile(t *testing.T, path, id string, config component.Config) {
 	t.Helper()
 	profileData, err := os.ReadFile(path)

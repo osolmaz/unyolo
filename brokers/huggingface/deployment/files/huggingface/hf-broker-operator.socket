@@ -7,7 +7,7 @@ FileDescriptorName=operator
 SocketUser=hf-broker
 SocketGroup=hf-broker-operator
 SocketMode=0660
-DirectoryMode=0750
+DirectoryMode=0711
 Service=hf-broker.service
 RemoveOnStop=true
 

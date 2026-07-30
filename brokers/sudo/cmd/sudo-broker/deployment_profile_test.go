@@ -11,6 +11,25 @@ import (
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 )
 
+func TestReleaseDeploymentDefaultsMatchGeneratedClient(t *testing.T) {
+	for _, path := range []string{"../../deployment/files/sudo/sudo-broker-agent.socket", "../../deployment/files/sudo/sudo-broker-operator.socket"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(data, []byte("DirectoryMode=0711\n")) {
+			t.Fatalf("%s does not allow client traversal", path)
+		}
+	}
+	policy, err := os.ReadFile("../../deployment/files/sudo/policy.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(policy, []byte(`"clients": ["agent"]`)) {
+		t.Fatal("default sudo policy does not authorize the generated agent client")
+	}
+}
+
 func TestReleaseDeploymentProfileMatchesSudoAdapter(t *testing.T) {
 	profileData, err := os.ReadFile("../../deployment/profile.json")
 	if err != nil {
