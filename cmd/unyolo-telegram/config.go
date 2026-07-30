@@ -89,9 +89,9 @@ func validateTelegramAPIBase(value string) error {
 	if value == "" {
 		return nil
 	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(value, "#") {
-		return errors.New("telegram_api_base must be an absolute HTTP URL without credentials, query, or fragment")
+	parsed, err := parseTelegramAPIBase(value)
+	if err != nil {
+		return err
 	}
 	if parsed.Scheme == "https" {
 		return nil
@@ -100,6 +100,14 @@ func validateTelegramAPIBase(value string) error {
 		return errors.New("telegram_api_base may use HTTP only for loopback")
 	}
 	return nil
+}
+
+func parseTelegramAPIBase(value string) (*url.URL, error) {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(value, "#") {
+		return nil, errors.New("telegram_api_base must be an absolute HTTP URL without credentials, query, or fragment")
+	}
+	return parsed, nil
 }
 
 func loopbackHost(host string) bool {
