@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -68,7 +70,11 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 	if !*accessible && !hasInteractiveTTY() {
 		return errors.New("setup requires an interactive TTY; use declarative system commands for automation")
 	}
-	options := setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly}
+	currentUser, err := user.Current()
+	if err != nil || currentUser.Username == "" {
+		return errors.New("resolve the invoking operator identity")
+	}
+	options := setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly, Operator: currentUser.Username}
 	if *bootstrapStage != "" {
 		providerOptions, err := provider.LoadDirectory(filepath.Join(*bootstrapStage, "share", "providers"))
 		if err != nil {
@@ -76,16 +82,20 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 		}
 		if *profilePath == "" {
 			options.ProviderOptions = providerOptions
+			options.DeploymentKits = filepath.Join(*bootstrapStage, "share", "deployment-kits")
+			options.RuntimeArtifacts = filepath.Join(*bootstrapStage, "share", "deployment-kits", "artifacts")
 		}
 		options.Activate = func(activateCtx context.Context) error {
 			return userinstall.Activate(activateCtx, userinstall.Options{StageRoot: *bootstrapStage})
 		}
 	} else if *profilePath == "" {
-		providerOptions, err := installedProviderOptions()
+		providerOptions, releaseRoot, err := installedProviderOptions()
 		if err != nil {
 			return err
 		}
 		options.ProviderOptions = providerOptions
+		options.DeploymentKits = filepath.Join(releaseRoot, "deployment-kits")
+		options.RuntimeArtifacts = filepath.Join(releaseRoot, "deployment-kits", "artifacts")
 	}
 	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
 	defer func() { _ = prompter.Close() }()
@@ -93,12 +103,15 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 }
 
 type setupOptions struct {
-	Profile         string
-	ResumeID        string
-	New             bool
-	PlanOnly        bool
-	ProviderOptions []provider.Option
-	Activate        func(context.Context) error
+	Profile          string
+	ResumeID         string
+	New              bool
+	PlanOnly         bool
+	ProviderOptions  []provider.Option
+	DeploymentKits   string
+	RuntimeArtifacts string
+	Operator         string
+	Activate         func(context.Context) error
 }
 
 //nolint:cyclop // The ordered guide deliberately keeps persisted checkpoints adjacent to each operator decision.
@@ -140,15 +153,17 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 			return err
 		}
 	}
-	profilePath, err := chooseProfile(ctx, prompter, options.Profile, setupSession)
+	profilePath, releaseTemplate, artifactRoot, err := chooseSetupProfile(ctx, prompter, options, setupSession)
 	if err != nil {
 		return err
 	}
-	setupSession.Answers["profile"] = []string{profilePath}
-	setupSession.CompletedStep = appendUnique(setupSession.CompletedStep, "profile")
-	setupSession.Phase = session.PhaseProfile
-	if err := store.Save(setupSession); err != nil {
-		return err
+	if !releaseTemplate {
+		setupSession.Answers["profile"] = []string{profilePath}
+		setupSession.CompletedStep = appendUnique(setupSession.CompletedStep, "profile")
+		setupSession.Phase = session.PhaseProfile
+		if err := store.Save(setupSession); err != nil {
+			return err
+		}
 	}
 	progress := prompter.Progress("Validating the locked deployment pack")
 	snapshot, err := profile.Load(profilePath)
@@ -162,7 +177,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		if len(selectedProviders) == 0 && snapshot.Deployment.Name != setupSession.Deployment {
 			return fmt.Errorf("deployment kit name %q does not match setup name %q", snapshot.Deployment.Name, setupSession.Deployment)
 		}
-		destination, pathErr := setupDeploymentDirectory(snapshot.Deployment.Name)
+		destination, pathErr := setupDeploymentDirectory(setupSession.Deployment)
 		if pathErr != nil {
 			return pathErr
 		}
@@ -172,7 +187,9 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		}
 		if !materialized {
 			materializeProgress := prompter.Progress("Materializing the operator-owned deployment pack")
-			if len(selectedProviders) > 0 {
+			if releaseTemplate {
+				profilePath, err = profile.MaterializeReleaseTemplate(snapshot, artifactRoot, destination, setupSession.Deployment, options.Operator, selectedProviders)
+			} else if len(selectedProviders) > 0 {
 				profilePath, err = profile.MaterializeComponents(snapshot, destination, setupSession.Deployment, selectedProviders)
 			} else {
 				profilePath, err = profile.Materialize(snapshot, destination)
@@ -188,6 +205,8 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 			}
 			materializeProgress.Stop("Operator-owned deployment pack is ready")
 			setupSession.Answers["profile"] = []string{profilePath}
+			setupSession.CompletedStep = appendUnique(setupSession.CompletedStep, "profile")
+			setupSession.Phase = session.PhaseProfile
 			setupSession.Generated[profile.EntryFilename] = snapshot.Digest
 			if err := store.Save(setupSession); err != nil {
 				return err
@@ -251,13 +270,21 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	setupSession.SecretSlots = nil
 	defer clearSetupSecrets(secrets)
 	for _, slot := range privilege.RequiredSecretSlots(planned.Plan) {
-		value, secretErr := prompter.Secret(ctx, flow.Prompt{Message: "Credential slot: " + slot, Description: "Sent once to the owning signed adapter and never stored in setup state.", Required: true})
+		description := "Sent once to the owning signed adapter and never stored in setup state."
+		if strings.HasSuffix(slot, "-secret") {
+			description += " Enter one unpadded secret of at least 32 bytes."
+		}
+		value, secretErr := prompter.Secret(ctx, flow.Prompt{Message: "Credential slot: " + slot, Description: description, Required: true})
 		if secretErr != nil {
 			_ = worker.Cancel()
 			return secretErr
 		}
 		secrets[slot] = value
 		setupSession.SecretSlots = append(setupSession.SecretSlots, session.SecretSlot{ID: slot, Supplied: true})
+	}
+	if err := validateSetupSecretPairs(secrets); err != nil {
+		_ = worker.Cancel()
+		return err
 	}
 	setupSession.Phase = session.PhaseApplying
 	if err := store.Save(setupSession); err != nil {
@@ -337,26 +364,28 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	return created, nil
 }
 
-func installedProviderOptions() ([]provider.Option, error) {
+func installedProviderOptions() ([]provider.Option, string, error) {
 	executable, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	return providerOptionsBesideExecutable(executable)
 }
 
-func providerOptionsBesideExecutable(executable string) ([]provider.Option, error) {
+func providerOptionsBesideExecutable(executable string) ([]provider.Option, string, error) {
 	resolved, err := filepath.EvalSymlinks(executable)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	directory := filepath.Join(filepath.Dir(resolved), "providers")
+	releaseRoot := filepath.Dir(resolved)
+	directory := filepath.Join(releaseRoot, "providers")
 	if _, err := os.Lstat(directory); errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, releaseRoot, nil
 	} else if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return provider.LoadDirectory(directory)
+	options, err := provider.LoadDirectory(directory)
+	return options, releaseRoot, err
 }
 
 func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, start setupWorkerStarter) (protectedSetupWorker, error) {
@@ -426,6 +455,39 @@ func initialSetupMode(profilePath string) string {
 		return "existing"
 	}
 	return "recommended"
+}
+
+func chooseSetupProfile(ctx context.Context, prompter flow.SetupPrompter, options setupOptions, setupSession session.Session) (string, bool, string, error) {
+	if options.Profile != "" || len(setupSession.Answers["profile"]) == 1 {
+		path, err := chooseProfile(ctx, prompter, options.Profile, setupSession)
+		return path, false, "", err
+	}
+	selected := setupSession.Answers["providers"]
+	if len(selected) == 0 {
+		path, err := chooseProfile(ctx, prompter, "", setupSession)
+		return path, false, "", err
+	}
+	template, artifacts, err := selectedReleaseTemplate(options, selected)
+	return template, true, artifacts, err
+}
+
+func selectedReleaseTemplate(options setupOptions, selected []string) (string, string, error) {
+	if !filepath.IsAbs(options.DeploymentKits) || filepath.Clean(options.DeploymentKits) != options.DeploymentKits {
+		return "", "", errors.New("verified release does not contain an absolute deployment-kit root")
+	}
+	key, err := provider.SelectionKey(options.ProviderOptions, selected)
+	if err != nil {
+		return "", "", err
+	}
+	template := filepath.Join(options.DeploymentKits, "templates", key)
+	artifacts := options.RuntimeArtifacts
+	for _, path := range []string{template, artifacts} {
+		info, statErr := os.Lstat(path)
+		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", "", errors.New("verified release is missing the selected deployment kit")
+		}
+	}
+	return template, artifacts, nil
 }
 
 func chooseProfile(ctx context.Context, prompter flow.SetupPrompter, configured string, setupSession session.Session) (string, error) {
@@ -555,6 +617,20 @@ func setupSessionStore() (session.Store, error) {
 
 func hasInteractiveTTY() bool {
 	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+func validateSetupSecretPairs(values map[string][]byte) error {
+	for slot, value := range values {
+		if !strings.HasSuffix(slot, "-agent-secret") {
+			continue
+		}
+		prefix := strings.TrimSuffix(slot, "-agent-secret")
+		operator, exists := values[prefix+"-operator-secret"]
+		if exists && bytes.Equal(value, operator) {
+			return fmt.Errorf("%s agent and operator credentials must differ", prefix)
+		}
+	}
+	return nil
 }
 
 func clearSetupSecrets(values map[string][]byte) {

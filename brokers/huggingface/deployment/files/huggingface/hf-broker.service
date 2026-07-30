@@ -1,0 +1,23 @@
+[Unit]
+Description=hf-broker Hugging Face credential broker
+After=network-online.target hf-broker-agent.socket hf-broker-operator.socket
+Wants=network-online.target
+Requires=hf-broker-agent.socket hf-broker-operator.socket
+
+[Service]
+Type=simple
+User=hf-broker
+Group=hf-broker
+EnvironmentFile=/etc/hf-broker/env
+ExecStart=/opt/unyolo/current/bin/hf-broker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/hf-broker
+ReadOnlyPaths=/etc/hf-broker
+
+[Install]
+WantedBy=multi-user.target

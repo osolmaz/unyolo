@@ -142,12 +142,19 @@ func runSetupComponentCommand(command commandContext, args []string) error {
 	if len(args) != 0 {
 		return errors.New("setup-component does not accept arguments")
 	}
-	return component.Serve(command.ctx, command.stdin, command.stdout, component.Config{
+	return component.Serve(command.ctx, command.stdin, command.stdout, huggingFaceDeploymentConfig())
+}
+
+func huggingFaceDeploymentConfig() component.Config {
+	return component.Config{
 		ComponentID: "huggingface", ProfileAPI: "unyolo.io/huggingface-deployment/v1",
-		AllowedPaths:    []string{"/etc/hf-broker", "/var/lib/hf-broker", "/etc/systemd/system/hf-broker.service"},
+		AllowedPaths: []string{
+			"/etc/hf-broker", "/var/lib/hf-broker", "/etc/systemd/system/hf-broker.service",
+			"/etc/systemd/system/hf-broker-agent.socket", "/etc/systemd/system/hf-broker-operator.socket",
+		},
 		AllowedServices: []string{"hf-broker.service"}, AllowedAccounts: []string{"hf-broker"},
 		AllowedGroups: []string{"hf-broker", "hf-broker-agent", "hf-broker-operator"}, BackupDirectory: "/var/lib/hf-broker/deployment-backups",
-	})
+	}
 }
 
 func runIsolationProbeCommand(command commandContext, args []string) error {

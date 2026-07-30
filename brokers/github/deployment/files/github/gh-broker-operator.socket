@@ -1,0 +1,15 @@
+[Unit]
+Description=gh-broker operator socket
+
+[Socket]
+ListenStream=/run/unyolo/github/operator/broker.sock
+FileDescriptorName=operator
+SocketUser=gh-broker
+SocketGroup=gh-broker-operator
+SocketMode=0660
+DirectoryMode=0750
+Service=gh-broker.service
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

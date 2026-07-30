@@ -1,0 +1,170 @@
+{
+  "api_version": "unyolo.io/huggingface-deployment/v1",
+  "accounts": [
+    {
+      "name": "hf-broker",
+      "group": "hf-broker",
+      "home": "/var/lib/hf-broker",
+      "shell": "/usr/sbin/nologin"
+    }
+  ],
+  "groups": [
+    {
+      "name": "hf-broker"
+    },
+    {
+      "name": "hf-broker-agent",
+      "members": [
+        "$UNYOLO_AGENT"
+      ]
+    },
+    {
+      "name": "hf-broker-operator",
+      "members": [
+        "$UNYOLO_OPERATOR"
+      ]
+    }
+  ],
+  "directories": [
+    {
+      "id": "config",
+      "destination": "/etc/hf-broker",
+      "mode": 488,
+      "owner": "root",
+      "group": "hf-broker"
+    },
+    {
+      "id": "state",
+      "destination": "/var/lib/hf-broker",
+      "mode": 448,
+      "owner": "hf-broker",
+      "group": "hf-broker"
+    }
+  ],
+  "files": [
+    {
+      "id": "scope-json",
+      "source": {
+        "path": "files/huggingface/scope.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/hf-broker/scope.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "hf-broker",
+      "restart": true
+    },
+    {
+      "id": "policy-profile-json",
+      "source": {
+        "path": "files/huggingface/policy-profile.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/hf-broker/policy-profile.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "hf-broker",
+      "restart": true
+    },
+    {
+      "id": "policy-manifest-json",
+      "source": {
+        "path": "files/huggingface/policy-manifest.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/hf-broker/policy-manifest.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "hf-broker",
+      "restart": true
+    },
+    {
+      "id": "env",
+      "source": {
+        "path": "files/huggingface/env",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/hf-broker/env",
+      "mode": 416,
+      "owner": "root",
+      "group": "hf-broker",
+      "restart": true
+    },
+    {
+      "id": "hf-broker-service",
+      "source": {
+        "path": "files/huggingface/hf-broker.service",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/hf-broker.service",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "hf-broker-agent-socket",
+      "source": {
+        "path": "files/huggingface/hf-broker-agent.socket",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/hf-broker-agent.socket",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    },
+    {
+      "id": "hf-broker-operator-socket",
+      "source": {
+        "path": "files/huggingface/hf-broker-operator.socket",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/hf-broker-operator.socket",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    }
+  ],
+  "credentials": [
+    {
+      "slot": "huggingface-provider-token",
+      "destination": "/etc/hf-broker/hf-token",
+      "mode": 384,
+      "owner": "hf-broker",
+      "group": "hf-broker",
+      "encoding": "raw"
+    },
+    {
+      "slot": "huggingface-agent-secret",
+      "destination": "/etc/hf-broker/secrets",
+      "mode": 384,
+      "owner": "hf-broker",
+      "group": "hf-broker",
+      "encoding": "client_secret_file",
+      "client_id": "agent"
+    },
+    {
+      "slot": "huggingface-operator-secret",
+      "destination": "/etc/hf-broker/operator-secrets",
+      "mode": 384,
+      "owner": "hf-broker",
+      "group": "hf-broker",
+      "encoding": "client_secret_file",
+      "client_id": "operator"
+    }
+  ],
+  "clients": [
+    {
+      "agent_id": "agent",
+      "broker_name": "hf-broker",
+      "env_prefix": "HF_BROKER",
+      "secret_slot": "huggingface-agent-secret",
+      "endpoint": "unix:///run/unyolo/huggingface/agent/broker.sock"
+    }
+  ],
+  "services": [
+    "hf-broker.service"
+  ]
+}

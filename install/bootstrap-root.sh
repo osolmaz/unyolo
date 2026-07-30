@@ -8,10 +8,11 @@ if [ -z "${SUDO_UID:-}" ] || [ "$SUDO_UID" -eq 0 ]; then
 fi
 [ "$#" -eq 1 ] || { printf '%s\n' 'usage: bootstrap-root.sh unyolo/vX.Y.Z' >&2; exit 64; }
 release=$1
-command -v grep >/dev/null 2>&1 || exit 1
+for tool in awk chown chmod cp curl find grep install mv tar tr wc; do
+  command -v "$tool" >/dev/null 2>&1 || exit 1
+done
 printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || exit 64
 
-command -v curl >/dev/null 2>&1 || exit 1
 command -v gh >/dev/null 2>&1 || exit 1
 case "$(uname -s)" in Linux) os=linux ;; Darwin) printf '%s\n' 'bootstrap-root: guided host provisioning currently requires Linux' >&2; exit 1 ;; *) exit 1 ;; esac
 case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) exit 1 ;; esac
@@ -19,9 +20,7 @@ asset="unyolo_${os}_${arch}.tar.gz"
 base="https://github.com/osolmaz/unyolo/releases/download/${release}"
 temporary=$(mktemp -d "${TMPDIR:-/tmp}/unyolo-root-bootstrap.XXXXXX")
 trap 'rm -rf "$temporary"' EXIT HUP INT TERM
-key_asset=unyolo-runtime-release.pub
 curl -fL --proto '=https' --tlsv1.2 "$base/$asset" -o "$temporary/$asset"
-curl -fL --proto '=https' --tlsv1.2 "$base/$key_asset" -o "$temporary/$key_asset"
 curl -fL --proto '=https' --tlsv1.2 "$base/checksums.txt" -o "$temporary/checksums.txt"
 verify_checksum() {
   expected=$(awk -v name="$1" '$2 == name { print $1 }' "$temporary/checksums.txt")
@@ -37,21 +36,37 @@ verify_attestation() {
     --deny-self-hosted-runners >/dev/null
 }
 verify_checksum "$asset"
-verify_checksum "$key_asset"
+archive_digest=$expected
 verify_attestation "$asset"
-verify_attestation "$key_asset"
+tar -tzf "$temporary/$asset" > "$temporary/archive.list"
+tar -tvzf "$temporary/$asset" > "$temporary/archive.types"
+awk 'substr($1, 1, 1) != "-" { exit 1 }' "$temporary/archive.types" || { printf '%s\n' 'bootstrap-root: release archive contains a non-regular entry' >&2; exit 1; }
+[ "$(wc -l < "$temporary/archive.list" | tr -d ' ')" -eq "$(wc -l < "$temporary/archive.types" | tr -d ' ')" ] || { printf '%s\n' 'bootstrap-root: release archive listing is inconsistent' >&2; exit 1; }
+[ "$(wc -l < "$temporary/archive.list" | tr -d ' ')" -le 2048 ] || { printf '%s\n' 'bootstrap-root: release archive contains too many entries' >&2; exit 1; }
+awk 'seen[$0]++ { exit 1 }' "$temporary/archive.list" || { printf '%s\n' 'bootstrap-root: release archive contains a duplicate path' >&2; exit 1; }
+while IFS= read -r entry; do
+  printf '%s\n' "$entry" | grep -Eq '^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$' || { printf '%s\n' 'bootstrap-root: release archive path is unsafe' >&2; exit 1; }
+done < "$temporary/archive.list"
+mkdir "$temporary/extracted"
+tar -xzf "$temporary/$asset" -C "$temporary/extracted"
 case "$os" in
   linux) state=/var/lib/unyolo-host ;;
   darwin) state='/Library/Application Support/unyolo' ;;
 esac
 install -d -o root -g root -m 0700 "$state"
-pinned_key="$state/trusted-release.pub"
-if [ -e "$pinned_key" ]; then
-  cmp -s "$temporary/$key_asset" "$pinned_key" || { printf '%s\n' 'bootstrap-root: release trust root mismatch' >&2; exit 1; }
-else
-  install -o root -g root -m 0600 "$temporary/$key_asset" "$pinned_key"
+verified_releases="$state/verified-releases"
+install -d -o root -g root -m 0700 "$verified_releases"
+verified_release="$verified_releases/$archive_digest"
+if [ ! -e "$verified_release" ]; then
+  verified_new="$verified_release.new.$$"
+  install -d -o root -g root -m 0700 "$verified_new"
+  cp -R "$temporary/extracted/deployment-kits/templates" "$verified_new/templates"
+  chown -R root:root "$verified_new"
+  find "$verified_new" -type d -exec chmod 0755 {} +
+  find "$verified_new" -type f -exec chmod 0644 {} +
+  mv "$verified_new" "$verified_release"
 fi
-tar -xzf "$temporary/$asset" -C "$temporary" unyolo
+cp "$temporary/extracted/unyolo" "$temporary/unyolo"
 build=${release#unyolo/}
 destination="/opt/unyolo/bootstrap/$build"
 install -d -o root -g root -m 0755 "$destination"

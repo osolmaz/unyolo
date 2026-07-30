@@ -1,0 +1,24 @@
+[Unit]
+Description=sudo-broker privileged command executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=sudo-broker
+EnvironmentFile=/etc/sudo-broker/helper.env
+ExecStart=/opt/unyolo/current/bin/sudo-broker-exec --catalog /etc/sudo-broker/catalog.json --state /var/lib/sudo-broker/helper/executions.json --socket /run/sudo-broker/helper.sock --broker-user sudo-broker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sudo-broker/helper
+ReadOnlyPaths=/etc/sudo-broker
+RuntimeDirectory=sudo-broker
+RuntimeDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

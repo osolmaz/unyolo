@@ -75,12 +75,19 @@ func runSetupComponent(ctx context.Context, args []string, stdout io.Writer, _ i
 	if len(args) != 0 {
 		return errors.New("setup-component does not accept arguments")
 	}
-	return component.Serve(ctx, os.Stdin, stdout, component.Config{
+	return component.Serve(ctx, os.Stdin, stdout, sudoDeploymentConfig())
+}
+
+func sudoDeploymentConfig() component.Config {
+	return component.Config{
 		ComponentID: "sudo", ProfileAPI: "unyolo.io/sudo-deployment/v1",
-		AllowedPaths:    []string{"/etc/sudo-broker", "/var/lib/sudo-broker", "/etc/systemd/system/sudo-broker.service", "/etc/systemd/system/sudo-broker-exec.service"},
+		AllowedPaths: []string{
+			"/etc/sudo-broker", "/var/lib/sudo-broker", "/etc/systemd/system/sudo-broker.service", "/etc/systemd/system/sudo-broker-exec.service",
+			"/etc/systemd/system/sudo-broker-agent.socket", "/etc/systemd/system/sudo-broker-operator.socket",
+		},
 		AllowedServices: []string{"sudo-broker.service", "sudo-broker-exec.service"}, AllowedAccounts: []string{"sudo-broker"},
 		AllowedGroups: []string{"sudo-broker", "sudo-broker-agent", "sudo-broker-operator"}, BackupDirectory: "/var/lib/sudo-broker/deployment-backups",
-	})
+	}
 }
 
 func printVersion(_ context.Context, _ []string, stdout io.Writer, _ io.Writer) error {

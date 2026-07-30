@@ -97,18 +97,25 @@ func namedCommands() map[string]cliCommand {
 			if len(args) != 0 {
 				return errors.New("setup-component does not accept arguments")
 			}
-			return component.Serve(ctx, os.Stdin, stdout, component.Config{
-				ComponentID: "github", ProfileAPI: "unyolo.io/github-deployment/v1",
-				AllowedPaths:    []string{"/etc/gh-broker", "/var/lib/gh-broker", "/etc/systemd/system/gh-broker.service"},
-				AllowedServices: []string{"gh-broker.service"}, AllowedAccounts: []string{"gh-broker"},
-				AllowedGroups: []string{"gh-broker", "gh-broker-agent", "gh-broker-operator"}, BackupDirectory: "/var/lib/gh-broker/deployment-backups",
-			})
+			return component.Serve(ctx, os.Stdin, stdout, githubDeploymentConfig())
 		},
 		"state": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 			return statecmd.Run(ctx, args, stdout, stderr)
 		},
 	}
 	return commands
+}
+
+func githubDeploymentConfig() component.Config {
+	return component.Config{
+		ComponentID: "github", ProfileAPI: "unyolo.io/github-deployment/v1",
+		AllowedPaths: []string{
+			"/etc/gh-broker", "/var/lib/gh-broker", "/etc/systemd/system/gh-broker.service",
+			"/etc/systemd/system/gh-broker-agent.socket", "/etc/systemd/system/gh-broker-operator.socket",
+		},
+		AllowedServices: []string{"gh-broker.service"}, AllowedAccounts: []string{"gh-broker"},
+		AllowedGroups: []string{"gh-broker", "gh-broker-agent", "gh-broker-operator"}, BackupDirectory: "/var/lib/gh-broker/deployment-backups",
+	}
 }
 
 func runVersionCommand(_ context.Context, _ []string, stdout io.Writer, _ io.Writer) error {

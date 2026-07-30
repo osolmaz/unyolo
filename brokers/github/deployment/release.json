@@ -1,0 +1,73 @@
+{
+  "api_version": "unyolo.io/deployment-release-component/v1",
+  "provider": "github",
+  "name": "github",
+  "binary": "gh-broker",
+  "destination": "bin/gh-broker",
+  "role": "provider",
+  "services": [
+    "gh-broker.service"
+  ],
+  "agent_contract": true,
+  "state_format_digest": "sha256:40f2a458b2597d39f339cefc62e15b5ea553f3636b4b1433c35b9612b125b0ed",
+  "state_dir": "/var/lib/gh-broker",
+  "required": false,
+  "setup": {
+    "protocol": "unyolo.io/setup-component/v1",
+    "arguments": [
+      "setup-component"
+    ],
+    "ownership": {
+      "paths": [
+        "/etc/gh-broker",
+        "/var/lib/gh-broker",
+        "/etc/systemd/system/gh-broker.service",
+        "/etc/systemd/system/gh-broker-agent.socket",
+        "/etc/systemd/system/gh-broker-operator.socket",
+        "/var/lib/unyolo-agent/.config/gh-broker/client.json"
+      ],
+      "services": [
+        "gh-broker.service"
+      ],
+      "accounts": [
+        "gh-broker"
+      ],
+      "groups": [
+        "gh-broker",
+        "gh-broker-agent",
+        "gh-broker-operator"
+      ]
+    }
+  },
+  "profile": "profile.json",
+  "additional_profile_files": [
+    {
+      "source": "files/github/scope.json",
+      "destination": "files/github/scope.json"
+    },
+    {
+      "source": "files/github/policy-profile.json",
+      "destination": "files/github/policy-profile.json"
+    },
+    {
+      "source": "files/github/policy-manifest.json",
+      "destination": "files/github/policy-manifest.json"
+    },
+    {
+      "source": "files/github/env",
+      "destination": "files/github/env"
+    },
+    {
+      "source": "files/github/gh-broker.service",
+      "destination": "files/github/gh-broker.service"
+    },
+    {
+      "source": "files/github/gh-broker-agent.socket",
+      "destination": "files/github/gh-broker-agent.socket"
+    },
+    {
+      "source": "files/github/gh-broker-operator.socket",
+      "destination": "files/github/gh-broker-operator.socket"
+    }
+  ]
+}

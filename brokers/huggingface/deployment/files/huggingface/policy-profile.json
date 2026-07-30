@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "preset": "request-all-agent-operations",
+  "clients": [
+    "agent"
+  ],
+  "denied_operations": []
+}

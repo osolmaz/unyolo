@@ -92,6 +92,32 @@ func LoadDirectory(root string) ([]Option, error) {
 	return options, nil
 }
 
+// SelectionKey returns the stable release-template directory name for one
+// bounded provider selection.
+func SelectionKey(options []Option, selected []string) (string, error) {
+	if len(selected) == 0 || len(selected) > len(options) {
+		return "", errors.New("provider selection is empty or exceeds the release catalog")
+	}
+	available := make(map[string]bool, len(options))
+	for _, option := range options {
+		if err := option.validate(); err != nil {
+			return "", err
+		}
+		available[option.ID] = true
+	}
+	values := append([]string(nil), selected...)
+	slices.Sort(values)
+	for index, id := range values {
+		if !available[id] {
+			return "", fmt.Errorf("selected provider %q is absent from the release catalog", id)
+		}
+		if index > 0 && values[index-1] == id {
+			return "", fmt.Errorf("selected provider %q is duplicated", id)
+		}
+	}
+	return strings.Join(values, "+"), nil
+}
+
 func (option Option) validate() error {
 	if option.APIVersion != APIVersion {
 		return fmt.Errorf("unsupported provider option API %q", option.APIVersion)

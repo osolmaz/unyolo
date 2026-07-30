@@ -269,14 +269,19 @@ func TestValidateProfileRejectsUnsafeResources(t *testing.T) {
 }
 
 func TestCredentialEncodingAndActions(t *testing.T) {
-	secret := []byte("secret-value")
-	raw := encodeCredential(Credential{Encoding: "raw"}, secret)
-	if string(raw) != string(secret) {
-		t.Fatalf("raw = %q", raw)
+	secret := []byte(strings.Repeat("s", 32))
+	raw, err := encodeCredential(Credential{Encoding: "raw"}, secret)
+	if err != nil || string(raw) != string(secret) {
+		t.Fatalf("raw = %q, %v", raw, err)
 	}
-	encoded := encodeCredential(Credential{Encoding: "client_secret_file", ClientID: "agent"}, secret)
-	if !strings.Contains(string(encoded), "agent = secret-value") {
-		t.Fatalf("client secret = %q", encoded)
+	encoded, err := encodeCredential(Credential{Encoding: "client_secret_file", ClientID: "agent"}, secret)
+	if err != nil || !strings.Contains(string(encoded), "agent = "+string(secret)) {
+		t.Fatalf("client secret = %q, %v", encoded, err)
+	}
+	for _, invalid := range [][]byte{[]byte("short"), []byte(strings.Repeat("s", 32) + "\n"), append([]byte(strings.Repeat("s", 16)), append([]byte{0}, []byte(strings.Repeat("s", 16))...)...)} {
+		if _, err := encodeCredential(Credential{Encoding: "client_secret_file", ClientID: "agent"}, invalid); err == nil {
+			t.Fatalf("unsafe client credential was accepted: %q", invalid)
+		}
 	}
 	credentials := []api.CredentialAction{{Slot: "a", Action: "retain"}, {Slot: "b", Action: "install"}}
 	if credentialAction(credentials, "a") != "retain" || credentialAction(credentials, "missing") != "" {

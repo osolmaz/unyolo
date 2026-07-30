@@ -1,0 +1,15 @@
+{
+  "api_version": "unyolo.io/deployment-release-component/v1",
+  "provider": "sudo",
+  "name": "sudo-broker-exec",
+  "binary": "sudo-broker-exec",
+  "destination": "bin/sudo-broker-exec",
+  "role": "provider",
+  "services": [
+    "sudo-broker-exec.service"
+  ],
+  "agent_contract": false,
+  "state_format_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "state_dir": "/var/lib/sudo-broker/helper",
+  "required": true
+}

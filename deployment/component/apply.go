@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/osolmaz/unyolo/auth"
 	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/internal/config/client"
 	"github.com/osolmaz/unyolo/internal/strictjson"
@@ -384,7 +385,11 @@ func applyCredentials(values []Credential, actions []api.CredentialAction, suppl
 				clearSecrets(result)
 				return nil, fmt.Errorf("credential slot %q was not supplied", value.Slot)
 			}
-			body := encodeCredential(value, raw)
+			body, err := encodeCredential(value, raw)
+			if err != nil {
+				clearSecrets(result)
+				return nil, err
+			}
 			uid, gid, err := resolveOwner(value.Owner, value.Group)
 			if err != nil {
 				clear(body)
@@ -423,11 +428,15 @@ func applyCredentials(values []Credential, actions []api.CredentialAction, suppl
 	return result, nil
 }
 
-func encodeCredential(value Credential, raw []byte) []byte {
+func encodeCredential(value Credential, raw []byte) ([]byte, error) {
 	if value.Encoding == "client_secret_file" {
-		return []byte(value.ClientID + " = " + strings.TrimSpace(string(raw)) + "\n")
+		secret := string(raw)
+		if secret != strings.TrimSpace(secret) || len(raw) < auth.MinimumSecretBytes || strings.ContainsAny(secret, "\x00\r\n") {
+			return nil, errors.New("broker client credential must be one unpadded secret of at least 32 bytes")
+		}
+		return []byte(value.ClientID + " = " + secret + "\n"), nil
 	}
-	return append([]byte(nil), raw...)
+	return append([]byte(nil), raw...), nil
 }
 
 func readInstalledCredential(value Credential) ([]byte, error) {

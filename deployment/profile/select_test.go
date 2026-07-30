@@ -68,6 +68,24 @@ func TestSelectedDeploymentFiltersComponentsAndAgentBindings(t *testing.T) {
 	}
 }
 
+func TestSelectedDeploymentSupportsEveryDefaultProviderSet(t *testing.T) {
+	deployment := Deployment{
+		APIVersion: APIVersion, Name: "template",
+		Components: []Component{{ID: "github"}, {ID: "huggingface"}},
+		Agents:     []Agent{{ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin", ComponentIDs: []string{"github", "huggingface"}}},
+		Operators:  []Operator{{ID: "operator", UnixUser: "operator"}},
+	}
+	for _, selected := range [][]string{{"github"}, {"huggingface"}, {"github", "huggingface"}} {
+		result, err := selectedDeployment(deployment, "host", selected)
+		if err != nil {
+			t.Fatalf("selectedDeployment(%v): %v", selected, err)
+		}
+		if len(result.Components) != len(selected) || len(result.Agents) != 1 || len(result.Agents[0].ComponentIDs) != len(selected) {
+			t.Fatalf("selectedDeployment(%v) = %+v", selected, result)
+		}
+	}
+}
+
 func TestMaterializeComponentsRejectsMissingProvider(t *testing.T) {
 	source := testPack(t)
 	if err := Lock(source, false); err != nil {

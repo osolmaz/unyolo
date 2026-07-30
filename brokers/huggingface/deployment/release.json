@@ -1,0 +1,73 @@
+{
+  "api_version": "unyolo.io/deployment-release-component/v1",
+  "provider": "huggingface",
+  "name": "huggingface",
+  "binary": "hf-broker",
+  "destination": "bin/hf-broker",
+  "role": "provider",
+  "services": [
+    "hf-broker.service"
+  ],
+  "agent_contract": true,
+  "state_format_digest": "sha256:d452e18ce269489c901445779fb5f8722b54ed1653e8eb1e6b18559d46ac3dc8",
+  "state_dir": "/var/lib/hf-broker",
+  "required": false,
+  "setup": {
+    "protocol": "unyolo.io/setup-component/v1",
+    "arguments": [
+      "setup-component"
+    ],
+    "ownership": {
+      "paths": [
+        "/etc/hf-broker",
+        "/var/lib/hf-broker",
+        "/etc/systemd/system/hf-broker.service",
+        "/etc/systemd/system/hf-broker-agent.socket",
+        "/etc/systemd/system/hf-broker-operator.socket",
+        "/var/lib/unyolo-agent/.config/hf-broker/client.json"
+      ],
+      "services": [
+        "hf-broker.service"
+      ],
+      "accounts": [
+        "hf-broker"
+      ],
+      "groups": [
+        "hf-broker",
+        "hf-broker-agent",
+        "hf-broker-operator"
+      ]
+    }
+  },
+  "profile": "profile.json",
+  "additional_profile_files": [
+    {
+      "source": "files/huggingface/scope.json",
+      "destination": "files/huggingface/scope.json"
+    },
+    {
+      "source": "files/huggingface/policy-profile.json",
+      "destination": "files/huggingface/policy-profile.json"
+    },
+    {
+      "source": "files/huggingface/policy-manifest.json",
+      "destination": "files/huggingface/policy-manifest.json"
+    },
+    {
+      "source": "files/huggingface/env",
+      "destination": "files/huggingface/env"
+    },
+    {
+      "source": "files/huggingface/hf-broker.service",
+      "destination": "files/huggingface/hf-broker.service"
+    },
+    {
+      "source": "files/huggingface/hf-broker-agent.socket",
+      "destination": "files/huggingface/hf-broker-agent.socket"
+    },
+    {
+      "source": "files/huggingface/hf-broker-operator.socket",
+      "destination": "files/huggingface/hf-broker-operator.socket"
+    }
+  ]
+}

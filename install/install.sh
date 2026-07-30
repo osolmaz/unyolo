@@ -11,6 +11,7 @@ PATH_COMPANION_BINARIES="${PATH_COMPANION_BINARIES:-}"
 LIBEXEC_DIR="${LIBEXEC_DIR:-}"
 DATA_FILES="${DATA_FILES:-}"
 DATA_PREFIXES="${DATA_PREFIXES:-}"
+DATA_EXECUTABLE_PREFIXES="${DATA_EXECUTABLE_PREFIXES:-}"
 DATA_DIR="${DATA_DIR:-}"
 UNYOLO_INSTALL_RECORD="${UNYOLO_INSTALL_RECORD:-}"
 UNYOLO_SOURCE_COMMIT="${UNYOLO_SOURCE_COMMIT:-}"
@@ -87,12 +88,19 @@ validate_inputs() {
       "" | /* | */ | *..* | *[!A-Za-z0-9._/-]*) fail "DATA_FILES contains an invalid relative path" ;;
     esac
   done
-  for data_prefix in $DATA_PREFIXES; do
+  for data_prefix in $DATA_PREFIXES $DATA_EXECUTABLE_PREFIXES; do
     case "$data_prefix" in
-      "" | /* | *..* | *[!A-Za-z0-9._/-]*) fail "DATA_PREFIXES entries must be safe relative directory prefixes ending in /" ;;
+      "" | /* | *..* | *[!A-Za-z0-9._/-]*) fail "release data prefixes must be safe relative directory prefixes ending in /" ;;
       */) ;;
-      *) fail "DATA_PREFIXES entries must end in /" ;;
+      *) fail "release data prefixes must end in /" ;;
     esac
+  done
+  for executable_prefix in $DATA_EXECUTABLE_PREFIXES; do
+    selected=false
+    for data_prefix in $DATA_PREFIXES; do
+      case "$executable_prefix" in "$data_prefix"*) selected=true ;; esac
+    done
+    [ "$selected" = true ] || fail "DATA_EXECUTABLE_PREFIXES must be contained by DATA_PREFIXES"
   done
   if { [ -n "$DATA_FILES" ] || [ -n "$DATA_PREFIXES" ]; } && [ -z "$DATA_DIR" ]; then
     fail "DATA_DIR is required when release data is selected"
@@ -264,7 +272,7 @@ verify_complete_release() {
     set -- "$@" "${tmp_dir}/${release_asset}"
   done
   if [ "$BROKER" = unyolo ]; then
-    for release_asset in unyolo-bootstrap-root.sh unyolo-runtime-release.pub; do
+    for release_asset in unyolo-bootstrap-root.sh; do
       curl -fsSL "${base_url}/${release_asset}" -o "${tmp_dir}/${release_asset}"
       verify_checksum "$release_asset" "${tmp_dir}/checksums.txt"
       set -- "$@" "${tmp_dir}/${release_asset}"
@@ -410,8 +418,12 @@ done
 install_data_file() {
   data_file="$1"
   data_destination="${DATA_DIR}/${data_file}"
+  data_mode=0644
+  for executable_prefix in $DATA_EXECUTABLE_PREFIXES; do
+    case "$data_file" in "$executable_prefix"*) data_mode=0755 ;; esac
+  done
   mkdir -p "$(dirname "$data_destination")" || fail "cannot create data directory for ${data_file}"
-  install -m 0644 "${tmp_dir}/${data_file}" "$data_destination" || fail "could not install data file ${data_file}"
+  install -m "$data_mode" "${tmp_dir}/${data_file}" "$data_destination" || fail "could not install data file ${data_file}"
 }
 for data_file in $DATA_FILES; do
   install_data_file "$data_file"

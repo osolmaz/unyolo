@@ -1,0 +1,78 @@
+{
+  "api_version": "unyolo.io/deployment-release-component/v1",
+  "provider": "sudo",
+  "name": "sudo",
+  "binary": "sudo-broker",
+  "destination": "bin/sudo-broker",
+  "role": "provider",
+  "services": [
+    "sudo-broker.service"
+  ],
+  "agent_contract": true,
+  "state_format_digest": "sha256:aff48071775c39df55db581cef983bb348776a9e26b4f8bb94a0568f9fab6939",
+  "state_dir": "/var/lib/sudo-broker",
+  "required": false,
+  "setup": {
+    "protocol": "unyolo.io/setup-component/v1",
+    "arguments": [
+      "setup-component"
+    ],
+    "ownership": {
+      "paths": [
+        "/etc/sudo-broker",
+        "/var/lib/sudo-broker",
+        "/etc/systemd/system/sudo-broker.service",
+        "/etc/systemd/system/sudo-broker-exec.service",
+        "/etc/systemd/system/sudo-broker-agent.socket",
+        "/etc/systemd/system/sudo-broker-operator.socket",
+        "/var/lib/unyolo-agent/.config/sudo-broker/client.json"
+      ],
+      "services": [
+        "sudo-broker.service"
+      ],
+      "accounts": [
+        "sudo-broker"
+      ],
+      "groups": [
+        "sudo-broker",
+        "sudo-broker-agent",
+        "sudo-broker-operator"
+      ]
+    }
+  },
+  "profile": "profile.json",
+  "additional_profile_files": [
+    {
+      "source": "files/sudo/catalog.json",
+      "destination": "files/sudo/catalog.json"
+    },
+    {
+      "source": "files/sudo/policy.json",
+      "destination": "files/sudo/policy.json"
+    },
+    {
+      "source": "files/sudo/frontend.env",
+      "destination": "files/sudo/frontend.env"
+    },
+    {
+      "source": "files/sudo/helper.env",
+      "destination": "files/sudo/helper.env"
+    },
+    {
+      "source": "files/sudo/sudo-broker.service",
+      "destination": "files/sudo/sudo-broker.service"
+    },
+    {
+      "source": "files/sudo/sudo-broker-exec.service",
+      "destination": "files/sudo/sudo-broker-exec.service"
+    },
+    {
+      "source": "files/sudo/sudo-broker-agent.socket",
+      "destination": "files/sudo/sudo-broker-agent.socket"
+    },
+    {
+      "source": "files/sudo/sudo-broker-operator.socket",
+      "destination": "files/sudo/sudo-broker-operator.socket"
+    }
+  ]
+}

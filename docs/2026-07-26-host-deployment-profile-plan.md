@@ -1258,8 +1258,9 @@ existing release checksum and attestation verifier. The operator pins a reviewed
 unYOLO commit or release for this first executable. The user bootstrap
 installs the guided CLI below the user's home. The root phase independently
 runs the immutable bootstrap to install the exact verified setup worker below
-`/opt/unyolo/bootstrap`. The worker then installs the signed runtime bundle
-and pins the deployment public key.
+`/opt/unyolo/bootstrap`. The root bootstrap independently verifies the release
+attestation and stores its exact runtime templates in protected host state. The
+worker then installs only a runtime that matches one of those templates.
 
 The user binary installer remains nonprivileged and creates no accounts or
 services. The root bootstrap installs only the short-lived worker executable;

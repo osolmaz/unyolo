@@ -1,0 +1,15 @@
+[Unit]
+Description=hf-broker agent socket
+
+[Socket]
+ListenStream=/run/unyolo/huggingface/agent/broker.sock
+FileDescriptorName=agent
+SocketUser=hf-broker
+SocketGroup=hf-broker-agent
+SocketMode=0660
+DirectoryMode=0750
+Service=hf-broker.service
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

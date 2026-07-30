@@ -128,6 +128,13 @@ A release is activated as one immutable file set. The default XDG layout is:
   unyolo
   openclaw-unyolo-setup
   providers/
+  deployment-kits/
+    artifacts/
+      gh-broker
+      hf-broker
+      sudo-broker
+      sudo-broker-exec
+    templates/
   manifest.json
 
 ~/.local/share/unyolo/current -> releases/v<version>

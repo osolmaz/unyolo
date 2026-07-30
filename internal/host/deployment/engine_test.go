@@ -108,7 +108,7 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	}
 }
 
-func TestProductionEngineRequiresPinnedProfileTrust(t *testing.T) {
+func TestProductionEngineRequiresAttestedReleaseTemplate(t *testing.T) {
 	pack := engineTestPack(t)
 	snapshot, err := profile.Load(pack)
 	if err != nil {
@@ -117,14 +117,30 @@ func TestProductionEngineRequiresPinnedProfileTrust(t *testing.T) {
 	state := t.TempDir()
 	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}}}
 	if err := engine.verifySnapshotTrust(snapshot); err == nil {
-		t.Fatal("unpinned profile trust root was accepted")
+		t.Fatal("deployment without an attested release template was accepted")
 	}
-	publicKey := filepath.Join(pack, filepath.FromSlash(snapshot.Deployment.Runtime.PublicKey.Path))
-	if _, err := bundle.PinTrustedPublicKey(state, publicKey); err != nil {
+	runtimeRoot := filepath.Join(state, "verified-releases", strings.Repeat("a", 64), "templates", "fake", "runtime")
+	if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
 		t.Fatal(err)
+	}
+	for name, reference := range map[string]profile.Reference{
+		"manifest.json": snapshot.Deployment.Runtime.Manifest,
+		"manifest.sig":  snapshot.Deployment.Runtime.Signature,
+		"release.pub":   snapshot.Deployment.Runtime.PublicKey,
+	} {
+		data := snapshot.Files[reference.Path].Data
+		if err := os.WriteFile(filepath.Join(runtimeRoot, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := engine.verifySnapshotTrust(snapshot); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimeRoot, "manifest.sig"), []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.verifySnapshotTrust(snapshot); err == nil {
+		t.Fatal("deployment runtime different from the attested release template was accepted")
 	}
 }
 
