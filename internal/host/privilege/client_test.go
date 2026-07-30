@@ -121,13 +121,16 @@ func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
 	if err != nil || string(token) != "configured-value" {
 		t.Fatalf("configured token = %q, %v", token, err)
 	}
-	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), gh, strings.Repeat("b", 64), "0.4.1", "unyolo/v0.4.1", token)
+	sourceCommit := strings.Repeat("c", 40)
+	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), gh, strings.Repeat("b", 64), "0.4.1", "unyolo/v0.4.1", sourceCommit, token)
 	for _, argument := range command.Args {
 		if strings.Contains(argument, string(token)) {
 			t.Fatal("GitHub token was included in a process argument")
 		}
 	}
-	if !strings.Contains(strings.Join(command.Args, "\x00"), "--preserve-env=GH_TOKEN") {
+	arguments := strings.Join(command.Args, "\x00")
+	if !strings.Contains(arguments, "--preserve-env=GH_TOKEN") || !strings.Contains(arguments, sourceCommit) ||
+		!strings.Contains(arguments, `"$tag" "$source_commit"`) {
 		t.Fatalf("sudo arguments = %#v", command.Args)
 	}
 	var bindings int
@@ -148,8 +151,11 @@ func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
 }
 
 func TestClientRejectsInvalidWorkerData(t *testing.T) {
-	if client, err := Start(t.Context(), "latest", "", io.Discard); err == nil || client != nil {
-		t.Fatal("invalid release was accepted")
+	if client, err := Start(t.Context(), "latest", "bad", "", io.Discard); err == nil || client != nil {
+		t.Fatal("invalid release identity was accepted")
+	}
+	if client, err := Start(t.Context(), "v1.2.3", "bad", "", io.Discard); err == nil || client != nil {
+		t.Fatal("invalid source commit was accepted")
 	}
 	client := &Client{input: &bufferCloser{}, output: framedReader(t, Response{APIVersion: "old"})}
 	if _, err := client.Plan("/tmp/profile"); err == nil {

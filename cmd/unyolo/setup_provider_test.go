@@ -38,6 +38,28 @@ func TestChooseSessionSelectsProvidersBeforeCreatingState(t *testing.T) {
 	}
 }
 
+func TestChooseSessionKeepsExplicitProfileInExistingMode(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	prompter := &recordingPrompter{name: "existing-host", providerErr: errors.New("provider selection must not run")}
+	store, err := setupSessionStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := chooseSession(t.Context(), prompter, store, setupOptions{
+		New: true, Profile: "/tmp/existing-pack", ProviderOptions: testProviderOptions(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(prompter.calls, ","); got != "name" {
+		t.Fatalf("explicit profile prompt order = %q", got)
+	}
+	if got := value.Answers["mode"]; len(got) != 1 || got[0] != "existing" || len(value.Answers["providers"]) != 0 {
+		t.Fatalf("explicit profile answers = %+v", value.Answers)
+	}
+}
+
 func TestProviderCancellationLeavesNoSetupState(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
@@ -105,10 +127,14 @@ func TestChooseSetupProfileUsesSelectedVerifiedReleaseKit(t *testing.T) {
 func TestProtectedWorkerStartsOnlyAfterActivation(t *testing.T) {
 	var events []string
 	worker := &fakeProtectedWorker{}
+	sourceCommit := strings.Repeat("a", 40)
 	started, err := prepareProtectedWorker(t.Context(), &recordingPrompter{}, func(context.Context) error {
 		events = append(events, "activate")
 		return nil
-	}, "verified-gh", func(context.Context, string, string, io.Writer) (protectedSetupWorker, error) {
+	}, sourceCommit, "verified-gh", func(_ context.Context, _ string, source, _ string, _ io.Writer) (protectedSetupWorker, error) {
+		if source != sourceCommit {
+			t.Fatalf("source commit = %q", source)
+		}
 		events = append(events, "start")
 		return worker, nil
 	})
@@ -121,7 +147,7 @@ func TestProtectedWorkerStartsOnlyAfterActivation(t *testing.T) {
 	_, err = prepareProtectedWorker(t.Context(), &recordingPrompter{}, func(context.Context) error {
 		events = append(events, "activate")
 		return activationErr
-	}, "verified-gh", func(context.Context, string, string, io.Writer) (protectedSetupWorker, error) {
+	}, sourceCommit, "verified-gh", func(context.Context, string, string, string, io.Writer) (protectedSetupWorker, error) {
 		events = append(events, "start")
 		return worker, nil
 	})
@@ -143,14 +169,16 @@ func TestPlanOnlyActivatesBeforeReportingFollowUpCommand(t *testing.T) {
 	}
 }
 
-func TestSetupModeOptionsHideExistingForBootstrapSelection(t *testing.T) {
+func TestSetupModeOptionsPreserveExplicitExistingProfile(t *testing.T) {
 	options := setupModeOptions(setupOptions{ProviderOptions: testProviderOptions()})
 	if len(options) != 2 || options[0].Value != "recommended" || options[1].Value != "custom" {
 		t.Fatalf("bootstrap modes = %+v", options)
 	}
-	options = setupModeOptions(setupOptions{})
-	if len(options) != 3 || options[2].Value != "existing" {
-		t.Fatalf("ordinary modes = %+v", options)
+	for _, setup := range []setupOptions{{}, {Profile: "/tmp/existing", ProviderOptions: testProviderOptions()}} {
+		options = setupModeOptions(setup)
+		if len(options) != 3 || options[2].Value != "existing" {
+			t.Fatalf("existing profile modes = %+v", options)
+		}
 	}
 }
 

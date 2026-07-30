@@ -35,10 +35,10 @@ type protectedSetupWorker interface {
 	Close() error
 }
 
-type setupWorkerStarter func(context.Context, string, string, io.Writer) (protectedSetupWorker, error)
+type setupWorkerStarter func(context.Context, string, string, string, io.Writer) (protectedSetupWorker, error)
 
-var startSetupWorker setupWorkerStarter = func(ctx context.Context, release, githubCLI string, stderr io.Writer) (protectedSetupWorker, error) {
-	return privilege.Start(ctx, release, githubCLI, stderr)
+var startSetupWorker setupWorkerStarter = func(ctx context.Context, release, sourceCommit, githubCLI string, stderr io.Writer) (protectedSetupWorker, error) {
+	return privilege.Start(ctx, release, sourceCommit, githubCLI, stderr)
 }
 
 //nolint:cyclop // Setup dispatch keeps cancellation and terminal cleanup in one lifecycle boundary.
@@ -74,7 +74,8 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil || currentUser.Username == "" {
 		return errors.New("resolve the invoking operator identity")
 	}
-	options := setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly, Operator: currentUser.Username}
+	options := setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly,
+		Operator: currentUser.Username, SourceCommit: buildinfo.SourceCommit}
 	if *bootstrapStage != "" {
 		providerOptions, err := provider.LoadDirectory(filepath.Join(*bootstrapStage, "share", "providers"))
 		if err != nil {
@@ -127,6 +128,7 @@ type setupOptions struct {
 	RuntimeArtifacts string
 	Operator         string
 	GitHubCLI        string
+	SourceCommit     string
 	Activate         func(context.Context) error
 }
 
@@ -147,6 +149,13 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	setupSession, err := chooseSession(ctx, prompter, store, options)
 	if err != nil {
 		return err
+	}
+	if options.Profile != "" && (len(setupSession.Answers["mode"]) != 1 || setupSession.Answers["mode"][0] != "existing") {
+		setupSession.Answers["mode"] = []string{"existing"}
+		setupSession.CompletedStep = appendUnique(setupSession.CompletedStep, "mode")
+		if err := store.Save(setupSession); err != nil {
+			return err
+		}
 	}
 	if len(setupSession.Answers["mode"]) == 0 {
 		mode, selectErr := prompter.Select(ctx, flow.SelectPrompt{
@@ -249,7 +258,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if !confirmed {
 		return flow.CancelledError{}
 	}
-	worker, err := prepareProtectedWorker(ctx, prompter, options.Activate, options.GitHubCLI, startSetupWorker)
+	worker, err := prepareProtectedWorker(ctx, prompter, options.Activate, options.SourceCommit, options.GitHubCLI, startSetupWorker)
 	if err != nil {
 		return err
 	}
@@ -345,9 +354,13 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 			}
 		}
 	}
-	providers, err := chooseProviders(ctx, prompter, options.ProviderOptions)
-	if err != nil {
-		return session.Session{}, err
+	var providers []string
+	if options.Profile == "" {
+		var err error
+		providers, err = chooseProviders(ctx, prompter, options.ProviderOptions)
+		if err != nil {
+			return session.Session{}, err
+		}
 	}
 	name, err := prompter.Text(ctx, flow.Prompt{
 		Message: "Deployment name", Placeholder: "my-host", Required: true,
@@ -365,7 +378,10 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err != nil {
 		return session.Session{}, err
 	}
-	if len(providers) > 0 {
+	if options.Profile != "" {
+		created.Answers["mode"] = []string{"existing"}
+		created.CompletedStep = append(created.CompletedStep, "mode")
+	} else if len(providers) > 0 {
 		created.Answers["providers"] = providers
 		created.CompletedStep = append(created.CompletedStep, "providers")
 	}
@@ -447,12 +463,12 @@ func activateVerifiedCLI(ctx context.Context, prompter flow.SetupPrompter, activ
 	return nil
 }
 
-func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, githubCLI string, start setupWorkerStarter) (protectedSetupWorker, error) {
+func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, sourceCommit, githubCLI string, start setupWorkerStarter) (protectedSetupWorker, error) {
 	if err := activateVerifiedCLI(ctx, prompter, activate); err != nil {
 		return nil, err
 	}
 	workerProgress := prompter.Progress("Starting the verified root-owned setup worker")
-	worker, err := start(ctx, privilegedReleaseVersion(buildinfo.Version), githubCLI, os.Stderr)
+	worker, err := start(ctx, privilegedReleaseVersion(buildinfo.Version), sourceCommit, githubCLI, os.Stderr)
 	if err != nil {
 		workerProgress.Fail("Could not start the verified setup worker")
 		return nil, err
@@ -491,7 +507,7 @@ func setupModeOptions(options setupOptions) []flow.Option {
 		{Value: "recommended", Label: "Recommended", Hint: "Separate agent, local sockets, approval-gated writes, skills-only OpenClaw"},
 		{Value: "custom", Label: "Custom", Hint: "Review identities, endpoints, components, and integration trust"},
 	}
-	if len(options.ProviderOptions) == 0 {
+	if options.Profile != "" || len(options.ProviderOptions) == 0 {
 		values = append(values, flow.Option{Value: "existing", Label: "Existing deployment", Hint: "Review, repair, or reapply a locked deployment pack"})
 	}
 	return values

@@ -6,12 +6,14 @@ if [ -z "${SUDO_UID:-}" ] || [ "$SUDO_UID" -eq 0 ]; then
   printf '%s\n' 'bootstrap-root: a distinct invoking user is required' >&2
   exit 1
 fi
-[ "$#" -eq 1 ] || { printf '%s\n' 'usage: bootstrap-root.sh unyolo/vX.Y.Z' >&2; exit 64; }
+[ "$#" -eq 2 ] || { printf '%s\n' 'usage: bootstrap-root.sh unyolo/vX.Y.Z source-commit' >&2; exit 64; }
 release=$1
+source_commit=$2
 for tool in awk chown chmod cp curl find grep install mv tar tr wc; do
   command -v "$tool" >/dev/null 2>&1 || exit 1
 done
 printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || exit 64
+printf '%s\n' "$source_commit" | grep -Eq '^[0-9a-f]{40}$' || exit 64
 
 gh=${UNYOLO_GH_VERIFIER:-}
 [ -n "$gh" ] && [ -x "$gh" ] || { printf '%s\n' 'bootstrap-root: verified GitHub CLI is required' >&2; exit 1; }
@@ -34,6 +36,7 @@ verify_attestation() {
     --repo osolmaz/unyolo \
     --signer-workflow osolmaz/unyolo/.github/workflows/release.yml \
     --source-ref "refs/tags/$release" \
+    --source-digest "$source_commit" \
     --deny-self-hosted-runners >/dev/null
 }
 verify_checksum "$asset"
