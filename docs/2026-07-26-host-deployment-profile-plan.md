@@ -43,17 +43,19 @@ The primary installation path is one command run from the trusted operator's
 normal user account:
 
 ```sh
-curl -fsSL \
-  "https://raw.githubusercontent.com/osolmaz/unyolo/<verified-commit>/install/bootstrap.sh" \
-  | sh -s -- --release unyolo/v<reviewed-version> setup
+curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-The URL pins an immutable reviewed commit. The bootstrap script downloads the
-matching `unyolo` release, verifies its checksum and GitHub attestation,
-installs it below the current user's home directory, reopens `/dev/tty`, and
-executes `unyolo setup`. The shell script does not collect configuration,
-read credentials, invoke `sudo`, or perform host setup. The user-owned binary is
-never executed as root.
+The full release, provider-selection, activation, and failure contract lives in
+[`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md). The bootstrap resolves one
+exact `unyolo/v*` release, verifies it, and runs its CLI from a private staging
+directory. It does not activate the CLI before the first setup screen. Ctrl-C
+on that screen exits with no installation or setup state.
+
+The first choice selects GitHub, Hugging Face, or both from the components in
+the signed runtime manifest. Local privileged operations may be selected when
+the manifest includes that component. Existing deployment mode reads the
+provider set from its locked pack instead.
 
 `unyolo setup` is an unprivileged guided frontend over the deployment pack,
 planner, and transaction described in this document. It asks questions, runs
@@ -61,13 +63,18 @@ provider enrollment, writes a nonsecret deployment pack, and renders the final
 plan. It never mutates a broker service directly. The final apply uses the same
 planner and transaction as an unattended deployment.
 
-Before enrollment, the wizard resolves the exact signed runtime bundle selected
-by the pinned bootstrap release. It downloads and verifies the component setup
-adapters into a private user cache without activating them. Guided questions
-therefore come from the same component builds that the final plan will install.
-The generated pack includes that exact manifest and signature plus its public
-key.
-There is no floating release-channel lookup after setup starts.
+After the deployment review, setup asks whether to install the verified CLI and
+continue to protected host planning. A positive answer atomically activates the
+same staged release before any root worker starts. Activation failure therefore
+leaves protected host state unchanged. A later planning or apply failure keeps
+the CLI and resumable nonsecret session available for recovery.
+
+The wizard uses the exact signed runtime bundle selected by the bootstrap. It
+downloads and verifies component setup adapters into a private user cache
+without activating them. Guided questions therefore come from the same
+component builds that the final plan will install. The generated pack includes
+that exact manifest and signature plus its public key. No floating release
+lookup occurs after setup starts.
 
 ### Initiating user
 

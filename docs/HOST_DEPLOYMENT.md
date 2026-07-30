@@ -6,7 +6,12 @@ commands. Darwin binaries remain available for existing-account and client
 workflows, but guided host provisioning fails closed until native launchd and
 account provisioning are implemented and tested.
 
-## Start guided setup
+## Current pinned bootstrap
+
+The target default installer and provider-selection flow are specified in
+[`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md). That work is not complete
+until the piped command has passed its real-host checks. Until then, use the
+explicit pinned bootstrap below.
 
 Run the bootstrap as the trusted operator, not as root. Pin both the source
 commit and release:
@@ -27,7 +32,7 @@ interactive root execution.
 The guide explains the operator and agent boundary and opens a locked deployment
 kit. Recommended and Custom setup materialize only its verified profile graph
 and signed runtime artifacts below
-`~/.config/unyolo/deployments/<deployment-name>/`; Existing deployment mode
+`~/.config/unyolo/deployments/<deployment-name>/`. Existing deployment mode
 reviews the selected pack in place. Setup validates every signed component
 adapter and shows the complete plan. Only then does it start the matching
 root-owned worker. Credential values move
@@ -44,8 +49,8 @@ unyolo setup --resume <session-id>
 
 ## Deployment pack
 
-`deployment.json` binds the runtime, Unix identities, components, and optional
-integrations. Every other file is referenced by a relative path and exact
+`deployment.json` binds the runtime and Unix identities to selected components
+plus any optional integrations. Every other file is referenced by a relative path and exact
 SHA-256 digest. Unknown fields, symlinks, path escapes, unlocked references,
 and group-writable inputs are rejected.
 
@@ -132,8 +137,8 @@ unyolo system profile lock --profile "$PWD/deployment"
 unyolo system profile lock --check --profile "$PWD/deployment"
 ```
 
-Protected validation, planning, and apply use the exact same engine as guided
-setup. Invoke the root-owned worker installed by the verified bootstrap; never
+Protected validation and planning use the same engine as guided setup, as does
+apply. Invoke the root-owned worker installed by the verified bootstrap. Never
 run a user-local binary with `sudo`:
 
 ```sh
