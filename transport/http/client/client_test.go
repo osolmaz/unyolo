@@ -7,7 +7,10 @@ import (
 
 func TestParseBaseURLAndSecureClient(t *testing.T) {
 	t.Parallel()
-	for _, value := range []string{"", "ftp://example.test", "http://user@example.test", "http://example.test?q=1"} {
+	for _, value := range []string{
+		"", "ftp://example.test", "http://user@example.test", "http://example.test?q=1",
+		"https://example.test?", "https://example.test#",
+	} {
 		if _, err := ParseBaseURL(value); err == nil {
 			t.Fatalf("ParseBaseURL(%q) succeeded", value)
 		}

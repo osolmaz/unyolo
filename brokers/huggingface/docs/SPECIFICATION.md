@@ -490,6 +490,7 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_UPSTREAM_ROUTER_URL` | no | Router origin, default `https://router.huggingface.co`; intended for tests or private gateways |
 | `HF_BROKER_TELEGRAM_BOT_TOKEN` | no | bot token for approval channel |
 | `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
+| `HF_BROKER_TELEGRAM_API_BASE` | no | optional Telegram-compatible Bot API base; remote bases require HTTPS and loopback bases may use HTTP |
 | `HF_BROKER_TELEGRAM_CHAT_ID` | no | the single operator chat id decisions are accepted from |
 
 Startup validation fails closed: missing endpoints or paths, unsafe network

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/osolmaz/unyolo/transport/endpoint"
@@ -14,7 +15,7 @@ import (
 // ParseBaseURL accepts only absolute HTTP(S) origins with an optional path.
 func ParseBaseURL(value string) (*url.URL, error) {
 	parsed, err := url.Parse(value)
-	if err != nil || !validBaseURL(parsed) {
+	if err != nil || !validBaseURL(parsed) || parsed.ForceQuery || strings.Contains(value, "#") {
 		return nil, errors.New("client base URL is invalid")
 	}
 	if parsed.Scheme == "http" {
