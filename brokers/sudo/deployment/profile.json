@@ -34,11 +34,25 @@
       "group": "sudo-broker"
     },
     {
-      "id": "state",
+      "id": "state-root",
       "destination": "/var/lib/sudo-broker",
+      "mode": 488,
+      "owner": "root",
+      "group": "sudo-broker"
+    },
+    {
+      "id": "frontend-state",
+      "destination": "/var/lib/sudo-broker/frontend",
       "mode": 448,
       "owner": "sudo-broker",
       "group": "sudo-broker"
+    },
+    {
+      "id": "helper-state",
+      "destination": "/var/lib/sudo-broker/helper",
+      "mode": 448,
+      "owner": "root",
+      "group": "root"
     }
   ],
   "files": [
