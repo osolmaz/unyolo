@@ -73,6 +73,52 @@ func TestInteractiveSelectRestoresTerminalAtSupportedWidths(t *testing.T) {
 	}
 }
 
+func TestAccessibleSecretUsesHiddenTTYInput(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	master, slave := openPTY(t)
+	defer func() { _ = master.Close(); _ = slave.Close() }()
+	var captured bytes.Buffer
+	drainDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&captured, master)
+		close(drainDone)
+	}()
+	prompter := New(Options{Input: slave, Output: slave, Accessible: true, Width: 80})
+	result := make(chan struct {
+		value []byte
+		err   error
+	}, 1)
+	go func() {
+		value, err := prompter.Secret(context.Background(), flow.Prompt{Message: "Token", Required: true})
+		result <- struct {
+			value []byte
+			err   error
+		}{value, err}
+	}()
+	time.Sleep(100 * time.Millisecond)
+	if _, err := master.Write([]byte("topsecret\n")); err != nil {
+		t.Fatal(err)
+	}
+	secret := <-result
+	if secret.err != nil || string(secret.value) != "topsecret" {
+		t.Fatalf("secret = %q, %v", secret.value, secret.err)
+	}
+	clear(secret.value)
+	if err := prompter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = slave.Close()
+	select {
+	case <-drainDone:
+	case <-time.After(time.Second):
+		_ = master.Close()
+		<-drainDone
+	}
+	if bytes.Contains(captured.Bytes(), []byte("topsecret")) {
+		t.Fatalf("secret was echoed: %q", captured.Bytes())
+	}
+}
+
 func openPTY(t *testing.T) (*os.File, *os.File) {
 	t.Helper()
 	fd, err := unix.Open("/dev/ptmx", unix.O_RDWR|unix.O_NOCTTY|unix.O_CLOEXEC, 0)

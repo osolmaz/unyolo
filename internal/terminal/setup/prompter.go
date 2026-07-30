@@ -42,17 +42,18 @@ type Options struct {
 
 // Prompter is an inline Huh-backed SetupPrompter.
 type Prompter struct {
-	input      io.Reader
-	inputState *inputState
-	output     io.Writer
-	accessible bool
-	color      bool
-	noOpen     bool
-	openURL    func(context.Context, string) error
-	width      int
-	mu         sync.Mutex
-	progress   map[*indicator]struct{}
-	closed     bool
+	input         io.Reader
+	terminalInput *os.File
+	inputState    *inputState
+	output        io.Writer
+	accessible    bool
+	color         bool
+	noOpen        bool
+	openURL       func(context.Context, string) error
+	width         int
+	mu            sync.Mutex
+	progress      map[*indicator]struct{}
+	closed        bool
 }
 
 // New constructs a terminal prompter without mutating terminal state.
@@ -65,6 +66,7 @@ func New(options Options) *Prompter {
 		output = os.Stdout
 	}
 	accessible := options.Accessible || os.Getenv("UNYOLO_ACCESSIBLE") == "1"
+	terminalInput, _ := input.(*os.File)
 	var tracked *inputState
 	if accessible {
 		tracked = &inputState{reader: input}
@@ -76,7 +78,7 @@ func New(options Options) *Prompter {
 		width = terminalWidth(output)
 	}
 	return &Prompter{
-		input: input, inputState: tracked, output: output, accessible: accessible, color: color,
+		input: input, terminalInput: terminalInput, inputState: tracked, output: output, accessible: accessible, color: color,
 		noOpen: options.NoOpen, openURL: options.OpenURL, width: width,
 		progress: map[*indicator]struct{}{},
 	}
@@ -186,8 +188,8 @@ func (p *Prompter) Secret(ctx context.Context, prompt flow.Prompt) ([]byte, erro
 		}
 	}
 	var secret []byte
-	if file, ok := p.input.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
-		value, err := term.ReadPassword(int(file.Fd()))
+	if p.terminalInput != nil && term.IsTerminal(int(p.terminalInput.Fd())) {
+		value, err := term.ReadPassword(int(p.terminalInput.Fd()))
 		if err != nil {
 			return nil, flow.CancelledError{Cause: err}
 		}

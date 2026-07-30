@@ -68,7 +68,7 @@ func TestWebInstallEndpointPinsGuidedBootstrapToReleaseCommit(t *testing.T) {
 		case "/refs/unyolo/v1.2.3":
 			_, err = fmt.Fprintf(w, `{"object":{"type":"commit","sha":"%s"}}`, commit)
 		case "/" + commit + "/install/bootstrap.sh":
-			_, err = fmt.Fprint(w, "#!/bin/sh\necho release=$2 source=$UNYOLO_SOURCE_COMMIT\n")
+			_, err = fmt.Fprint(w, "#!/bin/sh\necho args=$* source=$UNYOLO_SOURCE_COMMIT\n")
 		default:
 			http.NotFound(w, r)
 		}
@@ -78,16 +78,23 @@ func TestWebInstallEndpointPinsGuidedBootstrapToReleaseCommit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	output, err := endpointCommand(t, server.URL).CombinedOutput()
+	output, err := endpointCommand(t, server.URL, "--accessible").CombinedOutput()
 	if err != nil {
 		t.Fatalf("guided endpoint failed: %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "release=unyolo/v1.2.3 source="+commit) {
+	if !strings.Contains(string(output), "args=--release unyolo/v1.2.3 --accessible source="+commit) {
 		t.Fatalf("guided output = %s", output)
 	}
 	want := []string{"/releases", "/refs/unyolo/v1.2.3", "/" + commit + "/install/bootstrap.sh"}
 	if strings.Join(requested, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("requests = %v, want %v", requested, want)
+	}
+}
+
+func TestWebInstallEndpointRejectsExtraBinaryArguments(t *testing.T) {
+	output, err := endpointCommand(t, "http://127.0.0.1:1", "github", "--accessible").CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "accepts one component name") {
+		t.Fatalf("extra binary arguments = %q, %v", output, err)
 	}
 }
 
