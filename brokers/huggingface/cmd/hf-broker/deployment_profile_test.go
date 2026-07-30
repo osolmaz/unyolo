@@ -11,6 +11,18 @@ import (
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 )
 
+func TestReleaseSocketDirectoriesAllowClientTraversal(t *testing.T) {
+	for _, path := range []string{"../../deployment/files/huggingface/hf-broker-agent.socket", "../../deployment/files/huggingface/hf-broker-operator.socket"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(data, []byte("DirectoryMode=0711\n")) {
+			t.Fatalf("%s does not allow client traversal", path)
+		}
+	}
+}
+
 func TestReleaseDeploymentProfileMatchesHuggingFaceAdapter(t *testing.T) {
 	profileData, err := os.ReadFile("../../deployment/profile.json")
 	if err != nil {

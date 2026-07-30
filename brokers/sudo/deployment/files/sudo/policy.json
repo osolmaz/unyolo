@@ -1,9 +1,9 @@
 {
   "rules": [
     {
-      "id": "agent-a-request-nginx-reload",
+      "id": "agent-request-nginx-reload",
       "effect": "request",
-      "clients": ["agent-a"],
+      "clients": ["agent"],
       "operations": ["exec.command"],
       "targets": [{ "kind": "user", "name": "root" }],
       "attrs": { "command_id": ["nginx-reload"] },
