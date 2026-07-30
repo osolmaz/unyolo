@@ -295,19 +295,26 @@ func loadTelegram(getenv func(string) string, cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	rawChatID := brokerEnv(getenv, "TELEGRAM_CHAT_ID")
-	if cfg.TelegramBotToken == "" && rawChatID == "" && cfg.TelegramAPIBase == "" {
-		return nil
+	cfg.TelegramChatID, err = loadTelegramChatID(
+		cfg.TelegramBotToken,
+		cfg.TelegramAPIBase,
+		brokerEnv(getenv, "TELEGRAM_CHAT_ID"),
+	)
+	return err
+}
+
+func loadTelegramChatID(token, apiBase, raw string) (int64, error) {
+	if token == "" && raw == "" && apiBase == "" {
+		return 0, nil
 	}
-	if cfg.TelegramBotToken == "" || rawChatID == "" {
-		return fmt.Errorf("%s and %s must be set together", brokerEnvName("TELEGRAM_BOT_TOKEN"), brokerEnvName("TELEGRAM_CHAT_ID"))
+	if token == "" || raw == "" {
+		return 0, fmt.Errorf("%s and %s must be set together", brokerEnvName("TELEGRAM_BOT_TOKEN"), brokerEnvName("TELEGRAM_CHAT_ID"))
 	}
-	chatID, err := strconv.ParseInt(rawChatID, 10, 64)
+	chatID, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || chatID == 0 {
-		return fmt.Errorf("%s: expected a non-zero integer", brokerEnvName("TELEGRAM_CHAT_ID"))
+		return 0, fmt.Errorf("%s: expected a non-zero integer", brokerEnvName("TELEGRAM_CHAT_ID"))
 	}
-	cfg.TelegramChatID = chatID
-	return nil
+	return chatID, nil
 }
 
 func loadTelegramAPIBase(value string) (string, error) {
