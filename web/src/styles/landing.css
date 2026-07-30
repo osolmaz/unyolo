@@ -98,6 +98,21 @@
   color: var(--text-muted);
 }
 
+.hero__example {
+  max-width: 34rem;
+  margin: 0 0 1.1rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--border-strong);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+.hero__example q {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
