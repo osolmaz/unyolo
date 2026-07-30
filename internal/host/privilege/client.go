@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +20,7 @@ import (
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 )
 
-const maxGitHubTokenBytes = 4096
+const githubAttestationsURL = "https://api.github.com/repos/osolmaz/unyolo/attestations"
 
 var (
 	releasePattern  = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$`)
@@ -33,23 +34,6 @@ type Client struct {
 	input     io.WriteCloser
 	output    io.ReadCloser
 	temporary string
-}
-
-type boundedTokenBuffer struct {
-	data     bytes.Buffer
-	maximum  int
-	exceeded bool
-}
-
-func (buffer *boundedTokenBuffer) Write(value []byte) (int, error) {
-	remaining := buffer.maximum - buffer.data.Len()
-	if remaining > 0 {
-		_, _ = buffer.data.Write(value[:min(remaining, len(value))])
-	}
-	if len(value) > remaining {
-		buffer.exceeded = true
-	}
-	return len(value), nil
 }
 
 // Start verifies the release-published root bootstrap as the operator, then
@@ -66,15 +50,9 @@ func Start(ctx context.Context, release, sourceCommit, githubCLI string, stderr 
 	if err != nil {
 		return nil, err
 	}
-	token, err := githubToken(ctx, githubCLI)
-	if err != nil {
-		_ = os.RemoveAll(temporary)
-		return nil, err
-	}
 	tag := "unyolo/" + release
 	build := strings.TrimPrefix(release, "v")
-	command := rootWorkerCommand(ctx, bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit, token)
-	clear(token)
+	command := rootWorkerCommand(ctx, bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit)
 	input, err := command.StdinPipe()
 	if err != nil {
 		command.Env = nil
@@ -130,39 +108,9 @@ func validGitHubCLIMetadata(info os.FileInfo) bool {
 		info.Mode().Perm()&0o111 != 0 && info.Size() >= 1 && info.Size() <= 256*1024*1024
 }
 
-func githubToken(ctx context.Context, githubCLI string) ([]byte, error) {
-	if value := strings.TrimSpace(os.Getenv("GH_TOKEN")); value != "" {
-		if len(value) > maxGitHubTokenBytes {
-			return nil, errors.New("GitHub authentication token exceeds size limit")
-		}
-		return []byte(value), nil
-	}
-	command := exec.CommandContext(ctx, githubCLI, "auth", "token") // #nosec G204 -- executable is the validated pinned verifier.
-	output := boundedTokenBuffer{maximum: maxGitHubTokenBytes}
-	command.Stdout = &output
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil || output.exceeded {
-		clear(output.data.Bytes())
-		return nil, errors.New("resolve GitHub authentication for root setup")
-	}
-	data := bytes.TrimSpace(output.data.Bytes())
-	if len(data) == 0 {
-		return nil, errors.New("GitHub authentication is required for root setup")
-	}
-	return data, nil
-}
-
-func rootWorkerCommand(ctx context.Context, bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit string, token []byte) *exec.Cmd {
+func rootWorkerCommand(ctx context.Context, bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit string) *exec.Cmd {
 	script := `set -eu; bootstrap=$1; bootstrap_digest=$2; verifier=$3; verifier_digest=$4; build=$5; tag=$6; source_commit=$7; destination="/opt/unyolo/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$bootstrap" "$destination/bootstrap-root.sh.new"; install -o root -g root -m 0500 "$verifier" "$destination/gh-attestation-verifier.new"; bootstrap_actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || bootstrap_actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); verifier_actual=$(sha256sum "$destination/gh-attestation-verifier.new" 2>/dev/null | awk '{print $1}') || verifier_actual=$(shasum -a 256 "$destination/gh-attestation-verifier.new" | awk '{print $1}'); [ "$bootstrap_actual" = "$bootstrap_digest" ]; [ "$verifier_actual" = "$verifier_digest" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; mv -f "$destination/gh-attestation-verifier.new" "$destination/gh-attestation-verifier"; UNYOLO_GH_VERIFIER="$destination/gh-attestation-verifier" exec "$destination/bootstrap-root.sh" "$tag" "$source_commit"`
-	command := exec.CommandContext(ctx, "sudo", "--preserve-env=GH_TOKEN", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit) // #nosec G204 -- fixed staging command with verified release-derived values.
-	environment := make([]string, 0, len(os.Environ())+1)
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "GH_TOKEN=") {
-			environment = append(environment, value)
-		}
-	}
-	command.Env = append(environment, "GH_TOKEN="+string(token))
-	return command
+	return exec.CommandContext(ctx, "sudo", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit) // #nosec G204 -- fixed staging command with verified release-derived values.
 }
 
 func prepareRootBootstrap(ctx context.Context, release, sourceCommit, githubCLI string, stderr io.Writer) (string, string, string, error) {
@@ -195,8 +143,12 @@ func prepareRootBootstrap(ctx context.Context, release, sourceCommit, githubCLI 
 	if actual != expected {
 		return fail(errors.New("root bootstrap checksum mismatch"))
 	}
+	bundles := filepath.Join(temporary, "attestations.jsonl")
+	if err := downloadAttestationBundles(ctx, githubAttestationsURL, expected, bundles); err != nil {
+		return fail(fmt.Errorf("download root bootstrap attestations: %w", err))
+	}
 	workflow := "osolmaz/unyolo/.github/workflows/release.yml"
-	command := exec.CommandContext(ctx, githubCLI, "attestation", "verify", bootstrap,
+	command := exec.CommandContext(ctx, githubCLI, "attestation", "verify", bootstrap, "--bundle", bundles,
 		"--repo", "osolmaz/unyolo", "--signer-workflow", workflow,
 		"--source-ref", "refs/tags/unyolo/"+release, "--source-digest", sourceCommit,
 		"--deny-self-hosted-runners") // #nosec G204 -- fixed verifier and validated release identity.
@@ -205,6 +157,45 @@ func prepareRootBootstrap(ctx context.Context, release, sourceCommit, githubCLI 
 		return fail(fmt.Errorf("verify root bootstrap provenance: %w", err))
 	}
 	return temporary, bootstrap, expected, nil
+}
+
+func downloadAttestationBundles(ctx context.Context, baseURL, digest, destination string) error {
+	if !checksumPattern.MatchString(digest) {
+		return errors.New("attestation subject digest is invalid")
+	}
+	responsePath := destination + ".response"
+	if err := download(ctx, strings.TrimSuffix(baseURL, "/")+"/sha256:"+digest+"?per_page=30", responsePath, 8*1024*1024); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(responsePath) // #nosec G304 -- private bounded download path.
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Attestations []struct {
+			Bundle json.RawMessage `json:"bundle"`
+		} `json:"attestations"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return fmt.Errorf("decode GitHub attestations: %w", err)
+	}
+	if len(response.Attestations) == 0 || len(response.Attestations) > 30 {
+		return errors.New("GitHub returned an invalid attestation count")
+	}
+	var bundles bytes.Buffer
+	for _, attestation := range response.Attestations {
+		if len(attestation.Bundle) == 0 || !json.Valid(attestation.Bundle) {
+			return errors.New("GitHub returned an invalid attestation bundle")
+		}
+		_, _ = bundles.Write(attestation.Bundle)
+		_ = bundles.WriteByte('\n')
+	}
+	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400) // #nosec G304 -- private temporary destination.
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(bundles.Bytes())
+	return errors.Join(writeErr, file.Close())
 }
 
 func download(ctx context.Context, source, destination string, maximum int64) error {

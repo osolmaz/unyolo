@@ -68,6 +68,8 @@ func TestDownloadAndChecksum(t *testing.T) {
 			_, _ = io.WriteString(writer, "content")
 		case "/large":
 			_, _ = io.WriteString(writer, "too large")
+		case "/attestations/sha256:" + strings.Repeat("a", 64):
+			_, _ = io.WriteString(writer, `{"attestations":[{"bundle":{"mediaType":"test"}}]}`)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -97,56 +99,36 @@ func TestDownloadAndChecksum(t *testing.T) {
 	if _, err := checksumFor(checksums, "missing"); err == nil {
 		t.Fatal("missing checksum was accepted")
 	}
-}
-
-func TestGitHubTokenResolutionAndRootCommand(t *testing.T) {
-	t.Setenv("GH_TOKEN", "environment-value")
-	token, err := githubToken(t.Context(), "/unused")
-	if err != nil || string(token) != "environment-value" {
-		t.Fatalf("environment token = %q, %v", token, err)
-	}
-	clear(token)
-
-	t.Setenv("GH_TOKEN", "")
-	bin := t.TempDir()
-	gh := filepath.Join(bin, "gh")
-	if err := os.WriteFile(gh, []byte("#!/bin/sh\nprintf 'configured-value\\n'\n"), 0o700); err != nil {
+	bundles := filepath.Join(root, "attestations.jsonl")
+	if err := downloadAttestationBundles(t.Context(), server.URL+"/attestations", strings.Repeat("a", 64), bundles); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if digest, digestErr := trustedGitHubCLI(gh); digestErr != nil || len(digest) != 64 {
-		t.Fatalf("trusted verifier digest = %q, %v", digest, digestErr)
+	if data, err := os.ReadFile(bundles); err != nil || string(data) != "{\"mediaType\":\"test\"}\n" {
+		t.Fatalf("attestation bundles = %q, %v", data, err)
 	}
-	token, err = githubToken(t.Context(), gh)
-	if err != nil || string(token) != "configured-value" {
-		t.Fatalf("configured token = %q, %v", token, err)
+	if err := downloadAttestationBundles(t.Context(), server.URL+"/attestations", "bad", filepath.Join(root, "bad-bundles")); err == nil {
+		t.Fatal("invalid attestation digest was accepted")
+	}
+}
+
+func TestRootCommandDoesNotForwardGitHubCredentials(t *testing.T) {
+	bin := t.TempDir()
+	gh := filepath.Join(bin, "gh")
+	if err := os.WriteFile(gh, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := trustedGitHubCLI(gh); err != nil || len(digest) != 64 {
+		t.Fatalf("trusted verifier digest = %q, %v", digest, err)
 	}
 	sourceCommit := strings.Repeat("c", 40)
-	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), gh, strings.Repeat("b", 64), "0.4.1", "unyolo/v0.4.1", sourceCommit, token)
-	for _, argument := range command.Args {
-		if strings.Contains(argument, string(token)) {
-			t.Fatal("GitHub token was included in a process argument")
-		}
-	}
+	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), gh, strings.Repeat("b", 64), "0.4.1", "unyolo/v0.4.1", sourceCommit)
 	arguments := strings.Join(command.Args, "\x00")
-	if !strings.Contains(arguments, "--preserve-env=GH_TOKEN") || !strings.Contains(arguments, sourceCommit) ||
+	if strings.Contains(arguments, "GH_TOKEN") || !strings.Contains(arguments, sourceCommit) ||
 		!strings.Contains(arguments, `"$tag" "$source_commit"`) {
 		t.Fatalf("sudo arguments = %#v", command.Args)
 	}
-	var bindings int
-	for _, value := range command.Env {
-		if strings.HasPrefix(value, "GH_TOKEN=") {
-			bindings++
-		}
-	}
-	if bindings != 1 {
-		t.Fatalf("GitHub token environment bindings = %d", bindings)
-	}
-	clear(token)
-
-	t.Setenv("GH_TOKEN", strings.Repeat("x", maxGitHubTokenBytes+1))
-	if token, err := githubToken(t.Context(), gh); err == nil || token != nil {
-		t.Fatal("oversized GitHub token was accepted")
+	if command.Env != nil {
+		t.Fatalf("root command unexpectedly overrides environment: %#v", command.Env)
 	}
 }
 
