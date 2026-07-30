@@ -364,19 +364,6 @@ const lines = [...before, ...during, ...after];
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .theater[data-armed="true"] .bubble,
-    .theater[data-armed="true"] .line,
-    .theater[data-armed="true"] .tg {
-      transition: none;
-    }
-    .line[data-waiting="true"]::after,
-    .tg.is-in .tg__btn--yes,
-    .tg__done {
-      animation: none;
-    }
-  }
-
   @media (max-width: 62rem) {
     .tg {
       position: static;
@@ -399,14 +386,13 @@ const lines = [...before, ...during, ...after];
     const approve = root.querySelector<HTMLButtonElement>("[data-approve]")!;
     const replay = root.querySelector<HTMLButtonElement>("[data-replay]")!;
 
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Index of the line the operation parks on, and where approval resumes it.
     const PARK = 6;
     const RESUME = 7;
 
     let token = 0;
     const wait = (ms: number, id: number) =>
-      new Promise<boolean>((r) => setTimeout(() => r(id === token), reduce ? Math.min(ms, 60) : ms));
+      new Promise<boolean>((r) => setTimeout(() => r(id === token), ms));
 
     function reset() {
       bubbles.forEach((b) => b.classList.remove("is-in"));
@@ -432,7 +418,7 @@ const lines = [...before, ...during, ...after];
           resolve();
         };
         approve.addEventListener("click", finish);
-        const timer = setTimeout(finish, reduce ? 200 : 4200);
+        const timer = setTimeout(finish, 4200);
       });
     }
 
