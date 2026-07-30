@@ -5,9 +5,8 @@
  * the credential to the broker instead, so only the wire policy allows carries
  * current.
  *
- * Everything here is inline SVG plus CSS. There is no JavaScript, so the
- * diagram works with scripting disabled and stops animating under
- * prefers-reduced-motion.
+ * Everything here is inline SVG plus CSS, so the diagram works with scripting
+ * disabled.
  */
 
 // The right-hand column models the real hierarchy. Two branches sit inside
@@ -594,18 +593,6 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
   }
 
   /* --------------------------------------------------------------- misc -- */
-
-  @media (prefers-reduced-motion: reduce) {
-    .wire--danger,
-    .wire--live,
-    .wire--request,
-    .spark {
-      animation: none;
-    }
-    .spark {
-      opacity: 0;
-    }
-  }
 
   @media (max-width: 46rem) {
     .scenario {
