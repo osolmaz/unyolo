@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 scope.json
+!deployment/files/github/scope.json
 bin/
 /gh-broker
 coverage.out
