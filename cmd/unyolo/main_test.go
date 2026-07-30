@@ -18,9 +18,11 @@ import (
 
 type testManager struct{}
 
-func (testManager) Stop(context.Context, string) error  { return nil }
-func (testManager) Start(context.Context, string) error { return nil }
-func (testManager) Reload(context.Context) error        { return nil }
+func (testManager) Stop(context.Context, string) error    { return nil }
+func (testManager) Start(context.Context, string) error   { return nil }
+func (testManager) Enable(context.Context, string) error  { return nil }
+func (testManager) Disable(context.Context, string) error { return nil }
+func (testManager) Reload(context.Context) error          { return nil }
 func (testManager) Status(context.Context, string) (bundle.ServiceStatus, error) {
 	return bundle.ServiceStatus{Active: true}, nil
 }

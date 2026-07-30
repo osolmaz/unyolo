@@ -43,6 +43,12 @@ func TestSystemdManagerLifecycleAndStatus(t *testing.T) {
 	if err := manager.Start(t.Context(), "gh-broker.service"); err != nil {
 		t.Fatal(err)
 	}
+	if err := manager.Enable(t.Context(), "gh-broker.service"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Disable(t.Context(), "retired.service"); err != nil {
+		t.Fatal(err)
+	}
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +59,8 @@ func TestSystemdManagerLifecycleAndStatus(t *testing.T) {
 	want := []runnerCall{
 		{name: "systemctl", args: []string{"stop", "gh-broker.service"}},
 		{name: "systemctl", args: []string{"start", "gh-broker.service"}},
+		{name: "systemctl", args: []string{"enable", "gh-broker.service"}},
+		{name: "systemctl", args: []string{"disable", "retired.service"}},
 		{name: "systemctl", args: []string{"daemon-reload"}},
 		{name: "systemctl", args: []string{"is-active", "--quiet", "gh-broker.service"}},
 		{name: "systemctl", args: []string{"show", "--property=MainPID", "--value", "gh-broker.service"}},
