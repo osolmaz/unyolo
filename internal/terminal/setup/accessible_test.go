@@ -3,6 +3,8 @@ package setup
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +57,19 @@ func TestAccessiblePromptSurface(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestAccessibleEOFCancelsPrompt(t *testing.T) {
+	var output bytes.Buffer
+	prompter := New(Options{Input: strings.NewReader(""), Output: &output, Accessible: true, Width: 60})
+	_, err := prompter.MultiSelect(context.Background(), flow.SelectPrompt{
+		Message: "Choose", Required: true, InitialValues: []string{"one"},
+		Options: []flow.Option{{Value: "one", Label: "One"}},
+	})
+	var cancelled flow.CancelledError
+	if !errors.As(err, &cancelled) || !errors.Is(err, io.EOF) {
+		t.Fatalf("EOF = %v", err)
 	}
 }
 

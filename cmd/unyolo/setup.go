@@ -219,13 +219,13 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return err
 	}
 	defer func() { _ = worker.Close() }()
-	workerProgress.Update("Inspecting protected host state")
+	planningProgress := prompter.Progress("Inspecting protected host state")
 	planned, err := worker.Plan(profilePath)
 	if err != nil {
-		workerProgress.Fail("Protected host planning failed")
+		planningProgress.Fail("Protected host planning failed")
 		return err
 	}
-	workerProgress.Stop("Protected host plan is ready")
+	planningProgress.Stop("Protected host plan is ready")
 	setupSession.Phase = session.PhasePlanned
 	if err := store.Save(setupSession); err != nil {
 		_ = worker.Cancel()
@@ -374,6 +374,7 @@ func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, ac
 		workerProgress.Fail("Could not start the verified setup worker")
 		return nil, err
 	}
+	workerProgress.Stop("Verified setup worker started")
 	return worker, nil
 }
 

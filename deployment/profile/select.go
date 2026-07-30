@@ -12,6 +12,8 @@ import (
 )
 
 // MaterializeComponents copies a verified kit while retaining only the selected deployment components.
+//
+//nolint:cyclop // Validation, filtered copy, locking, reuse, and atomic publication share one boundary.
 func MaterializeComponents(snapshot Snapshot, destination string, deploymentName string, selected []string) (string, error) {
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination || pathutil.Overlap(destination, snapshot.Root) {
 		return "", errors.New("deployment materialization destination is invalid")
@@ -81,6 +83,7 @@ func MaterializeComponents(snapshot Snapshot, destination string, deploymentName
 	return destination, syncMaterializationDirectory(parent)
 }
 
+//nolint:cyclop // Selection validates and filters components, agents, bindings, and integrations together.
 func selectedDeployment(deployment Deployment, deploymentName string, selected []string) (Deployment, error) {
 	if len(selected) == 0 || len(selected) > MaxComponents {
 		return Deployment{}, errors.New("at least one bounded provider selection is required")
