@@ -31,8 +31,36 @@ verify_checksum() {
   actual=$(sha256sum "$temporary/$1" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$temporary/$1" | awk '{print $1}')
   [ "$actual" = "$expected" ] || { printf '%s\n' 'bootstrap-root: release checksum mismatch' >&2; exit 1; }
 }
+fetch_attestation_bundles() {
+  digest=$1
+  response="$temporary/attestations.json"
+  output="$temporary/attestations.jsonl"
+  curl -fsSL "https://api.github.com/repos/osolmaz/unyolo/attestations/sha256:${digest}?per_page=30" -o "$response" || {
+    printf '%s\n' 'bootstrap-root: could not fetch public GitHub attestations' >&2
+    exit 1
+  }
+  awk '
+    /^[[:space:]]*"bundle"[[:space:]]*:/ {
+      sub(/^[[:space:]]*"bundle"[[:space:]]*:[[:space:]]*/, "")
+      sub(/,[[:space:]]*$/, "")
+      print
+    }
+  ' "$response" > "$output"
+  [ -s "$output" ] || {
+    printf '%s\n' 'bootstrap-root: GitHub returned no usable attestation bundles' >&2
+    exit 1
+  }
+  printf '%s\n' "$output"
+}
 verify_attestation() {
-  "$gh" attestation verify "$temporary/$1" \
+  subject="$temporary/$1"
+  digest=$2
+  set -- attestation verify "$subject"
+  if [ -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then
+    bundle=$(fetch_attestation_bundles "$digest")
+    set -- "$@" --bundle "$bundle"
+  fi
+  "$gh" "$@" \
     --repo osolmaz/unyolo \
     --signer-workflow osolmaz/unyolo/.github/workflows/release.yml \
     --source-ref "refs/tags/$release" \
@@ -41,7 +69,7 @@ verify_attestation() {
 }
 verify_checksum "$asset"
 archive_digest=$expected
-verify_attestation "$asset"
+verify_attestation "$asset" "$archive_digest"
 tar -tzf "$temporary/$asset" > "$temporary/archive.list"
 tar -tvzf "$temporary/$asset" > "$temporary/archive.types"
 awk 'substr($1, 1, 1) != "-" { exit 1 }' "$temporary/archive.types" || { printf '%s\n' 'bootstrap-root: release archive contains a non-regular entry' >&2; exit 1; }

@@ -19,7 +19,7 @@ func TestRootBootstrapBindsReleaseToSourceCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(data)
-	for _, expected := range []string{`[ "$#" -eq 2 ]`, `--source-digest "$source_commit"`} {
+	for _, expected := range []string{`[ "$#" -eq 2 ]`, `--source-digest "$source_commit"`, `--bundle "$bundle"`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("root bootstrap is missing %q", expected)
 		}
