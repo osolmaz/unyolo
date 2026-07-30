@@ -107,6 +107,7 @@ func stagedInstallFiles(stageRoot string) ([]installFile, error) {
 	files := []installFile{
 		{filepath.Join(stageRoot, "bin", "unyolo"), "unyolo", 0o755},
 		{filepath.Join(stageRoot, "libexec", "openclaw-unyolo-setup"), "openclaw-unyolo-setup", 0o755},
+		{filepath.Join(stageRoot, "libexec", "gh-attestation-verifier"), "gh-attestation-verifier", 0o755},
 	}
 	providerOptions, err := provider.LoadDirectory(filepath.Join(stageRoot, "share", "providers"))
 	if err != nil {

@@ -121,7 +121,8 @@ printf '%%s\n' "$*" > "$BOOTSTRAP_FIXTURE_ROOT/setup-args"
 CLI
 chmod 0755 "$INSTALL_DIR/unyolo"
 printf '#!/bin/sh\nexit 0\n' > "$LIBEXEC_DIR/openclaw-unyolo-setup"
-chmod 0755 "$LIBEXEC_DIR/openclaw-unyolo-setup"
+printf '#!/bin/sh\nexit 0\n' > "$LIBEXEC_DIR/gh-attestation-verifier"
+chmod 0755 "$LIBEXEC_DIR/openclaw-unyolo-setup" "$LIBEXEC_DIR/gh-attestation-verifier"
 for name in github huggingface sudo; do printf '{"api_version":"unyolo.io/setup-provider/v1","id":"%%s","label":"%%s","selected":true}\n' "$name" "$name" > "$DATA_DIR/providers/$name.json"; done
 printf '{"api_version":"unyolo.io/bootstrap-stage/v1","release":"unyolo/v1.2.3","source_commit":"%%s","archive_sha256":"sha256:%%064d","attestation":{"repository":"osolmaz/unyolo","workflow":"osolmaz/unyolo/.github/workflows/release.yml","source_ref":"refs/tags/unyolo/v1.2.3"}}\n' "$UNYOLO_SOURCE_COMMIT" 0 > "$UNYOLO_INSTALL_RECORD"
 `, waitBody)

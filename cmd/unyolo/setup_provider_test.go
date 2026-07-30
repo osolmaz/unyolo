@@ -108,7 +108,7 @@ func TestProtectedWorkerStartsOnlyAfterActivation(t *testing.T) {
 	started, err := prepareProtectedWorker(t.Context(), &recordingPrompter{}, func(context.Context) error {
 		events = append(events, "activate")
 		return nil
-	}, func(context.Context, string, io.Writer) (protectedSetupWorker, error) {
+	}, "verified-gh", func(context.Context, string, string, io.Writer) (protectedSetupWorker, error) {
 		events = append(events, "start")
 		return worker, nil
 	})
@@ -121,12 +121,25 @@ func TestProtectedWorkerStartsOnlyAfterActivation(t *testing.T) {
 	_, err = prepareProtectedWorker(t.Context(), &recordingPrompter{}, func(context.Context) error {
 		events = append(events, "activate")
 		return activationErr
-	}, func(context.Context, string, io.Writer) (protectedSetupWorker, error) {
+	}, "verified-gh", func(context.Context, string, string, io.Writer) (protectedSetupWorker, error) {
 		events = append(events, "start")
 		return worker, nil
 	})
 	if !errors.Is(err, activationErr) || strings.Join(events, ",") != "activate" {
 		t.Fatalf("failed activation order = %v, %v", events, err)
+	}
+}
+
+func TestPlanOnlyActivatesBeforeReportingFollowUpCommand(t *testing.T) {
+	activated := false
+	if err := finishPlanOnly(t.Context(), &confirmingPrompter{}, func(context.Context) error {
+		activated = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !activated {
+		t.Fatal("plan-only bootstrap did not activate the verified CLI")
 	}
 }
 
@@ -146,6 +159,12 @@ func testProviderOptions() []provider.Option {
 		{APIVersion: provider.APIVersion, ID: "github", Label: "GitHub", Selected: true},
 		{APIVersion: provider.APIVersion, ID: "huggingface", Label: "Hugging Face", Selected: true},
 	}
+}
+
+type confirmingPrompter struct{ recordingPrompter }
+
+func (*confirmingPrompter) Confirm(context.Context, flow.ConfirmPrompt) (bool, error) {
+	return true, nil
 }
 
 type fakeProtectedWorker struct{}

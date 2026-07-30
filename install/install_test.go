@@ -143,11 +143,13 @@ func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
 	server := releaseServer(t, releaseDir, asset)
 	defer server.Close()
 	dataDir := t.TempDir()
+	libexecDir := t.TempDir()
 	record := filepath.Join(t.TempDir(), "stage.json")
 	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
 	command.Env = append(command.Env,
 		"DATA_PREFIXES=providers/ deployment-kits/", "DATA_EXECUTABLE_PREFIXES=deployment-kits/artifacts/", "DATA_DIR="+dataDir,
 		"UNYOLO_INSTALL_RECORD="+record, "UNYOLO_SOURCE_COMMIT="+strings.Repeat("a", 40),
+		"ATTESTATION_VERIFIER_NAME=gh-attestation-verifier", "LIBEXEC_DIR="+libexecDir,
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("installer failed: %v\n%s", err, output)
@@ -157,6 +159,9 @@ func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
 	}
 	if info, err := os.Stat(filepath.Join(dataDir, "deployment-kits", "artifacts", "test-agent")); err != nil || info.Mode().Perm() != 0o755 {
 		t.Fatalf("installed executable release data = %+v, %v", info, err)
+	}
+	if info, err := os.Stat(filepath.Join(libexecDir, "gh-attestation-verifier")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("installed attestation verifier = %+v, %v", info, err)
 	}
 	recordData, err := os.ReadFile(record)
 	if err != nil || !strings.Contains(string(recordData), `"release":"v1.2.3"`) || !strings.Contains(string(recordData), `"archive_sha256":"sha256:`) {

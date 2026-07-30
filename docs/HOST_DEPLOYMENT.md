@@ -28,9 +28,10 @@ reviews the selected pack in place.
 
 Setup shows the deployment review before asking whether to install the verified
 CLI and continue to protected planning. CLI activation finishes before the root
-worker starts. The root phase independently verifies the release archive's
-GitHub attestation and stores its exact runtime templates below the root-owned
-host state. Production validation and planning reject a runtime manifest,
+worker starts. The root phase copies and rehashes the checksum-verified GitHub
+CLI from private staging, uses that exact executable to verify the release
+archive's GitHub attestation, and stores the archive's exact runtime templates
+below the root-owned host state. Production validation and planning reject a runtime manifest,
 signature, or public key that differs from those attested templates. The CLI
 refuses interactive root execution. Setup validates every signed component
 adapter and shows the complete plan. Only then does it start the matching

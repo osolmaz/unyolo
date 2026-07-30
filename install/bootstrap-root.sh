@@ -13,7 +13,8 @@ for tool in awk chown chmod cp curl find grep install mv tar tr wc; do
 done
 printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || exit 64
 
-command -v gh >/dev/null 2>&1 || exit 1
+gh=${UNYOLO_GH_VERIFIER:-}
+[ -n "$gh" ] && [ -x "$gh" ] || { printf '%s\n' 'bootstrap-root: verified GitHub CLI is required' >&2; exit 1; }
 case "$(uname -s)" in Linux) os=linux ;; Darwin) printf '%s\n' 'bootstrap-root: guided host provisioning currently requires Linux' >&2; exit 1 ;; *) exit 1 ;; esac
 case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) exit 1 ;; esac
 asset="unyolo_${os}_${arch}.tar.gz"
@@ -29,7 +30,7 @@ verify_checksum() {
   [ "$actual" = "$expected" ] || { printf '%s\n' 'bootstrap-root: release checksum mismatch' >&2; exit 1; }
 }
 verify_attestation() {
-  gh attestation verify "$temporary/$1" \
+  "$gh" attestation verify "$temporary/$1" \
     --repo osolmaz/unyolo \
     --signer-workflow osolmaz/unyolo/.github/workflows/release.yml \
     --source-ref "refs/tags/$release" \

@@ -113,6 +113,7 @@ VERSION="$release" \
 INSTALL_DIR="$temporary/bin" \
 LIBEXEC_DIR="$temporary/libexec" \
 COMPANION_BINARIES=openclaw-unyolo-setup \
+ATTESTATION_VERIFIER_NAME=gh-attestation-verifier \
 DATA_PREFIXES="providers/ deployment-kits/" \
 DATA_EXECUTABLE_PREFIXES="deployment-kits/artifacts/" \
 DATA_DIR="$temporary/share" \
@@ -121,6 +122,7 @@ UNYOLO_SOURCE_COMMIT="$source_commit" \
 sh "$installer"
 
 [ -x "$temporary/bin/unyolo" ] || fail "verified release did not stage the unyolo CLI"
+[ -x "$temporary/libexec/gh-attestation-verifier" ] || fail "verified release did not stage the GitHub attestation CLI"
 [ -f "$temporary/stage.json" ] || fail "verified release did not write a stage record"
 
 if [ "$#" -eq 0 ]; then

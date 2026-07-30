@@ -57,7 +57,8 @@ Binary-only installs also accept `VERSION` and `INSTALL_DIR`. Guided setup uses 
 The installer detects the supported platform and downloads its archive with `checksums.txt`. It
 checks the archive digest and verifies GitHub artifact attestations against the repository, release
 workflow, and selected tag. Verification uses a pinned GitHub CLI build when no separately verified
-`UNYOLO_VERIFIER_FILE` is configured.
+`UNYOLO_VERIFIER_FILE` is configured. Guided setup retains that checksum-verified executable and
+uses it for the protected root verification phase, so a system `gh` installation is not required.
 
 The archive is checked before extraction. Unknown entries, links, path escapes, missing companion
 files, and version mismatches fail closed. Guided setup downloads and verifies this archive once.
@@ -75,6 +76,7 @@ Guided setup prepares an immutable user release and switches one `current` link:
 ~/.local/share/unyolo/releases/v<version>/
   unyolo
   openclaw-unyolo-setup
+  gh-attestation-verifier
   providers/
   manifest.json
 
