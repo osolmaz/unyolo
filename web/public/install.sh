@@ -18,14 +18,28 @@ fail() {
 }
 
 repo="${REPO:-osolmaz/unyolo}"
+case "$repo" in */*) ;; *) fail "REPO must use owner/name form" ;; esac
+owner="${repo%%/*}"
+name="${repo#*/}"
+case "${owner}:${name}" in :* | *: | *:*/*) fail "REPO must use owner/name form" ;; esac
+case "$repo" in *[!A-Za-z0-9._/-]* | *..* | /* | */) fail "REPO is invalid" ;; esac
 raw_base="${UNYOLO_RAW_URL_BASE:-https://raw.githubusercontent.com/${repo}}"
 component="${1:-}"
-for tool in curl mktemp grep awk sed head tr; do
+[ "$#" -le 1 ] || fail "expected at most one component name"
+for tool in curl mktemp grep awk sed head tr wc; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
 umask 077
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/unyolo-launcher.XXXXXX")"
-trap 'rm -rf "$temporary"' 0 HUP INT TERM
+cleanup() {
+  status=$?
+  trap - 0 HUP INT TERM
+  rm -rf "$temporary"
+  exit "$status"
+}
+trap cleanup 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
 
 # Kept in step with brokers/ by TestWebInstallEndpointListsEveryBroker.
 case "$component" in
@@ -70,6 +84,7 @@ referenced_object_sha() {
 }
 
 release="$(resolve_release)"
+[ "$(printf '%s\n' "$release" | wc -l | tr -d ' ')" -eq 1 ] || fail "could not resolve one exact unyolo release"
 printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || fail "could not resolve an exact unyolo release"
 ref_base="${UNYOLO_REF_URL_BASE:-https://api.github.com/repos/${repo}/git/ref/tags}"
 tag_base="${UNYOLO_TAG_URL_BASE:-https://api.github.com/repos/${repo}/git/tags}"

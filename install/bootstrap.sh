@@ -28,12 +28,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$release" ] || usage
-command -v grep >/dev/null 2>&1 || fail "grep is required"
-printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || usage
-
-for tool in curl mktemp cp awk sed head tr uname; do
+for tool in curl mktemp cp awk grep sed head tr uname wc; do
   command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"
 done
+[ "$(printf '%s\n' "$release" | wc -l | tr -d ' ')" -eq 1 ] || usage
+printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || usage
 [ -r /dev/tty ] && [ -w /dev/tty ] || fail "an interactive terminal is required"
 case "$(uname -s)" in
   Linux) ;;
@@ -46,6 +45,9 @@ case "$repo" in
   */*) ;;
   *) fail "REPO must use owner/name form" ;;
 esac
+owner="${repo%%/*}"
+name="${repo#*/}"
+case "${owner}:${name}" in :* | *: | *:*/*) fail "REPO must use owner/name form" ;; esac
 case "$repo" in *[!A-Za-z0-9._/-]* | *..* | /* | */) fail "REPO is invalid" ;; esac
 
 referenced_object_sha() {
@@ -111,7 +113,7 @@ VERSION="$release" \
 INSTALL_DIR="$temporary/bin" \
 LIBEXEC_DIR="$temporary/libexec" \
 COMPANION_BINARIES=openclaw-unyolo-setup \
-DATA_FILES="providers/github.json providers/huggingface.json providers/sudo.json" \
+DATA_PREFIXES="providers/" \
 DATA_DIR="$temporary/share" \
 UNYOLO_INSTALL_RECORD="$temporary/stage.json" \
 UNYOLO_SOURCE_COMMIT="$source_commit" \

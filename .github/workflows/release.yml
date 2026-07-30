@@ -25,7 +25,7 @@ jobs:
       directory: ${{ steps.component.outputs.directory }}
       extra: ${{ steps.component.outputs.extra }}
       files: ${{ steps.component.outputs.files }}
-      data_files: ${{ steps.component.outputs.data_files }}
+      data_prefixes: ${{ steps.component.outputs.data_prefixes }}
       version: ${{ steps.component.outputs.version }}
     steps:
       - name: Select component
@@ -39,7 +39,7 @@ jobs:
           path_companions=""
           extra=""
           files=""
-          data_files=""
+          data_prefixes=""
           case "$tag" in
             hf-broker/*)
               echo "broker=hf-broker" >> "$GITHUB_OUTPUT"
@@ -73,7 +73,7 @@ jobs:
               echo "command=./cmd/unyolo" >> "$GITHUB_OUTPUT"
               extra="--extra-command=openclaw-unyolo-setup=./plugins/openclaw/deployment/cmd/openclaw-unyolo-setup"
               files="--extra-file=providers/github.json=brokers/github/deployment/provider.json --extra-file=providers/huggingface.json=brokers/huggingface/deployment/provider.json --extra-file=providers/sudo.json=brokers/sudo/deployment/provider.json"
-              data_files="providers/github.json providers/huggingface.json providers/sudo.json"
+              data_prefixes="providers/"
               companions="openclaw-unyolo-setup"
               ;;
             *) exit 64 ;;
@@ -82,7 +82,7 @@ jobs:
           echo "path_companions=$path_companions" >> "$GITHUB_OUTPUT"
           echo "extra=$extra" >> "$GITHUB_OUTPUT"
           echo "files=$files" >> "$GITHUB_OUTPUT"
-          echo "data_files=$data_files" >> "$GITHUB_OUTPUT"
+          echo "data_prefixes=$data_prefixes" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
@@ -164,7 +164,7 @@ jobs:
           UNYOLO_VERIFY_RELEASE_SET: "true"
           COMPANION_BINARIES: ${{ needs.prepare.outputs.companions }}
           PATH_COMPANION_BINARIES: ${{ needs.prepare.outputs.path_companions }}
-          DATA_FILES: ${{ needs.prepare.outputs.data_files }}
+          DATA_PREFIXES: ${{ needs.prepare.outputs.data_prefixes }}
           DATA_DIR: /tmp/unyolo-release-data
           GH_TOKEN: ${{ github.token }}
         run: sh install/install.sh

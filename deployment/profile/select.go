@@ -110,17 +110,29 @@ func selectedDeployment(deployment Deployment, deploymentName string, selected [
 			return Deployment{}, fmt.Errorf("selected provider %q is absent from the deployment kit", id)
 		}
 	}
-	result.Agents = append([]Agent(nil), deployment.Agents...)
-	for index := range result.Agents {
-		bindings := make([]string, 0, len(result.Agents[index].ComponentIDs))
-		for _, id := range result.Agents[index].ComponentIDs {
+	result.Agents = nil
+	retainedAgents := map[string]bool{}
+	for _, agent := range deployment.Agents {
+		bindings := make([]string, 0, len(agent.ComponentIDs))
+		for _, id := range agent.ComponentIDs {
 			if wanted[id] {
 				bindings = append(bindings, id)
 			}
 		}
-		result.Agents[index].ComponentIDs = slices.Clone(bindings)
 		if len(bindings) == 0 {
-			return Deployment{}, fmt.Errorf("agent %q has no selected provider binding", result.Agents[index].ID)
+			continue
+		}
+		agent.ComponentIDs = slices.Clone(bindings)
+		result.Agents = append(result.Agents, agent)
+		retainedAgents[agent.ID] = true
+	}
+	if len(result.Agents) == 0 {
+		return Deployment{}, errors.New("selected providers leave no agent binding")
+	}
+	result.Integrations = nil
+	for _, integration := range deployment.Integrations {
+		if retainedAgents[integration.AgentID] {
+			result.Integrations = append(result.Integrations, integration)
 		}
 	}
 	return result, nil

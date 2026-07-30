@@ -127,6 +127,7 @@ A release is activated as one immutable file set. The default XDG layout is:
 ~/.local/share/unyolo/releases/v<version>/
   unyolo
   openclaw-unyolo-setup
+  providers/
   manifest.json
 
 ~/.local/share/unyolo/current -> releases/v<version>
@@ -179,9 +180,10 @@ cancellation, including handled signals.
 
 ## Script ownership
 
-`install/bootstrap.sh` is the sole implementation of release work and staged setup launch. The
-website publishes that canonical script as `/install.sh` during its static build.
-`web/public/install.sh` must not grow a second copy of the bootstrap logic.
+`install/bootstrap.sh` is the sole implementation of release work and staged setup launch.
+`web/public/install.sh` is a bounded dispatcher that resolves the selected release and runs that
+release commit's canonical bootstrap. The website endpoint must not copy verification, staging, or
+activation logic from the bootstrap.
 
 `install/install.sh` remains the shared binary installer for named broker installs and release
 verification. Guided setup may reuse its archive validation functions, but it must not invoke the

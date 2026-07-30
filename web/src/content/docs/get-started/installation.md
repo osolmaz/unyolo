@@ -75,6 +75,7 @@ Guided setup prepares an immutable user release and switches one `current` link:
 ~/.local/share/unyolo/releases/v<version>/
   unyolo
   openclaw-unyolo-setup
+  providers/
   manifest.json
 
 ~/.local/share/unyolo/current -> releases/v<version>

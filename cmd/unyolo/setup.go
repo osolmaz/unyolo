@@ -80,6 +80,12 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 		options.Activate = func(activateCtx context.Context) error {
 			return userinstall.Activate(activateCtx, userinstall.Options{StageRoot: *bootstrapStage})
 		}
+	} else if *profilePath == "" {
+		providerOptions, err := installedProviderOptions()
+		if err != nil {
+			return err
+		}
+		options.ProviderOptions = providerOptions
 	}
 	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
 	defer func() { _ = prompter.Close() }()
@@ -323,7 +329,34 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err := store.Save(created); err != nil {
 		return session.Session{}, err
 	}
+	if len(providers) > 0 {
+		if err := prompter.Note(ctx, "Provider choices and later nonsecret answers are saved so setup can resume. Credentials are never written to this session.", "Setup session saved"); err != nil {
+			return session.Session{}, err
+		}
+	}
 	return created, nil
+}
+
+func installedProviderOptions() ([]provider.Option, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return providerOptionsBesideExecutable(executable)
+}
+
+func providerOptionsBesideExecutable(executable string) ([]provider.Option, error) {
+	resolved, err := filepath.EvalSymlinks(executable)
+	if err != nil {
+		return nil, err
+	}
+	directory := filepath.Join(filepath.Dir(resolved), "providers")
+	if _, err := os.Lstat(directory); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	return provider.LoadDirectory(directory)
 }
 
 func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, start setupWorkerStarter) (protectedSetupWorker, error) {
@@ -357,7 +390,7 @@ func chooseProviders(ctx context.Context, prompter flow.SetupPrompter, options [
 		}
 	}
 	selected, err := prompter.MultiSelect(ctx, flow.SelectPrompt{
-		Message: "Select providers", Description: "Choose either provider or both. You can also add bounded local privileged operations.",
+		Message: "Select providers", Description: "Choose the provider services and optional local operations for this host.",
 		Options: choices, InitialValues: initial, Required: true,
 	})
 	if err != nil {

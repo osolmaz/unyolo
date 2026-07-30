@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/osolmaz/unyolo/internal/strictjson"
 )
@@ -30,6 +31,10 @@ func LoadDirectory(root string) ([]Option, error) {
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return nil, errors.New("provider catalog directory must be absolute and clean")
 	}
+	rootInfo, err := os.Lstat(root)
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("provider catalog must be a real directory")
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("read provider catalog: %w", err)
@@ -41,7 +46,7 @@ func LoadDirectory(root string) ([]Option, error) {
 			return nil, errors.New("provider catalog contains an unexpected entry")
 		}
 		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > 16*1024 {
+		if err != nil || entry.Type()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > 16*1024 {
 			return nil, errors.New("provider catalog entry is not a bounded regular file")
 		}
 		data, err := os.ReadFile(filepath.Join(root, entry.Name())) // #nosec G304 -- entry is a direct regular child of the validated root.
@@ -51,6 +56,9 @@ func LoadDirectory(root string) ([]Option, error) {
 		var option Option
 		if err := strictjson.Decode(data, &option, true); err != nil {
 			return nil, fmt.Errorf("decode provider catalog entry %q: %w", entry.Name(), err)
+		}
+		if strings.TrimSuffix(entry.Name(), ".json") != option.ID {
+			return nil, fmt.Errorf("provider catalog file %q does not match provider %q", entry.Name(), option.ID)
 		}
 		if err := option.validate(); err != nil {
 			return nil, fmt.Errorf("provider catalog entry %q: %w", entry.Name(), err)

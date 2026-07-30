@@ -21,7 +21,10 @@ import (
 
 var supportedTargets = []Target{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "amd64"}, {"darwin", "arm64"}}
 
-var brokerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var (
+	brokerNamePattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	archivePathPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$`)
+)
 
 // Options configures release asset generation.
 type Options struct {
@@ -206,7 +209,7 @@ func validateExtraFiles(broker string, commands, files map[string]string) error 
 	}
 	for name, source := range files {
 		clean := filepath.ToSlash(filepath.Clean(name))
-		if clean != name || name == "." || filepath.IsAbs(name) || strings.HasPrefix(name, "../") || seen[name] || strings.TrimSpace(source) == "" {
+		if clean != name || !archivePathPattern.MatchString(name) || name == "." || filepath.IsAbs(name) || strings.HasPrefix(name, "../") || seen[name] || strings.TrimSpace(source) == "" {
 			return errors.New("extra files must use unique safe relative names and nonempty sources")
 		}
 		seen[name] = true

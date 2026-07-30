@@ -145,7 +145,7 @@ func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "stage.json")
 	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
 	command.Env = append(command.Env,
-		"DATA_FILES=providers/test.json", "DATA_DIR="+dataDir,
+		"DATA_PREFIXES=providers/", "DATA_DIR="+dataDir,
 		"UNYOLO_INSTALL_RECORD="+record, "UNYOLO_SOURCE_COMMIT="+strings.Repeat("a", 40),
 	)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -178,6 +178,36 @@ func TestInstallerPlacesGitCredentialHelperOnPath(t *testing.T) {
 	}
 	if info, err := os.Stat(filepath.Join(installDir, "git-credential-unyolo")); err != nil || info.Mode().Perm() != 0o755 {
 		t.Fatalf("credential helper info = %+v err=%v", info, err)
+	}
+}
+
+func TestInstallerRejectsSymlinkArchiveEntry(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	file, err := os.Create(filepath.Join(releaseDir, asset)) // #nosec G304 -- test-owned fixture path.
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzipWriter := gzip.NewWriter(file)
+	tarWriter := tar.NewWriter(gzipWriter)
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "test-broker", Typeflag: tar.TypeSymlink, Linkname: "/bin/true", Mode: 0o755}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	output, err := installerCommand(t, t.TempDir(), server.URL, "v1.2.3").CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "regular files") {
+		t.Fatalf("symlink archive result err=%v output=%s", err, output)
 	}
 }
 

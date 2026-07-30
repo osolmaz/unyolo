@@ -41,8 +41,11 @@ func TestActivatePublishesOneVerifiedRelease(t *testing.T) {
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Release != "unyolo/v1.2.3" || manifest.InstalledAt != now || len(manifest.Files) != 2 {
+	if manifest.Release != "unyolo/v1.2.3" || manifest.InstalledAt != now || len(manifest.Files) != 3 {
 		t.Fatalf("manifest = %+v", manifest)
+	}
+	if _, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "providers", "github.json")); err != nil {
+		t.Fatalf("installed provider catalog: %v", err)
 	}
 	if err := Activate(t.Context(), options); err != nil {
 		t.Fatalf("idempotent activation: %v", err)
@@ -77,6 +80,29 @@ func TestActivateFailurePreservesExistingCLI(t *testing.T) {
 	}
 	if _, statErr := os.Lstat(filepath.Join(dataHome, "unyolo", "current")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("current exists after failed preparation: %v", statErr)
+	}
+}
+
+func TestActivateRollsBackCurrentWhenBinaryLinkFails(t *testing.T) {
+	stage := writeStage(t, "v1.2.3")
+	dataHome, binHome := t.TempDir(), t.TempDir()
+	for _, path := range []string{dataHome, binHome} {
+		if err := os.Chmod(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(binHome, "unyolo"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := Activate(t.Context(), Options{StageRoot: stage, DataHome: dataHome, BinHome: binHome})
+	if err == nil {
+		t.Fatal("activation unexpectedly replaced a directory on PATH")
+	}
+	if _, statErr := os.Lstat(filepath.Join(dataHome, "unyolo", "current")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("current exists after link failure: %v", statErr)
+	}
+	if info, statErr := os.Stat(filepath.Join(binHome, "unyolo")); statErr != nil || !info.IsDir() {
+		t.Fatalf("existing binary path changed: %+v, %v", info, statErr)
 	}
 }
 
@@ -127,6 +153,10 @@ func writeStage(t *testing.T, version string) string {
 		if err := os.WriteFile(filepath.Join(stage, path), []byte(body), 0o755); err != nil { // #nosec G306 -- executable test fixture.
 			t.Fatal(err)
 		}
+	}
+	providerData := `{"api_version":"unyolo.io/setup-provider/v1","id":"github","label":"GitHub","selected":true}` + "\n"
+	if err := os.WriteFile(filepath.Join(stage, "share", "providers", "github.json"), []byte(providerData), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	record := StageRecord{
 		APIVersion: StageAPIVersion, Release: "unyolo/" + version,
