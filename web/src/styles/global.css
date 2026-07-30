@@ -81,6 +81,7 @@ html[data-theme="light"] {
   --iso-shadow: rgb(17 17 19 / 0.13);
   --iso-screen: #3a3a42;
   --iso-eye: #f4f4f6;
+  --iso-eye-hot: #ff4030;
   --iso-a-top: #3c3c44;
   --iso-a-top2: #2b2b31;
   --iso-a-left: #26262c;
@@ -142,6 +143,7 @@ html[data-theme="dark"] {
   --iso-shadow: rgb(0 0 0 / 0.45);
   --iso-screen: #17181b;
   --iso-eye: #8fd3b4;
+  --iso-eye-hot: #ff5545;
   --iso-a-top: #f4f4f6;
   --iso-a-top2: #dedee3;
   --iso-a-left: #cbcbd2;
