@@ -43,6 +43,7 @@ type Options struct {
 // Prompter is an inline Huh-backed SetupPrompter.
 type Prompter struct {
 	input      io.Reader
+	inputState *inputState
 	output     io.Writer
 	accessible bool
 	color      bool
@@ -64,13 +65,18 @@ func New(options Options) *Prompter {
 		output = os.Stdout
 	}
 	accessible := options.Accessible || os.Getenv("UNYOLO_ACCESSIBLE") == "1"
+	var tracked *inputState
+	if accessible {
+		tracked = &inputState{reader: input}
+		input = tracked
+	}
 	color := colorEnabled(output)
 	width := options.Width
 	if width <= 0 {
 		width = terminalWidth(output)
 	}
 	return &Prompter{
-		input: input, output: output, accessible: accessible, color: color,
+		input: input, inputState: tracked, output: output, accessible: accessible, color: color,
 		noOpen: options.NoOpen, openURL: options.OpenURL, width: width,
 		progress: map[*indicator]struct{}{},
 	}
@@ -281,6 +287,10 @@ func (p *Prompter) Close() error {
 }
 
 func (p *Prompter) runForm(ctx context.Context, field huh.Field) error {
+	readBefore := int64(0)
+	if p.inputState != nil {
+		readBefore = p.inputState.bytesRead()
+	}
 	form := huh.NewForm(huh.NewGroup(field)).
 		WithAccessible(p.accessible).
 		WithTheme(unyoloTheme(p.color)).
@@ -292,12 +302,45 @@ func (p *Prompter) runForm(ctx context.Context, field huh.Field) error {
 		form.WithWidth(p.width)
 	}
 	if err := form.RunWithContext(ctx); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) || errors.Is(err, context.Canceled) {
+		if errors.Is(err, huh.ErrUserAborted) || errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
 			return flow.CancelledError{Cause: err}
 		}
 		return err
 	}
+	if p.inputState != nil && p.inputState.eofWithoutBytesSince(readBefore) {
+		return flow.CancelledError{Cause: io.EOF}
+	}
 	return nil
+}
+
+type inputState struct {
+	reader io.Reader
+	mu     sync.Mutex
+	bytes  int64
+	eof    bool
+}
+
+func (state *inputState) Read(buffer []byte) (int, error) {
+	count, err := state.reader.Read(buffer)
+	state.mu.Lock()
+	state.bytes += int64(count)
+	if errors.Is(err, io.EOF) {
+		state.eof = true
+	}
+	state.mu.Unlock()
+	return count, err
+}
+
+func (state *inputState) bytesRead() int64 {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.bytes
+}
+
+func (state *inputState) eofWithoutBytesSince(previous int64) bool {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.eof && state.bytes == previous
 }
 
 func unyoloTheme(color bool) huh.Theme {

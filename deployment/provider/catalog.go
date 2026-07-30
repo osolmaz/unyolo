@@ -27,6 +27,8 @@ type Option struct {
 }
 
 // LoadDirectory loads and validates every provider option in a verified staging directory.
+//
+//nolint:cyclop // Directory, entry, schema, identity, duplicate, and bound checks form one trust boundary.
 func LoadDirectory(root string) ([]Option, error) {
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return nil, errors.New("provider catalog directory must be absolute and clean")

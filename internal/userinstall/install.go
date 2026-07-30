@@ -75,6 +75,8 @@ type Options struct {
 }
 
 // Activate verifies the staged release, prepares an immutable version directory, and switches one current link.
+//
+//nolint:cyclop // Stage verification and atomic activation intentionally remain in one transaction boundary.
 func Activate(ctx context.Context, options Options) error {
 	normalized, record, version, err := validateOptions(options)
 	if err != nil {
@@ -135,6 +137,7 @@ func Activate(ctx context.Context, options Options) error {
 	return switchActive(root, normalized.BinHome, version)
 }
 
+//nolint:cyclop // XDG paths and the closed stage record are validated together before any write.
 func validateOptions(options Options) (Options, StageRecord, string, error) {
 	if options.Now == nil {
 		options.Now = time.Now
@@ -236,6 +239,7 @@ func verifySourceFile(path string) (string, error) {
 	return fmt.Sprintf("sha256:%x", hash.Sum(nil)), nil
 }
 
+//nolint:cyclop // Existing-release verification and new immutable publication share one boundary.
 func prepareRelease(final, releases string, files []struct {
 	source string
 	name   string
@@ -251,7 +255,7 @@ func prepareRelease(final, releases string, files []struct {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(staging) }()
-	if err := os.Chmod(staging, 0o700); err != nil {
+	if err := os.Chmod(staging, 0o700); err != nil { // #nosec G302 -- release staging is an owner-only directory.
 		return err
 	}
 	for _, file := range files {
@@ -276,6 +280,7 @@ func prepareRelease(final, releases string, files []struct {
 	return syncDirectory(releases)
 }
 
+//nolint:cyclop // Every identity and file digest is checked before an existing release is reused.
 func verifyExistingRelease(root string, expected Manifest) error {
 	info, err := os.Lstat(root)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
