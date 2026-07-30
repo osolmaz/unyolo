@@ -27,6 +27,7 @@ func TestRootBootstrapBindsReleaseToSourceCommit(t *testing.T) {
 }
 
 func TestBootstrapStagesOnceAndRemovesStageAfterSetup(t *testing.T) {
+	requireLinuxBootstrap(t)
 	script, err := exec.LookPath("script")
 	if err != nil {
 		t.Skip("script command is required for PTY coverage")
@@ -60,6 +61,7 @@ func TestBootstrapStagesOnceAndRemovesStageAfterSetup(t *testing.T) {
 }
 
 func TestBootstrapCtrlCCleansStageAndReturns130(t *testing.T) {
+	requireLinuxBootstrap(t)
 	script, err := exec.LookPath("script")
 	if err != nil {
 		t.Skip("script command is required for PTY coverage")
@@ -114,10 +116,14 @@ func TestBootstrapCtrlCCleansStageAndReturns130(t *testing.T) {
 	}
 }
 
-func bootstrapPTYCommand(ctx context.Context, script string) *exec.Cmd {
-	if runtime.GOOS == "darwin" {
-		return exec.CommandContext(ctx, script, "-q", "-e", "/dev/null", "sh", "install/bootstrap.sh", "--release", "unyolo/v1.2.3", "--accessible") // #nosec G204 -- fixed repository command through the discovered PTY utility.
+func requireLinuxBootstrap(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("guided host provisioning currently requires Linux")
 	}
+}
+
+func bootstrapPTYCommand(ctx context.Context, script string) *exec.Cmd {
 	return exec.CommandContext(ctx, script, "-qefc", "sh install/bootstrap.sh --release unyolo/v1.2.3 --accessible", "/dev/null") // #nosec G204 -- fixed repository command through the discovered PTY utility.
 }
 
