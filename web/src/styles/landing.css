@@ -93,14 +93,9 @@
 .hero p {
   margin: 0 0 1.1rem;
   max-width: 34rem;
-  font-size: 1.0625rem;
+  font-size: 1rem;
   line-height: 1.7;
   color: var(--text-muted);
-}
-
-.hero p:first-of-type {
-  font-size: 1.1875rem;
-  line-height: 1.65;
 }
 
 .hero__actions {

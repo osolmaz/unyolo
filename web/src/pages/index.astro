@@ -166,9 +166,9 @@ const operatorTranscript = `<span class="t-prompt">$</span> curl -sS --unix-sock
 <span class="t-ok">200  state=active  uses_remaining=1</span>`;
 
 const description =
-  "unYOLO is a framework for building credential brokers, small proxies that sit in front of " +
-  "services like GitHub, Hugging Face, or Google Workspace, so your agent can work without " +
-  "holding the real credential.";
+  "unYOLO is a framework for building credential brokers and proxies for services like GitHub, " +
+  "Hugging Face, or Google Workspace. Write fine-grained policies in a local file and give your " +
+  "agent timed grants, without clicking through permission screens.";
 ---
 
 <BaseLayout title="unYOLO" description={description} section="home">
@@ -180,15 +180,15 @@ const description =
           <h1>YOLO safely with your agents</h1>
 
           <p>
-            unYOLO is a framework for building credential brokers, small proxies that sit in front
-            of services like GitHub, Hugging Face, or Google Workspace. Your agent talks to a
-            broker and never holds the real credential.
+            unYOLO is a framework for building credential brokers and proxies for services like
+            GitHub, Hugging Face, or Google Workspace. Your agent talks to the broker and never
+            holds the real credential.
           </p>
 
           <p>
-            You narrow what it can do by editing a local file. There is no permission model to
-            build in each provider and no separate account to set up for the agent. Riskier
-            operations wait for your approval, then run on a grant that expires in minutes.
+            Write fine-grained policies in a local file, with no permission screens to click
+            through and no separate account to create for the agent. When it needs more, give it
+            a timed grant that expires on its own.
           </p>
 
           <div class="hero__actions">
