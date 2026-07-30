@@ -241,7 +241,7 @@ func validateExtraFiles(broker string, commands, files map[string]string) error 
 }
 
 func build(ctx context.Context, options Options, goos, goarch string) (string, error) {
-	work, err := os.MkdirTemp("", "unyolo-release-*")
+	work, err := createReleaseWorkDir()
 	if err != nil {
 		return "", err
 	}
@@ -257,6 +257,14 @@ func build(ctx context.Context, options Options, goos, goarch string) (string, e
 	}
 	asset := filepath.Join(options.Dist, fmt.Sprintf("%s_%s_%s.tar.gz", options.Broker, goos, goarch))
 	return asset, archiveBinaries(asset, options, binaries)
+}
+
+func createReleaseWorkDir() (string, error) {
+	root, err := canonicalPath(os.TempDir())
+	if err != nil {
+		return "", fmt.Errorf("resolve release temporary directory: %w", err)
+	}
+	return os.MkdirTemp(root, "unyolo-release-*")
 }
 
 func buildReleaseBinaries(ctx context.Context, work string, options Options, goos, goarch string) (map[string]string, error) {
