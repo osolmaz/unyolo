@@ -1,4 +1,6 @@
 ---
+import { isoDefs, isoStopCss, personIcon, agentIcon, brokerIcon, cubeIcon, policyIcon } from "../lib/iso";
+
 /**
  * Two stacked scenarios on the landing page. The top one hands your credential
  * straight to the agent, so every wire out of it is live. The bottom one gives
@@ -12,6 +14,8 @@
 // The right-hand column models the real hierarchy. Two branches sit inside
 // acme/api, which is itself a target because the repository can be deleted.
 // acme/secrets is a separate repository.
+const P = "dg";
+
 const REPO_BOX = { x: 596, y: 16, w: 296, h: 146 };
 
 const targets = [
@@ -21,70 +25,6 @@ const targets = [
   { id: "repo", y: 44, endX: REPO_BOX.x, name: "acme/api", note: "repository" },
   { id: "secrets", y: 208, endX: 608, name: "acme/secrets", note: "private repo" },
 ];
-
-/* ---- icons -------------------------------------------------------------
-
-   Cube faces sit on a 2:1 axonometric grid, so the face planes slope by
-   atan(0.5) = 26.565 degrees. Anything drawn onto a face is skewed by that
-   same angle so it lies in the plane rather than looking pasted on.
-
-   The person is built from smooth solids instead: a sphere on a cone.
-   ---------------------------------------------------------------------- */
-
-const SKEW_RIGHT = "skewY(-26.565)";
-
-const personIcon = `
-  <ellipse class="iso-shadow" cx="0" cy="33" rx="25" ry="6"/>
-  <path fill="url(#gBody)" d="
-    M -21,29
-    C -21,5 -12,-7 0,-7
-    C 12,-7 21,5 21,29
-    A 21 6.5 0 0 1 -21,29 Z"/>
-  <ellipse fill="url(#gBodyBase)" cx="0" cy="29" rx="21" ry="6.5"/>
-  <circle fill="url(#gHead)" cx="0" cy="-23" r="13"/>
-`;
-
-const agentIcon = `
-  <ellipse class="iso-shadow" cx="0" cy="35" rx="29" ry="7"/>
-  <polygon fill="url(#gTop)"   points="-28,-14 0,-28 28,-14 0,0"/>
-  <polygon fill="url(#gLeft)"  points="-28,-14 0,0 0,30 -28,16"/>
-  <polygon fill="url(#gRight)" points="28,-14 28,16 0,30 0,0"/>
-  <!-- Antenna rises from the centre of the top face, so it is drawn after the
-       faces rather than behind them. -->
-  <line x1="0" y1="-14" x2="0" y2="-34" class="iso-antenna"/>
-  <circle class="iso-mark" cx="0" cy="-37" r="3.2"/>
-  <g transform="translate(14 8) ${SKEW_RIGHT}">
-    <rect class="iso-screen" x="-9.5" y="-9" width="19" height="15" rx="2.5"/>
-    <circle class="iso-eye" cx="-4.2" cy="-2.2" r="2.3"/>
-    <circle class="iso-eye" cx="4.2" cy="-2.2" r="2.3"/>
-  </g>
-`;
-
-const brokerIcon = `
-  <ellipse class="iso-shadow" cx="0" cy="39" rx="32" ry="7.5"/>
-  <polygon fill="url(#gaTop)"   points="-30,-22 0,-38 30,-22 0,-6"/>
-  <polygon fill="url(#gaLeft)"  points="-30,-22 0,-6 0,34 -30,18"/>
-  <polygon fill="url(#gaRight)" points="30,-22 30,18 0,34 0,-6"/>
-  <g transform="translate(15 6) ${SKEW_RIGHT}">
-    <path class="iso-a-mark" d="M -6,-4 A 6 6 0 0 1 6,-4 L 6,0 L 3,0 L 3,-4 A 3 3 0 0 0 -3,-4 L -3,0 L -6,0 Z"/>
-    <rect class="iso-a-mark" x="-7.5" y="0" width="15" height="12" rx="2"/>
-  </g>
-`;
-
-const policyIcon = `
-  <path fill="url(#gTop)" d="M -11,-13 L 5,-13 L 11,-7 L 11,13 L -11,13 Z"/>
-  <path fill="url(#gLeft)" d="M 5,-13 L 11,-7 L 5,-7 Z"/>
-  <rect class="iso-mark" x="-7" y="-5" width="14" height="1.6" rx="0.8"/>
-  <rect class="iso-mark" x="-7" y="-0.5" width="14" height="1.6" rx="0.8"/>
-  <rect class="iso-mark" x="-7" y="4" width="9" height="1.6" rx="0.8"/>
-`;
-
-const cubeIcon = `
-  <ellipse class="iso-shadow" cx="0" cy="18" rx="17" ry="4.5"/>
-  <polygon fill="url(#gTop)"   points="-17,-10 0,-19 17,-10 0,-1"/>
-  <polygon fill="url(#gLeft)"  points="-17,-10 0,-1 0,16 -17,7"/>
-  <polygon fill="url(#gRight)" points="17,-10 17,7 0,16 0,-1"/>
-`;
 
 /** Wire from a hub on the left to a target on the right. */
 const wire = (fromX: number, y: number, endX: number) =>
@@ -114,46 +54,7 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
 
 <div class="diagram">
   <svg class="diagram__defs" aria-hidden="true" focusable="false">
-    <defs>
-      <radialGradient id="gHead" cx="34%" cy="26%" r="78%">
-        <stop offset="0" class="s-hi" />
-        <stop offset="0.62" class="s-top" />
-        <stop offset="1" class="s-left" />
-      </radialGradient>
-      <linearGradient id="gBody" x1="0" y1="0" x2="1" y2="0.25">
-        <stop offset="0" class="s-top" />
-        <stop offset="0.5" class="s-left" />
-        <stop offset="1" class="s-right" />
-      </linearGradient>
-      <linearGradient id="gBodyBase" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" class="s-left" />
-        <stop offset="1" class="s-right2" />
-      </linearGradient>
-      <linearGradient id="gTop" x1="0" y1="0" x2="0.6" y2="1">
-        <stop offset="0" class="s-hi" />
-        <stop offset="1" class="s-top2" />
-      </linearGradient>
-      <linearGradient id="gLeft" x1="0" y1="0" x2="0.3" y2="1">
-        <stop offset="0" class="s-left" />
-        <stop offset="1" class="s-left2" />
-      </linearGradient>
-      <linearGradient id="gRight" x1="0" y1="0" x2="0.4" y2="1">
-        <stop offset="0" class="s-right" />
-        <stop offset="1" class="s-right2" />
-      </linearGradient>
-      <linearGradient id="gaTop" x1="0" y1="0" x2="0.6" y2="1">
-        <stop offset="0" class="s-a-top" />
-        <stop offset="1" class="s-a-top2" />
-      </linearGradient>
-      <linearGradient id="gaLeft" x1="0" y1="0" x2="0.3" y2="1">
-        <stop offset="0" class="s-a-left" />
-        <stop offset="1" class="s-a-left2" />
-      </linearGradient>
-      <linearGradient id="gaRight" x1="0" y1="0" x2="0.4" y2="1">
-        <stop offset="0" class="s-a-right" />
-        <stop offset="1" class="s-a-right2" />
-      </linearGradient>
-    </defs>
+    <defs set:html={isoDefs(P)} />
   </svg>
   <!-- ------------------------------------------------------- loose agent -- -->
   <figure class="scenario scenario--risk">
@@ -199,8 +100,8 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
         <text x="0" y="4">token</text>
       </g>
 
-      <g transform="translate(90 130)" set:html={personIcon} />
-      <g transform="translate(300 130)" set:html={agentIcon} />
+      <g transform="translate(90 130)" set:html={personIcon(P)} />
+      <g transform="translate(300 130)" set:html={agentIcon(P)} />
       <text class="node-label" x="90" y="196" text-anchor="middle">YOU</text>
       <text class="node-label" x="300" y="196" text-anchor="middle">AGENT</text>
 
@@ -218,7 +119,7 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
       {
         targets.map((t) => (
           <>
-            <g transform={`translate(${t.indent ? 646 : 622} ${t.y})`} set:html={cubeIcon} />
+            <g transform={`translate(${t.indent ? 646 : 622} ${t.y})`} set:html={cubeIcon(P)} />
             <text class="res-name" x={t.indent ? 676 : 652} y={t.y - 1}>
               {t.name}
             </text>
@@ -305,12 +206,12 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
 
       {/* the policy the broker checks against */}
       <path class="wire wire--base" d="M 370 66 L 370 90" />
-      <g transform="translate(370 44)" set:html={policyIcon} />
+      <g transform="translate(370 44)" set:html={policyIcon(P)} />
       <text class="res-note" x="370" y="70" text-anchor="middle">scope.json</text>
 
-      <g transform="translate(88 74)" set:html={personIcon} />
-      <g transform="translate(88 190)" set:html={agentIcon} />
-      <g transform="translate(370 130)" set:html={brokerIcon} />
+      <g transform="translate(88 74)" set:html={personIcon(P)} />
+      <g transform="translate(88 190)" set:html={agentIcon(P)} />
+      <g transform="translate(370 130)" set:html={brokerIcon(P)} />
       <text class="node-label" x="88" y="130" text-anchor="middle">YOU</text>
       <text class="node-label" x="88" y="250" text-anchor="middle">AGENT</text>
       <text class="node-label" x="370" y="200" text-anchor="middle">BROKER</text>
@@ -329,7 +230,7 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
       {
         targets.map((t) => (
           <>
-            <g transform={`translate(${t.indent ? 646 : 622} ${t.y})`} set:html={cubeIcon} class:list={[!t.safe && "is-dim"]} />
+            <g transform={`translate(${t.indent ? 646 : 622} ${t.y})`} set:html={cubeIcon(P)} class:list={[!t.safe && "is-dim"]} />
             <text class:list={["res-name", !t.safe && "is-dim"]} x={t.indent ? 676 : 652} y={t.y - 1}>
               {t.name}
             </text>
@@ -342,6 +243,8 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
     </svg>
   </figure>
 </div>
+
+<style set:html={isoStopCss}></style>
 
 <style>
   .diagram {
@@ -404,19 +307,6 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
     height: 0;
   }
 
-  .s-hi { stop-color: var(--iso-hi); }
-  .s-top { stop-color: var(--iso-top); }
-  .s-top2 { stop-color: var(--iso-top2); }
-  .s-left { stop-color: var(--iso-left); }
-  .s-left2 { stop-color: var(--iso-left2); }
-  .s-right { stop-color: var(--iso-right); }
-  .s-right2 { stop-color: var(--iso-right2); }
-  .s-a-top { stop-color: var(--iso-a-top); }
-  .s-a-top2 { stop-color: var(--iso-a-top2); }
-  .s-a-left { stop-color: var(--iso-a-left); }
-  .s-a-left2 { stop-color: var(--iso-a-left2); }
-  .s-a-right { stop-color: var(--iso-a-right); }
-  .s-a-right2 { stop-color: var(--iso-a-right2); }
 
   .scenario__svg :global(.iso-mark) {
     fill: var(--iso-mark);
