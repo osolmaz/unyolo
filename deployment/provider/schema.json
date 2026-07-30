@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unyolo.io/schema/setup-provider/v1/provider.schema.json",
+  "title": "unYOLO guided setup provider",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "id", "label", "selected"],
+  "properties": {
+    "api_version": {
+      "const": "unyolo.io/setup-provider/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "hint": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "selected": {
+      "type": "boolean"
+    }
+  }
+}

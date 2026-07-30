@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+fail() {
+  printf '%s\n' "bootstrap: $*" >&2
+  exit 1
+}
+
 usage() {
   printf '%s\n' 'usage: bootstrap.sh --release unyolo/vX.Y.Z [setup arguments...]' >&2
   exit 64
@@ -18,63 +23,108 @@ while [ "$#" -gt 0 ]; do
       shift
       break
       ;;
-    setup|--*)
-      break
-      ;;
+    setup|--*) break ;;
     *) usage ;;
   esac
 done
 [ -n "$release" ] || usage
-command -v grep >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: grep is required' >&2; exit 1; }
+command -v grep >/dev/null 2>&1 || fail "grep is required"
 printf '%s\n' "$release" | grep -Eq '^unyolo/v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$' || usage
 
-command -v curl >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: curl is required' >&2; exit 1; }
-command -v gh >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: GitHub CLI is required for attestation verification' >&2; exit 1; }
-command -v tar >/dev/null 2>&1 || { printf '%s\n' 'bootstrap: tar is required' >&2; exit 1; }
-
+for tool in curl mktemp cp awk sed head tr uname; do
+  command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"
+done
+[ -r /dev/tty ] && [ -w /dev/tty ] || fail "an interactive terminal is required"
 case "$(uname -s)" in
-  Linux) os=linux ;;
-  Darwin) printf '%s\n' 'bootstrap: guided host provisioning currently requires Linux' >&2; exit 1 ;;
-  *) printf '%s\n' 'bootstrap: unsupported operating system' >&2; exit 1 ;;
-esac
-case "$(uname -m)" in
-  x86_64|amd64) arch=amd64 ;;
-  arm64|aarch64) arch=arm64 ;;
-  *) printf '%s\n' 'bootstrap: unsupported architecture' >&2; exit 1 ;;
+  Linux) ;;
+  Darwin) fail "guided host provisioning currently requires Linux" ;;
+  *) fail "unsupported operating system" ;;
 esac
 
-asset="unyolo_${os}_${arch}.tar.gz"
-base="https://github.com/osolmaz/unyolo/releases/download/${release}"
-temporary=$(mktemp -d "${TMPDIR:-/tmp}/unyolo-bootstrap.XXXXXX")
-trap 'rm -rf "$temporary"' EXIT HUP INT TERM
+repo="${REPO:-osolmaz/unyolo}"
+case "$repo" in
+  */*) ;;
+  *) fail "REPO must use owner/name form" ;;
+esac
+case "$repo" in *[!A-Za-z0-9._/-]* | *..* | /* | */) fail "REPO is invalid" ;; esac
 
-curl -fL --proto '=https' --tlsv1.2 "$base/$asset" -o "$temporary/$asset"
-curl -fL --proto '=https' --tlsv1.2 "$base/checksums.txt" -o "$temporary/checksums.txt"
-(
-  cd "$temporary"
-  expected=$(awk -v name="$asset" '$2 == name { print $1 }' checksums.txt)
-  [ -n "$expected" ] || { printf '%s\n' 'bootstrap: release checksum is missing' >&2; exit 1; }
-  actual=$(sha256sum "$asset" 2>/dev/null | awk '{print $1}') || actual=$(shasum -a 256 "$asset" | awk '{print $1}')
-  [ "$actual" = "$expected" ] || { printf '%s\n' 'bootstrap: release checksum mismatch' >&2; exit 1; }
-)
-gh attestation verify "$temporary/$asset" \
-  --repo osolmaz/unyolo \
-  --signer-workflow osolmaz/unyolo/.github/workflows/release.yml \
-  --source-ref "refs/tags/$release" \
-  --deny-self-hosted-runners >/dev/null
+referenced_object_sha() {
+  tr '{},' '\n' |
+    awk '
+      found && /"sha"[[:space:]]*:/ {
+        value = $0
+        sub(/^.*"sha"[[:space:]]*:[[:space:]]*"/, "", value)
+        sub(/".*$/, "", value)
+        print value
+        exit
+      }
+      /"object"[[:space:]]*:/ { found = 1 }
+    '
+}
 
-tar -xzf "$temporary/$asset" -C "$temporary" unyolo
-[ -f "$temporary/unyolo" ] && [ ! -L "$temporary/unyolo" ] || { printf '%s\n' 'bootstrap: release archive is invalid' >&2; exit 1; }
-install_dir=${XDG_BIN_HOME:-"$HOME/.local/bin"}
+resolve_source_commit() {
+  if [ -n "${UNYOLO_SOURCE_COMMIT:-}" ]; then
+    printf '%s\n' "$UNYOLO_SOURCE_COMMIT"
+    return
+  fi
+  ref_base="${UNYOLO_REF_URL_BASE:-https://api.github.com/repos/${repo}/git/ref/tags}"
+  tag_base="${UNYOLO_TAG_URL_BASE:-https://api.github.com/repos/${repo}/git/tags}"
+  ref="$(curl -fsSL "${ref_base}/${release}")"
+  sha="$(printf '%s' "$ref" | referenced_object_sha)"
+  type="$(printf '%s' "$ref" | sed -n 's/.*"type":[[:space:]]*"\([a-z]*\)".*/\1/p' | head -n 1)"
+  if [ "$type" = tag ]; then
+    object="$(curl -fsSL "${tag_base}/${sha}")"
+    sha="$(printf '%s' "$object" | referenced_object_sha)"
+  fi
+  printf '%s\n' "$sha"
+}
+
+source_commit="$(resolve_source_commit)"
+case "$source_commit" in *[!0-9a-f]*) fail "release tag did not resolve to an exact commit SHA" ;; esac
+[ "${#source_commit}" -eq 40 ] || fail "release tag did not resolve to an exact commit SHA"
+
 umask 077
-mkdir -p "$install_dir"
-install -m 0755 "$temporary/unyolo" "$install_dir/unyolo.new"
-mv -f "$install_dir/unyolo.new" "$install_dir/unyolo"
+temporary="$(mktemp -d "${TMPDIR:-/tmp}/unyolo-bootstrap.XXXXXX")"
+cleanup() {
+  status=$?
+  trap - 0 HUP INT TERM
+  rm -rf "$temporary"
+  exit "$status"
+}
+trap cleanup 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
 
-[ -r /dev/tty ] && [ -w /dev/tty ] || { printf '%s\n' 'bootstrap: an interactive terminal is required' >&2; exit 1; }
+installer="$temporary/install.sh"
+if [ -n "${UNYOLO_INSTALLER_FILE:-}" ]; then
+  cp "$UNYOLO_INSTALLER_FILE" "$installer"
+else
+  raw_base="${UNYOLO_RAW_URL_BASE:-https://raw.githubusercontent.com/${repo}}"
+  curl -fsSL "${raw_base}/${source_commit}/install/install.sh" -o "$installer"
+fi
+
+mkdir -p "$temporary/bin" "$temporary/libexec" "$temporary/share/providers"
+BROKER=unyolo \
+REPO="$repo" \
+TAG_PREFIX=unyolo/ \
+VERSION="$release" \
+INSTALL_DIR="$temporary/bin" \
+LIBEXEC_DIR="$temporary/libexec" \
+COMPANION_BINARIES=openclaw-unyolo-setup \
+DATA_FILES="providers/github.json providers/huggingface.json providers/sudo.json" \
+DATA_DIR="$temporary/share" \
+UNYOLO_INSTALL_RECORD="$temporary/stage.json" \
+UNYOLO_SOURCE_COMMIT="$source_commit" \
+sh "$installer"
+
+[ -x "$temporary/bin/unyolo" ] || fail "verified release did not stage the unyolo CLI"
+[ -f "$temporary/stage.json" ] || fail "verified release did not write a stage record"
+
 if [ "$#" -eq 0 ]; then
   set -- setup
 elif [ "$1" != setup ]; then
   set -- setup "$@"
 fi
-exec "$install_dir/unyolo" "$@" </dev/tty >/dev/tty
+"$temporary/bin/unyolo" "$@" \
+  --bootstrap-stage "$temporary" \
+  </dev/tty >/dev/tty 2>/dev/tty

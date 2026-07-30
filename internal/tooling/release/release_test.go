@@ -73,9 +73,11 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 	writeReleaseFile(t, filepath.Join(directory, "helper"), "main.go", "package main\nvar version = \"dev\"\nfunc main() {}\n")
 	writeReleaseFile(t, directory, "README.md", "# test\n")
 	writeReleaseFile(t, directory, "LICENSE", "test license\n")
+	writeReleaseFile(t, directory, "provider.json", "{\"id\":\"test\"}\n")
 	dist := filepath.Join(directory, "dist")
 	options := Options{Directory: directory, Broker: "test-broker", Command: ".", Version: "v0.1.0", Dist: dist,
-		ExtraCommands: map[string]string{"test-broker-exec": "./helper"}}
+		ExtraCommands: map[string]string{"test-broker-exec": "./helper"},
+		ExtraFiles:    map[string]string{"providers/test.json": filepath.Join(directory, "provider.json")}}
 	if err := Run(t.Context(), options); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestRunBuildsDeterministicReleaseAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	asset := filepath.Join(dist, "test-broker_"+strings.ReplaceAll(HostTarget(), "/", "_")+".tar.gz")
-	if names := archiveNames(t, asset); !slices.Equal(names, []string{"test-broker", "test-broker-exec", "README.md", "LICENSE"}) {
+	if names := archiveNames(t, asset); !slices.Equal(names, []string{"test-broker", "test-broker-exec", "providers/test.json", "README.md", "LICENSE"}) {
 		t.Fatalf("archive names = %v", names)
 	}
 	assertArchiveMetadata(t, asset)

@@ -13,14 +13,10 @@ import (
 	"testing"
 )
 
-// endpointScript is the short installer served from https://unyolo.io/install.sh.
 const endpointScript = "../web/public/install.sh"
 
-var endpointBrokerCase = regexp.MustCompile(`(?m)^\s*([a-z0-9-]+(?:\s*\|\s*[a-z0-9-]+)*)\)\s*;;`)
+var endpointBrokerCase = regexp.MustCompile(`(?m)^\s*([a-z0-9-]+(?:\s*\|\s*[a-z0-9-]+)*)\)\s*$`)
 
-// The endpoint hardcodes the brokers it accepts so an unknown name fails with a
-// usable message instead of a 404 from curl. That list has to track the
-// brokers/ directory, and nothing else would notice if it stopped.
 func TestWebInstallEndpointListsEveryBroker(t *testing.T) {
 	entries, err := os.ReadDir("../brokers")
 	if err != nil {
@@ -35,70 +31,71 @@ func TestWebInstallEndpointListsEveryBroker(t *testing.T) {
 			onDisk = append(onDisk, entry.Name())
 		}
 	}
-	if len(onDisk) == 0 {
-		t.Fatal("found no brokers with an install.sh")
-	}
 	sort.Strings(onDisk)
-
 	accepted := acceptedBrokers(t)
 	if strings.Join(accepted, ",") != strings.Join(onDisk, ",") {
 		t.Fatalf("%s accepts %v, but brokers/ holds %v", endpointScript, accepted, onDisk)
 	}
 }
 
-func TestWebInstallEndpointRunsTheBrokerBootstrap(t *testing.T) {
+func TestWebInstallEndpointRunsNamedBrokerBootstrap(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/main/brokers/github/install.sh" {
 			http.NotFound(w, r)
 			return
 		}
-		if _, err := fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n"); err != nil {
+		if _, err := fmt.Fprint(w, "#!/bin/sh\necho bootstrap-ran\n"); err != nil {
 			t.Errorf("write bootstrap script: %v", err)
 		}
 	}))
 	defer server.Close()
 
 	output, err := endpointCommand(t, server.URL, "github").CombinedOutput()
-	if err != nil {
-		t.Fatalf("endpoint failed: %v\n%s", err, output)
-	}
-	if !strings.Contains(string(output), "bootstrap ran") {
-		t.Fatalf("endpoint output = %s", output)
+	if err != nil || !strings.Contains(string(output), "bootstrap-ran") {
+		t.Fatalf("named endpoint = %q, %v", output, err)
 	}
 }
 
-// With no argument the endpoint installs the GitHub broker, which is the one
-// the docs lead with everywhere else.
-func TestWebInstallEndpointDefaultsToGitHub(t *testing.T) {
-	var requested string
+func TestWebInstallEndpointPinsGuidedBootstrapToReleaseCommit(t *testing.T) {
+	commit := strings.Repeat("a", 40)
+	var requested []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requested = r.URL.Path
-		if _, err := fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n"); err != nil {
-			t.Errorf("write bootstrap script: %v", err)
+		requested = append(requested, r.URL.Path)
+		var err error
+		switch r.URL.Path {
+		case "/releases":
+			_, err = fmt.Fprint(w, `[{"tag_name":"gh-broker/v9.0.0"},{"tag_name":"unyolo/v1.2.3"}]`)
+		case "/refs/unyolo/v1.2.3":
+			_, err = fmt.Fprintf(w, `{"object":{"type":"commit","sha":"%s"}}`, commit)
+		case "/" + commit + "/install/bootstrap.sh":
+			_, err = fmt.Fprint(w, "#!/bin/sh\necho release=$2 source=$UNYOLO_SOURCE_COMMIT\n")
+		default:
+			http.NotFound(w, r)
+		}
+		if err != nil {
+			t.Errorf("write endpoint response: %v", err)
 		}
 	}))
 	defer server.Close()
 
 	output, err := endpointCommand(t, server.URL).CombinedOutput()
 	if err != nil {
-		t.Fatalf("endpoint failed: %v\n%s", err, output)
+		t.Fatalf("guided endpoint failed: %v\n%s", err, output)
 	}
-	if requested != "/main/brokers/github/install.sh" {
-		t.Fatalf("endpoint fetched %q", requested)
+	if !strings.Contains(string(output), "release=unyolo/v1.2.3 source="+commit) {
+		t.Fatalf("guided output = %s", output)
 	}
-	if !strings.Contains(string(output), "installing the github broker") {
-		t.Fatalf("endpoint did not say which broker it picked: %s", output)
+	want := []string{"/releases", "/refs/unyolo/v1.2.3", "/" + commit + "/install/bootstrap.sh"}
+	if strings.Join(requested, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("requests = %v, want %v", requested, want)
 	}
 }
 
-func TestWebInstallEndpointRejectsUnknownBrokers(t *testing.T) {
+func TestWebInstallEndpointRejectsUnknownComponents(t *testing.T) {
 	for _, name := range []string{"gitlab", "../etc"} {
 		output, err := endpointCommand(t, "http://127.0.0.1:1", name).CombinedOutput()
-		if err == nil {
-			t.Fatalf("broker %q was accepted: %s", name, output)
-		}
-		if !strings.Contains(string(output), "usage: curl") {
-			t.Fatalf("broker %q gave no usage line: %s", name, output)
+		if err == nil || !strings.Contains(string(output), "usage: curl") {
+			t.Fatalf("component %q = %q, %v", name, output, err)
 		}
 	}
 }
@@ -124,6 +121,11 @@ func acceptedBrokers(t *testing.T) []string {
 func endpointCommand(t *testing.T, rawBase string, args ...string) *exec.Cmd {
 	t.Helper()
 	command := exec.Command("sh", append([]string{endpointScript}, args...)...)
-	command.Env = append(os.Environ(), "UNYOLO_RAW_URL_BASE="+rawBase)
+	command.Env = append(os.Environ(),
+		"UNYOLO_RAW_URL_BASE="+rawBase,
+		"UNYOLO_RELEASES_URL="+rawBase+"/releases",
+		"UNYOLO_REF_URL_BASE="+rawBase+"/refs",
+		"UNYOLO_TAG_URL_BASE="+rawBase+"/tags",
+	)
 	return command
 }

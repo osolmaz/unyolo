@@ -6,34 +6,32 @@ commands. Darwin binaries remain available for existing-account and client
 workflows, but guided host provisioning fails closed until native launchd and
 account provisioning are implemented and tested.
 
-## Current pinned bootstrap
+## Guided setup
 
-The target default installer and provider-selection flow are specified in
-[`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md). That work is not complete
-until the piped command has passed its real-host checks. Until then, use the
-explicit pinned bootstrap below.
-
-Run the bootstrap as the trusted operator, not as root. Pin both the source
-commit and release:
+The full installer and provider-selection contract is specified in
+[`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md). Run the default command as
+the trusted operator, not as root:
 
 ```sh
-curl -fsSL \
-  "https://raw.githubusercontent.com/osolmaz/unyolo/<reviewed-commit>/install/bootstrap.sh" \
-  | sh -s -- --release unyolo/v<reviewed-version> setup
+curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-The bootstrap verifies the archive checksum, exact tagged release workflow,
-and GitHub build attestation. It installs only the user CLI below
-`~/.local/bin`. The root phase separately verifies and pins the attested
-unYOLO runtime public key before any deployment adapter can run. Production
-validation and planning reject a missing or different key. The CLI refuses
-interactive root execution.
+The bootstrap resolves one exact release, verifies its checksum and GitHub
+build attestation, and runs the CLI from private staging. The first screen lets
+the operator select GitHub, Hugging Face, or both. Ctrl-C there removes staging
+and exits without an installation or setup session.
 
-The guide explains the operator and agent boundary and opens a locked deployment
-kit. Recommended and Custom setup materialize only its verified profile graph
-and signed runtime artifacts below
+Recommended and Custom setup filter the verified deployment kit to the selected
+providers and materialize its locked graph below
 `~/.config/unyolo/deployments/<deployment-name>/`. Existing deployment mode
-reviews the selected pack in place. Setup validates every signed component
+reviews the selected pack in place.
+
+Setup shows the deployment review before asking whether to install the verified
+CLI and continue to protected planning. CLI activation finishes before the root
+worker starts. The root phase separately verifies and pins the attested unYOLO
+runtime public key before any deployment adapter can run. Production validation
+and planning reject a missing or different key. The CLI refuses interactive
+root execution. Setup validates every signed component
 adapter and shows the complete plan. Only then does it start the matching
 root-owned worker. Credential values move
 through one-use anonymous pipes and are not written to the setup session or

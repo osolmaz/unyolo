@@ -31,6 +31,7 @@ type Options struct {
 	Version       string
 	Dist          string
 	ExtraCommands map[string]string
+	ExtraFiles    map[string]string
 	Targets       []Target
 }
 
@@ -179,7 +180,10 @@ func validate(options Options) error {
 	if !brokerNamePattern.MatchString(options.Broker) {
 		return errors.New("broker must be a file name")
 	}
-	return validateExtraCommands(options.Broker, options.ExtraCommands)
+	if err := validateExtraCommands(options.Broker, options.ExtraCommands); err != nil {
+		return err
+	}
+	return validateExtraFiles(options.Broker, options.ExtraCommands, options.ExtraFiles)
 }
 
 func requiredReleaseOptions(options Options) bool {
@@ -191,6 +195,21 @@ func validateExtraCommands(broker string, commands map[string]string) error {
 		if !brokerNamePattern.MatchString(name) || name == broker || strings.TrimSpace(command) == "" {
 			return errors.New("extra commands must use unique safe binary names and nonempty packages")
 		}
+	}
+	return nil
+}
+
+func validateExtraFiles(broker string, commands, files map[string]string) error {
+	seen := map[string]bool{broker: true, "README.md": true, "LICENSE": true}
+	for name := range commands {
+		seen[name] = true
+	}
+	for name, source := range files {
+		clean := filepath.ToSlash(filepath.Clean(name))
+		if clean != name || name == "." || filepath.IsAbs(name) || strings.HasPrefix(name, "../") || seen[name] || strings.TrimSpace(source) == "" {
+			return errors.New("extra files must use unique safe relative names and nonempty sources")
+		}
+		seen[name] = true
 	}
 	return nil
 }
@@ -276,7 +295,7 @@ type archiveFile struct {
 }
 
 func archiveFiles(options Options, binaries map[string]string) []archiveFile {
-	files := make([]archiveFile, 0, len(binaries)+2)
+	files := make([]archiveFile, 0, len(binaries)+len(options.ExtraFiles)+2)
 	names := make([]string, 0, len(binaries))
 	for name := range binaries {
 		names = append(names, name)
@@ -284,6 +303,14 @@ func archiveFiles(options Options, binaries map[string]string) []archiveFile {
 	sort.Strings(names)
 	for _, name := range names {
 		files = append(files, archiveFile{binaries[name], name, 0o755})
+	}
+	names = names[:0]
+	for name := range options.ExtraFiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		files = append(files, archiveFile{options.ExtraFiles[name], name, 0o644})
 	}
 	files = append(files,
 		archiveFile{filepath.Join(options.Directory, "README.md"), "README.md", 0o644},

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
@@ -26,6 +27,10 @@ func main() {
 	defer stop()
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
+		var cancelled flow.CancelledError
+		if errors.As(err, &cancelled) {
+			os.Exit(130)
+		}
 		os.Exit(1)
 	}
 }

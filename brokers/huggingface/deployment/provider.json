@@ -1,0 +1,7 @@
+{
+  "api_version": "unyolo.io/setup-provider/v1",
+  "id": "huggingface",
+  "label": "Hugging Face",
+  "hint": "Approval-gated Hub, Jobs, endpoint, and account operations",
+  "selected": true
+}
