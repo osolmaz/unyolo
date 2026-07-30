@@ -62,9 +62,16 @@ secret paths, and malformed endpoints.
 
 ## Sharing a physical bot
 
-A physical Telegram bot token can have only one `getUpdates` owner. To share a
-bot with another application, run a durable Bot API multiplexer and give unYOLO
-its own local client token and API base. For example:
+A physical Telegram bot token can have only one `getUpdates` owner. Sharing the
+unrestricted token with an untrusted application is not safe for approvals: a
+token holder can recover inline button callback data from outgoing message
+metadata and invent a decision. See [Chat approval
+security](CHAT_APPROVAL_SECURITY.md#telegram) for the attack and no-mux
+alternatives.
+
+To share one physical bot without trusting the other application as an
+operator, run a durable Bot API multiplexer and give unYOLO its own local client
+token and API base. For example:
 
 ```sh
 sudo unyolo-telegram setup systemd \

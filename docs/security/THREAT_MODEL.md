@@ -14,11 +14,15 @@ classifying, validating, and executing its own operations.
   rejected.
 - The broker process owns policy, grants, immutable provider plans, activation
   validation, provider credentials, and audit export.
-- Notification channels carry one-time decision tokens. They are transports,
-  not long-term authority stores. The Telegram ingress may retain encrypted
-  callback authority only until terminal delivery or expiry.
-- The OpenClaw plugin is a trusted operator client. Its browser and outbound
-  messages receive only the safe Operator V1 projection.
+- Notification channels carry one-time decision tokens only when the channel
+  keeps unclicked action data from untrusted clients. They are transports, not
+  long-term authority stores. The Telegram ingress may retain encrypted
+  callback authority only until terminal delivery or expiry. See [Chat
+  approval security](../CHAT_APPROVAL_SECURITY.md).
+- The OpenClaw plugin receives only the safe Operator V1 projection. A
+  deployment may explicitly trust it as an operator client, but hardened chat
+  approval deployments treat OpenClaw and its agent as untrusted for approval
+  authorization.
 - Provider executors, especially the sudo helper, are separate processes and
   credential domains. unYOLO code does not execute provider operations.
 
@@ -86,7 +90,8 @@ classifying, validating, and executing its own operations.
 | --- | --- |
 | Client impersonates an operator | Separate secret sets and listeners reject it before handlers run. |
 | Stale or replayed browser decision | Revision and idempotency checks return current safe state without repeating authority. |
-| Replayed notification callback | The token is consumed only by the pending transition; later use fails. |
+| Replayed notification callback | Verify the platform request or one-time action capability, then consume it only for the bound pending transition; later use fails. |
+| Chat process invents an approval | Require the original verified platform request, exclusive trusted ingress, or a separate approval identity; parsed fields forwarded by the chat process carry no authority. |
 | Plan changed after request | Content digest and grant binding fail activation or execution. |
 | Approval widens authority | Duration and use constraints can only stay equal or narrow. |
 | Cursor swapping or filter changes | Filter-bound opaque cursors are rejected. |

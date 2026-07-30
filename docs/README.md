@@ -10,6 +10,7 @@ unYOLO.
 - [Unified broker contract](UNIFIED_BROKER_CONTRACT.md)
 - [Ownership boundaries](OWNERSHIP.md)
 - [Security threat model](security/THREAT_MODEL.md)
+- [Chat approval security](CHAT_APPROVAL_SECURITY.md)
 - [Policy core](POLICY_CORE.md)
 - [Reusable grants specification](REUSABLE_GRANTS_SPEC.md)
 - [Operator inbox](OPERATOR_INBOX.md)
