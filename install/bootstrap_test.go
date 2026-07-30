@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestBootstrapStagesOnceAndRemovesStageAfterSetup(t *testing.T) {
 	}
 	root := t.TempDir()
 	installer := writeBootstrapFixtureInstaller(t, root, false)
-	command := exec.Command(script, "-qfec", "sh install/bootstrap.sh --release unyolo/v1.2.3 --accessible", "/dev/null") // #nosec G204 -- repository script and fixed arguments.
+	command := bootstrapPTYCommand(t.Context(), script)
 	command.Dir = ".."
 	command.Env = append(os.Environ(),
 		"UNYOLO_INSTALLER_FILE="+installer,
@@ -54,7 +55,7 @@ func TestBootstrapCtrlCCleansStageAndReturns130(t *testing.T) {
 	installer := writeBootstrapFixtureInstaller(t, root, true)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, script, "-qfec", "sh install/bootstrap.sh --release unyolo/v1.2.3 --accessible", "/dev/null") // #nosec G204 -- repository script and fixed arguments.
+	command := bootstrapPTYCommand(ctx, script)
 	command.Dir = ".."
 	command.Env = append(os.Environ(),
 		"UNYOLO_INSTALLER_FILE="+installer,
@@ -98,6 +99,13 @@ func TestBootstrapCtrlCCleansStageAndReturns130(t *testing.T) {
 	if _, err := os.Stat(stage); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("bootstrap stage remains after Ctrl-C: %v", err)
 	}
+}
+
+func bootstrapPTYCommand(ctx context.Context, script string) *exec.Cmd {
+	if runtime.GOOS == "darwin" {
+		return exec.CommandContext(ctx, script, "-q", "-e", "/dev/null", "sh", "install/bootstrap.sh", "--release", "unyolo/v1.2.3", "--accessible") // #nosec G204 -- fixed repository command through the discovered PTY utility.
+	}
+	return exec.CommandContext(ctx, script, "-qefc", "sh install/bootstrap.sh --release unyolo/v1.2.3 --accessible", "/dev/null") // #nosec G204 -- fixed repository command through the discovered PTY utility.
 }
 
 func writeBootstrapFixtureInstaller(t *testing.T, root string, wait bool) string {
