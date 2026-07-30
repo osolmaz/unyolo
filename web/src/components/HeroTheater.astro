@@ -1,0 +1,452 @@
+---
+/**
+ * The hero's right pane: a short play showing one operation going through the
+ * broker. A human asks for a merge, the agent submits it, the broker parks it
+ * for approval, the operator approves from Telegram, and the operation
+ * resumes.
+ *
+ * Everything is rendered up front and visible. The script hides it and replays
+ * it, so with JavaScript off the reader still sees the finished transcript.
+ */
+
+type Line = { text: string; tone?: "ok" | "warn" | "dim" };
+
+const before: Line[] = [
+  { text: "$ gh-broker operation submit pull_request.create \\" },
+  { text: "    --arguments-json '{\"head\":\"agent-a/parser-fix\"}'", tone: "dim" },
+  { text: "op_9c2f  succeeded  pull request #482 opened", tone: "ok" },
+];
+
+// These four sit behind the Telegram card, so they stay short enough to read
+// in the strip of terminal it leaves uncovered.
+const during: Line[] = [
+  { text: "$ gh-broker operation submit \\" },
+  { text: "    pull_request.merge_admin --wait", tone: "dim" },
+  { text: "op_4a71  pending  approval required", tone: "warn" },
+  { text: "waiting for a decision", tone: "dim" },
+];
+
+const after: Line[] = [
+  { text: "op_4a71  approved   by operator, 1 use granted", tone: "ok" },
+  { text: "op_4a71  succeeded  pull request #482 merged", tone: "ok" },
+];
+
+const lines = [...before, ...during, ...after];
+---
+
+<div class="theater" data-theater>
+  <div class="theater__chat">
+    <p class="bubble" data-say="0">Ship the parser fix and open a PR.</p>
+    <p class="bubble" data-say="1">Looks good, merge it.</p>
+  </div>
+
+  <div class="theater__screen">
+    <div class="theater__bar">
+      <span>agent-a@workstation</span>
+      <button class="theater__replay" type="button" data-replay hidden>Replay</button>
+    </div>
+    <pre class="theater__term"><code>{
+      lines.map((line, i) => (
+        <span class="line" data-line={i} data-tone={line.tone ?? "plain"}>{line.text}</span>
+      ))
+    }</code></pre>
+
+    <aside class="tg" data-card>
+      <div class="tg__head">
+        <span class="tg__app">unYOLO</span>
+        <span class="tg__time">now</span>
+      </div>
+      <p class="tg__title">Merge pull request #482</p>
+      <p class="tg__meta">acme/api · requested by agent-a</p>
+      <p class="tg__warn">Bypasses the required review on main</p>
+      <div class="tg__actions" data-actions>
+        <button class="tg__btn tg__btn--yes" type="button" data-approve>Approve</button>
+        <button class="tg__btn" type="button" disabled>Deny</button>
+      </div>
+      <p class="tg__done" data-done hidden>Approved. Grant issued for a single use.</p>
+    </aside>
+  </div>
+</div>
+
+<style>
+  .theater {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  /* ---------------------------------------------------------------- chat -- */
+
+  .theater__chat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    min-height: 4.4rem;
+  }
+
+  .bubble {
+    margin: 0;
+    max-width: 85%;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 12px 12px 12px 3px;
+    background: var(--bg-inset);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--text);
+  }
+
+  .bubble::before {
+    content: "you";
+    display: block;
+    margin-bottom: 0.1rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  /* -------------------------------------------------------------- screen -- */
+
+  .theater__screen {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    overflow: hidden;
+  }
+
+  .theater__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+  }
+
+  .theater__replay {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    cursor: pointer;
+  }
+
+  .theater__replay:hover {
+    color: var(--text-strong);
+  }
+
+  .theater__term {
+    margin: 0;
+    padding: 0.9rem 1rem;
+    /* Held at the height of the finished scene so the page never reflows. */
+    min-height: 15.4rem;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    line-height: 1.75;
+    color: var(--text);
+  }
+
+  .theater__term code {
+    font-size: inherit;
+  }
+
+  .line {
+    display: block;
+    white-space: pre;
+  }
+
+  .line[data-tone="ok"] {
+    color: #2f7a4d;
+  }
+  .line[data-tone="warn"] {
+    color: #97690e;
+  }
+  .line[data-tone="dim"] {
+    color: var(--text-faint);
+  }
+
+  html[data-theme="dark"] .line[data-tone="ok"] {
+    color: #7fc79b;
+  }
+  html[data-theme="dark"] .line[data-tone="warn"] {
+    color: #d4b071;
+  }
+
+  /* The waiting line gets a blinking caret while the operation is parked. */
+  .line[data-waiting="true"]::after {
+    content: "▋";
+    margin-left: 0.15rem;
+    animation: blink 1.05s steps(1, end) infinite;
+  }
+
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* ------------------------------------------------------------ telegram -- */
+
+  .tg {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: min(17rem, calc(100% - 1.5rem));
+    padding: 0.75rem 0.85rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--bg);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .tg__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.35rem;
+  }
+
+  .tg__app {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--text-strong);
+  }
+
+  .tg__time {
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+  }
+
+  .tg__title {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  .tg__meta {
+    margin: 0.1rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .tg__warn {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--danger-text);
+  }
+
+  .tg__actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.65rem;
+  }
+
+  .tg__btn {
+    flex: 1;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .tg__btn--yes {
+    border-color: var(--solid);
+    background: var(--solid);
+    color: var(--solid-contrast);
+  }
+
+  .tg__btn[disabled] {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .tg__done {
+    margin: 0.55rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #2f7a4d;
+  }
+
+  html[data-theme="dark"] .tg__done {
+    color: #7fc79b;
+  }
+
+  /* -------------------------------------------------- animated states -- */
+
+  /* Only applied once the script takes over, so no-JS keeps everything. */
+  .theater[data-armed="true"] .bubble,
+  .theater[data-armed="true"] .line {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  .theater[data-armed="true"] .bubble.is-in,
+  .theater[data-armed="true"] .line.is-in {
+    opacity: 1;
+    transform: none;
+    transition: opacity 220ms ease, transform 220ms ease;
+  }
+
+  .theater[data-armed="true"] .tg {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    pointer-events: none;
+  }
+
+  .theater[data-armed="true"] .tg.is-in {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    transition: opacity 260ms ease, transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .theater[data-armed="true"] .bubble,
+    .theater[data-armed="true"] .line,
+    .theater[data-armed="true"] .tg {
+      transition: none;
+    }
+    .line[data-waiting="true"]::after {
+      animation: none;
+    }
+  }
+
+  @media (max-width: 62rem) {
+    .tg {
+      position: static;
+      width: auto;
+      margin: 0 0.75rem 0.75rem;
+      box-shadow: none;
+    }
+  }
+</style>
+
+<script>
+  const root = document.querySelector<HTMLElement>("[data-theater]");
+
+  if (root) {
+    const bubbles = [...root.querySelectorAll<HTMLElement>("[data-say]")];
+    const lines = [...root.querySelectorAll<HTMLElement>("[data-line]")];
+    const card = root.querySelector<HTMLElement>("[data-card]")!;
+    const actions = root.querySelector<HTMLElement>("[data-actions]")!;
+    const done = root.querySelector<HTMLElement>("[data-done]")!;
+    const approve = root.querySelector<HTMLButtonElement>("[data-approve]")!;
+    const replay = root.querySelector<HTMLButtonElement>("[data-replay]")!;
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Index of the line the operation parks on, and where approval resumes it.
+    const PARK = 6;
+    const RESUME = 7;
+
+    let token = 0;
+    const wait = (ms: number, id: number) =>
+      new Promise<boolean>((r) => setTimeout(() => r(id === token), reduce ? Math.min(ms, 60) : ms));
+
+    function reset() {
+      bubbles.forEach((b) => b.classList.remove("is-in"));
+      lines.forEach((l) => {
+        l.classList.remove("is-in");
+        delete l.dataset.waiting;
+      });
+      card.classList.remove("is-in");
+      actions.hidden = false;
+      done.hidden = true;
+      replay.hidden = true;
+    }
+
+    /** Resolves when the operator approves, or after a grace period. */
+    function decision(id: number) {
+      return new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled || id !== token) return;
+          settled = true;
+          approve.removeEventListener("click", finish);
+          clearTimeout(timer);
+          resolve();
+        };
+        approve.addEventListener("click", finish);
+        const timer = setTimeout(finish, reduce ? 200 : 4200);
+      });
+    }
+
+    async function play() {
+      const id = ++token;
+      reset();
+
+      if (!(await wait(300, id))) return;
+      bubbles[0]!.classList.add("is-in");
+
+      for (let i = 0; i < PARK; i++) {
+        if (!(await wait(i === 3 ? 900 : 520, id))) return;
+        // The second instruction lands just before the merge is submitted.
+        if (i === 3) bubbles[1]!.classList.add("is-in");
+        lines[i]!.classList.add("is-in");
+      }
+
+      if (!(await wait(520, id))) return;
+      lines[PARK]!.classList.add("is-in");
+      lines[PARK]!.dataset.waiting = "true";
+
+      if (!(await wait(650, id))) return;
+      card.classList.add("is-in");
+
+      await decision(id);
+      if (id !== token) return;
+
+      actions.hidden = true;
+      done.hidden = false;
+      delete lines[PARK]!.dataset.waiting;
+
+      if (!(await wait(1000, id))) return;
+      card.classList.remove("is-in");
+
+      for (let i = RESUME; i < lines.length; i++) {
+        if (!(await wait(620, id))) return;
+        lines[i]!.classList.add("is-in");
+      }
+
+      if (!(await wait(700, id))) return;
+      replay.hidden = false;
+    }
+
+    approve.addEventListener("click", () => {
+      approve.blur();
+    });
+    replay.addEventListener("click", () => void play());
+
+    // Arm only now, so a reader without JavaScript keeps the finished scene.
+    root.dataset.armed = "true";
+    reset();
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          void play();
+        }
+      },
+      { threshold: 0.35 },
+    );
+    io.observe(root);
+  }
+</script>

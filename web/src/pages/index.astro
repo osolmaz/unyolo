@@ -2,6 +2,7 @@
 import { Code } from "astro:components";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Icon from "../components/Icon.astro";
+import HeroTheater from "../components/HeroTheater.astro";
 import AccessDiagram from "../components/AccessDiagram.astro";
 import { GITHUB_REPO } from "../config/nav";
 import "../styles/landing.css";
@@ -121,24 +122,7 @@ const scopeDeny = `{
   ]
 }`;
 
-// Terminal transcripts are authored as HTML strings so that JSON braces do not
-// have to be escaped for the template compiler.
-const agentTranscript = `<span class="t-prompt">$</span> git push origin agent-a/parser-fix
-<span class="t-ok">   4d1e07c..9f2c1ab  agent-a/parser-fix -&gt; (new branch)</span>
-
-<span class="t-prompt">$</span> gh-broker operation submit pull_request.create \\
-    --target-json <span class="t-dim">'{"kind":"repo","owner":"acme","name":"api"}'</span> \\
-    --arguments-json <span class="t-dim">'{"head":"agent-a/parser-fix"}'</span>
-<span class="t-ok">op_01JQ8W3M  succeeded  pull request #482 opened</span>
-
-<span class="t-comment"># The same agent cannot rewrite main.</span>
-<span class="t-prompt">$</span> git push --force origin main
-<span class="t-deny"> ! [remote rejected] main -&gt; main</span>
-<span class="t-deny">   (gh-broker: no rule allows git.push.force)</span>
-
-<span class="t-comment"># And it never held a GitHub token.</span>
-<span class="t-prompt">$</span> git config --get credential.helper
-<span class="t-dim">gh-broker git credential</span>`;
+// Authored as an HTML string so JSON braces need no escaping in the template.
 
 const operatorTranscript = `<span class="t-prompt">$</span> curl -sS --unix-socket "$OPERATOR_SOCK" \\
     -H <span class="t-dim">"Authorization: Bearer $OPERATOR_TOKEN"</span> \\
@@ -191,10 +175,6 @@ const description =
             more permissions, you can give it timed grants that expire on their own.
           </p>
 
-          <p class="hero__example">
-            For example: <q>I request a grant to merge PRs to repo acme/api for 1 hour.</q>
-          </p>
-
           <div class="hero__actions">
             <a class="button button--primary" href="/docs/get-started/quickstart">
               Get started
@@ -207,10 +187,7 @@ const description =
           </div>
         </div>
 
-        <div class="terminal">
-          <div class="terminal__bar">agent-a@workstation</div>
-          <pre class="terminal__body" set:html={agentTranscript} />
-        </div>
+        <HeroTheater />
       </div>
     </section>
 
