@@ -119,69 +119,101 @@ or an authenticated browser/native approval surface.
 
 ## Telegram
 
-### What works without a mux
+### One upstream update owner
 
-There are two no-mux deployments, with different trust properties.
+Telegram exposes one bot-wide update queue. A `getUpdates` offset confirms
+updates globally, and one shared `allowed_updates` setting applies to the bot.
+The bot cannot use webhooks and `getUpdates` at the same time. OpenClaw and
+unYOLO cannot poll the physical bot independently without racing or losing
+updates.
 
-1. **Trusted relay:** OpenClaw is the only `getUpdates` owner and relays callback
-   queries to unYOLO. This gives one physical bot and one private chat, but it is
-   safe only when OpenClaw is trusted as an operator. It does not meet the
-   security goal in this document.
-2. **Separate approval bot:** OpenClaw and unYOLO use different bot tokens in
-   one Telegram group. unYOLO sends and consumes its own approval callbacks.
-   This meets the security goal if the group and allowed operator IDs are
-   fixed. Telegram private bot chats cannot contain a second bot, so this is a
-   group-chat design.
+A shared bot therefore needs one deterministic upstream owner. OpenClaw and
+unYOLO may consume separate local queues after that owner records and routes an
+update.
 
-For one physical bot with an untrusted OpenClaw process, use the durable
-Telegram Bot API multiplexer described in
-[Telegram approval ingress](TELEGRAM_INGRESS.md#sharing-a-physical-bot).
-Exclusive callback routing keeps approval updates away from OpenClaw.
+Telegram can put a configured secret header on webhook deliveries. That header
+can authenticate a request delivered over TLS directly to a trusted ingress,
+although it is not a signature over the body. It does not authenticate the new
+request that an OpenClaw relay constructs for unYOLO. A webhook ingress that
+also forwards ordinary updates to OpenClaw is the shared bot's routing process.
 
-### Why the one-bot secret-button relay is unsafe
+### OpenClaw as the owner
 
-Telegram allows one `getUpdates` owner for a bot, and `getUpdates` and webhooks
-are mutually exclusive. Telegram webhook authentication is a configured secret
-header, not a platform signature over each update. A relay that owns the bot
-token therefore cannot provide unYOLO with independent proof of callback data
-or user identity.
+OpenClaw can own `getUpdates` and relay approvals when the deployment trusts the
+OpenClaw process and its plugins as an operator. This is trusted direct mode.
+Compromising OpenClaw then has the same effect as compromising an approval
+operator.
 
-Hiding a random capability in `callback_data` does not repair that boundary. A
-Bot API token holder can recover reply markup from an outgoing message without
-a click:
+Hardened mode assumes that OpenClaw can change its own code, plugins, runtime
+state, and relay messages. OpenClaw cannot own approval ingress under that
+assumption. It receives the callback data together with the message, chat ID,
+and sender ID, then constructs a new request to unYOLO. unYOLO cannot tell
+those parsed fields from values invented inside OpenClaw.
 
-1. Telegram message identifiers are usable as per-chat references, and the
-   token holder can identify or probe the outgoing approval message.
+### Bot token authority
+
+The physical bot token also lets OpenClaw inspect and change approval messages.
+A token holder can recover hidden button data without a click:
+
+1. It identifies or probes the outgoing approval message.
 2. `pinChatMessage` permits non-service messages to be pinned in private chats.
 3. `getChat` returns `ChatFullInfo.pinned_message`.
-4. That `Message` can contain `reply_markup`, whose inline buttons contain their
-   `callback_data` values.
+4. The returned `Message.reply_markup` can expose each button's
+   `callback_data`.
 
-The process can then unpin the message and submit the Approve capability itself.
-Using separate Approve and Deny codes, separate messages, or a non-text message
-does not fix this lookup path. A callback query can also carry the originating
-`Message`, so a keyboard with both actions may reveal both codes after either
-button is clicked.
+A callback query can also include the originating message and its keyboard.
+Telegram has no general private-chat history method, but that does not keep
+button data secret from a token holder.
 
-The absence of a general private-chat history method is therefore not a
-sufficient security property. Any design that shares the unrestricted physical
-bot token with OpenClaw must treat OpenClaw as capable of reading the button
-authority.
+Reading the button data is only part of the problem. The token holder can call
+`editMessageReplyMarkup` or replace the message. It can label a button “Deny”
+while attaching the Approve callback data. The operator then makes a real click,
+Telegram creates a real callback, and an ingress that checks only the callback
+data records the wrong action.
 
-### Required hardened behavior
+Separate action codes do not stop this attack when OpenClaw can read and edit
+the whole keyboard. Exclusive callback routing also does not stop it because
+the altered message still produces a genuine callback on unYOLO's queue.
 
-For a shared physical bot, the mux is the only upstream update owner. It must
-route approval callback prefixes exclusively to unYOLO, durably commit both the
-update and next upstream offset before acknowledgement, and give OpenClaw only
-a local client token. unYOLO must accept the decision only from its trusted mux
-queue and ingress, never from an OpenClaw relay endpoint. OpenClaw must not
-receive the physical token, approval queue, ingress key, or broker operator
-credential. A local Bot API client can disrupt messages, but it cannot mint the
-Telegram callback update that the trusted ingress requires.
+### Secure deployment choices
 
-For a separate approval bot, unYOLO must verify the callback sender ID, group
-ID, message binding, request binding, action, expiry, and single-use state. It
-must ignore callbacks from OpenClaw's bot and from anonymous chat senders.
+Telegram has two no-mux choices:
+
+1. Trust OpenClaw as an operator and use direct mode.
+2. Give unYOLO a separate approval bot in the same group. Telegram private bot
+   chats cannot contain a second bot, so this does not preserve one private bot
+   conversation.
+
+One physical bot in one private chat needs a trusted routing function outside
+the OpenClaw process. That function may run in a standalone mux or be added to
+`unyolo-telegram`. In either case it is a separate process and OS trust
+boundary. Putting the routing code inside OpenClaw provides no separation.
+
+A hardened router must:
+
+- Own the physical bot token and the only upstream update stream.
+- Durably record each update and its next offset before acknowledging it.
+- Send original approval callbacks only to unYOLO.
+- Give OpenClaw only ordinary updates through a local authenticated interface.
+- Reserve approval callback prefixes so OpenClaw cannot create them.
+- Track which client owns each sent message and block OpenClaw from reading,
+  editing, deleting, copying, forwarding, or pinning unYOLO approval messages.
+- Keep raw approval callback envelopes and all ingress or broker operator
+  credentials away from OpenClaw.
+- Make unYOLO verify the expected chat, operator, message ID, text or render
+  digest, and exact button layout before accepting the action.
+
+Exclusive `getUpdates` routing is not enough. A compatibility proxy that splits
+updates but forwards ordinary Bot API methods without message-ownership checks
+solves queue sharing, but it does not separate mutually untrusted clients.
+Until the router and unYOLO enforce these controls and pass message-tampering
+tests, shared-bot mode has the trusted-client security level. It does not meet
+the hardened security goal.
+
+A separate approval bot does not share this boundary. unYOLO owns its token and
+must verify the callback sender ID, group ID, message binding, request binding,
+action, expiry, and single-use state. It must ignore callbacks from OpenClaw's
+bot and from anonymous chat senders.
 
 ## Platform matrix
 
@@ -192,7 +224,7 @@ unYOLO adapter already exists.
 
 | Platform                   | Reliable proof available                                                                | Hardened same-chat verdict              | Required design                                                                                        |
 | -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Telegram                   | No per-request platform signature; one update owner                                     | Conditional                             | Mux for one physical bot, or a separate approval bot in a group                                        |
+| Telegram                   | One bot-wide update stream; no body-bound callback signature                            | Conditional                             | Trusted router with message ownership for one bot, or a separate approval bot in a group               |
 | Discord                    | Ed25519 signature over timestamp and raw interaction body                               | Yes                                     | Send component interactions directly to a trusted verifier                                             |
 | Slack                      | HMAC signature over version, timestamp, and raw body                                    | Yes                                     | Use signed HTTP interactivity at a trusted ingress; do not relay through Socket Mode owned by OpenClaw |
 | Microsoft Teams            | Bot Framework bearer token on activities                                                | Yes, with a trusted endpoint            | Verify the original Connector request over TLS, strip its token, then route the activity               |

@@ -19,10 +19,11 @@ classifying, validating, and executing its own operations.
   long-term authority stores. The Telegram ingress may retain encrypted
   callback authority only until terminal delivery or expiry. See [Chat
   approval security](../CHAT_APPROVAL_SECURITY.md).
-- The OpenClaw plugin receives only the safe Operator V1 projection. A
-  deployment may explicitly trust it as an operator client, but hardened chat
-  approval deployments treat OpenClaw and its agent as untrusted for approval
-  authorization.
+- The OpenClaw plugin receives only the safe Operator V1 projection. Trusted
+  direct mode may make it an operator client. Hardened chat approval assumes
+  that the OpenClaw process can change its own code, plugins, runtime state, and
+  relay messages. Logic inside that process cannot enforce the approval
+  boundary.
 - Provider executors, especially the sudo helper, are separate processes and
   credential domains. unYOLO code does not execute provider operations.
 
@@ -53,6 +54,11 @@ classifying, validating, and executing its own operations.
 - Persist a Telegram callback and its next update offset in one transaction
   before answering Telegram. Encrypt decision authority at rest and erase it
   after terminal reconciliation or expiry.
+- When an untrusted client shares a Telegram bot, enforce Bot API method and
+  message ownership outside that client. Prevent it from reading or changing
+  approval markup, using reserved callback prefixes, or receiving approval
+  callbacks. Match every decision to the stored message ID, rendered content,
+  and keyboard before accepting its action.
 - Require exact generated Agent and Operator contract digests. A version label
   alone is not compatibility evidence.
 - Execute persistent services only from a verified immutable host bundle.
@@ -91,7 +97,8 @@ classifying, validating, and executing its own operations.
 | Client impersonates an operator | Separate secret sets and listeners reject it before handlers run. |
 | Stale or replayed browser decision | Revision and idempotency checks return current safe state without repeating authority. |
 | Replayed notification callback | Verify the platform request or one-time action capability, then consume it only for the bound pending transition; later use fails. |
-| Chat process invents an approval | Require the original verified platform request, exclusive trusted ingress, or a separate approval identity; parsed fields forwarded by the chat process carry no authority. |
+| Chat process invents an approval | Require the original verified platform request, trusted ingress outside that process, or a separate approval identity; parsed fields forwarded by the chat process carry no authority. |
+| Telegram client changes an approval message | The external router blocks cross-client message access, and unYOLO rejects callbacks whose message or keyboard differs from stored state. |
 | Plan changed after request | Content digest and grant binding fail activation or execution. |
 | Approval widens authority | Duration and use constraints can only stay equal or narrow. |
 | Cursor swapping or filter changes | Filter-bound opaque cursors are rejected. |

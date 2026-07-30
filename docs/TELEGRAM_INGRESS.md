@@ -2,17 +2,19 @@
 
 unYOLO uses one `unyolo-telegram` ingress process for each Telegram Bot API
 endpoint. By default, that endpoint is the physical Telegram bot. It can also
-be a loopback multiplexer client endpoint when another application shares the
-same physical bot. Provider brokers supply bounded semantic approval data and send durable
+be a loopback router endpoint when another application shares the same physical
+bot. Provider brokers supply bounded semantic approval data and send durable
 status updates, but they do not format Telegram HTML or call `getUpdates`. The
 shared Telegram renderer owns layout, escaping, emoji, fixed Approve and Deny
-buttons, terminal wording, and message limits. The ingress owns the bot update
+buttons, terminal wording, and message limits. The ingress owns its update
 offset and routes button decisions to the owning broker over its authenticated
 Operator V1 Unix socket.
 
-This boundary is required when several brokers share one bot. Telegram permits
-only one long poller per bot token; running a poller in every broker races
-callbacks and loses deterministic ownership of each update.
+Telegram has one bot-wide update queue, so a deployment needs one deterministic
+upstream owner. Running a poller in every broker races offsets and loses update
+ownership. When OpenClaw also uses the bot, the owner must route separate local
+queues. Hardened mode also requires that owner to protect unYOLO messages from
+OpenClaw's outbound Bot API calls.
 
 ## Linux setup
 
@@ -62,16 +64,20 @@ secret paths, and malformed endpoints.
 
 ## Sharing a physical bot
 
-A physical Telegram bot token can have only one `getUpdates` owner. Sharing the
-unrestricted token with an untrusted application is not safe for approvals: a
-token holder can recover inline button callback data from outgoing message
-metadata and invent a decision. See [Chat approval
-security](CHAT_APPROVAL_SECURITY.md#telegram) for the attack and no-mux
-alternatives.
+Sharing the unrestricted token with an untrusted application is not safe for
+approvals. A token holder can recover inline button data, change the keyboard,
+and turn a real Deny click into an Approve callback. An OpenClaw relay can also
+invent the parsed callback and sender fields it sends to unYOLO. See [Chat
+approval security](CHAT_APPROVAL_SECURITY.md#telegram) for the full analysis.
 
-To share one physical bot without trusting the other application as an
-operator, run a durable Bot API multiplexer and give unYOLO its own local client
-token and API base. For example:
+Trusted direct mode needs no mux because it treats OpenClaw as an operator.
+Hardened mode needs a routing process outside OpenClaw. The routing function
+could be added to `unyolo-telegram`, but `unyolo-telegram` does not currently
+forward ordinary Telegram events to OpenClaw. Its custom API base expects an
+external router.
+
+Give unYOLO its own local client token and API base only after that router meets
+the message-ownership requirements below. The command then has this form:
 
 ```sh
 sudo unyolo-telegram setup systemd \
@@ -81,10 +87,24 @@ sudo unyolo-telegram setup systemd \
   --hf-operator-token-file ./hf-operator-secret
 ```
 
-The token file contains the local multiplexer client token in this mode, not
-the BotFather token. `telegram_api_base` is optional in the managed JSON
+The token file contains the local router client token in this mode, not the
+BotFather token. `telegram_api_base` is optional in the managed JSON
 configuration. HTTPS is required for remote API bases; plain HTTP is accepted
 only for loopback addresses.
+
+A local token and exclusive callback queue are insufficient by themselves. The
+router must reserve unYOLO callback prefixes and track ownership of messages
+sent by each client. It must prevent OpenClaw from reading or changing unYOLO
+approval markup through methods such as `getChat`, `pinChatMessage`,
+`editMessageReplyMarkup`, delete, copy, and forward operations. It must also
+keep approval callback envelopes away from OpenClaw. unYOLO must reject a
+callback when its message ID, rendered content, or keyboard differs from the
+stored approval.
+
+A compatibility proxy that forwards ordinary Bot API methods unchanged provides
+update fan-out, not a hardened boundary between OpenClaw and unYOLO. Do not call
+shared-bot mode hardened until message-tampering tests pass against the real
+router and Telegram service.
 
 The broker that sends approval messages must use the same local token and API
 base. HF Broker accepts `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` together with
