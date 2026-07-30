@@ -194,6 +194,12 @@ gh-broker operation submit pull_request.merge_admin \
   --wait
 ```
 
+Reach for this only when GitHub itself is what stands in the way. If you want an agent that cannot
+merge unless you say so, the control point is your own policy: give `pull_request.merge` a `request`
+rule and the agent's merge stops at `pending` until you approve it, with the branch protection on
+`main` left intact. Admin merge is for the narrower case where the merge must go through despite a
+GitHub requirement that will not be satisfied, and it is a bypass, so treat it as one.
+
 Admin merge is a distinct high-risk, explicit operation and requests operator approval by default.
 Its request rule uses a reusable window unless policy selects exact, single-use execution mode.
 unYOLO resolves the pull request itself, binds each invocation to the exact head commit, rechecks

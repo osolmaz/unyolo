@@ -23,11 +23,9 @@ const lines = [
   { text: "$ gh-broker operation submit pull_request.create" },
   { text: "op_9c2f  succeeded  pull request #482 opened", tone: "ok" },
   { text: "$ gh-broker operation submit pull_request.merge" },
-  { text: "op_1d55  failed     required review not satisfied", tone: "bad" },
-  { text: "$ gh-broker operation submit pull_request.merge_admin" },
-  { text: "op_4a71  pending    approval required", tone: "warn" },
-  { text: "op_4a71  approved   by operator, single use", tone: "ok" },
-  { text: "op_4a71  succeeded  pull request #482 merged", tone: "ok" },
+  { text: "op_1d55  pending    policy requires operator approval", tone: "warn" },
+  { text: "op_1d55  approved   by operator, single use", tone: "ok" },
+  { text: "op_1d55  succeeded  pull request #482 merged", tone: "ok" },
 ];
 ---
 
@@ -75,7 +73,7 @@ const lines = [
             <p class="tgmsg__body">
               <b>agent-a</b> wants to merge <b>#482</b> in <b>acme/api</b>.
             </p>
-            <p class="tgmsg__warn">Bypasses the required review on main.</p>
+            <p class="tgmsg__warn">Merging is not in this agent's policy.</p>
             <span class="tgmsg__time">09:41</span>
             <div class="tgkb" data-actions>
               <button class="tgkb__btn" type="button" data-approve>
@@ -1006,7 +1004,7 @@ const lines = [
         },
       },
       { t: 11600, fn: () => hide(thought) },
-      { t: 11900, fn: () => show(thought, "Refused. main requires a review.") },
+      { t: 11900, fn: () => show(thought, "Blocked. Merging is not in my policy.") },
       { t: 14000, fn: () => hide(thought) },
       {
         t: 14300,
@@ -1015,14 +1013,7 @@ const lines = [
           show(sayAgent, "I need your approval to merge this.");
         },
       },
-      { t: 14600, fn: () => line(4) },
-      {
-        t: 15500,
-        fn: () => {
-          line(5);
-          lns[5]!.dataset.caret = "true";
-        },
-      },
+      { t: 15200, fn: () => (lns[3]!.dataset.caret = "true") },
       {
         t: 16200,
         fn: () => {
@@ -1055,14 +1046,14 @@ const lines = [
           focus("agent");
           face("think");
           phone.classList.remove("is-in");
-          delete lns[5]!.dataset.caret;
+          delete lns[3]!.dataset.caret;
         },
       },
-      { t: 23800, fn: () => line(6) },
+      { t: 23800, fn: () => line(4) },
       {
         t: 24700,
         fn: () => {
-          line(7);
+          line(5);
           face("happy");
         },
       },
