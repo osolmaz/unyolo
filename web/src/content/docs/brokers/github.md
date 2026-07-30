@@ -14,7 +14,7 @@ They never choose a credential kind, a token scope, an installation, or a permis
 ## Install
 
 ```sh
-curl -fsSL https://unyolo.io/install | sh -s github
+curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
 Pin a release with `VERSION=<version>` or choose a directory with `INSTALL_DIR=/absolute/path`.

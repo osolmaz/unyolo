@@ -11,25 +11,31 @@ reads, and the alternatives.
 
 ## Install a broker
 
-Name the broker you want. The installer resolves its latest release to an exact commit, verifies
-release checksums and build attestations, and installs the binary to `$HOME/.local/bin`:
-
 ```sh
-curl -fsSL https://unyolo.io/install | sh -s github
+curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-Substitute `huggingface` or `sudo` for another broker.
+That installs `gh-broker`, resolving its latest release to an exact commit, verifying release
+checksums and build attestations, and placing the binary in `$HOME/.local/bin`. Name another broker
+to install it instead:
+
+```sh
+curl -fsSL https://unyolo.io/install.sh | sh -s huggingface
+```
+
+The `-s` is what lets a piped script take an argument. It tells `sh` to read the script from
+standard input and treat the words after it as the script's arguments.
 
 ## Pin the bootstrap
 
-That command reads the bootstrap from the default branch, so you get whatever that branch says on
-the day you run it. Everything downstream is already pinned, because the bootstrap resolves the
+The commands above read the bootstrap from the default branch, so you get whatever that branch says
+on the day you run it. Everything downstream is already pinned, because the bootstrap resolves the
 release tag to an exact commit and checks the archive against release checksums and GitHub build
 attestations before installing anything. The bootstrap itself is the one link left, and naming a
 commit you have reviewed closes it:
 
 ```sh
-curl -fsSL https://unyolo.io/install | UNYOLO_REV=<40-character-commit-sha> sh -s github
+curl -fsSL https://unyolo.io/install.sh | UNYOLO_REV=<40-character-commit-sha> sh
 ```
 
 Fetching that commit's bootstrap yourself does the same thing without going through the endpoint:

@@ -85,13 +85,13 @@ release artifact, and audit stream.
 ## Install
 
 ```sh
-curl -fsSL https://unyolo.io/install | sh -s github
+curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-Substitute `huggingface` or `sudo` for another broker. The installer resolves
-that broker's latest release to an exact commit and verifies release checksums
-and GitHub build attestations before installing to `$HOME/.local/bin`. To pin
-the bootstrap as well, see
+That installs `gh-broker`. Add `-s huggingface` or `-s sudo` for another
+broker. The installer resolves that broker's latest release to an exact commit
+and verifies release checksums and GitHub build attestations before installing
+to `$HOME/.local/bin`. To pin the bootstrap as well, see
 [installation](https://unyolo.io/docs/get-started/installation).
 
 ## Build
