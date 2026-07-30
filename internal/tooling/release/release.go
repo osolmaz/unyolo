@@ -186,6 +186,9 @@ func validate(options Options) error {
 	if !brokerNamePattern.MatchString(options.Broker) {
 		return errors.New("broker must be a file name")
 	}
+	if options.SourceCommit != "" && !commitPattern.MatchString(options.SourceCommit) {
+		return errors.New("source commit must be an exact Git commit")
+	}
 	if err := validateExtraCommands(options.Broker, options.ExtraCommands); err != nil {
 		return err
 	}
@@ -199,7 +202,7 @@ func validateDeploymentOptions(options Options) error {
 	if len(options.DeploymentComponents) == 0 {
 		return nil
 	}
-	if options.Broker != "unyolo" || !commitPattern.MatchString(options.SourceCommit) {
+	if options.Broker != "unyolo" || options.SourceCommit == "" {
 		return errors.New("deployment kits require the unyolo release and an exact source commit")
 	}
 	for _, path := range options.DeploymentComponents {
@@ -302,6 +305,9 @@ func buildExecutable(ctx context.Context, options Options, command string, binar
 	// #nosec G204 -- the executable and flags are fixed; values come from the release operator.
 	linkerFlags := "-s -w -X main.version=" + options.Version +
 		" -X github.com/osolmaz/unyolo/internal/buildinfo.Version=" + options.Version
+	if options.SourceCommit != "" {
+		linkerFlags += " -X github.com/osolmaz/unyolo/internal/buildinfo.SourceCommit=" + options.SourceCommit
+	}
 	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", linkerFlags, "-o", binary, command) // #nosec G204 -- release operator inputs are validated before this fixed Go invocation.
 	cmd.Dir = options.Directory
 	cgo := "0"

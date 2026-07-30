@@ -13,6 +13,19 @@ import (
 	"time"
 )
 
+func TestRootBootstrapBindsReleaseToSourceCommit(t *testing.T) {
+	data, err := os.ReadFile("bootstrap-root.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	for _, expected := range []string{`[ "$#" -eq 2 ]`, `--source-digest "$source_commit"`} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("root bootstrap is missing %q", expected)
+		}
+	}
+}
+
 func TestBootstrapStagesOnceAndRemovesStageAfterSetup(t *testing.T) {
 	script, err := exec.LookPath("script")
 	if err != nil {
