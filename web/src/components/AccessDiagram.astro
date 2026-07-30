@@ -1,5 +1,14 @@
 ---
-import { isoDefs, isoStopCss, personIcon, agentIcon, brokerIcon, cubeIcon, policyIcon } from "../lib/iso";
+import {
+  isoDefs,
+  isoStopCss,
+  isoPaintCss,
+  personIcon,
+  agentIcon,
+  brokerIcon,
+  cubeIcon,
+  policyIcon,
+} from "../lib/iso";
 
 /**
  * Two stacked scenarios on the landing page. The top one hands your credential
@@ -101,7 +110,7 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
       </g>
 
       <g transform="translate(90 130)" set:html={personIcon(P)} />
-      <g transform="translate(300 130)" set:html={agentIcon(P)} />
+      <g transform="translate(300 130)" set:html={agentIcon(P, "alarm")} />
       <text class="node-label" x="90" y="196" text-anchor="middle">YOU</text>
       <text class="node-label" x="300" y="196" text-anchor="middle">AGENT</text>
 
@@ -210,7 +219,7 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
       <text class="res-note" x="370" y="70" text-anchor="middle">scope.json</text>
 
       <g transform="translate(88 74)" set:html={personIcon(P)} />
-      <g transform="translate(88 190)" set:html={agentIcon(P)} />
+      <g transform="translate(88 190)" set:html={agentIcon(P, "happy")} />
       <g transform="translate(370 130)" set:html={brokerIcon(P)} />
       <text class="node-label" x="88" y="130" text-anchor="middle">YOU</text>
       <text class="node-label" x="88" y="250" text-anchor="middle">AGENT</text>
@@ -245,6 +254,7 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
 </div>
 
 <style set:html={isoStopCss}></style>
+<style set:html={isoPaintCss}></style>
 
 <style>
   .diagram {
@@ -307,36 +317,6 @@ function pointOnWire(fromX: number, y: number, endX: number, t = 0.6) {
     height: 0;
   }
 
-
-  .scenario__svg :global(.iso-mark) {
-    fill: var(--iso-mark);
-  }
-  .scenario__svg :global(.iso-shadow) {
-    fill: var(--iso-shadow);
-  }
-  .scenario__svg :global(.iso-screen) {
-    fill: var(--iso-screen);
-  }
-  .scenario__svg :global(.iso-eye) {
-    fill: var(--iso-eye);
-  }
-  .scenario__svg :global(.iso-antenna) {
-    stroke: var(--iso-mark);
-    stroke-width: 2;
-    stroke-linecap: round;
-  }
-  .scenario__svg :global(.iso-a-top) {
-    fill: var(--iso-a-top);
-  }
-  .scenario__svg :global(.iso-a-left) {
-    fill: var(--iso-a-left);
-  }
-  .scenario__svg :global(.iso-a-right) {
-    fill: var(--iso-a-right);
-  }
-  .scenario__svg :global(.iso-a-mark) {
-    fill: var(--iso-a-mark);
-  }
 
   .scenario__svg :global(.is-dim) {
     opacity: 0.4;

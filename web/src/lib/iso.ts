@@ -41,6 +41,9 @@ export const isoDefs = (p: string) => `
   <linearGradient id="${p}aRight" x1="0" y1="0" x2="0.4" y2="1">
     <stop offset="0" class="s-a-right"/><stop offset="1" class="s-a-right2"/>
   </linearGradient>
+  <filter id="${p}Glow" x="-150%" y="-150%" width="400%" height="400%">
+    <feGaussianBlur stdDeviation="1.9"/>
+  </filter>
 `;
 
 export const personIcon = (p: string) => `
@@ -57,43 +60,57 @@ export const personIcon = (p: string) => `
 /**
  * Faces for the agent's screen, drawn in the plane of the cube's right face.
  *
- * Every face is rendered and all but one hidden, so switching expression is a
- * class change with nothing to redraw. The screen spans x -9.5..9.5 and
- * y -9..6, which leaves room for a brow above the eyes.
+ * The screen spans x -9.5..9.5 and y -9..6, which leaves room for a brow above
+ * the eyes. A caller either names one face, or asks for `switchable` to get all
+ * of them rendered so CSS can pick, which is what a scene with a changing
+ * expression needs.
  */
-const FACES = `
-  <g class="face face--idle">
+const FACES = {
+  idle: `
     <circle class="iso-eye" cx="-4.2" cy="-2.2" r="2.3"/>
-    <circle class="iso-eye" cx="4.2" cy="-2.2" r="2.3"/>
-  </g>
-  <g class="face face--happy">
+    <circle class="iso-eye" cx="4.2" cy="-2.2" r="2.3"/>`,
+  happy: `
     <path class="iso-eye-line" d="M -6.7,-1 L -4.2,-4.3 L -1.7,-1"/>
-    <path class="iso-eye-line" d="M 1.7,-1 L 4.2,-4.3 L 6.7,-1"/>
-  </g>
-  <g class="face face--think">
+    <path class="iso-eye-line" d="M 1.7,-1 L 4.2,-4.3 L 6.7,-1"/>`,
+  think: `
     <circle class="iso-eye" cx="-4.8" cy="-2.9" r="2.1"/>
     <circle class="iso-eye" cx="3.6" cy="-2.9" r="2.1"/>
-    <path class="iso-eye-line" d="M 1.6,-6 Q 4.1,-7.4 6.4,-6.5"/>
-  </g>
-  <g class="face face--wink">
+    <path class="iso-eye-line" d="M 1.6,-6 Q 4.1,-7.4 6.4,-6.5"/>`,
+  wink: `
     <circle class="iso-eye" cx="-4.2" cy="-2.2" r="2.3"/>
-    <path class="iso-eye-line" d="M 1.7,-2.4 Q 4.2,-5.2 6.7,-2.4"/>
-  </g>
-  <g class="face face--stuck">
+    <path class="iso-eye-line" d="M 1.7,-2.4 Q 4.2,-5.2 6.7,-2.4"/>`,
+  stuck: `
     <circle class="iso-eye" cx="-4.2" cy="-1.3" r="2"/>
     <circle class="iso-eye" cx="4.2" cy="-1.3" r="2"/>
     <path class="iso-eye-line" d="M -6.6,-4.8 L -1.8,-6.9"/>
-    <path class="iso-eye-line" d="M 1.8,-5.1 L 6.6,-5.1"/>
-  </g>
-`;
+    <path class="iso-eye-line" d="M 1.8,-5.1 L 6.6,-5.1"/>`,
+  // An unrestrained agent. The halo is a blurred copy of the eyes beneath the
+  // sharp ones, which is what reads as a glow rather than a red dot.
+  alarm: `
+    <g class="iso-eye-bloom" filter="url(#PREFIXGlow)">
+      <circle cx="-4.2" cy="-2.2" r="4.2"/>
+      <circle cx="4.2" cy="-2.2" r="4.2"/>
+    </g>
+    <g class="iso-eye-glow" filter="url(#PREFIXGlow)">
+      <circle cx="-4.2" cy="-2.2" r="2.8"/>
+      <circle cx="4.2" cy="-2.2" r="2.8"/>
+    </g>
+    <circle class="iso-eye-hot" cx="-4.2" cy="-2.2" r="2.2"/>
+    <circle class="iso-eye-hot" cx="4.2" cy="-2.2" r="2.2"/>`,
+} as const;
 
-const PLAIN_FACE = `
-  <circle class="iso-eye" cx="-4.2" cy="-2.2" r="2.3"/>
-  <circle class="iso-eye" cx="4.2" cy="-2.2" r="2.3"/>
-`;
+export type AgentFace = keyof typeof FACES;
 
-/** Pass faces for an agent that changes expression; the rest stay deadpan. */
-export const agentIcon = (p: string, faces = false) => `
+const face = (p: string, name: AgentFace) => FACES[name].replaceAll("PREFIX", p);
+
+export const agentIcon = (p: string, wear: AgentFace | "switchable" = "idle") => {
+  const screen =
+    wear === "switchable"
+      ? (Object.keys(FACES) as AgentFace[])
+          .map((name) => `<g class="face face--${name}">${face(p, name)}</g>`)
+          .join("")
+      : face(p, wear);
+  return `
   <ellipse class="iso-shadow" cx="0" cy="35" rx="29" ry="7"/>
   <polygon fill="url(#${p}Top)"   points="-28,-14 0,-28 28,-14 0,0"/>
   <polygon fill="url(#${p}Left)"  points="-28,-14 0,0 0,30 -28,16"/>
@@ -102,9 +119,10 @@ export const agentIcon = (p: string, faces = false) => `
   <circle class="iso-mark" cx="0" cy="-37" r="3.2"/>
   <g transform="translate(14 8) ${SKEW_RIGHT}">
     <rect class="iso-screen" x="-9.5" y="-9" width="19" height="15" rx="2.5"/>
-    ${faces ? FACES : PLAIN_FACE}
+    ${screen}
   </g>
 `;
+};
 
 export const brokerIcon = (p: string) => `
   <ellipse class="iso-shadow" cx="0" cy="39" rx="32" ry="7.5"/>
@@ -147,4 +165,27 @@ export const isoStopCss = `
   .s-a-left2 { stop-color: var(--iso-a-left2); }
   .s-a-right { stop-color: var(--iso-a-right); }
   .s-a-right2 { stop-color: var(--iso-a-right2); }
+`;
+
+/**
+ * Paint for the shape classes above. Component styles are scoped and cannot
+ * reach markup injected with set:html, so a figure renders this as-is.
+ */
+export const isoPaintCss = `
+  .iso-mark { fill: var(--iso-mark); }
+  .iso-shadow { fill: var(--iso-shadow); }
+  .iso-screen { fill: var(--iso-screen); }
+  .iso-eye { fill: var(--iso-eye); }
+  .iso-eye-hot { fill: var(--iso-eye-hot); }
+  .iso-eye-glow { fill: var(--iso-eye-hot); opacity: 0.85; }
+  .iso-eye-bloom { fill: var(--iso-eye-hot); opacity: 0.32; }
+  .iso-eye-line {
+    fill: none;
+    stroke: var(--iso-eye);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .iso-antenna { stroke: var(--iso-mark); stroke-width: 2; stroke-linecap: round; }
+  .iso-a-mark { fill: var(--iso-a-mark); }
 `;

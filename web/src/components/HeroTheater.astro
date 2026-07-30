@@ -15,7 +15,7 @@
  * The agent has two kinds of bubble. Speech is what it says to you; thought is
  * what it is working through on its own, and reads differently.
  */
-import { isoDefs, isoStopCss, personIcon, agentIcon } from "../lib/iso";
+import { isoDefs, isoStopCss, isoPaintCss, personIcon, agentIcon } from "../lib/iso";
 
 const P = "th";
 
@@ -44,7 +44,7 @@ const lines = [
       </div>
 
       <div class="actor actor--agent">
-        <svg class="actor__art" viewBox="-38 -52 76 96" set:html={agentIcon(P, true)} />
+        <svg class="actor__art" viewBox="-38 -52 76 96" set:html={agentIcon(P, "switchable")} />
         <span class="actor__name">AGENT</span>
         <span class="dots" data-dots aria-hidden="true"><i></i><i></i><i></i></span>
       </div>
@@ -113,10 +113,12 @@ const lines = [
       data-seek
       aria-label="Scrub the scene"
     />
+    <button class="ctl__rate" type="button" data-rate>1x</button>
   </div>
 </div>
 
 <style set:html={isoStopCss}></style>
+<style set:html={isoPaintCss}></style>
 
 <style>
   .theater {
@@ -149,26 +151,6 @@ const lines = [
     height: 0;
   }
 
-  /* ---------------------------------------------------------------- iso -- */
-
-  .actor__art :global(.iso-mark) {
-    fill: var(--iso-mark);
-  }
-  .actor__art :global(.iso-shadow) {
-    fill: var(--iso-shadow);
-  }
-  .actor__art :global(.iso-screen) {
-    fill: var(--iso-screen);
-  }
-  .actor__art :global(.iso-eye) {
-    fill: var(--iso-eye);
-  }
-  .actor__art :global(.iso-antenna) {
-    stroke: var(--iso-mark);
-    stroke-width: 2;
-    stroke-linecap: round;
-  }
-
   /* -------------------------------------------------------------- actors -- */
 
   .actor {
@@ -185,8 +167,8 @@ const lines = [
     transform: translate(var(--x, 0), var(--y, 0)) scale(calc(var(--s, 1) * var(--f, 1)));
     opacity: var(--o, 0);
     transition:
-      transform 760ms cubic-bezier(0.5, 0, 0.2, 1),
-      opacity 460ms ease;
+      transform calc(760ms / var(--rate, 1)) cubic-bezier(0.5, 0, 0.2, 1),
+      opacity calc(460ms / var(--rate, 1)) ease;
   }
 
   .actor__art {
@@ -263,14 +245,6 @@ const lines = [
 
   /* ----------------------------------------------------------------- face -- */
 
-  .actor__art :global(.iso-eye-line) {
-    fill: none;
-    stroke: var(--iso-eye);
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
   .actor__art :global(.face) {
     display: none;
   }
@@ -296,7 +270,7 @@ const lines = [
     background: var(--bg);
     opacity: 0;
     transform: scale(0.7);
-    transition: opacity 220ms ease, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity calc(220ms / var(--rate, 1)) ease, transform calc(260ms / var(--rate, 1)) cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .dots.is-on {
@@ -309,13 +283,13 @@ const lines = [
     height: 4px;
     border-radius: 50%;
     background: var(--text-faint);
-    animation: bob 1.15s ease-in-out infinite;
+    animation: bob calc(1.15s / var(--rate, 1)) ease-in-out infinite;
   }
   .dots i:nth-child(2) {
-    animation-delay: 0.16s;
+    animation-delay: calc(0.16s / var(--rate, 1));
   }
   .dots i:nth-child(3) {
-    animation-delay: 0.32s;
+    animation-delay: calc(0.32s / var(--rate, 1));
   }
 
   @keyframes bob {
@@ -363,7 +337,7 @@ const lines = [
     box-shadow: var(--shadow-sm);
     opacity: 0;
     transform: translate(var(--sx), var(--sy)) translateY(10px) scale(0.94);
-    transition: opacity 240ms ease, transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity calc(240ms / var(--rate, 1)) ease, transform calc(400ms / var(--rate, 1)) cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: none;
   }
 
@@ -531,7 +505,7 @@ const lines = [
     opacity: 0;
     transform: translateY(18px) scale(0.97);
     transform-origin: 0 0;
-    transition: opacity 340ms ease, transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity calc(340ms / var(--rate, 1)) ease, transform calc(520ms / var(--rate, 1)) cubic-bezier(0.22, 1, 0.36, 1);
     pointer-events: none;
   }
 
@@ -575,7 +549,7 @@ const lines = [
   .ln.is-in {
     opacity: 1;
     transform: none;
-    transition: opacity 240ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity calc(240ms / var(--rate, 1)) ease, transform calc(300ms / var(--rate, 1)) cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .ln[data-tone="ok"] {
@@ -601,7 +575,7 @@ const lines = [
   .ln[data-caret="true"]::after {
     content: "▋";
     margin-left: 0.15rem;
-    animation: blink 1.05s steps(1, end) infinite;
+    animation: blink calc(1.05s / var(--rate, 1)) steps(1, end) infinite;
   }
 
   @keyframes blink {
@@ -640,7 +614,7 @@ const lines = [
     overflow: hidden;
     opacity: 0;
     transform: translate(-2px, 290px) scale(0.9) rotate(5deg);
-    transition: opacity 320ms ease, transform 640ms cubic-bezier(0.34, 1.4, 0.5, 1);
+    transition: opacity calc(320ms / var(--rate, 1)) ease, transform calc(640ms / var(--rate, 1)) cubic-bezier(0.34, 1.4, 0.5, 1);
     pointer-events: none;
   }
 
@@ -714,7 +688,7 @@ const lines = [
   .tgmsg.is-in {
     opacity: 1;
     transform: none;
-    transition: opacity 240ms ease, transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity calc(240ms / var(--rate, 1)) ease, transform calc(400ms / var(--rate, 1)) cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .tgmsg__from {
@@ -798,7 +772,7 @@ const lines = [
     font-size: 0.6875rem;
     font-weight: 700;
     color: #2f7a4d;
-    animation: rise 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: rise calc(320ms / var(--rate, 1)) cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   @keyframes rise {
@@ -822,7 +796,7 @@ const lines = [
   }
 
   .ripple.is-tap {
-    animation: tap 520ms ease-out;
+    animation: tap calc(520ms / var(--rate, 1)) ease-out;
   }
 
   @keyframes tap {
@@ -900,6 +874,24 @@ const lines = [
     background: var(--solid);
   }
 
+  .ctl__rate {
+    flex-shrink: 0;
+    min-width: 2.6rem;
+    padding: 0.15rem 0.35rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--bg);
+    font: inherit;
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .ctl__rate:hover {
+    color: var(--text-strong);
+  }
+
   .ctl__seek::-moz-range-thumb {
     width: 11px;
     height: 11px;
@@ -919,6 +911,8 @@ const lines = [
 </style>
 
 <script>
+  import { createScene } from "../lib/scene";
+
   const theater = document.querySelector<HTMLElement>(".theater");
   const stage = theater?.querySelector<HTMLElement>("[data-stage]");
 
@@ -937,6 +931,7 @@ const lines = [
     const ripple = stage.querySelector<HTMLElement>("[data-ripple]")!;
     const toggle = theater.querySelector<HTMLButtonElement>("[data-toggle]")!;
     const seek = theater.querySelector<HTMLInputElement>("[data-seek]")!;
+    const rate = theater.querySelector<HTMLButtonElement>("[data-rate]")!;
 
     const act = (n: string) => (stage.dataset.act = n);
     /** Who has the floor. The one with it grows; the other shrinks back. */
@@ -1081,9 +1076,9 @@ const lines = [
     ];
 
     const APPROVE_AT = 21800;
-    const DURATION = 28200;
 
-    function clear() {
+    /** Everything a cue can set has to be cleared here. See lib/scene.ts. */
+    function reset() {
       act("0");
       focus("none");
       face("idle");
@@ -1100,70 +1095,23 @@ const lines = [
       tgok.hidden = true;
     }
 
-    let t = 0;
-    let cursor = 0;
-    let playing = false;
-    let last = 0;
-
-    /** Jump anywhere: rebuild state from scratch without animating the jump. */
-    function goto(target: number) {
-      t = Math.max(0, Math.min(DURATION, target));
-      stage!.classList.add("is-seeking");
-      clear();
-      cursor = 0;
-      while (cursor < CUES.length && CUES[cursor]!.t <= t) CUES[cursor++]!.fn();
-      // Commit the suppressed styles before transitions come back on.
-      void stage!.offsetWidth;
-      stage!.classList.remove("is-seeking");
-      seek.value = String(Math.round((t / DURATION) * 1000));
-    }
-
-    function frame(now: number) {
-      if (playing) {
-        // Clamp the step so a backgrounded tab does not skip the whole scene.
-        t += last ? Math.min(now - last, 120) : 0;
-        if (t >= DURATION) {
-          goto(0);
-        } else {
-          while (cursor < CUES.length && CUES[cursor]!.t <= t) CUES[cursor++]!.fn();
-          seek.value = String(Math.round((t / DURATION) * 1000));
-        }
-      }
-      last = now;
-      requestAnimationFrame(frame);
-    }
-
-    function setPlaying(on: boolean) {
-      playing = on;
-      last = 0;
-      theater!.dataset.paused = String(!on);
-      toggle.setAttribute("aria-label", on ? "Pause" : "Play");
-    }
-
-    toggle.addEventListener("click", () => setPlaying(!playing));
-    seek.addEventListener("input", () => goto((Number(seek.value) / 1000) * DURATION));
+    const scene = createScene({
+      root: theater,
+      stage,
+      cues: CUES,
+      durationMs: 28200,
+      reset,
+      toggle,
+      seek,
+      rate,
+    });
 
     // Tapping Approve early jumps the clock to the decision.
     approve.addEventListener("click", () => {
       ripple.classList.remove("is-tap");
       void ripple.offsetWidth;
       ripple.classList.add("is-tap");
-      if (t < APPROVE_AT) goto(APPROVE_AT);
+      if (scene.time() < APPROVE_AT) scene.seekTo(APPROVE_AT);
     });
-
-    goto(0);
-    setPlaying(false);
-    requestAnimationFrame(frame);
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          io.disconnect();
-          setPlaying(true);
-        }
-      },
-      { threshold: 0.3 },
-    );
-    io.observe(stage);
   }
 </script>
