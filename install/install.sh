@@ -18,6 +18,7 @@ UNYOLO_SOURCE_COMMIT="${UNYOLO_SOURCE_COMMIT:-}"
 UNYOLO_VERIFY_ONLY="${UNYOLO_VERIFY_ONLY:-false}"
 UNYOLO_VERIFY_RELEASE_SET="${UNYOLO_VERIFY_RELEASE_SET:-false}"
 UNYOLO_VERIFIER_FILE="${UNYOLO_VERIFIER_FILE:-}"
+UNYOLO_ATTESTATIONS_URL="${UNYOLO_ATTESTATIONS_URL:-}"
 ATTESTATION_VERIFIER_NAME="${ATTESTATION_VERIFIER_NAME:-}"
 
 GH_VERIFIER_VERSION="2.96.0"
@@ -188,15 +189,15 @@ checksum_line() {
 }
 
 verify_checksum() {
-  asset="$1"
+  checksum_asset="$1"
   checksums="$2"
   directory="$(dirname "$checksums")"
   if command -v sha256sum >/dev/null 2>&1; then
-    (cd "$directory" && checksum_line "$asset" "$(basename "$checksums")" | sha256sum -c -)
+    (cd "$directory" && checksum_line "$checksum_asset" "$(basename "$checksums")" | sha256sum -c -)
     return
   fi
   if command -v shasum >/dev/null 2>&1; then
-    (cd "$directory" && checksum_line "$asset" "$(basename "$checksums")" | shasum -a 256 -c -)
+    (cd "$directory" && checksum_line "$checksum_asset" "$(basename "$checksums")" | shasum -a 256 -c -)
     return
   fi
   fail "missing checksum command: sha256sum or shasum"
@@ -240,23 +241,55 @@ prepare_verifier() {
   [ -x "$verifier" ] || fail "pinned provenance verifier is missing its executable"
 }
 
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+    return
+  fi
+  shasum -a 256 "$1" | awk '{ print $1 }'
+}
+
+fetch_attestation_bundles() {
+  subject="$1"
+  output="$2"
+  digest="$(file_sha256 "$subject")"
+  base="${UNYOLO_ATTESTATIONS_URL:-https://api.github.com/repos/${REPO}/attestations}"
+  response="${tmp_dir}/attestations.json"
+  curl -fsSL "${base%/}/sha256:${digest}?per_page=30" -o "$response" ||
+    fail "could not fetch public GitHub attestations"
+  awk '
+    /^[[:space:]]*"bundle"[[:space:]]*:/ {
+      sub(/^[[:space:]]*"bundle"[[:space:]]*:[[:space:]]*/, "")
+      sub(/,[[:space:]]*$/, "")
+      print
+    }
+  ' "$response" > "$output"
+  [ -s "$output" ] || fail "GitHub returned no usable attestation bundles"
+}
+
+verify_subject_provenance() {
+  subject="$1"
+  set -- attestation verify "$subject"
+  if [ -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then
+    bundle="${tmp_dir}/attestations.jsonl"
+    fetch_attestation_bundles "$subject" "$bundle"
+    set -- "$@" --bundle "$bundle"
+  fi
+  set -- "$@" \
+    --repo "$REPO" \
+    --signer-workflow "$REPO/.github/workflows/release.yml" \
+    --source-ref "refs/tags/$VERSION" \
+    --deny-self-hosted-runners
+  if [ -n "$UNYOLO_SOURCE_COMMIT" ]; then
+    set -- "$@" --source-digest "$UNYOLO_SOURCE_COMMIT"
+  fi
+  "$verifier" "$@" >/dev/null
+}
+
 verify_provenance() {
   prepare_verifier
   for subject in "$@"; do
-    if [ -n "$UNYOLO_SOURCE_COMMIT" ]; then
-      "$verifier" attestation verify "$subject" \
-        --repo "$REPO" \
-        --signer-workflow "$REPO/.github/workflows/release.yml" \
-        --source-ref "refs/tags/$VERSION" \
-        --source-digest "$UNYOLO_SOURCE_COMMIT" \
-        --deny-self-hosted-runners >/dev/null
-    else
-      "$verifier" attestation verify "$subject" \
-        --repo "$REPO" \
-        --signer-workflow "$REPO/.github/workflows/release.yml" \
-        --source-ref "refs/tags/$VERSION" \
-        --deny-self-hosted-runners >/dev/null
-    fi
+    verify_subject_provenance "$subject"
   done
 }
 

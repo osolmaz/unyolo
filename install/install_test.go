@@ -61,7 +61,7 @@ func TestInstallerVerifiesExpectedReleaseProvenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantPolicy := "--repo example/test-broker --signer-workflow example/test-broker/.github/workflows/release.yml --source-ref refs/tags/v1.2.3 --deny-self-hosted-runners"
-	if strings.Count(string(log), "attestation verify ") != 2 || !strings.Contains(string(log), wantPolicy) {
+	if strings.Count(string(log), "attestation verify ") != 2 || !strings.Contains(string(log), "--bundle ") || !strings.Contains(string(log), wantPolicy) {
 		t.Fatalf("provenance verifier log = %q", log)
 	}
 	if _, err := os.Stat(filepath.Join(installDir, "test-broker")); !errors.Is(err, os.ErrNotExist) {
@@ -332,6 +332,7 @@ func installerCommand(t *testing.T, installDir string, serverURL string, version
 		"UNYOLO_UNAME_M=x86_64",
 		"UNYOLO_LATEST_RELEASE_URL="+serverURL+"/latest",
 		"UNYOLO_RELEASE_BASE_URL="+serverURL+"/release",
+		"UNYOLO_ATTESTATIONS_URL="+serverURL+"/attestations",
 		"UNYOLO_VERIFIER_FILE="+writeFakeVerifier(t),
 	)
 	return command
@@ -411,6 +412,10 @@ func writeChecksumSet(t *testing.T, dir string, assets []string) {
 func releaseServer(t *testing.T, dir string, asset string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/attestations/sha256:") {
+			_, _ = io.WriteString(w, "{\n  \"attestations\": [{\n    \"bundle\": {\"mediaType\":\"test\"}\n  }]\n}\n")
+			return
+		}
 		switch r.URL.Path {
 		case "/latest":
 			_, _ = io.WriteString(w, `{"tag_name":"v1.2.3"}`)
@@ -429,6 +434,10 @@ func releaseServer(t *testing.T, dir string, asset string) *httptest.Server {
 func releaseSetServer(t *testing.T, dir string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/attestations/sha256:") {
+			_, _ = io.WriteString(w, "{\n  \"attestations\": [{\n    \"bundle\": {\"mediaType\":\"test\"}\n  }]\n}\n")
+			return
+		}
 		const prefix = "/release/"
 		if !strings.HasPrefix(r.URL.Path, prefix) {
 			http.NotFound(w, r)
