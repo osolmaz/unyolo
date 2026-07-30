@@ -66,7 +66,10 @@ func TestValidateTelegramAPIBase(t *testing.T) {
 			t.Fatalf("validateTelegramAPIBase(%q) = %v", value, err)
 		}
 	}
-	for _, value := range []string{"http://example.test", "ftp://127.0.0.1", "/relative", "https://example.test?token=secret"} {
+	for _, value := range []string{
+		"http://example.test", "ftp://127.0.0.1", "/relative", "https://example.test?token=secret",
+		"https://example.test?", "https://example.test#", "https://user:secret@example.test",
+	} {
 		if err := validateTelegramAPIBase(value); err == nil {
 			t.Fatalf("validateTelegramAPIBase(%q) succeeded", value)
 		}

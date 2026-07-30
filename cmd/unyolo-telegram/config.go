@@ -90,8 +90,8 @@ func validateTelegramAPIBase(value string) error {
 		return nil
 	}
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("telegram_api_base must be an absolute HTTP URL without query or fragment")
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(value, "#") {
+		return errors.New("telegram_api_base must be an absolute HTTP URL without credentials, query, or fragment")
 	}
 	if parsed.Scheme == "https" {
 		return nil
