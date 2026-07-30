@@ -199,6 +199,7 @@ const lines = [...before, ...during, ...after];
   /* ------------------------------------------------------------ telegram -- */
 
   .tg {
+    --tg-ring: rgb(24 24 27 / 0.28);
     position: absolute;
     right: 0.75rem;
     bottom: 0.75rem;
@@ -290,25 +291,43 @@ const lines = [...before, ...during, ...after];
     color: #7fc79b;
   }
 
+  html[data-theme="dark"] .tg {
+    --tg-ring: rgb(250 250 250 / 0.3);
+  }
+
   /* -------------------------------------------------- animated states -- */
 
   /* Only applied once the script takes over, so no-JS keeps everything. */
-  .theater[data-armed="true"] .bubble,
+
+  /* Terminal lines rise into place. */
   .theater[data-armed="true"] .line {
     opacity: 0;
-    transform: translateY(3px);
+    transform: translateY(7px);
   }
 
-  .theater[data-armed="true"] .bubble.is-in,
   .theater[data-armed="true"] .line.is-in {
     opacity: 1;
     transform: none;
-    transition: opacity 220ms ease, transform 220ms ease;
+    transition: opacity 240ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  /* Messages pop, the way a chat message does. */
+  .theater[data-armed="true"] .bubble {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+    transform-origin: 0 100%;
+  }
+
+  .theater[data-armed="true"] .bubble.is-in {
+    opacity: 1;
+    transform: none;
+    transition: opacity 240ms ease, transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* The notification slides in from the right edge and settles. */
   .theater[data-armed="true"] .tg {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateX(30px) scale(0.96);
     pointer-events: none;
   }
 
@@ -316,7 +335,33 @@ const lines = [...before, ...during, ...after];
     opacity: 1;
     transform: none;
     pointer-events: auto;
-    transition: opacity 260ms ease, transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    transition: opacity 300ms ease, transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* A ring on Approve, so it reads as the thing to press. */
+  .tg.is-in .tg__btn--yes {
+    animation: ring 2s ease-out 700ms infinite;
+  }
+
+  @keyframes ring {
+    0% {
+      box-shadow: 0 0 0 0 var(--tg-ring);
+    }
+    55%,
+    100% {
+      box-shadow: 0 0 0 7px transparent;
+    }
+  }
+
+  .tg__done {
+    animation: rise 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -325,7 +370,9 @@ const lines = [...before, ...during, ...after];
     .theater[data-armed="true"] .tg {
       transition: none;
     }
-    .line[data-waiting="true"]::after {
+    .line[data-waiting="true"]::after,
+    .tg.is-in .tg__btn--yes,
+    .tg__done {
       animation: none;
     }
   }
