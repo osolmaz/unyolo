@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -27,6 +28,30 @@ func TestReleaseDeploymentDefaultsMatchGeneratedClient(t *testing.T) {
 	}
 	if !bytes.Contains(policy, []byte(`"clients": ["agent"]`)) {
 		t.Fatal("default sudo policy does not authorize the generated agent client")
+	}
+}
+
+func TestReleaseDeploymentStateHierarchyMatchesRuntimeTrust(t *testing.T) {
+	profileData, err := os.ReadFile("../../deployment/profile.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var profile component.Profile
+	if err := json.Unmarshal(profileData, &profile); err != nil {
+		t.Fatal(err)
+	}
+	directories := make(map[string]component.Directory, len(profile.Directories))
+	for _, directory := range profile.Directories {
+		directories[directory.ID] = directory
+	}
+	for id, expected := range map[string]component.Directory{
+		"state-root":     {ID: "state-root", Destination: "/var/lib/sudo-broker", Mode: 0o750, Owner: "root", Group: "sudo-broker"},
+		"frontend-state": {ID: "frontend-state", Destination: "/var/lib/sudo-broker/frontend", Mode: 0o700, Owner: "sudo-broker", Group: "sudo-broker"},
+		"helper-state":   {ID: "helper-state", Destination: "/var/lib/sudo-broker/helper", Mode: 0o700, Owner: "root", Group: "root"},
+	} {
+		if directories[id] != expected {
+			t.Fatalf("directory %q = %+v, want %+v", id, directories[id], expected)
+		}
 	}
 }
 

@@ -10,7 +10,7 @@
   ],
   "agent_contract": true,
   "state_format_digest": "sha256:aff48071775c39df55db581cef983bb348776a9e26b4f8bb94a0568f9fab6939",
-  "state_dir": "/var/lib/sudo-broker",
+  "state_dir": "/var/lib/sudo-broker/frontend",
   "required": false,
   "setup": {
     "protocol": "unyolo.io/setup-component/v1",
