@@ -14,8 +14,7 @@ They never choose a credential kind, a token scope, an installation, or a permis
 ## Install
 
 ```sh
-UNYOLO_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
+curl -fsSL https://unyolo.io/install | sh -s github
 ```
 
 Pin a release with `VERSION=<version>` or choose a directory with `INSTALL_DIR=/absolute/path`.

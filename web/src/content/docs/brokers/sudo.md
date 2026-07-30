@@ -41,8 +41,7 @@ performs the identity transition.
 ## Install
 
 ```sh
-UNYOLO_REV=<verified-40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/sudo/install.sh" | sh
+curl -fsSL https://unyolo.io/install | sh -s sudo
 ```
 
 The frontend goes into the selected binary directory. The helper goes into the adjacent `libexec`

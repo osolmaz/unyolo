@@ -11,24 +11,33 @@ reads, and the alternatives.
 
 ## Install a broker
 
-Fetch the bootstrap from a unYOLO commit you have reviewed. It resolves the latest release for
-that broker to its exact commit, verifies release checksums, and installs to `$HOME/.local/bin`:
+Name the broker you want. The installer resolves its latest release to an exact commit, verifies
+release checksums and build attestations, and installs the binary to `$HOME/.local/bin`:
 
 ```sh
-UNYOLO_REV=<verified-40-character-commit-sha>
-
-# Hugging Face
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/huggingface/install.sh" | sh
-
-# GitHub
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
-
-# sudo
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/sudo/install.sh" | sh
+curl -fsSL https://unyolo.io/install | sh -s github
 ```
 
-Pinning `UNYOLO_REV` to a reviewed commit is the point of the exercise. Piping a script from a
-mutable branch into a shell gives you whatever that branch says today.
+Substitute `huggingface` or `sudo` for another broker.
+
+## Pin the bootstrap
+
+That command reads the bootstrap from the default branch, so you get whatever that branch says on
+the day you run it. Everything downstream is already pinned, because the bootstrap resolves the
+release tag to an exact commit and checks the archive against release checksums and GitHub build
+attestations before installing anything. The bootstrap itself is the one link left, and naming a
+commit you have reviewed closes it:
+
+```sh
+curl -fsSL https://unyolo.io/install | UNYOLO_REV=<40-character-commit-sha> sh -s github
+```
+
+Fetching that commit's bootstrap yourself does the same thing without going through the endpoint:
+
+```sh
+UNYOLO_REV=<40-character-commit-sha>
+curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
+```
 
 Two environment variables change the outcome:
 
