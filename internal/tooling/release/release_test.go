@@ -29,6 +29,31 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestCreateReleaseWorkDirResolvesSymlinkedTempRoot(t *testing.T) {
+	realRoot := t.TempDir()
+	linkRoot := filepath.Join(t.TempDir(), "temp")
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", linkRoot)
+
+	work, err := createReleaseWorkDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	if strings.HasPrefix(work, linkRoot+string(filepath.Separator)) {
+		t.Fatalf("release work directory retained symlinked root: %s", work)
+	}
+	resolved, err := filepath.EvalSymlinks(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != work {
+		t.Fatalf("release work directory = %q, resolved = %q", work, resolved)
+	}
+}
+
 func TestValidateDeploymentKitOptions(t *testing.T) {
 	base := Options{
 		Directory: ".", Broker: "unyolo", Command: "./cmd/unyolo", Version: "v1.0.0", Dist: "dist",
