@@ -52,7 +52,9 @@ func TestWebInstallEndpointRunsTheBrokerBootstrap(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n")
+		if _, err := fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n"); err != nil {
+			t.Errorf("write bootstrap script: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -71,7 +73,9 @@ func TestWebInstallEndpointDefaultsToGitHub(t *testing.T) {
 	var requested string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requested = r.URL.Path
-		fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n")
+		if _, err := fmt.Fprint(w, "#!/bin/sh\necho bootstrap ran\n"); err != nil {
+			t.Errorf("write bootstrap script: %v", err)
+		}
 	}))
 	defer server.Close()
 
