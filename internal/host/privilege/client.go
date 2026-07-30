@@ -159,6 +159,12 @@ func prepareRootBootstrap(ctx context.Context, release, sourceCommit, githubCLI 
 	return temporary, bootstrap, expected, nil
 }
 
+type githubAttestationResponse struct {
+	Attestations []struct {
+		Bundle json.RawMessage `json:"bundle"`
+	} `json:"attestations"`
+}
+
 func downloadAttestationBundles(ctx context.Context, baseURL, digest, destination string) error {
 	if !checksumPattern.MatchString(digest) {
 		return errors.New("attestation subject digest is invalid")
@@ -171,31 +177,35 @@ func downloadAttestationBundles(ctx context.Context, baseURL, digest, destinatio
 	if err != nil {
 		return err
 	}
-	var response struct {
-		Attestations []struct {
-			Bundle json.RawMessage `json:"bundle"`
-		} `json:"attestations"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return fmt.Errorf("decode GitHub attestations: %w", err)
-	}
-	if len(response.Attestations) == 0 || len(response.Attestations) > 30 {
-		return errors.New("GitHub returned an invalid attestation count")
-	}
-	var bundles bytes.Buffer
-	for _, attestation := range response.Attestations {
-		if len(attestation.Bundle) == 0 || !json.Valid(attestation.Bundle) {
-			return errors.New("GitHub returned an invalid attestation bundle")
-		}
-		_, _ = bundles.Write(attestation.Bundle)
-		_ = bundles.WriteByte('\n')
+	bundles, err := parseAttestationBundles(data)
+	if err != nil {
+		return err
 	}
 	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400) // #nosec G304 -- private temporary destination.
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.Write(bundles.Bytes())
+	_, writeErr := file.Write(bundles)
 	return errors.Join(writeErr, file.Close())
+}
+
+func parseAttestationBundles(data []byte) ([]byte, error) {
+	var response githubAttestationResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("decode GitHub attestations: %w", err)
+	}
+	if len(response.Attestations) == 0 || len(response.Attestations) > 30 {
+		return nil, errors.New("GitHub returned an invalid attestation count")
+	}
+	var bundles bytes.Buffer
+	for _, attestation := range response.Attestations {
+		if len(attestation.Bundle) == 0 || !json.Valid(attestation.Bundle) {
+			return nil, errors.New("GitHub returned an invalid attestation bundle")
+		}
+		_, _ = bundles.Write(attestation.Bundle)
+		_ = bundles.WriteByte('\n')
+	}
+	return bundles.Bytes(), nil
 }
 
 func download(ctx context.Context, source, destination string, maximum int64) error {
