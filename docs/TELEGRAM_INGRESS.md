@@ -79,6 +79,10 @@ the BotFather token. `telegram_api_base` is optional in the managed JSON
 configuration. HTTPS is required for remote API bases; plain HTTP is accepted
 only for loopback addresses.
 
+The broker that sends approval messages must use the same local token and API
+base. HF Broker accepts `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` together with
+`HF_BROKER_TELEGRAM_API_BASE` for this purpose.
+
 Setup creates the inbox encryption key once and preserves it on every rerun.
 The key is readable only by the ingress service. Losing or rotating it while
 callbacks are pending makes those callbacks unreadable rather than falling
