@@ -33,7 +33,7 @@ const lines = [
 
 <div class="theater">
   <div class="stagewrap">
-    <div class="stage" data-stage data-act="0">
+    <div class="stage" data-stage data-act="0" data-focus="none" data-face="idle">
       <svg class="stage__defs" aria-hidden="true" focusable="false">
         <defs set:html={isoDefs(P)} />
       </svg>
@@ -44,7 +44,7 @@ const lines = [
       </div>
 
       <div class="actor actor--agent">
-        <svg class="actor__art" viewBox="-38 -52 76 96" set:html={agentIcon(P)} />
+        <svg class="actor__art" viewBox="-38 -52 76 96" set:html={agentIcon(P, true)} />
         <span class="actor__name">AGENT</span>
         <span class="dots" data-dots aria-hidden="true"><i></i><i></i><i></i></span>
       </div>
@@ -182,7 +182,7 @@ const lines = [
     flex-direction: column;
     align-items: center;
     gap: 0.1rem;
-    transform: translate(var(--x, 0), var(--y, 0)) scale(var(--s, 1));
+    transform: translate(var(--x, 0), var(--y, 0)) scale(calc(var(--s, 1) * var(--f, 1)));
     opacity: var(--o, 0);
     transition:
       transform 760ms cubic-bezier(0.5, 0, 0.2, 1),
@@ -244,7 +244,42 @@ const lines = [
     --o: 1;
     --x: -198px;
     --y: 144px;
-    --s: 0.74;
+    --s: 0.6;
+  }
+
+  /*
+   * Whoever holds the floor grows a little and shrinks back when the turn
+   * passes. The bump is smaller in act 1 because both actors are already at
+   * full size there.
+   */
+  .stage[data-focus="human"] .actor--human,
+  .stage[data-focus="agent"] .actor--agent {
+    --f: 1.23;
+  }
+  .stage[data-act="1"][data-focus="human"] .actor--human,
+  .stage[data-act="1"][data-focus="agent"] .actor--agent {
+    --f: 1.08;
+  }
+
+  /* ----------------------------------------------------------------- face -- */
+
+  .actor__art :global(.iso-eye-line) {
+    fill: none;
+    stroke: var(--iso-eye);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .actor__art :global(.face) {
+    display: none;
+  }
+  .stage[data-face="idle"] .actor__art :global(.face--idle),
+  .stage[data-face="happy"] .actor__art :global(.face--happy),
+  .stage[data-face="think"] .actor__art :global(.face--think),
+  .stage[data-face="wink"] .actor__art :global(.face--wink),
+  .stage[data-face="stuck"] .actor__art :global(.face--stuck) {
+    display: block;
   }
 
   /* ---------------------------------------------------------------- dots -- */
@@ -904,6 +939,11 @@ const lines = [
     const seek = theater.querySelector<HTMLInputElement>("[data-seek]")!;
 
     const act = (n: string) => (stage.dataset.act = n);
+    /** Who has the floor. The one with it grows; the other shrinks back. */
+    const focus = (who: "human" | "agent" | "none") => (stage.dataset.focus = who);
+    /** The agent's expression, which tracks what it is currently up against. */
+    const face = (f: "idle" | "happy" | "think" | "wink" | "stuck") =>
+      (stage.dataset.face = f);
     const show = (el: HTMLElement, text: string) => {
       el.textContent = text;
       el.classList.add("is-in");
@@ -913,11 +953,31 @@ const lines = [
 
     const CUES: { t: number; fn: () => void }[] = [
       { t: 250, fn: () => act("1") },
-      { t: 1400, fn: () => show(sayHuman, "Ship the parser fix and merge it.") },
+      {
+        t: 1400,
+        fn: () => {
+          focus("human");
+          show(sayHuman, "Ship the parser fix and merge it.");
+        },
+      },
       { t: 3800, fn: () => hide(sayHuman) },
-      { t: 4200, fn: () => show(sayAgent, "On it. Let me open a PR first.") },
+      {
+        t: 4200,
+        fn: () => {
+          focus("agent");
+          face("happy");
+          show(sayAgent, "On it. Let me open a PR first.");
+        },
+      },
       { t: 6300, fn: () => hide(sayAgent) },
-      { t: 6700, fn: () => act("2") },
+      {
+        t: 6700,
+        fn: () => {
+          act("2");
+          focus("agent");
+          face("think");
+        },
+      },
       {
         t: 7400,
         fn: () => {
@@ -927,15 +987,39 @@ const lines = [
       },
       { t: 7800, fn: () => show(thought, "Opening the pull request…") },
       { t: 8300, fn: () => line(0) },
-      { t: 9100, fn: () => line(1) },
+      {
+        t: 9100,
+        fn: () => {
+          line(1);
+          face("happy");
+        },
+      },
       { t: 9800, fn: () => hide(thought) },
-      { t: 10000, fn: () => show(thought, "Now merging it.") },
+      {
+        t: 10000,
+        fn: () => {
+          face("think");
+          show(thought, "Now merging it.");
+        },
+      },
       { t: 10400, fn: () => line(2) },
-      { t: 11200, fn: () => line(3) },
+      {
+        t: 11200,
+        fn: () => {
+          line(3);
+          face("stuck");
+        },
+      },
       { t: 11600, fn: () => hide(thought) },
       { t: 11900, fn: () => show(thought, "Refused. main requires a review.") },
       { t: 14000, fn: () => hide(thought) },
-      { t: 14300, fn: () => show(sayAgent, "I need your approval to merge this.") },
+      {
+        t: 14300,
+        fn: () => {
+          face("idle");
+          show(sayAgent, "I need your approval to merge this.");
+        },
+      },
       { t: 14600, fn: () => line(4) },
       {
         t: 15500,
@@ -944,7 +1028,13 @@ const lines = [
           lns[5]!.dataset.caret = "true";
         },
       },
-      { t: 16200, fn: () => act("3") },
+      {
+        t: 16200,
+        fn: () => {
+          act("3");
+          focus("human");
+        },
+      },
       { t: 16700, fn: () => phone.classList.add("is-in") },
       { t: 17300, fn: () => tg.classList.add("is-in") },
       {
@@ -959,6 +1049,7 @@ const lines = [
         fn: () => {
           actions.hidden = true;
           tgok.hidden = false;
+          face("wink");
         },
       },
       {
@@ -966,12 +1057,20 @@ const lines = [
         fn: () => {
           hide(sayHuman);
           act("4");
+          focus("agent");
+          face("think");
           phone.classList.remove("is-in");
           delete lns[5]!.dataset.caret;
         },
       },
       { t: 23800, fn: () => line(6) },
-      { t: 24700, fn: () => line(7) },
+      {
+        t: 24700,
+        fn: () => {
+          line(7);
+          face("happy");
+        },
+      },
       {
         t: 25400,
         fn: () => {
@@ -986,6 +1085,8 @@ const lines = [
 
     function clear() {
       act("0");
+      focus("none");
+      face("idle");
       [sayHuman, sayAgent, thought].forEach(hide);
       dots.classList.remove("is-on");
       term.classList.remove("is-in");
