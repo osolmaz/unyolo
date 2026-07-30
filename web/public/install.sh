@@ -25,7 +25,6 @@ case "${owner}:${name}" in :* | *: | *:*/*) fail "REPO must use owner/name form"
 case "$repo" in *[!A-Za-z0-9._/-]* | *..* | /* | */) fail "REPO is invalid" ;; esac
 raw_base="${UNYOLO_RAW_URL_BASE:-https://raw.githubusercontent.com/${repo}}"
 component="${1:-}"
-[ "$#" -le 1 ] || fail "expected at most one component name"
 for tool in curl mktemp grep awk sed head tr wc; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required command: $tool"
 done
@@ -44,12 +43,13 @@ trap 'exit 143' HUP TERM
 # Kept in step with brokers/ by TestWebInstallEndpointListsEveryBroker.
 case "$component" in
   github | huggingface | sudo)
+    [ "$#" -eq 1 ] || fail "binary-only installation accepts one component name"
     revision="${UNYOLO_REV:-main}"
     curl -fsSL "${raw_base}/${revision}/brokers/${component}/install.sh" -o "$temporary/broker-install.sh"
     sh "$temporary/broker-install.sh"
     exit
     ;;
-  "") ;;
+  "" | setup | --*) ;;
   *)
     printf '%s\n' "unyolo install: unknown component '$component'" >&2
     printf '%s\n' 'usage: curl -fsSL https://unyolo.io/install.sh | sh -s -- <github|huggingface|sudo>' >&2
@@ -103,4 +103,4 @@ case "$bootstrap_revision" in *[!0-9a-f]*) fail "UNYOLO_REV must be an exact com
 [ "${#bootstrap_revision}" -eq 40 ] || fail "UNYOLO_REV must be an exact commit SHA"
 
 curl -fsSL "${raw_base}/${bootstrap_revision}/install/bootstrap.sh" -o "$temporary/bootstrap.sh"
-UNYOLO_SOURCE_COMMIT="$source_commit" sh "$temporary/bootstrap.sh" --release "$release" setup
+UNYOLO_SOURCE_COMMIT="$source_commit" sh "$temporary/bootstrap.sh" --release "$release" "$@"
