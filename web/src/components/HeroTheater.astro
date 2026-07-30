@@ -1,15 +1,19 @@
 ---
 /**
- * The hero's right pane, staged as a short play.
+ * The hero's right pane, staged as a play with a scrubbable timeline.
  *
  * Act 1  the two characters walk on and talk
- * Act 2  the agent moves to its desk, the terminal rises, work begins
- * Act 3  the merge is blocked, focus moves to the human and their phone
- * Act 4  the approval lands and the operation resumes
+ * Act 2  the agent takes its desk, works, and its first merge is refused
+ * Act 3  it asks instead; the phone comes out and the operator approves
+ * Act 4  the operation resumes and the merge lands
  *
- * Actors are anchored at the stage centre and moved with transforms, so every
- * move is a transition rather than a reflow. The script drives one act at a
- * time and awaits between beats, which is where the reading pauses live.
+ * The scene is a list of cues on a clock rather than a sequential script, so
+ * any point is reachable: seeking replays every cue up to that time with
+ * transitions suppressed, then playback resumes from there. Every cue sets
+ * state outright, which is what makes replaying a prefix idempotent.
+ *
+ * The agent has two kinds of bubble. Speech is what it says to you; thought is
+ * what it is working through on its own, and reads differently.
  */
 import { isoDefs, isoStopCss, personIcon, agentIcon } from "../lib/iso";
 
@@ -18,6 +22,8 @@ const P = "th";
 const lines = [
   { text: "$ gh-broker operation submit pull_request.create" },
   { text: "op_9c2f  succeeded  pull request #482 opened", tone: "ok" },
+  { text: "$ gh-broker operation submit pull_request.merge" },
+  { text: "op_1d55  failed     required review not satisfied", tone: "bad" },
   { text: "$ gh-broker operation submit pull_request.merge_admin" },
   { text: "op_4a71  pending    approval required", tone: "warn" },
   { text: "op_4a71  approved   by operator, single use", tone: "ok" },
@@ -25,62 +31,100 @@ const lines = [
 ];
 ---
 
-<div class="stagewrap">
-  <div class="stage" data-stage data-act="0">
-    <svg class="stage__defs" aria-hidden="true" focusable="false">
-      <defs set:html={isoDefs(P)} />
-    </svg>
+<div class="theater">
+  <div class="stagewrap">
+    <div class="stage" data-stage data-act="0">
+      <svg class="stage__defs" aria-hidden="true" focusable="false">
+        <defs set:html={isoDefs(P)} />
+      </svg>
 
-    <div class="actor actor--human" data-human>
-      <svg class="actor__art" viewBox="-34 -50 68 92" set:html={personIcon(P)} />
-      <span class="actor__name">YOU</span>
-    </div>
+      <div class="actor actor--human">
+        <svg class="actor__art" viewBox="-34 -50 68 92" set:html={personIcon(P)} />
+        <span class="actor__name">YOU</span>
+      </div>
 
-    <div class="actor actor--agent" data-agent>
-      <svg class="actor__art" viewBox="-38 -52 76 96" set:html={agentIcon(P)} />
-      <span class="actor__name">AGENT</span>
-      <span class="think" data-think aria-hidden="true"><i></i><i></i><i></i></span>
-    </div>
+      <div class="actor actor--agent">
+        <svg class="actor__art" viewBox="-38 -52 76 96" set:html={agentIcon(P)} />
+        <span class="actor__name">AGENT</span>
+        <span class="dots" data-dots aria-hidden="true"><i></i><i></i><i></i></span>
+      </div>
 
-    <p class="say say--human" data-say-human></p>
-    <p class="say say--agent" data-say-agent></p>
+      <p class="say say--human" data-say-human></p>
+      <p class="say say--agent" data-say-agent></p>
+      <p class="say say--think" data-thought></p>
 
-    <div class="term" data-term>
-      <div class="term__bar">agent-a@workstation</div>
-      <pre class="term__body"><code>{
-        lines.map((l, i) => (
-          <span class="ln" data-ln={i} data-tone={l.tone ?? "plain"}>{l.text}</span>
-        ))
-      }</code></pre>
-    </div>
+      <div class="term" data-term>
+        <div class="term__bar">agent-a@workstation</div>
+        <pre class="term__body"><code>{
+          lines.map((l, i) => (
+            <span class="ln" data-ln={i} data-tone={l.tone ?? "plain"}>{l.text}</span>
+          ))
+        }</code></pre>
+      </div>
 
-    <div class="phone" data-phone>
-      <div class="phone__bar"><span class="phone__dot"></span>Telegram</div>
-      <div class="phone__body">
-        <div class="tg" data-tg>
-          <p class="tg__from">unYOLO</p>
-          <p class="tg__title">Merge pull request #482</p>
-          <p class="tg__meta">acme/api · agent-a</p>
-          <p class="tg__warn">Bypasses required review on main</p>
-          <div class="tg__row" data-actions>
-            <button class="tg__btn tg__btn--yes" type="button" data-approve>
-              Approve
-              <span class="ripple" data-ripple></span>
-            </button>
-            <button class="tg__btn" type="button" disabled>Deny</button>
+      <div class="phone" data-phone>
+        <div class="tgbar">
+          <span class="tgbar__back">‹</span>
+          <span class="tgbar__ava">u</span>
+          <span class="tgbar__who"><b>unYOLO</b><i>bot</i></span>
+        </div>
+        <div class="tgchat">
+          <div class="tgmsg" data-tg>
+            <p class="tgmsg__from">unYOLO</p>
+            <p class="tgmsg__title">Approval required</p>
+            <p class="tgmsg__body">
+              <b>agent-a</b> wants to merge <b>#482</b> in <b>acme/api</b>.
+            </p>
+            <p class="tgmsg__warn">Bypasses the required review on main.</p>
+            <span class="tgmsg__time">09:41</span>
+            <div class="tgkb" data-actions>
+              <button class="tgkb__btn" type="button" data-approve>
+                Approve · 1 use
+                <span class="ripple" data-ripple></span>
+              </button>
+              <button class="tgkb__btn" type="button" disabled>Deny</button>
+            </div>
+            <div class="tgkb tgkb--done" data-tgok hidden>
+              <span class="tgkb__done">✓ Approved by you</span>
+            </div>
           </div>
-          <p class="tg__ok" data-tgok hidden>Approved · 1 use</p>
         </div>
       </div>
     </div>
+  </div>
 
-    <button class="replay" type="button" data-replay hidden>Replay</button>
+  <div class="ctl">
+    <button class="ctl__btn" type="button" data-toggle aria-label="Pause">
+      <svg class="ctl__pause" viewBox="0 0 12 12" aria-hidden="true"
+        ><rect x="2" y="1.5" width="3" height="9" rx="1"></rect><rect x="7" y="1.5" width="3" height="9" rx="1"
+        ></rect></svg
+      >
+      <svg class="ctl__play" viewBox="0 0 12 12" aria-hidden="true"
+        ><path d="M3 1.5 L10.5 6 L3 10.5 Z"></path></svg
+      >
+    </button>
+    <input
+      class="ctl__seek"
+      type="range"
+      min="0"
+      max="1000"
+      value="0"
+      step="1"
+      data-seek
+      aria-label="Scrub the scene"
+    />
   </div>
 </div>
 
 <style set:html={isoStopCss}></style>
 
 <style>
+  .theater {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
   .stagewrap {
     height: 520px;
     overflow: hidden;
@@ -91,6 +135,12 @@ const lines = [
     width: 520px;
     height: 520px;
     transform-origin: top left;
+  }
+
+  /* Applied while seeking, so a jump lands instantly instead of sliding. */
+  .stage.is-seeking,
+  .stage.is-seeking * {
+    transition: none !important;
   }
 
   .stage__defs {
@@ -175,7 +225,6 @@ const lines = [
     --x: 110px;
   }
 
-  /* The agent takes the desk and the human steps down to the front. */
   .stage[data-act="2"] .actor--agent,
   .stage[data-act="3"] .actor--agent,
   .stage[data-act="4"] .actor--agent {
@@ -193,14 +242,14 @@ const lines = [
   }
   .stage[data-act="3"] .actor--human {
     --o: 1;
-    --x: -176px;
-    --y: 140px;
-    --s: 0.76;
+    --x: -198px;
+    --y: 144px;
+    --s: 0.74;
   }
 
-  /* ------------------------------------------------------------ thinking -- */
+  /* ---------------------------------------------------------------- dots -- */
 
-  .think {
+  .dots {
     position: absolute;
     top: -2px;
     right: 4px;
@@ -215,22 +264,22 @@ const lines = [
     transition: opacity 220ms ease, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .think.is-on {
+  .dots.is-on {
     opacity: 1;
     transform: none;
   }
 
-  .think i {
+  .dots i {
     width: 4px;
     height: 4px;
     border-radius: 50%;
     background: var(--text-faint);
     animation: bob 1.15s ease-in-out infinite;
   }
-  .think i:nth-child(2) {
+  .dots i:nth-child(2) {
     animation-delay: 0.16s;
   }
-  .think i:nth-child(3) {
+  .dots i:nth-child(3) {
     animation-delay: 0.32s;
   }
 
@@ -247,7 +296,7 @@ const lines = [
     }
   }
 
-  /* -------------------------------------------------------------- speech -- */
+  /* ------------------------------------------------------ speech, thought -- */
 
   .say {
     position: absolute;
@@ -255,7 +304,7 @@ const lines = [
     left: 50%;
     top: 50%;
     width: max-content;
-    max-width: 190px;
+    max-width: 194px;
     margin: 0;
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--border);
@@ -291,18 +340,56 @@ const lines = [
     transform-origin: 100% 100%;
   }
 
-  /* The agent's line follows it to the desk once it has moved. */
   .stage[data-act="2"] .say--agent,
   .stage[data-act="3"] .say--agent,
   .stage[data-act="4"] .say--agent {
     --sx: -116px;
-    --sy: -228px;
+    --sy: -232px;
   }
 
-  /* The human speaks from the front in act 3. */
+  /* Narrower here so it does not run under the phone standing beside it. */
   .stage[data-act="3"] .say--human {
-    --sx: -250px;
-    --sy: 18px;
+    --sx: -252px;
+    --sy: 8px;
+    max-width: 132px;
+  }
+
+  /* A thought reads as internal: dashed, italic, quieter, with a cloud tail. */
+  .say--think {
+    --sx: -116px;
+    --sy: -232px;
+    max-width: 200px;
+    border-style: dashed;
+    border-radius: 15px;
+    background: var(--bg);
+    font-style: italic;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    box-shadow: none;
+    transform-origin: 0 100%;
+  }
+
+  .say--think::before,
+  .say--think::after {
+    content: "";
+    position: absolute;
+    border: 1px dashed var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+  }
+
+  .say--think::before {
+    left: 10px;
+    bottom: -9px;
+    width: 8px;
+    height: 8px;
+  }
+
+  .say--think::after {
+    left: 2px;
+    bottom: -17px;
+    width: 5px;
+    height: 5px;
   }
 
   /* ------------------------------------------------------------ terminal -- */
@@ -311,8 +398,7 @@ const lines = [
     position: absolute;
     z-index: 1;
     left: 112px;
-    /* Leaves a clear band above for the agent to speak into. */
-    top: 96px;
+    top: 92px;
     right: 6px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -331,7 +417,7 @@ const lines = [
   }
 
   .term__bar {
-    padding: 0.4rem 0.7rem;
+    padding: 0.35rem 0.7rem;
     border-bottom: 1px solid var(--border);
     background: var(--bg-subtle);
     font-family: var(--font-mono);
@@ -341,12 +427,12 @@ const lines = [
 
   .term__body {
     margin: 0;
-    padding: 0.7rem 0.8rem;
-    min-height: 9.9rem;
+    padding: 0.6rem 0.75rem;
+    min-height: 11.1rem;
     overflow-x: auto;
     font-family: var(--font-mono);
-    font-size: 0.71rem;
-    line-height: 1.9;
+    font-size: 0.6875rem;
+    line-height: 1.85;
     color: var(--text);
   }
 
@@ -369,12 +455,18 @@ const lines = [
   .ln[data-tone="warn"] {
     color: #97690e;
   }
+  .ln[data-tone="bad"] {
+    color: #b4383f;
+  }
 
   html[data-theme="dark"] .ln[data-tone="ok"] {
     color: #7fc79b;
   }
   html[data-theme="dark"] .ln[data-tone="warn"] {
     color: #d4b071;
+  }
+  html[data-theme="dark"] .ln[data-tone="bad"] {
+    color: #ef9296;
   }
 
   .ln[data-caret="true"]::after {
@@ -390,129 +482,203 @@ const lines = [
   }
 
   /* --------------------------------------------------------------- phone -- */
+  /* Telegram's own palette, so the approval reads as the app it arrives in. */
+
+  :global([data-theme="dark"]) .phone {
+    --tg-bezel: #444b54;
+  }
 
   .phone {
+    --tg-header: #527da3;
+    --tg-chat: #dfe6ec;
+    --tg-bubble: #ffffff;
+    --tg-text: #16191c;
+    --tg-blue: #2f81d6;
+    --tg-muted: #7d8e9c;
+    --tg-rule: #e3e9ee;
+    --tg-bezel: #1b2025;
+
     position: absolute;
     z-index: 3;
     left: 50%;
     top: 50%;
-    width: 218px;
+    width: 224px;
     margin: -118px 0 0 -109px;
-    border: 1px solid var(--border-strong);
-    border-radius: 18px;
-    background: var(--bg);
+    border: 6px solid var(--tg-bezel);
+    border-radius: 20px;
+    background: var(--tg-chat);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
     opacity: 0;
-    transform: translate(124px, 262px) scale(0.9) rotate(5deg);
+    transform: translate(-2px, 290px) scale(0.9) rotate(5deg);
     transition: opacity 320ms ease, transform 640ms cubic-bezier(0.34, 1.4, 0.5, 1);
     pointer-events: none;
   }
 
   .phone.is-in {
     opacity: 1;
-    transform: translate(124px, 80px) scale(1) rotate(0deg);
+    transform: translate(-2px, 108px) scale(1) rotate(0deg);
     pointer-events: auto;
   }
 
-  .phone__bar {
+  .tgbar {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.4rem 0.7rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-subtle);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--text-muted);
+    padding: 0.4rem 0.55rem;
+    background: var(--tg-header);
+    color: #fff;
   }
 
-  .phone__dot {
-    width: 6px;
-    height: 6px;
+  .tgbar__back {
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.9;
+  }
+
+  .tgbar__ava {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
-    background: #2f7a4d;
+    background: #74a9d4;
+    font-size: 0.6875rem;
+    font-weight: 700;
   }
 
-  .phone__body {
-    padding: 0.6rem;
+  .tgbar__who {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
   }
 
-  .tg {
-    padding: 0.55rem 0.65rem;
-    border-radius: 12px 12px 12px 3px;
-    background: var(--bg-inset);
+  .tgbar__who b {
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .tgbar__who i {
+    font-size: 0.625rem;
+    font-style: normal;
+    opacity: 0.78;
+  }
+
+  .tgchat {
+    padding: 0.55rem 0.5rem 0.65rem;
+    min-height: 170px;
+  }
+
+  .tgmsg {
+    position: relative;
+    max-width: 97%;
+    padding: 0.4rem 0.5rem 0.3rem;
+    border-radius: 10px 10px 10px 3px;
+    background: var(--tg-bubble);
+    box-shadow: 0 1px 1px rgb(16 35 47 / 0.16);
+    color: var(--tg-text);
     opacity: 0;
     transform: translateY(10px) scale(0.95);
     transform-origin: 0 100%;
   }
 
-  .tg.is-in {
+  .tgmsg.is-in {
     opacity: 1;
     transform: none;
-    transition: opacity 260ms ease, transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity 240ms ease, transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .tg__from {
-    margin: 0 0 0.2rem;
+  .tgmsg__from {
+    margin: 0 0 0.1rem;
     font-size: 0.6875rem;
     font-weight: 700;
-    color: var(--text-strong);
+    color: var(--tg-blue);
   }
 
-  .tg__title {
+  .tgmsg__title {
     margin: 0;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-strong);
+    font-size: 0.75rem;
+    font-weight: 700;
   }
 
-  .tg__meta {
-    margin: 0.05rem 0 0;
+  .tgmsg__body {
+    margin: 0.15rem 0 0;
     font-size: 0.6875rem;
-    color: var(--text-muted);
+    line-height: 1.4;
   }
 
-  .tg__warn {
-    margin: 0.3rem 0 0;
+  .tgmsg__warn {
+    margin: 0.2rem 0 0;
     font-size: 0.6875rem;
     line-height: 1.35;
-    color: var(--danger-text);
+    color: #b4383f;
   }
 
-  .tg__row {
+  .tgmsg__time {
+    display: block;
+    margin-top: 0.1rem;
+    text-align: right;
+    font-size: 0.5625rem;
+    color: var(--tg-muted);
+  }
+
+  /* Telegram inline keyboard: attached under the bubble, blue labels. */
+  .tgkb {
     display: flex;
-    gap: 0.3rem;
-    margin-top: 0.5rem;
+    margin: 0.3rem -0.5rem -0.3rem;
+    border-top: 1px solid var(--tg-rule);
   }
 
-  .tg__btn {
+  .tgkb__btn {
     position: relative;
     flex: 1;
-    padding: 0.3rem 0.4rem;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--bg);
-    color: var(--text-muted);
+    padding: 0.4rem 0.3rem;
+    border: 0;
+    background: transparent;
+    color: var(--tg-blue);
     font-family: inherit;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     cursor: pointer;
     overflow: hidden;
   }
 
-  .tg__btn--yes {
-    border-color: var(--solid);
-    background: var(--solid);
-    color: var(--solid-contrast);
+  .tgkb__btn + .tgkb__btn {
+    border-left: 1px solid var(--tg-rule);
   }
 
-  .tg__btn[disabled] {
-    opacity: 0.45;
+  .tgkb__btn:hover:not(:disabled) {
+    background: #f1f6fa;
+  }
+
+  .tgkb__btn[disabled] {
+    color: var(--tg-muted);
     cursor: default;
   }
 
-  /* Shown when the play taps Approve on the viewer's behalf. */
+  .tgkb[hidden] {
+    display: none;
+  }
+
+  .tgkb--done {
+    justify-content: center;
+  }
+
+  .tgkb__done {
+    padding: 0.4rem 0.3rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #2f7a4d;
+    animation: rise 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+  }
+
   .ripple {
     position: absolute;
     left: 50%;
@@ -521,7 +687,7 @@ const lines = [
     height: 8px;
     margin: -4px 0 0 -4px;
     border-radius: 50%;
-    background: var(--solid-contrast);
+    background: var(--tg-blue);
     opacity: 0;
     pointer-events: none;
   }
@@ -532,52 +698,85 @@ const lines = [
 
   @keyframes tap {
     from {
-      opacity: 0.55;
+      opacity: 0.4;
       transform: scale(1);
     }
     to {
       opacity: 0;
-      transform: scale(16);
+      transform: scale(18);
     }
   }
 
-  .tg__ok {
-    margin: 0.45rem 0 0;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #2f7a4d;
-    animation: rise 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* ----------------------------------------------------------- transport -- */
+
+  .ctl {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
   }
 
-  html[data-theme="dark"] .tg__ok {
-    color: #7fc79b;
-  }
-
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(5px);
-    }
-  }
-
-  /* -------------------------------------------------------------- replay -- */
-
-  .replay {
-    position: absolute;
-    right: 6px;
-    bottom: 2px;
-    padding: 0.2rem 0.55rem;
+  .ctl__btn {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
     border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
+    border-radius: 50%;
     background: var(--bg);
     color: var(--text-muted);
-    font-family: inherit;
-    font-size: 0.6875rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .ctl__btn:hover {
+    color: var(--text-strong);
+  }
+
+  .ctl__btn svg {
+    width: 10px;
+    height: 10px;
+    fill: currentColor;
+  }
+
+  .ctl__play {
+    display: none;
+  }
+
+  .theater[data-paused="true"] .ctl__pause {
+    display: none;
+  }
+  .theater[data-paused="true"] .ctl__play {
+    display: block;
+  }
+
+  .ctl__seek {
+    flex: 1;
+    height: 4px;
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--border);
+    border-radius: 999px;
     cursor: pointer;
   }
 
-  .replay:hover {
-    color: var(--text-strong);
+  .ctl__seek::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px;
+    height: 11px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--solid);
+  }
+
+  .ctl__seek::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--solid);
   }
 
   @media (max-width: 40rem) {
@@ -591,12 +790,14 @@ const lines = [
 </style>
 
 <script>
-  const stage = document.querySelector<HTMLElement>("[data-stage]");
+  const theater = document.querySelector<HTMLElement>(".theater");
+  const stage = theater?.querySelector<HTMLElement>("[data-stage]");
 
-  if (stage) {
+  if (theater && stage) {
     const sayHuman = stage.querySelector<HTMLElement>("[data-say-human]")!;
     const sayAgent = stage.querySelector<HTMLElement>("[data-say-agent]")!;
-    const think = stage.querySelector<HTMLElement>("[data-think]")!;
+    const thought = stage.querySelector<HTMLElement>("[data-thought]")!;
+    const dots = stage.querySelector<HTMLElement>("[data-dots]")!;
     const term = stage.querySelector<HTMLElement>("[data-term]")!;
     const lns = [...stage.querySelectorAll<HTMLElement>("[data-ln]")];
     const phone = stage.querySelector<HTMLElement>("[data-phone]")!;
@@ -605,24 +806,94 @@ const lines = [
     const tgok = stage.querySelector<HTMLElement>("[data-tgok]")!;
     const approve = stage.querySelector<HTMLButtonElement>("[data-approve]")!;
     const ripple = stage.querySelector<HTMLElement>("[data-ripple]")!;
-    const replay = stage.querySelector<HTMLButtonElement>("[data-replay]")!;
+    const toggle = theater.querySelector<HTMLButtonElement>("[data-toggle]")!;
+    const seek = theater.querySelector<HTMLInputElement>("[data-seek]")!;
 
-    let token = 0;
-    /** Sleep that resolves false when a replay has superseded this run. */
-    const beat = (ms: number, id: number) =>
-      new Promise<boolean>((r) => setTimeout(() => r(id === token), ms));
-
-    const say = (el: HTMLElement, text: string) => {
+    const act = (n: string) => (stage.dataset.act = n);
+    const show = (el: HTMLElement, text: string) => {
       el.textContent = text;
       el.classList.add("is-in");
     };
-    const hush = (el: HTMLElement) => el.classList.remove("is-in");
+    const hide = (el: HTMLElement) => el.classList.remove("is-in");
+    const line = (i: number) => lns[i]!.classList.add("is-in");
 
-    function reset() {
-      stage!.dataset.act = "0";
-      hush(sayHuman);
-      hush(sayAgent);
-      think.classList.remove("is-on");
+    const CUES: { t: number; fn: () => void }[] = [
+      { t: 250, fn: () => act("1") },
+      { t: 1400, fn: () => show(sayHuman, "Ship the parser fix and merge it.") },
+      { t: 3800, fn: () => hide(sayHuman) },
+      { t: 4200, fn: () => show(sayAgent, "On it. Let me open a PR first.") },
+      { t: 6300, fn: () => hide(sayAgent) },
+      { t: 6700, fn: () => act("2") },
+      {
+        t: 7400,
+        fn: () => {
+          dots.classList.add("is-on");
+          term.classList.add("is-in");
+        },
+      },
+      { t: 7800, fn: () => show(thought, "Opening the pull request…") },
+      { t: 8300, fn: () => line(0) },
+      { t: 9100, fn: () => line(1) },
+      { t: 9800, fn: () => hide(thought) },
+      { t: 10000, fn: () => show(thought, "Now merging it.") },
+      { t: 10400, fn: () => line(2) },
+      { t: 11200, fn: () => line(3) },
+      { t: 11600, fn: () => hide(thought) },
+      { t: 11900, fn: () => show(thought, "Refused. main requires a review.") },
+      { t: 14000, fn: () => hide(thought) },
+      { t: 14300, fn: () => show(sayAgent, "I need your approval to merge this.") },
+      { t: 14600, fn: () => line(4) },
+      {
+        t: 15500,
+        fn: () => {
+          line(5);
+          lns[5]!.dataset.caret = "true";
+        },
+      },
+      { t: 16200, fn: () => act("3") },
+      { t: 16700, fn: () => phone.classList.add("is-in") },
+      { t: 17300, fn: () => tg.classList.add("is-in") },
+      {
+        t: 19600,
+        fn: () => {
+          hide(sayAgent);
+          show(sayHuman, "Looks right. Approving.");
+        },
+      },
+      {
+        t: 21800,
+        fn: () => {
+          actions.hidden = true;
+          tgok.hidden = false;
+        },
+      },
+      {
+        t: 23000,
+        fn: () => {
+          hide(sayHuman);
+          act("4");
+          phone.classList.remove("is-in");
+          delete lns[5]!.dataset.caret;
+        },
+      },
+      { t: 23800, fn: () => line(6) },
+      { t: 24700, fn: () => line(7) },
+      {
+        t: 25400,
+        fn: () => {
+          dots.classList.remove("is-on");
+          show(sayAgent, "Merged.");
+        },
+      },
+    ];
+
+    const APPROVE_AT = 21800;
+    const DURATION = 28200;
+
+    function clear() {
+      act("0");
+      [sayHuman, sayAgent, thought].forEach(hide);
+      dots.classList.remove("is-on");
       term.classList.remove("is-in");
       lns.forEach((l) => {
         l.classList.remove("is-in");
@@ -632,124 +903,68 @@ const lines = [
       tg.classList.remove("is-in");
       actions.hidden = false;
       tgok.hidden = true;
+    }
+
+    let t = 0;
+    let cursor = 0;
+    let playing = false;
+    let last = 0;
+
+    /** Jump anywhere: rebuild state from scratch without animating the jump. */
+    function goto(target: number) {
+      t = Math.max(0, Math.min(DURATION, target));
+      stage!.classList.add("is-seeking");
+      clear();
+      cursor = 0;
+      while (cursor < CUES.length && CUES[cursor]!.t <= t) CUES[cursor++]!.fn();
+      // Commit the suppressed styles before transitions come back on.
+      void stage!.offsetWidth;
+      stage!.classList.remove("is-seeking");
+      seek.value = String(Math.round((t / DURATION) * 1000));
+    }
+
+    function frame(now: number) {
+      if (playing) {
+        // Clamp the step so a backgrounded tab does not skip the whole scene.
+        t += last ? Math.min(now - last, 120) : 0;
+        if (t >= DURATION) {
+          goto(0);
+        } else {
+          while (cursor < CUES.length && CUES[cursor]!.t <= t) CUES[cursor++]!.fn();
+          seek.value = String(Math.round((t / DURATION) * 1000));
+        }
+      }
+      last = now;
+      requestAnimationFrame(frame);
+    }
+
+    function setPlaying(on: boolean) {
+      playing = on;
+      last = 0;
+      theater!.dataset.paused = String(!on);
+      toggle.setAttribute("aria-label", on ? "Pause" : "Play");
+    }
+
+    toggle.addEventListener("click", () => setPlaying(!playing));
+    seek.addEventListener("input", () => goto((Number(seek.value) / 1000) * DURATION));
+
+    // Tapping Approve early jumps the clock to the decision.
+    approve.addEventListener("click", () => {
       ripple.classList.remove("is-tap");
-      replay.hidden = true;
-    }
+      void ripple.offsetWidth;
+      ripple.classList.add("is-tap");
+      if (t < APPROVE_AT) goto(APPROVE_AT);
+    });
 
-    /**
-     * Resolves on a real tap, or taps for the viewer after `autoAfter`.
-     * Call this the moment the button becomes visible: if it only started
-     * listening later, an early click would land in a dead window.
-     */
-    function decision(id: number, autoAfter: number) {
-      return new Promise<void>((resolve) => {
-        let settled = false;
-        const finish = (auto: boolean) => {
-          if (settled || id !== token) return;
-          settled = true;
-          approve.removeEventListener("click", onClick);
-          clearTimeout(timer);
-          if (auto) {
-            ripple.classList.remove("is-tap");
-            void ripple.offsetWidth;
-            ripple.classList.add("is-tap");
-          }
-          resolve();
-        };
-        const onClick = () => finish(false);
-        approve.addEventListener("click", onClick);
-        const timer = setTimeout(() => finish(true), autoAfter);
-      });
-    }
+    goto(0);
+    setPlaying(false);
+    requestAnimationFrame(frame);
 
-    async function play() {
-      const id = ++token;
-      reset();
-      if (!(await beat(500, id))) return;
-
-      // Act 1: the characters walk on and talk.
-      stage!.dataset.act = "1";
-      if (!(await beat(1500, id))) return;
-
-      say(sayHuman, "Ship the parser fix and merge it.");
-      if (!(await beat(2500, id))) return;
-      hush(sayHuman);
-
-      if (!(await beat(400, id))) return;
-      say(sayAgent, "On it. Let me open a PR first.");
-      if (!(await beat(2300, id))) return;
-      hush(sayAgent);
-
-      // Act 2: the agent takes its desk and gets to work.
-      if (!(await beat(400, id))) return;
-      stage!.dataset.act = "2";
-      if (!(await beat(760, id))) return;
-      think.classList.add("is-on");
-      term.classList.add("is-in");
-
-      if (!(await beat(700, id))) return;
-      lns[0]!.classList.add("is-in");
-      if (!(await beat(950, id))) return;
-      lns[1]!.classList.add("is-in");
-
-      if (!(await beat(1250, id))) return;
-      lns[2]!.classList.add("is-in");
-      if (!(await beat(950, id))) return;
-      lns[3]!.classList.add("is-in");
-      lns[3]!.dataset.caret = "true";
-
-      // Act 3: blocked, so it asks, and the phone comes out.
-      if (!(await beat(1100, id))) return;
-      say(sayAgent, "That one needs your approval.");
-      if (!(await beat(1900, id))) return;
-
-      stage!.dataset.act = "3";
-      if (!(await beat(520, id))) return;
-      phone.classList.add("is-in");
-      if (!(await beat(680, id))) return;
-      tg.classList.add("is-in");
-      // Listen from here, so a tap during the reading pause is not dropped.
-      const decided = decision(id, 7700);
-
-      if (!(await beat(2500, id))) return;
-      hush(sayAgent);
-      say(sayHuman, "Looks right. Approving.");
-
-      await decided;
-      if (id !== token) return;
-
-      if (!(await beat(340, id))) return;
-      actions.hidden = true;
-      tgok.hidden = false;
-
-      // Act 4: the operation resumes and finishes.
-      if (!(await beat(1400, id))) return;
-      hush(sayHuman);
-      stage!.dataset.act = "4";
-      phone.classList.remove("is-in");
-      delete lns[3]!.dataset.caret;
-
-      if (!(await beat(760, id))) return;
-      lns[4]!.classList.add("is-in");
-      if (!(await beat(900, id))) return;
-      lns[5]!.classList.add("is-in");
-
-      if (!(await beat(650, id))) return;
-      think.classList.remove("is-on");
-      say(sayAgent, "Merged.");
-
-      if (!(await beat(2400, id))) return;
-      replay.hidden = false;
-    }
-
-    replay.addEventListener("click", () => void play());
-
-    reset();
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
           io.disconnect();
-          void play();
+          setPlaying(true);
         }
       },
       { threshold: 0.3 },
