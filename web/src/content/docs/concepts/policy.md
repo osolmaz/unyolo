@@ -41,6 +41,11 @@ Three effects exist, and the engine can also return a fourth outcome when nothin
 | `allow` | The request may run without human approval. |
 | `request` | The request may create a pending grant. It may not run yet. |
 | `deny` | The request is refused. |
+
+A `request` rule is how you hold back an operation the agent is otherwise capable of. Giving
+`pull_request.merge` a `request` rule stops the agent's merge at `pending` until an operator
+approves it, which is usually what people want when they reach for a provider-side bypass such as
+an admin merge instead.
 | `no_match` | Returned by the engine when no rule matches. Denies. |
 
 Order of evaluation is fixed and does not depend on where rules appear in the file:
