@@ -298,7 +298,19 @@ const lines = [
 
   /* ------------------------------------------------------ speech, thought -- */
 
+  /*
+   * Every bubble carries a tail aimed at whoever produced it, so the eye can
+   * tell speaker from bubble without reading either. Because the actors move
+   * between acts, the tail moves with them. It sits on the bubble edge facing
+   * the speaker, at the offset (--tx along the bottom, --ty down the left)
+   * that lines it up with their head, and the pop-in grows from that point so
+   * the bubble looks like it came out of the actor.
+   *
+   * The offsets are tuned against measured positions, so changing an actor's
+   * --x/--y, or the text in a bubble, means re-checking the tail it feeds.
+   */
   .say {
+    --bubble-bg: var(--bg-inset);
     position: absolute;
     z-index: 4;
     left: 50%;
@@ -309,7 +321,7 @@ const lines = [
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--border);
     border-radius: 13px;
-    background: var(--bg-inset);
+    background: var(--bubble-bg);
     font-size: 0.875rem;
     line-height: 1.4;
     color: var(--text);
@@ -325,32 +337,108 @@ const lines = [
     transform: translate(var(--sx), var(--sy));
   }
 
+  /*
+   * The tail is two stacked border triangles: ::before in the border colour,
+   * ::after a pixel smaller in the fill, which leaves a rim matching the
+   * bubble's own outline.
+   */
+  .say--human::before,
+  .say--human::after,
+  .say--agent::before,
+  .say--agent::after {
+    content: "";
+    position: absolute;
+    width: 0;
+    height: 0;
+    border: 9px solid transparent;
+  }
+
+  .say--human::before,
+  .say--human::after,
+  .stage[data-act="1"] .say--agent::before,
+  .stage[data-act="1"] .say--agent::after {
+    left: var(--tx);
+    border-bottom-width: 0;
+  }
+  .say--human::before,
+  .stage[data-act="1"] .say--agent::before {
+    top: 100%;
+    margin-left: -9px;
+    border-top-color: var(--border);
+  }
+  .say--human::after,
+  .stage[data-act="1"] .say--agent::after {
+    top: calc(100% - 1.5px);
+    margin-left: -8px;
+    border-width: 8px;
+    border-bottom-width: 0;
+    border-top-color: var(--bubble-bg);
+  }
+
+  .stage[data-act="2"] .say--agent::before,
+  .stage[data-act="2"] .say--agent::after,
+  .stage[data-act="3"] .say--agent::before,
+  .stage[data-act="3"] .say--agent::after,
+  .stage[data-act="4"] .say--agent::before,
+  .stage[data-act="4"] .say--agent::after {
+    top: var(--ty);
+    left: auto;
+    border-left-width: 0;
+    border-bottom-width: 9px;
+  }
+  .stage[data-act="2"] .say--agent::before,
+  .stage[data-act="3"] .say--agent::before,
+  .stage[data-act="4"] .say--agent::before {
+    right: 100%;
+    margin-top: -9px;
+    margin-left: 0;
+    border-right-color: var(--border);
+    border-top-color: transparent;
+  }
+  .stage[data-act="2"] .say--agent::after,
+  .stage[data-act="3"] .say--agent::after,
+  .stage[data-act="4"] .say--agent::after {
+    top: var(--ty);
+    right: calc(100% - 1.5px);
+    margin-top: -8px;
+    margin-left: 0;
+    border-width: 8px;
+    border-left-width: 0;
+    border-right-color: var(--bubble-bg);
+    border-top-color: transparent;
+  }
+
+  /* Act 1: the two stand centre stage and speak up into their bubbles. */
   .say--human {
     --sx: -246px;
-    --sy: -84px;
-    border-bottom-left-radius: 3px;
-    transform-origin: 0 100%;
+    --sy: -72px;
+    --tx: 136px;
+    transform-origin: var(--tx) 100%;
   }
 
   .say--agent {
+    --bubble-bg: var(--bg-subtle);
     --sx: 46px;
-    --sy: -84px;
-    border-bottom-right-radius: 3px;
-    background: var(--bg-subtle);
-    transform-origin: 100% 100%;
+    --sy: -72px;
+    --tx: 64px;
+    transform-origin: var(--tx) 100%;
   }
 
+  /* From act 2 on, the agent sits at the desk to the left of its bubbles. */
   .stage[data-act="2"] .say--agent,
   .stage[data-act="3"] .say--agent,
   .stage[data-act="4"] .say--agent {
     --sx: -116px;
     --sy: -232px;
+    --ty: 62%;
+    transform-origin: 0 var(--ty);
   }
 
   /* Narrower here so it does not run under the phone standing beside it. */
   .stage[data-act="3"] .say--human {
     --sx: -252px;
     --sy: 8px;
+    --tx: 54px;
     max-width: 132px;
   }
 
@@ -366,9 +454,10 @@ const lines = [
     font-size: 0.8125rem;
     color: var(--text-muted);
     box-shadow: none;
-    transform-origin: 0 100%;
+    transform-origin: 0 58%;
   }
 
+  /* The cloud trails left toward the agent's antenna, not down into the desk. */
   .say--think::before,
   .say--think::after {
     content: "";
@@ -379,17 +468,17 @@ const lines = [
   }
 
   .say--think::before {
-    left: 10px;
-    bottom: -9px;
-    width: 8px;
-    height: 8px;
+    left: -15px;
+    top: 52%;
+    width: 9px;
+    height: 9px;
   }
 
   .say--think::after {
-    left: 2px;
-    bottom: -17px;
-    width: 5px;
-    height: 5px;
+    left: -33px;
+    top: 33%;
+    width: 6px;
+    height: 6px;
   }
 
   /* ------------------------------------------------------------ terminal -- */
@@ -441,6 +530,11 @@ const lines = [
     white-space: pre;
     opacity: 0;
     transform: translateY(6px);
+  }
+
+  /* Blank line before each new prompt, reserved up front so nothing shifts. */
+  .ln[data-tone="plain"]:not(:first-child) {
+    margin-top: 0.85em;
   }
 
   .ln.is-in {
