@@ -98,11 +98,74 @@
   color: var(--text-muted);
 }
 
+.hero__install {
+  display: flex;
+  align-items: center;
+  width: min(100%, 34rem);
+  margin-top: 1.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-code);
+  overflow: hidden;
+}
+
+.hero__install code {
+  flex: 1;
+  min-width: 0;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  color: var(--text-strong);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.hero__copy {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0 0.85rem;
+  border: 0;
+  border-left: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font: 600 0.8rem/1 var(--font-sans);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.hero__copy:hover {
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+}
+
+.hero__copy[data-copied="true"] {
+  color: var(--accent);
+}
+
+.hero__copy svg {
+  width: 15px;
+  height: 15px;
+}
+
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 1.75rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 30rem) {
+  .hero__copy span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* ------------------------------------------------------------- terminal -- */
