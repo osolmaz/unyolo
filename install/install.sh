@@ -9,6 +9,10 @@ TAG_PREFIX="${TAG_PREFIX:-}"
 COMPANION_BINARIES="${COMPANION_BINARIES:-}"
 PATH_COMPANION_BINARIES="${PATH_COMPANION_BINARIES:-}"
 LIBEXEC_DIR="${LIBEXEC_DIR:-}"
+DATA_FILES="${DATA_FILES:-}"
+DATA_DIR="${DATA_DIR:-}"
+UNYOLO_INSTALL_RECORD="${UNYOLO_INSTALL_RECORD:-}"
+UNYOLO_SOURCE_COMMIT="${UNYOLO_SOURCE_COMMIT:-}"
 UNYOLO_VERIFY_ONLY="${UNYOLO_VERIFY_ONLY:-false}"
 UNYOLO_VERIFY_RELEASE_SET="${UNYOLO_VERIFY_RELEASE_SET:-false}"
 UNYOLO_VERIFIER_FILE="${UNYOLO_VERIFIER_FILE:-}"
@@ -48,7 +52,7 @@ validate_inputs() {
     *[!A-Za-z0-9._/-]*) fail "TAG_PREFIX contains unsupported characters" ;;
     *..* | /*) fail "TAG_PREFIX contains unsafe path syntax" ;;
   esac
-  for directory in "$INSTALL_DIR" "$LIBEXEC_DIR"; do
+  for directory in "$INSTALL_DIR" "$LIBEXEC_DIR" "$DATA_DIR"; do
     case "$directory" in
       "") ;;
       /*) case "$directory/" in *"/../"* | *"/./"* | *"//"*) fail "install directories must be absolute normalized paths" ;; esac ;;
@@ -77,6 +81,22 @@ validate_inputs() {
       "" | *[!a-z0-9-]* | "$BROKER") fail "COMPANION_BINARIES contains an invalid binary name" ;;
     esac
   done
+  for data_file in $DATA_FILES; do
+    case "$data_file" in
+      "" | /* | */ | *..* | *[!A-Za-z0-9._/-]*) fail "DATA_FILES contains an invalid relative path" ;;
+    esac
+  done
+  if [ -n "$DATA_FILES" ] && [ -z "$DATA_DIR" ]; then
+    fail "DATA_DIR is required when DATA_FILES is set"
+  fi
+  if [ -n "$UNYOLO_INSTALL_RECORD" ]; then
+    case "$UNYOLO_INSTALL_RECORD" in
+      /*) case "$UNYOLO_INSTALL_RECORD/" in *"/../"* | *"/./"* | *"//"*) fail "UNYOLO_INSTALL_RECORD must be an absolute normalized path" ;; esac ;;
+      *) fail "UNYOLO_INSTALL_RECORD must be an absolute normalized path" ;;
+    esac
+    case "$UNYOLO_SOURCE_COMMIT" in *[!0-9a-f]*) fail "UNYOLO_SOURCE_COMMIT must be an exact commit SHA" ;; esac
+    [ "${#UNYOLO_SOURCE_COMMIT}" -eq 40 ] || fail "UNYOLO_SOURCE_COMMIT must be an exact commit SHA"
+  fi
 }
 
 system_name() {
@@ -268,6 +288,9 @@ validate_archive() {
         for binary in $COMPANION_BINARIES $PATH_COMPANION_BINARIES; do
           if [ "$entry" = "$binary" ]; then allowed=true; fi
         done
+        for data_file in $DATA_FILES; do
+          if [ "$entry" = "$data_file" ]; then allowed=true; fi
+        done
         [ "$allowed" = true ] || fail "release archive contains unexpected path: ${entry}"
         ;;
     esac
@@ -275,6 +298,9 @@ validate_archive() {
   [ "$(awk -v name="$BROKER" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${BROKER} exactly once"
   for binary in $COMPANION_BINARIES $PATH_COMPANION_BINARIES; do
     [ "$(awk -v name="$binary" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${binary} exactly once"
+  done
+  for data_file in $DATA_FILES; do
+    [ "$(awk -v name="$data_file" '$0 == name { count++ } END { print count + 0 }' "$listing")" -eq 1 ] || fail "release archive must contain ${data_file} exactly once"
   done
 }
 
@@ -307,6 +333,7 @@ esac
 
 asset="${BROKER}_${os}_${arch}.tar.gz"
 base_url="${UNYOLO_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${VERSION}}"
+umask 077
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
@@ -341,6 +368,20 @@ for binary in $PATH_COMPANION_BINARIES; do
   install_binary "${tmp_dir}/${binary}" "$main_dest_dir" "$binary"
   echo "Installed ${binary} to ${main_dest_dir}/${binary}"
 done
+
+for data_file in $DATA_FILES; do
+  data_destination="${DATA_DIR}/${data_file}"
+  mkdir -p "$(dirname "$data_destination")" || fail "cannot create data directory for ${data_file}"
+  install -m 0644 "${tmp_dir}/${data_file}" "$data_destination" || fail "could not install data file ${data_file}"
+done
+
+if [ -n "$UNYOLO_INSTALL_RECORD" ]; then
+  archive_digest="$(checksum_line "$asset" "${tmp_dir}/checksums.txt" | awk '{ print $1 }')"
+  record_tmp="${UNYOLO_INSTALL_RECORD}.new.$$"
+  printf '{"api_version":"unyolo.io/bootstrap-stage/v1","release":"%s","source_commit":"%s","archive_sha256":"sha256:%s","attestation":{"repository":"%s","workflow":"%s/.github/workflows/release.yml","source_ref":"refs/tags/%s"}}\n' \
+    "$VERSION" "$UNYOLO_SOURCE_COMMIT" "$archive_digest" "$REPO" "$REPO" "$VERSION" > "$record_tmp"
+  mv -f "$record_tmp" "$UNYOLO_INSTALL_RECORD"
+fi
 
 echo "Installed ${BROKER} to ${main_dest_dir}/${BROKER}"
 "${main_dest_dir}/${BROKER}" --version

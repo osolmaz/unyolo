@@ -88,10 +88,11 @@ release artifact, and audit stream.
 curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-That installs `gh-broker`. Add `-s huggingface` or `-s sudo` for another
-broker. The installer resolves that broker's latest release to an exact commit
-and verifies release checksums and GitHub build attestations before installing
-to `$HOME/.local/bin`. To pin the bootstrap as well, see
+That starts guided Linux host setup and lets you select GitHub, Hugging Face,
+or both. Ctrl-C on the first screen removes staging and installs nothing. The
+installer verifies one exact release before setup, then activates that same CLI
+only after you approve the deployment review. Named arguments such as `-s --
+github` remain available for binary-only installs. See
 [installation](https://unyolo.io/docs/get-started/installation).
 
 ## Build

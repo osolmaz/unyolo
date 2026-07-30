@@ -15,14 +15,29 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/deployment/provider"
 	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
+	"github.com/osolmaz/unyolo/internal/userinstall"
 	"golang.org/x/term"
 )
 
 var deploymentNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$`)
+
+type protectedSetupWorker interface {
+	Plan(string) (privilege.Response, error)
+	Apply(string, map[string][]byte) (privilege.Result, error)
+	Cancel() error
+	Close() error
+}
+
+type setupWorkerStarter func(context.Context, string, io.Writer) (protectedSetupWorker, error)
+
+var startSetupWorker setupWorkerStarter = func(ctx context.Context, release string, stderr io.Writer) (protectedSetupWorker, error) {
+	return privilege.Start(ctx, release, stderr)
+}
 
 //nolint:cyclop // Setup dispatch keeps cancellation and terminal cleanup in one lifecycle boundary.
 func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -40,6 +55,7 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 	resumeID := flags.String("resume", "", "resume one setup session")
 	newSession := flags.Bool("new", false, "start a new setup session")
 	planOnly := flags.Bool("plan-only", false, "write and validate the pack without privileged apply")
+	bootstrapStage := flags.String("bootstrap-stage", "", "activate one verified bootstrap stage before protected planning")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -52,16 +68,31 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 	if !*accessible && !hasInteractiveTTY() {
 		return errors.New("setup requires an interactive TTY; use declarative system commands for automation")
 	}
+	options := setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly}
+	if *bootstrapStage != "" {
+		providerOptions, err := provider.LoadDirectory(filepath.Join(*bootstrapStage, "share", "providers"))
+		if err != nil {
+			return err
+		}
+		if *profilePath == "" {
+			options.ProviderOptions = providerOptions
+		}
+		options.Activate = func(activateCtx context.Context) error {
+			return userinstall.Activate(activateCtx, userinstall.Options{StageRoot: *bootstrapStage})
+		}
+	}
 	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
 	defer func() { _ = prompter.Close() }()
-	return runSetupFlow(ctx, prompter, setupOptions{Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly})
+	return runSetupFlow(ctx, prompter, options)
 }
 
 type setupOptions struct {
-	Profile  string
-	ResumeID string
-	New      bool
-	PlanOnly bool
+	Profile         string
+	ResumeID        string
+	New             bool
+	PlanOnly        bool
+	ProviderOptions []provider.Option
+	Activate        func(context.Context) error
 }
 
 //nolint:cyclop // The ordered guide deliberately keeps persisted checkpoints adjacent to each operator decision.
@@ -85,12 +116,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if len(setupSession.Answers["mode"]) == 0 {
 		mode, selectErr := prompter.Select(ctx, flow.SelectPrompt{
 			Message: "How should this host be configured?", Searchable: false,
-			Options: []flow.Option{
-				{Value: "recommended", Label: "Recommended", Hint: "Separate agent, local sockets, approval-gated writes, skills-only OpenClaw"},
-				{Value: "custom", Label: "Custom", Hint: "Review identities, endpoints, components, and integration trust"},
-				{Value: "existing", Label: "Existing deployment", Hint: "Review, repair, or reapply a locked deployment pack"},
-			},
-			InitialValue: initialSetupMode(options.Profile),
+			Options: setupModeOptions(options), InitialValue: initialSetupMode(options.Profile),
 		})
 		if selectErr != nil {
 			return selectErr
@@ -126,7 +152,8 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	}
 	progress.Stop("Deployment pack is valid")
 	if setupSession.Answers["mode"][0] != "existing" {
-		if snapshot.Deployment.Name != setupSession.Deployment {
+		selectedProviders := setupSession.Answers["providers"]
+		if len(selectedProviders) == 0 && snapshot.Deployment.Name != setupSession.Deployment {
 			return fmt.Errorf("deployment kit name %q does not match setup name %q", snapshot.Deployment.Name, setupSession.Deployment)
 		}
 		destination, pathErr := setupDeploymentDirectory(snapshot.Deployment.Name)
@@ -139,7 +166,11 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		}
 		if !materialized {
 			materializeProgress := prompter.Progress("Materializing the operator-owned deployment pack")
-			profilePath, err = profile.Materialize(snapshot, destination)
+			if len(selectedProviders) > 0 {
+				profilePath, err = profile.MaterializeComponents(snapshot, destination, setupSession.Deployment, selectedProviders)
+			} else {
+				profilePath, err = profile.Materialize(snapshot, destination)
+			}
 			if err != nil {
 				materializeProgress.Fail("Deployment pack materialization failed")
 				return err
@@ -163,19 +194,22 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if options.PlanOnly {
 		return prompter.Outro(ctx, "Profile ready. Run unyolo system plan as a trusted administrator.")
 	}
-	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+	confirmation := flow.ConfirmPrompt{
 		Message: "Continue to protected host planning?", Description: "No host mutation occurs until the exact plan digest is shown and confirmed.", Safe: true,
-	})
+	}
+	if options.Activate != nil {
+		confirmation.Message = "Install the verified unYOLO CLI and continue to protected host planning?"
+		confirmation.Description = "CLI activation finishes before the protected worker starts."
+	}
+	confirmed, err := prompter.Confirm(ctx, confirmation)
 	if err != nil {
 		return err
 	}
 	if !confirmed {
 		return flow.CancelledError{}
 	}
-	workerProgress := prompter.Progress("Starting the verified root-owned setup worker")
-	worker, err := privilege.Start(ctx, privilegedReleaseVersion(buildinfo.Version), os.Stderr)
+	worker, err := prepareProtectedWorker(ctx, prompter, options.Activate, startSetupWorker)
 	if err != nil {
-		workerProgress.Fail("Could not start the verified setup worker")
 		return err
 	}
 	defer func() { _ = worker.Close() }()
@@ -262,6 +296,10 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 			}
 		}
 	}
+	providers, err := chooseProviders(ctx, prompter, options.ProviderOptions)
+	if err != nil {
+		return session.Session{}, err
+	}
 	name, err := prompter.Text(ctx, flow.Prompt{
 		Message: "Deployment name", Placeholder: "my-host", Required: true,
 		Validate: func(value string) error {
@@ -278,10 +316,68 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err != nil {
 		return session.Session{}, err
 	}
+	if len(providers) > 0 {
+		created.Answers["providers"] = providers
+		created.CompletedStep = append(created.CompletedStep, "providers")
+	}
 	if err := store.Save(created); err != nil {
 		return session.Session{}, err
 	}
 	return created, nil
+}
+
+func prepareProtectedWorker(ctx context.Context, prompter flow.SetupPrompter, activate func(context.Context) error, start setupWorkerStarter) (protectedSetupWorker, error) {
+	if activate != nil {
+		activationProgress := prompter.Progress("Installing the verified unYOLO CLI")
+		if err := activate(ctx); err != nil {
+			activationProgress.Fail("CLI installation failed before protected host planning")
+			return nil, err
+		}
+		activationProgress.Stop("Verified unYOLO CLI installed")
+	}
+	workerProgress := prompter.Progress("Starting the verified root-owned setup worker")
+	worker, err := start(ctx, privilegedReleaseVersion(buildinfo.Version), os.Stderr)
+	if err != nil {
+		workerProgress.Fail("Could not start the verified setup worker")
+		return nil, err
+	}
+	return worker, nil
+}
+
+func chooseProviders(ctx context.Context, prompter flow.SetupPrompter, options []provider.Option) ([]string, error) {
+	if len(options) == 0 {
+		return nil, nil
+	}
+	choices := make([]flow.Option, 0, len(options))
+	initial := make([]string, 0, len(options))
+	for _, option := range options {
+		choices = append(choices, flow.Option{Value: option.ID, Label: option.Label, Hint: option.Hint})
+		if option.Selected {
+			initial = append(initial, option.ID)
+		}
+	}
+	selected, err := prompter.MultiSelect(ctx, flow.SelectPrompt{
+		Message: "Select providers", Description: "Choose either provider or both. You can also add bounded local privileged operations.",
+		Options: choices, InitialValues: initial, Required: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(selected) == 0 {
+		return nil, errors.New("select at least one provider")
+	}
+	return selected, nil
+}
+
+func setupModeOptions(options setupOptions) []flow.Option {
+	values := []flow.Option{
+		{Value: "recommended", Label: "Recommended", Hint: "Separate agent, local sockets, approval-gated writes, skills-only OpenClaw"},
+		{Value: "custom", Label: "Custom", Hint: "Review identities, endpoints, components, and integration trust"},
+	}
+	if len(options.ProviderOptions) == 0 {
+		values = append(values, flow.Option{Value: "existing", Label: "Existing deployment", Hint: "Review, repair, or reapply a locked deployment pack"})
+	}
+	return values
 }
 
 func privilegedReleaseVersion(version string) string {

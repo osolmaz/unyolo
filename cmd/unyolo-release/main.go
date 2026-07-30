@@ -20,8 +20,10 @@ func main() {
 	directory := flag.String("directory", ".", "repository root")
 	dist := flag.String("dist", "", "release output directory")
 	extras := extraCommands{}
+	extraFiles := releaseFiles{}
 	targets := releaseTargets{}
 	flag.Var(&extras, "extra-command", "companion binary and Go package as name=package; repeat as needed")
+	flag.Var(&extraFiles, "extra-file", "release file as archive-path=source-path; repeat as needed")
 	flag.Var(&targets, "target", "native release target as os/arch; defaults to the host target")
 	flag.Parse()
 	if *dist == "" {
@@ -29,7 +31,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := release.Run(ctx, release.Options{Directory: *directory, Broker: *broker, Command: *command, Version: *version, Dist: *dist, ExtraCommands: extras, Targets: targets}); err != nil {
+	if err := release.Run(ctx, release.Options{Directory: *directory, Broker: *broker, Command: *command, Version: *version, Dist: *dist, ExtraCommands: extras, ExtraFiles: extraFiles, Targets: targets}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -52,6 +54,22 @@ func (values *releaseTargets) Set(value string) error {
 		return err
 	}
 	*values = append(*values, target)
+	return nil
+}
+
+type releaseFiles map[string]string
+
+func (values releaseFiles) String() string { return extraCommands(values).String() }
+
+func (values *releaseFiles) Set(value string) error {
+	name, source, ok := strings.Cut(value, "=")
+	if !ok || name == "" || source == "" {
+		return fmt.Errorf("extra file must use archive-path=source-path")
+	}
+	if _, exists := (*values)[name]; exists {
+		return fmt.Errorf("extra file %q is duplicated", name)
+	}
+	(*values)[name] = source
 	return nil
 }
 

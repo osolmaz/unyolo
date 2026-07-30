@@ -1,15 +1,15 @@
 # Guided installation
 
-*Accepted target contract*
+*Implementation and release contract*
 
 This document defines the default installation flow for unYOLO. The public command starts guided
 host setup, lets the operator choose providers, and delays CLI activation until the operator
 approves the reviewed setup. It also defines the separate binary-only path for people who need one
 broker without host setup.
 
-The current short installer does not yet satisfy this contract. It defaults to installing the GitHub
-broker, while the existing host bootstrap installs the CLI before setup starts. Keep user-facing
-instructions aligned with released behavior until the flow below passes its end-to-end checks.
+The short endpoint loads the bootstrap from the selected release's source commit. Existing releases
+therefore keep their matching installer, while a release built from this implementation adopts the
+flow below. Publication is complete only after the real-host checks pass.
 
 ## Public commands
 

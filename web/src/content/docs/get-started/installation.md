@@ -3,101 +3,95 @@ title: Installation
 description: Verified release installs, what the installer will and will not do, and building from source.
 ---
 
-Every broker installs through a component wrapper around one canonical POSIX installer in
-`install/install.sh`. Each wrapper supplies the broker name along with its repository and release
-tag prefix. The shared script then detects the platform, downloads the archive, verifies it, and
-installs the binary. This page covers what that script guarantees, the environment variables it
-reads, and the alternatives.
+The default installer starts guided Linux host setup. It verifies one exact release, runs its CLI
+from a private staging directory, and lets the operator choose GitHub, Hugging Face, or both. A
+separate named command installs one broker binary without host setup.
 
-## Install a broker
+## Guided setup
+
+Run the normal command as the trusted operator, not as root:
 
 ```sh
 curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-That installs `gh-broker`, resolving its latest release to an exact commit, verifying release
-checksums and build attestations, and placing the binary in `$HOME/.local/bin`. Name another broker
-to install it instead:
+The first choice selects providers. Ctrl-C on that screen exits with status 130, removes staging,
+and leaves no CLI installation or setup state. Setup then opens the selected deployment kit, shows
+its complete plan, and asks before installing the user CLI or starting protected host planning.
+
+After confirmation, the same verified release is installed atomically below the operator's XDG data
+and binary directories. A later planning or apply error keeps that CLI and the nonsecret setup
+session available for recovery.
+
+## Binary-only install
+
+Name one broker to skip guided host setup:
 
 ```sh
-curl -fsSL https://unyolo.io/install.sh | sh -s huggingface
+curl -fsSL https://unyolo.io/install.sh | sh -s -- github
+curl -fsSL https://unyolo.io/install.sh | sh -s -- huggingface
+curl -fsSL https://unyolo.io/install.sh | sh -s -- sudo
 ```
 
-The `-s` is what lets a piped script take an argument. It tells `sh` to read the script from
-standard input and treat the words after it as the script's arguments.
+The words after `-s --` become arguments to the piped script. This path uses the component wrapper
+and canonical installer in `install/install.sh`.
 
-## Pin the bootstrap
+## Pinned setup
 
-The commands above read the bootstrap from the default branch, so you get whatever that branch says
-on the day you run it. Everything downstream is already pinned, because the bootstrap resolves the
-release tag to an exact commit and checks the archive against release checksums and GitHub build
-attestations before installing anything. The bootstrap itself is the one link left, and naming a
-commit you have reviewed closes it:
+The short endpoint resolves the newest `unyolo/v*` release once and fetches the bootstrap from that
+release's source commit. Pin both values when you have reviewed a particular release and bootstrap:
 
 ```sh
-curl -fsSL https://unyolo.io/install.sh | UNYOLO_REV=<40-character-commit-sha> sh
+curl -fsSL https://unyolo.io/install.sh \
+  | UNYOLO_REV=<40-character-commit-sha> VERSION=unyolo/v<reviewed-version> sh
 ```
 
-Fetching that commit's bootstrap yourself does the same thing without going through the endpoint:
+The release tag, source commit, archive digest, and GitHub attestation identity are recorded in the
+installed manifest. No floating release lookup occurs after setup starts.
 
-```sh
-UNYOLO_REV=<40-character-commit-sha>
-curl -fsSL "https://raw.githubusercontent.com/osolmaz/unyolo/$UNYOLO_REV/brokers/github/install.sh" | sh
-```
-
-Two environment variables change the outcome:
-
-| Variable | Effect |
-| --- | --- |
-| `VERSION` | Install a specific release tag instead of the latest, for example `v0.1.0`. |
-| `INSTALL_DIR` | Install to an absolute writable directory instead of `$HOME/.local/bin`. |
+Binary-only installs also accept `VERSION` and `INSTALL_DIR`. Guided setup uses `XDG_DATA_HOME` and
+`XDG_BIN_HOME`, defaulting to `$HOME/.local/share` and `$HOME/.local/bin`.
 
 ## Verification
 
-The runtime detects `linux` or `darwin` and `amd64` or `arm64`, then downloads the matching tarball
-and `checksums.txt`. It checks the archive digest against the manifest, and it verifies GitHub
-artifact attestations for both files against the unYOLO repository, the release workflow, and
-the selected tag. Verification uses a GitHub CLI build whose Linux and macOS checksums are embedded
-in the installer itself, so the verifier is pinned rather than fetched from wherever.
+The installer detects the supported platform and downloads its archive with `checksums.txt`. It
+checks the archive digest and verifies GitHub artifact attestations against the repository, release
+workflow, and selected tag. Verification uses a pinned GitHub CLI build when no separately verified
+`UNYOLO_VERIFIER_FILE` is configured.
 
-A version label alone is never treated as evidence. The attestation ties the artifact to the
-workflow run that produced it.
+The archive is checked before extraction. Unknown entries, links, path escapes, missing companion
+files, and version mismatches fail closed. Guided setup downloads and verifies this archive once.
+The CLI, setup companion, and provider catalog all come from that same archive.
 
-Two variables cover unusual situations. `UNYOLO_VERIFIER_FILE` points at an absolute executable
-path for a verifier you obtained and checked separately, which is how an offline install works.
-`UNYOLO_VERIFY_ONLY=true` authenticates and validates release contents without installing
-anything; the release workflow combines it with `UNYOLO_VERIFY_RELEASE_SET=true`
-after publication to check all four platform archives, the checksum manifest, and the SBOM. The
-remaining `UNYOLO_*` URL and platform variables exist as test seams and normal installs do not
-need them.
+`UNYOLO_VERIFY_ONLY=true` verifies without installing. Release CI combines it with
+`UNYOLO_VERIFY_RELEASE_SET=true` to check every platform archive, the checksum manifest, and the
+SBOM after publication.
 
-## Installer boundaries
+## Activation layout
 
-The installer does not create users, service files, config files, token files, launchd plists, or
-systemd units. It defaults to `$HOME/.local/bin`, never invokes `sudo`, and requires
-an explicit writable `INSTALL_DIR` for any other destination. Privileged setup is a separate,
-deliberate command.
+Guided setup prepares an immutable user release and switches one `current` link:
 
-It installs only the declared executable set. `hf-broker` and `gh-broker` each declare one CLI.
-`sudo-broker` additionally declares its privileged `sudo-broker-exec` companion, which is installed
-in the adjacent `libexec` directory rather than on your `PATH`.
+```text
+~/.local/share/unyolo/releases/v<version>/
+  unyolo
+  openclaw-unyolo-setup
+  manifest.json
 
-After installing, the script prints the installed path and the binary's `--version`.
+~/.local/share/unyolo/current -> releases/v<version>
+~/.local/bin/unyolo          -> ../share/unyolo/current/unyolo
+```
+
+Preparation happens before the link changes. A checksum, ownership, copy, or version error leaves
+the previous CLI active and prevents the root worker from starting.
+
+The binary-only installer has a narrower boundary. It writes the declared executables and data files
+to explicit user-writable directories, never invokes `sudo`, and prints the installed version.
+`sudo-broker-exec` goes into the adjacent `libexec` directory instead of `PATH`.
 
 ## Release assets
 
-Every broker release publishes four archives plus a checksum manifest:
-
-```text
-<broker>_linux_amd64.tar.gz
-<broker>_linux_arm64.tar.gz
-<broker>_darwin_amd64.tar.gz
-<broker>_darwin_arm64.tar.gz
-checksums.txt
-```
-
-Each tarball contains the binary, `README.md`, and `LICENSE`. Every broker supports both
-`<broker> --version` and `<broker> version`.
+Every component release publishes Linux and macOS archives for amd64 and arm64 plus checksums and an
+SBOM. The `unyolo/v*` archive also carries the setup companion and release-declared provider catalog.
 
 ## Building from source
 
@@ -132,9 +126,8 @@ operation leave it alone. For a service deployment, pass `--xet-python` to `setu
 path is persisted in the service environment, because an interactive export is not inherited by a
 managed service.
 
-## Installing a whole host
+## Host deployment details
 
-For a production Linux host, the guided host deployment flow installs and reconciles the complete
-set of services from one locked, non-secret deployment pack, and activates them as a signed
-immutable bundle. That is a different entry point from the per-broker installer above; see
-[host deployment](/docs/deploy/host-deployment).
+The default guided flow installs and reconciles the selected services from one locked, nonsecret
+deployment pack. See [host deployment](/docs/deploy/host-deployment) for the pack format, protected
+planning, unattended commands, and recovery behavior.

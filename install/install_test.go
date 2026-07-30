@@ -131,6 +131,35 @@ func TestInstallerPlacesCompanionBinaryInLibexec(t *testing.T) {
 	}
 }
 
+func TestInstallerStagesDataFilesAndReleaseRecord(t *testing.T) {
+	asset := "test-broker_linux_amd64.tar.gz"
+	releaseDir := t.TempDir()
+	writeReleaseAssetEntries(t, filepath.Join(releaseDir, asset), map[string]string{
+		"test-broker":         "#!/bin/sh\necho v1.2.3\n",
+		"providers/test.json": "{\"id\":\"test\"}\n",
+	})
+	writeChecksums(t, releaseDir, asset)
+	server := releaseServer(t, releaseDir, asset)
+	defer server.Close()
+	dataDir := t.TempDir()
+	record := filepath.Join(t.TempDir(), "stage.json")
+	command := installerCommand(t, t.TempDir(), server.URL, "v1.2.3")
+	command.Env = append(command.Env,
+		"DATA_FILES=providers/test.json", "DATA_DIR="+dataDir,
+		"UNYOLO_INSTALL_RECORD="+record, "UNYOLO_SOURCE_COMMIT="+strings.Repeat("a", 40),
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("installer failed: %v\n%s", err, output)
+	}
+	if data, err := os.ReadFile(filepath.Join(dataDir, "providers", "test.json")); err != nil || !strings.Contains(string(data), `"id":"test"`) {
+		t.Fatalf("installed data = %q, %v", data, err)
+	}
+	recordData, err := os.ReadFile(record)
+	if err != nil || !strings.Contains(string(recordData), `"release":"v1.2.3"`) || !strings.Contains(string(recordData), `"archive_sha256":"sha256:`) {
+		t.Fatalf("stage record = %q, %v", recordData, err)
+	}
+}
+
 func TestInstallerPlacesGitCredentialHelperOnPath(t *testing.T) {
 	asset := "test-broker_linux_amd64.tar.gz"
 	releaseDir := t.TempDir()
