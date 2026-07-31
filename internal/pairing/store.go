@@ -218,6 +218,9 @@ func (store *Store) Status(id, claimSecret string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
+	if record.State == StateRevoked || record.State == StateExpired {
+		return Record{}, ErrGone
+	}
 	if !matchesHash(record.ClaimSecretHash, claimSecret) {
 		return Record{}, ErrForbidden
 	}
