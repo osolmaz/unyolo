@@ -5,7 +5,6 @@ package setup
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -96,5 +95,5 @@ func runInputScript(t *testing.T, width int, typed, expected string) {
 	if got.value != expected {
 		t.Fatalf("value = %q, want %q", got.value, expected)
 	}
-	_ = fmt.Sprintf("%s", captured.String())
+	_ = captured.String()
 }

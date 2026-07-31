@@ -211,7 +211,7 @@ func copyTree(source, destination string) error {
 		if err != nil || !info.Mode().IsRegular() {
 			return errors.New("generated installation tree contains a non-regular file")
 		}
-		input, err := os.Open(path) // #nosec G304 -- compiler-owned tree path.
+		input, err := os.Open(path) // #nosec G304,G122 -- source is a compiler-owned no-symlink tree validated by this walk.
 		if err != nil {
 			return err
 		}

@@ -72,7 +72,7 @@ func Digest(root string) (string, error) {
 			return err
 		}
 		if kind == 'f' {
-			file, err := os.Open(path) // #nosec G304 -- WalkDir supplies a child of the validated source root.
+			file, err := os.Open(path) // #nosec G304,G122 -- WalkDir supplies a no-symlink child of the validated source root.
 			if err != nil {
 				return err
 			}
@@ -94,6 +94,9 @@ func Digest(root string) (string, error) {
 }
 
 func writeEntryHeader(writer io.Writer, kind byte, path string, size int64) error {
+	if size < 0 {
+		return errors.New("source set entry size is invalid")
+	}
 	if _, err := writer.Write([]byte{kind}); err != nil {
 		return err
 	}

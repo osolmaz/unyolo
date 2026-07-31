@@ -195,7 +195,7 @@ func BuildServicesProject(options ServicesOptions) (*ServicesProject, error) {
 	secretIndex := map[string]SecretFile{}
 	for _, broker := range sorted {
 		for _, secret := range broker.Secrets {
-			secretIndex[secret.Name] = SecretFile{Name: secret.Name, File: secret.File}
+			secretIndex[secret.Name] = SecretFile(secret)
 		}
 	}
 	secretNames := make([]string, 0, len(secretIndex))

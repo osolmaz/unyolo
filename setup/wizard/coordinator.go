@@ -162,6 +162,8 @@ func (c *Coordinator) runStep(ctx context.Context, state *State, step Step) (Ste
 		return c.stepInstallationName(ctx, state)
 	case StepReview:
 		return c.stepReview(ctx, state)
+	case StepDone:
+		return StepDone, nil
 	}
 	return StepDone, nil
 }

@@ -329,6 +329,8 @@ func addLocalConnection(ctx context.Context, prompter flow.SetupPrompter, sessio
 func offerExistingInstallation(ctx context.Context, prompter flow.SetupPrompter, options setupOptions) (bool, error) {
 	root, err := installation.DefaultRoot()
 	if err != nil {
+		// No platform default means there cannot be an existing guided installation.
+		//nolint:nilerr
 		return false, nil
 	}
 	store := installation.Store{Root: root}
@@ -383,10 +385,14 @@ func (existingAccountLister) List(ctx context.Context) ([]wizard.Account, error)
 func installationDefaultExists() (bool, error) {
 	root, err := installation.DefaultRoot()
 	if err != nil {
+		// No platform default means the default installation cannot exist.
+		//nolint:nilerr
 		return false, nil
 	}
 	directory, err := (installation.Store{Root: root}).Directory(installation.DefaultName)
 	if err != nil {
+		// An invalid platform root cannot identify a default installation.
+		//nolint:nilerr
 		return false, nil
 	}
 	info, err := os.Lstat(directory)

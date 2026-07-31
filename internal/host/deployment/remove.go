@@ -312,6 +312,8 @@ func accountIdentityMatches(ctx context.Context, account AccountReceipt) (bool, 
 	}
 	output, err := exec.CommandContext(ctx, "getent", "passwd", account.UnixUser).Output() // #nosec G204 -- validated name from stored receipt.
 	if err != nil {
+		// Inspection failure is a conservative retention reason, not a removal failure.
+		//nolint:nilerr
 		return false, "unable to inspect account entry", nil
 	}
 	fields := strings.Split(strings.TrimSpace(string(output)), ":")

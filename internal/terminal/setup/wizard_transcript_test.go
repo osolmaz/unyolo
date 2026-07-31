@@ -3,6 +3,7 @@ package setup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -26,8 +27,8 @@ func TestBackSentinelAppearsWhenNavigationEnabled(t *testing.T) {
 	if err == nil {
 		t.Fatal("Select accepted back sentinel without navigation error")
 	}
-	navigation, ok := err.(flow.NavigationError)
-	if !ok || navigation.Direction != "back" {
+	var navigation flow.NavigationError
+	if !errors.As(err, &navigation) || navigation.Direction != "back" {
 		t.Fatalf("expected back navigation, got %v", err)
 	}
 	if !strings.Contains(output.String(), "Go back") {
