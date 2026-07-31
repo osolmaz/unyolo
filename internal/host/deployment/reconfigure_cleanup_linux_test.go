@@ -17,13 +17,18 @@ func TestPlanStaleClientsSelectsOnlyUnchangedGeneratedFiles(t *testing.T) {
 	t.Parallel()
 	state := t.TempDir()
 	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}}}
+	fingerprintKey, err := ensureReceiptFingerprintKey(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(fingerprintKey)
 	path := filepath.Join(t.TempDir(), "client.json")
 	if err := os.WriteFile(path, []byte("generated"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	receipt := sampleReceipt()
 	receipt.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: path, Created: true,
-		Fingerprint: componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, true)}}
+		Fingerprint: componentprofile.KeyedResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, fingerprintKey)}}
 	if err := SaveReceipt(state, receipt); err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +49,11 @@ func TestStaleClientQuarantineRollbackAndFinalize(t *testing.T) {
 	t.Parallel()
 	state := t.TempDir()
 	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}}}
+	fingerprintKey, err := ensureReceiptFingerprintKey(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(fingerprintKey)
 	path := filepath.Join(t.TempDir(), "client.json")
 	body := []byte("private generated client configuration\n")
 	write := func() ResourceReceipt {
@@ -51,7 +61,7 @@ func TestStaleClientQuarantineRollbackAndFinalize(t *testing.T) {
 			t.Fatal(err)
 		}
 		return ResourceReceipt{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: path, Created: true,
-			Fingerprint: componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, true)}
+			Fingerprint: componentprofile.KeyedResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, fingerprintKey)}
 	}
 	resource := write()
 	handle, err := engine.quarantineStaleClient(t.Context(), resource)
@@ -90,13 +100,19 @@ func TestStaleClientQuarantineRollbackAndFinalize(t *testing.T) {
 
 func TestStaleClientQuarantineRejectsChangedContent(t *testing.T) {
 	t.Parallel()
-	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: t.TempDir()}}}
+	state := t.TempDir()
+	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}}}
+	fingerprintKey, err := ensureReceiptFingerprintKey(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(fingerprintKey)
 	path := filepath.Join(t.TempDir(), "client.json")
 	if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	resource := ResourceReceipt{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: path, Created: true,
-		Fingerprint: componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, true)}
+		Fingerprint: componentprofile.KeyedResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, fingerprintKey)}
 	if err := os.WriteFile(path, []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}

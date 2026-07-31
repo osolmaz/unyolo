@@ -376,16 +376,6 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			}
 			enrichResourceReceipt(&resource, componentProfile)
 			resource.Data = resourceContainsData(resource, stateDirs[response.ComponentID])
-			if capturePostApply {
-				resource.Fingerprint = receiptResourceFingerprint(ctx, resource, fingerprintKey)
-				if !receiptDigestPattern.MatchString(resource.Fingerprint) {
-					if resource.Data {
-						resource.Fingerprint = ""
-					} else {
-						return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
-					}
-				}
-			}
 			receipt.Resources = append(receipt.Resources, resource)
 		}
 	}
@@ -406,6 +396,19 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			if child.Data && child.Path != "" && strings.HasPrefix(child.Path, receipt.Resources[index].Path+string(filepath.Separator)) {
 				receipt.Resources[index].Data = true
 				break
+			}
+		}
+	}
+	if capturePostApply {
+		for index := range receipt.Resources {
+			resource := &receipt.Resources[index]
+			resource.Fingerprint = receiptResourceFingerprint(ctx, *resource, fingerprintKey)
+			if !receiptDigestPattern.MatchString(resource.Fingerprint) {
+				if resource.Data {
+					resource.Fingerprint = ""
+				} else {
+					return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
+				}
 			}
 		}
 	}
