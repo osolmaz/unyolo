@@ -99,7 +99,7 @@ func TestOperatorProbeRequiresAuthenticatedExpectedBuild(t *testing.T) {
 	}))
 	defer server.Close()
 	tokenPath := filepath.Join(t.TempDir(), "operator-token")
-	writeTestFile(t, tokenPath, []byte(token+"\n"))
+	writeTestFile(t, tokenPath, []byte("operator = "+token+"\n"))
 	component := Component{OperatorEndpoint: strings.Replace(server.URL, "http://", "tcp://", 1), OperatorTokenFile: tokenPath, BuildID: buildID}
 	if err := operatorProbe(t.Context(), component); err != nil {
 		t.Fatal(err)
@@ -120,7 +120,7 @@ func TestOperatorProbeRejectsMissingTokenAndInvalidEndpoint(t *testing.T) {
 		t.Fatal("missing operator token was accepted")
 	}
 	tokenPath := filepath.Join(t.TempDir(), "operator-token")
-	writeTestFile(t, tokenPath, []byte(strings.Repeat("t", 32)))
+	writeTestFile(t, tokenPath, []byte("operator = "+strings.Repeat("t", 32)+"\n"))
 	if err := operatorProbe(t.Context(), Component{OperatorEndpoint: "invalid", OperatorTokenFile: tokenPath}); err == nil {
 		t.Fatal("invalid operator endpoint was accepted")
 	}
