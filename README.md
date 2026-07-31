@@ -88,13 +88,18 @@ release artifact, and audit stream.
 curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-The current release starts complete Linux host setup and lets you select GitHub,
-Hugging Face, or both. It uses the fixed agent account `unyolo-agent`; it does
-not yet provide client-only setup, existing-account selection, Docker setup, or
-managed macOS setup. Ctrl-C on the first screen removes temporary files and
-installs nothing. See [installation](https://unyolo.io/docs/get-started/installation)
-for current behavior and [guided installation](docs/GUIDED_INSTALLATION.md) for
-the replacement user flow and platform contract.
+Guided setup starts with your goal. On Linux, it can install only the command,
+install selected credential services, connect a local agent to an existing
+installation, or set up both together. Local agents can use the current account,
+an existing account, or a new restricted account. Setup can later add or remove
+credential services, approvers, and connections, repair the saved installation,
+or remove resources it can still prove it created.
+
+Docker, remote pairing, and managed macOS setup stay hidden until their complete
+apply, restart, rollback, and removal paths have passed real-host tests. Ctrl-C
+on the first screen removes temporary files and installs nothing. See
+[installation](https://unyolo.io/docs/get-started/installation) and the
+[guided installation contract](docs/GUIDED_INSTALLATION.md).
 
 ## Build
 

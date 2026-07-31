@@ -358,32 +358,36 @@ stores only its local client configuration and connection receipt.
 
 The installation is paired with a durable, root-owned ownership receipt
 (`unyolo.io/ownership-receipt/v1`) under the host state directory. The receipt records the
-installation and deployment digests, the runtime bundle identity, every enabled native service, and
-each managed connection. It marks accounts as `created` when unYOLO's setup added them so removal
-can distinguish installation-owned resources from preexisting host state.
+installation and deployment digests, the complete installation-owned runtime history, every enabled
+native service, and each managed connection. It marks accounts and resources as `created` when
+unYOLO's setup added them and records post-apply fingerprints for safe removal. Managed account home
+fingerprints include the generated files present after apply.
 
 ## Lifecycle commands
 
 The default flow supports these lifecycle actions after the first apply:
 
-- `unyolo setup` again — recompiles the recorded installation and shows a diff before applying
+- `unyolo setup` again: recompiles the recorded installation and shows a diff before applying
   changes. This path is used to add, rotate, or remove providers, approvers, connections, or
   integrations.
-- `unyolo setup reconfigure` — same recovery-safe transaction as `unyolo setup`, but skips the
+- `unyolo setup reconfigure`: same recovery-safe transaction as `unyolo setup`, but skips the
   first-run introduction.
-- `unyolo setup repair` — recompiles the same installation, replans, and reapplies unchanged. It
+- `unyolo setup repair`: recompiles the same installation, replans, and reapplies unchanged. It
   never widens policy, rotates retained credentials, or rewrites resources unless the reviewed plan
   names that action.
-- `unyolo setup remove` — reads the ownership receipt, plans a safe removal, and prompts for two
-  confirmations. The first removes services, managed accounts, and installation-owned resources.
-  The second confirmation, gated behind `--remove-state`, additionally deletes the receipt and
-  optionally listed data paths.
-- `unyolo setup discard --confirm <session-id>` (or `--all`) — removes uncommitted local setup
+- `unyolo setup remove`: reads the ownership receipt, plans a safe removal, and prompts for two
+  confirmations. The first removes unchanged services, generated connections, managed agent
+  accounts, and other non-data resources. The second confirmation, gated behind `--remove-state`,
+  additionally permits removal of unchanged provider credentials, broker state, provider accounts,
+  and the receipt.
+- `unyolo setup discard --confirm <session-id>` (or `--all`): removes uncommitted local setup
   session state without touching host services.
 
 Removal always fails closed. A managed account whose identity or home changed since the receipt
-was recorded is retained and reported. Preexisting accounts are never deleted. Provider credentials
-and broker state directories remain unless the destructive confirmation names them explicitly.
+was recorded is retained and reported. Preexisting accounts are never deleted. Removing a
+connection revokes its broker credential and removes its generated client file only when the file's
+content fingerprint still matches; changed client files remain. Provider credentials and broker
+state directories remain unless the destructive confirmation names them explicitly.
 
 Interrupted publications are recoverable. The installation store writes a marker before renaming
 directories and updates its phase at each safe boundary. On resume, `publishing` and `applying`

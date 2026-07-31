@@ -157,6 +157,11 @@ not invoked directly.
 unyolo setup [--accessible] [--no-open]
 unyolo setup status
 unyolo setup --resume <session-id>
+unyolo setup reconfigure [--accessible] [--no-open]
+unyolo setup repair [--accessible] [--no-open]
+unyolo setup remove [--remove-state] [--accessible]
+unyolo setup discard --confirm <session-id>
+unyolo setup discard --confirm --all
 
 unyolo system profile lock          --profile /path/to/deployment
 unyolo system profile lock --check  --profile /path/to/deployment
