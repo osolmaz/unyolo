@@ -113,7 +113,12 @@ func (engine *Engine) PlanRemoval(ctx context.Context, removeState bool) (Remova
 		Kind: RemovalActionRemoveRuntime, ID: receipt.RuntimeBundleID, Detail: receipt.BaselineBundleID,
 		RuntimeBundles: append([]string(nil), receipt.RuntimeBundleIDs...),
 	})
-	if err := planReceiptResources(ctx, &plan, receipt); err != nil {
+	fingerprintKey, _, err := loadReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return RemovalPlan{}, err
+	}
+	defer clear(fingerprintKey)
+	if err := planReceiptResources(ctx, &plan, receipt, fingerprintKey); err != nil {
 		return RemovalPlan{}, err
 	}
 	if err := planReceiptAccounts(ctx, &plan, receipt); err != nil {
@@ -127,7 +132,7 @@ func (engine *Engine) PlanRemoval(ctx context.Context, removeState bool) (Remova
 	return FilterRemovalPlan(plan), nil
 }
 
-func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receipt) error {
+func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receipt, fingerprintKey []byte) error {
 	for _, resource := range receipt.Resources {
 		retention := RemovalRetention{Kind: resource.Kind, ID: resource.ComponentID + "." + resource.ID, Detail: resource.Path}
 		if !resource.Created {
@@ -145,7 +150,7 @@ func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receip
 			plan.Retained = append(plan.Retained, retention)
 			continue
 		}
-		current := receiptResourceFingerprint(ctx, resource)
+		current := receiptResourceFingerprint(ctx, resource, fingerprintKey)
 		if current != "missing" && current != resource.Fingerprint {
 			retention.Reason = RemovalReasonChanged
 			plan.Retained = append(plan.Retained, retention)
@@ -352,9 +357,14 @@ func (engine *Engine) ApplyRemoval(ctx context.Context, plan RemovalPlan) (Remov
 		InstallationDigest: receipt.InstallationDigest, DeploymentDigest: receipt.DeploymentDigest,
 		Retained: plan.Retained, RemoveState: plan.RemoveState,
 	}
+	fingerprintKey, _, err := loadReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return RemovalReport{}, err
+	}
+	defer clear(fingerprintKey)
 	deletedReceipt, reloadServices := false, false
 	for _, action := range FilterRemovalPlan(plan).Actions {
-		if err := engine.executeRemovalAction(ctx, action); err != nil {
+		if err := engine.executeRemovalAction(ctx, action, fingerprintKey); err != nil {
 			return RemovalReport{}, fmt.Errorf("remove %s %q: %w", action.Kind, action.ID, err)
 		}
 		deletedReceipt = deletedReceipt || action.Kind == RemovalActionDeleteReceipt
@@ -376,15 +386,15 @@ func (engine *Engine) ApplyRemoval(ctx context.Context, plan RemovalPlan) (Remov
 }
 
 //nolint:cyclop // Removal execution dispatches over one closed action enumeration.
-func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAction) error {
+func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAction, fingerprintKey []byte) error {
 	switch action.Kind {
 	case RemovalActionRemoveFile:
-		return removeReceiptPath(ctx, action, false)
+		return removeReceiptPath(ctx, action, false, fingerprintKey)
 	case RemovalActionRemoveDirectory:
-		return removeReceiptPath(ctx, action, true)
+		return removeReceiptPath(ctx, action, true, fingerprintKey)
 	case RemovalActionRemoveAccount:
 		if action.Fingerprint != "" && !strings.HasPrefix(action.ID, "agent.") {
-			if err := verifyRemovalFingerprint(ctx, action); err != nil {
+			if err := verifyRemovalFingerprint(ctx, action, fingerprintKey); err != nil {
 				return err
 			}
 		}
@@ -394,7 +404,7 @@ func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAc
 		}
 		return removeManagedAccount(ctx, action.ResourceID, action.Home, action.Shell, expectedHome)
 	case RemovalActionRemoveGroup:
-		if err := verifyRemovalFingerprint(ctx, action); err != nil {
+		if err := verifyRemovalFingerprint(ctx, action, fingerprintKey); err != nil {
 			return err
 		}
 		return removeManagedGroup(ctx, action.ResourceID)
@@ -409,14 +419,14 @@ func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAc
 	}
 }
 
-func verifyRemovalFingerprint(ctx context.Context, action RemovalAction) error {
+func verifyRemovalFingerprint(ctx context.Context, action RemovalAction, fingerprintKey []byte) error {
 	kind := action.ResourceKind
 	if kind == "" {
 		kind = removalResourceKind(action)
 	}
 	current := receiptResourceFingerprint(ctx, ResourceReceipt{
 		Kind: kind, ID: action.ResourceID, Path: action.Path, Data: action.Destructive,
-	})
+	}, fingerprintKey)
 	if current == "missing" {
 		return nil
 	}
@@ -439,8 +449,8 @@ func removalResourceKind(action RemovalAction) string {
 	return "file"
 }
 
-func removeReceiptPath(ctx context.Context, action RemovalAction, directory bool) error {
-	if err := verifyRemovalFingerprint(ctx, action); err != nil {
+func removeReceiptPath(ctx context.Context, action RemovalAction, directory bool, fingerprintKey []byte) error {
+	if err := verifyRemovalFingerprint(ctx, action, fingerprintKey); err != nil {
 		return err
 	}
 	info, err := os.Lstat(action.Path)

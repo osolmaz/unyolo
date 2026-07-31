@@ -4,10 +4,12 @@ package component
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"os/user"
@@ -566,7 +568,28 @@ func resourceState(fingerprint string) string {
 
 func pathFingerprint(path string) string { return fingerprintPath(path, true) }
 
+// KeyedResourceFingerprint returns an opaque content identity for a path.
+// The key must remain root-only; callers may safely expose the resulting HMAC.
+func KeyedResourceFingerprint(ctx context.Context, resource api.Resource, key []byte) string {
+	if len(key) < 32 {
+		return "unavailable"
+	}
+	switch resource.Kind {
+	case "account", "group":
+		return ResourceFingerprint(ctx, resource, false)
+	default:
+		if resource.Path == "" {
+			return "unavailable"
+		}
+		return fingerprintPathWithHash(resource.Path, true, hmac.New(sha256.New, key))
+	}
+}
+
 func fingerprintPath(path string, includeContent bool) string {
+	return fingerprintPathWithHash(path, includeContent, sha256.New())
+}
+
+func fingerprintPathWithHash(path string, includeContent bool, digester hash.Hash) string {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "missing"
@@ -578,20 +601,19 @@ func fingerprintPath(path string, includeContent bool) string {
 	if !ok {
 		return "unsupported"
 	}
-	hash := sha256.New()
-	_, _ = fmt.Fprintf(hash, "%d:%d:%d:%d:%d:%d:%d", stat.Dev, stat.Ino, stat.Uid, stat.Gid, info.Mode(), info.Size(), info.ModTime().UnixNano())
+	_, _ = fmt.Fprintf(digester, "%d:%d:%d:%d:%d:%d:%d", stat.Dev, stat.Ino, stat.Uid, stat.Gid, info.Mode(), info.Size(), info.ModTime().UnixNano())
 	if info.Mode().IsRegular() && includeContent {
 		file, openErr := os.Open(path) // #nosec G304 -- provider-owned validated path.
 		if openErr != nil {
 			return "unavailable"
 		}
-		written, copyErr := io.Copy(hash, io.LimitReader(file, maxSecretBytes*16+1))
+		written, copyErr := io.Copy(digester, io.LimitReader(file, maxSecretBytes*16+1))
 		closeErr := file.Close()
 		if copyErr != nil || closeErr != nil || written > maxSecretBytes*16 {
 			return "unavailable"
 		}
 	}
-	return fmt.Sprintf("sha256:%x", hash.Sum(nil))
+	return fmt.Sprintf("sha256:%x", digester.Sum(nil))
 }
 
 func groupFingerprint(ctx context.Context, value Group) string {

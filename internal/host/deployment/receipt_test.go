@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,6 +87,9 @@ func TestReceiptRoundTrip(t *testing.T) {
 	if err := SaveReceipt(state, receipt); err != nil {
 		t.Fatalf("SaveReceipt() = %v", err)
 	}
+	if _, err := ensureReceiptFingerprintKey(state); err != nil {
+		t.Fatalf("ensureReceiptFingerprintKey() = %v", err)
+	}
 	loaded, found, err := LoadReceipt(state)
 	if err != nil || !found {
 		t.Fatalf("LoadReceipt() = %v, found=%v", err, found)
@@ -98,6 +102,9 @@ func TestReceiptRoundTrip(t *testing.T) {
 	}
 	if _, found, err := LoadReceipt(state); err != nil || found {
 		t.Fatalf("Load after Delete = %v, found=%v", err, found)
+	}
+	if _, err := os.Stat(filepath.Join(state, receiptFingerprintKeyName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("fingerprint key remains after DeleteReceipt: %v", err)
 	}
 }
 
@@ -213,7 +220,8 @@ func TestRefreshReceiptClientFingerprintIncludesContent(t *testing.T) {
 	}
 	value := sampleReceipt()
 	value.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: path, Created: true}}
-	first, err := RefreshReceiptFingerprints(t.Context(), value)
+	fingerprintKey := []byte(strings.Repeat("k", 32))
+	first, err := refreshReceiptFingerprints(t.Context(), value, fingerprintKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +229,7 @@ func TestRefreshReceiptClientFingerprintIncludesContent(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"shared_secret":"second"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	second, err := RefreshReceiptFingerprints(t.Context(), value)
+	second, err := refreshReceiptFingerprints(t.Context(), value, fingerprintKey)
 	if err != nil {
 		t.Fatal(err)
 	}

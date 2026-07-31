@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/identity"
+	"github.com/osolmaz/unyolo/internal/securefile"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/setup/sourceset"
 )
@@ -25,15 +27,16 @@ import (
 const ReceiptAPIVersion = "unyolo.io/ownership-receipt/v1"
 
 const (
-	maxReceiptBytes     = 4 * 1024 * 1024
-	receiptFilename     = "ownership-receipt.json"
-	pendingReceiptName  = "ownership-receipt.pending.json"
-	maxReceiptAccounts  = 128
-	maxReceiptGroups    = 128
-	maxReceiptServices  = 128
-	maxReceiptConns     = 128
-	maxReceiptCompos    = 64
-	maxReceiptResources = 2048
+	maxReceiptBytes           = 4 * 1024 * 1024
+	receiptFilename           = "ownership-receipt.json"
+	pendingReceiptName        = "ownership-receipt.pending.json"
+	receiptFingerprintKeyName = "ownership-fingerprint.key"
+	maxReceiptAccounts        = 128
+	maxReceiptGroups          = 128
+	maxReceiptServices        = 128
+	maxReceiptConns           = 128
+	maxReceiptCompos          = 64
+	maxReceiptResources       = 2048
 )
 
 var (
@@ -234,6 +237,10 @@ func ReceiptFromPlan(planned Planned, installationName string, recorded time.Tim
 // ReceiptFromPlanContext derives a receipt and optionally records exact
 // post-apply fingerprints for every changed adapter resource.
 func ReceiptFromPlanContext(ctx context.Context, planned Planned, installationName string, recorded time.Time, capturePostApply bool) (Receipt, error) {
+	return receiptFromPlanContext(ctx, planned, installationName, recorded, capturePostApply, nil)
+}
+
+func receiptFromPlanContext(ctx context.Context, planned Planned, installationName string, recorded time.Time, capturePostApply bool, fingerprintKey []byte) (Receipt, error) {
 	if recorded.IsZero() {
 		return Receipt{}, errors.New("ownership receipt requires a recorded time")
 	}
@@ -265,7 +272,7 @@ func ReceiptFromPlanContext(ctx context.Context, planned Planned, installationNa
 	}
 	populateReceiptServices(&receipt, planned.Snapshot)
 	populateReceiptComponents(&receipt, planned)
-	if err := populateReceiptResources(ctx, &receipt, planned, capturePostApply); err != nil {
+	if err := populateReceiptResources(ctx, &receipt, planned, capturePostApply, fingerprintKey); err != nil {
 		return Receipt{}, err
 	}
 	for _, resource := range planned.StaleClients {
@@ -341,7 +348,7 @@ func populateReceiptComponents(receipt *Receipt, planned Planned) {
 	slices.SortFunc(receipt.Components, func(a, b ComponentReceipt) int { return strings.Compare(a.ID, b.ID) })
 }
 
-func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Planned, capturePostApply bool) error {
+func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Planned, capturePostApply bool, fingerprintKey []byte) error {
 	hasResources := false
 	for _, response := range planned.Responses {
 		hasResources = hasResources || response.ComponentID != "host-identity" && len(response.Actions) > 0
@@ -370,7 +377,7 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			enrichResourceReceipt(&resource, componentProfile)
 			resource.Data = resourceContainsData(resource, stateDirs[response.ComponentID])
 			if capturePostApply {
-				resource.Fingerprint = receiptResourceFingerprint(ctx, resource)
+				resource.Fingerprint = receiptResourceFingerprint(ctx, resource, fingerprintKey)
 				if !receiptDigestPattern.MatchString(resource.Fingerprint) {
 					return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
 				}
@@ -451,15 +458,19 @@ func enrichResourceReceipt(receipt *ResourceReceipt, value componentprofile.Prof
 	}
 }
 
-func receiptResourceFingerprint(ctx context.Context, resource ResourceReceipt) string {
+func receiptResourceFingerprint(ctx context.Context, resource ResourceReceipt, fingerprintKey []byte) string {
 	if resource.Kind == "directory" && resource.Data {
-		return dataTreeFingerprint(ctx, resource.Path)
+		return dataTreeFingerprint(ctx, resource.Path, fingerprintKey)
 	}
-	includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
-	return componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
+	value := api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}
+	if resource.Data || slices.Contains([]string{"client", "credential", "secret_store", "git_config"}, resource.Kind) {
+		return componentprofile.KeyedResourceFingerprint(ctx, value, fingerprintKey)
+	}
+	includeContent := resource.Kind == "client" || resource.Kind == "file"
+	return componentprofile.ResourceFingerprint(ctx, value, includeContent)
 }
 
-func dataTreeFingerprint(ctx context.Context, root string) string {
+func dataTreeFingerprint(ctx context.Context, root string, fingerprintKey []byte) string {
 	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
 		return "missing"
 	} else if err != nil {
@@ -474,7 +485,7 @@ func dataTreeFingerprint(ctx context.Context, root string) string {
 		if err != nil {
 			return err
 		}
-		fingerprint := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: "file", Path: path}, false)
+		fingerprint := componentprofile.KeyedResourceFingerprint(ctx, api.Resource{Kind: "file", Path: path}, fingerprintKey)
 		if !receiptDigestPattern.MatchString(fingerprint) {
 			return fmt.Errorf("fingerprint %s: %s", relative, fingerprint)
 		}
@@ -580,9 +591,13 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 // RefreshReceiptFingerprints captures current post-apply identities for a
 // pending receipt after crash recovery or a committed transaction.
 func RefreshReceiptFingerprints(ctx context.Context, value Receipt) (Receipt, error) {
+	return refreshReceiptFingerprints(ctx, value, nil)
+}
+
+func refreshReceiptFingerprints(ctx context.Context, value Receipt, fingerprintKey []byte) (Receipt, error) {
 	for index := range value.Resources {
 		resource := &value.Resources[index]
-		fingerprint := receiptResourceFingerprint(ctx, *resource)
+		fingerprint := receiptResourceFingerprint(ctx, *resource, fingerprintKey)
 		if !receiptDigestPattern.MatchString(fingerprint) {
 			return Receipt{}, fmt.Errorf("refresh fingerprint for %s resource %q", resource.Kind, resource.ID)
 		}
@@ -598,6 +613,51 @@ func ReceiptPath(stateDir string) (string, error) {
 		return "", errors.New("ownership receipt state directory is invalid")
 	}
 	return filepath.Join(stateDir, receiptFilename), nil
+}
+
+func ensureReceiptFingerprintKey(stateDir string) ([]byte, error) {
+	key, found, err := loadReceiptFingerprintKey(stateDir)
+	if err != nil || found {
+		return key, err
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return nil, err
+	}
+	key = make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, errors.New("generate ownership fingerprint key")
+	}
+	if err := securefile.AtomicWrite(filepath.Join(stateDir, receiptFingerprintKeyName), key, 0o600, "ownership fingerprint key"); err != nil {
+		clear(key)
+		return nil, err
+	}
+	return key, nil
+}
+
+func loadReceiptFingerprintKey(stateDir string) ([]byte, bool, error) {
+	if _, err := ReceiptPath(stateDir); err != nil {
+		return nil, false, err
+	}
+	path := filepath.Join(stateDir, receiptFingerprintKeyName)
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || info.Size() != 32 {
+		return nil, false, errors.New("ownership fingerprint key is unsafe")
+	}
+	key, err := os.ReadFile(path) // #nosec G304 -- fixed root-owned fingerprint key path.
+	if err != nil {
+		return nil, false, err
+	}
+	if len(key) != 32 {
+		clear(key)
+		return nil, false, errors.New("ownership fingerprint key is invalid")
+	}
+	return key, true, nil
 }
 
 // LoadReceipt reads and validates one ownership receipt if present.
@@ -710,6 +770,9 @@ func saveReceiptAt(stateDir, path string, receipt Receipt) error {
 func DeleteReceipt(stateDir string) error {
 	path, err := ReceiptPath(stateDir)
 	if err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(stateDir, receiptFingerprintKeyName)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
