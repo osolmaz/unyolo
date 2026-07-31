@@ -2,7 +2,10 @@ package compiler
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/osolmaz/unyolo/deployment/component"
@@ -81,6 +84,53 @@ func TestRenderComponentBuildsAuthoritativeStoresAndLocalFiles(t *testing.T) {
 	if len(value.Credentials) != 1 || value.Credentials[0].Slot != "provider" {
 		t.Fatalf("raw credentials = %#v", value.Credentials)
 	}
+}
+
+func TestRewriteComponentPolicyRefreshesManifestDigests(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	profilePath := filepath.Join(root, "policy-profile.json")
+	policyPath := filepath.Join(root, "scope.json")
+	manifestPath := filepath.Join(root, "policy-manifest.json")
+	for path, body := range map[string]string{
+		profilePath:  `{"clients":["agent"]}`,
+		policyPath:   `{"rules":[{"clients":["agent"]}]}`,
+		manifestPath: `{"version":1,"profile_digest":"sha256:old","policy_digest":"sha256:old"}`,
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := []component.ManagedFile{
+		{Source: component.Reference{Path: "policy-profile.json"}},
+		{Source: component.Reference{Path: "scope.json"}},
+		{Source: component.Reference{Path: "policy-manifest.json"}},
+	}
+	if err := rewriteComponentPolicy(root, files, []string{"alice", "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	profileData, _ := os.ReadFile(profilePath)
+	policyData, _ := os.ReadFile(policyPath)
+	manifestData, _ := os.ReadFile(manifestPath)
+	var manifest map[string]any
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest["profile_digest"] != contentDigest(profileData) || manifest["policy_digest"] != contentDigest(policyData) {
+		t.Fatalf("manifest digests = %#v", manifest)
+	}
+	if !containsAll(string(profileData), "alice", "bob") || !containsAll(string(policyData), "alice", "bob") {
+		t.Fatalf("rewritten policies = %s / %s", profileData, policyData)
+	}
+}
+
+func containsAll(value string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(value, part) {
+			return false
+		}
+	}
+	return true
 }
 
 func ref(path string, digit byte) profile.Reference {

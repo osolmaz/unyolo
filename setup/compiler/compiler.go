@@ -2,6 +2,7 @@
 package compiler
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -114,15 +115,8 @@ func renderComponents(root string, source installation.Installation, deployment 
 		if err := writeJSON(path, value); err != nil {
 			return err
 		}
-		clientIDs := clientsForProvider(source, selected.ID)
-		for _, managed := range value.Files {
-			if !strings.Contains(managed.ID, "policy") && !strings.Contains(managed.Source.Path, "policy") {
-				continue
-			}
-			policyPath := filepath.Join(root, filepath.FromSlash(managed.Source.Path))
-			if err := rewritePolicyClients(policyPath, clientIDs); err != nil {
-				return err
-			}
+		if err := rewriteComponentPolicy(root, value.Files, clientsForProvider(source, selected.ID)); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -212,6 +206,49 @@ func localUsersForProvider(source installation.Installation, provider string) []
 		}
 	}
 	return result
+}
+
+func rewriteComponentPolicy(root string, files []component.ManagedFile, clients []string) error {
+	paths := map[string]string{}
+	for _, managed := range files {
+		name := filepath.Base(filepath.FromSlash(managed.Source.Path))
+		paths[name] = filepath.Join(root, filepath.FromSlash(managed.Source.Path))
+		if name == "policy-manifest.json" || !strings.Contains(name, "policy") && name != "scope.json" {
+			continue
+		}
+		if err := rewritePolicyClients(paths[name], clients); err != nil {
+			return err
+		}
+	}
+	manifestPath := paths["policy-manifest.json"]
+	profilePath := paths["policy-profile.json"]
+	policyPath := paths["scope.json"]
+	if manifestPath == "" || profilePath == "" || policyPath == "" {
+		return nil
+	}
+	profileData, err := os.ReadFile(profilePath) // #nosec G304 -- verified compiler staging path.
+	if err != nil {
+		return err
+	}
+	policyData, err := os.ReadFile(policyPath) // #nosec G304 -- verified compiler staging path.
+	if err != nil {
+		return err
+	}
+	manifestData, err := os.ReadFile(manifestPath) // #nosec G304 -- verified compiler staging path.
+	if err != nil {
+		return err
+	}
+	var manifest map[string]any
+	if err := strictjson.Decode(manifestData, &manifest, true); err != nil {
+		return err
+	}
+	manifest["profile_digest"] = contentDigest(profileData)
+	manifest["policy_digest"] = contentDigest(policyData)
+	return writeJSON(manifestPath, manifest)
+}
+
+func contentDigest(data []byte) string {
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 }
 
 func rewritePolicyClients(path string, clients []string) error {
