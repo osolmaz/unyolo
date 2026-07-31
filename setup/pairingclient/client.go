@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	agentclient "github.com/osolmaz/unyolo/agent/client"
 	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
 	"github.com/osolmaz/unyolo/internal/storage/files"
 	"github.com/osolmaz/unyolo/internal/strictjson"
@@ -87,12 +88,50 @@ func WaitForActive(ctx context.Context, result Result) error {
 	}
 }
 
+// VerifyConnections proves every issued credential works and an invalid credential is denied.
+func VerifyConnections(ctx context.Context, result Result) error {
+	certificate, err := base64.RawStdEncoding.DecodeString(result.Bundle.CACertificate)
+	if err != nil {
+		return errors.New("pairing bundle CA is invalid")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certificate) {
+		return errors.New("pairing bundle CA is invalid")
+	}
+	for _, connection := range result.Bundle.Connections {
+		httpClient := pinnedBrokerClient(roots, connection.ServerName)
+		allowed, err := agentclient.New(agentclient.Options{Endpoint: connection.Endpoint, Credential: connection.Secret, HTTPClient: httpClient})
+		if err != nil {
+			return err
+		}
+		if _, err := allowed.Discover(ctx); err != nil {
+			return fmt.Errorf("verify %s connection: %w", connection.BrokerName, err)
+		}
+		denied, err := agentclient.New(agentclient.Options{Endpoint: connection.Endpoint, Credential: strings.Repeat("x", 32), HTTPClient: httpClient})
+		if err != nil {
+			return err
+		}
+		if _, err := denied.Discover(ctx); err == nil {
+			return fmt.Errorf("verify %s rejection: invalid credential was accepted", connection.BrokerName)
+		}
+	}
+	return nil
+}
+
 func MarkVerified(ctx context.Context, result Result) error {
 	client, err := invitationClient(result.Invitation)
 	if err != nil {
 		return err
 	}
 	return transition(ctx, client, result.Invitation.Endpoint, result.Invitation.PairingID, result.Bundle.ClaimSecret, "verified")
+}
+
+func pinnedBrokerClient(roots *x509.CertPool, serverName string) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, ServerName: serverName}
+	return &http.Client{Transport: transport, Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
 }
 
 func invitationClient(invitation pairingv1.Invitation) (*http.Client, error) {

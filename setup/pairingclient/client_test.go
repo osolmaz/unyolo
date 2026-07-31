@@ -3,6 +3,8 @@ package pairingclient
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -37,10 +39,24 @@ func TestClaimPublishActivateAndVerify(t *testing.T) {
 	server.StartTLS()
 	t.Cleanup(server.Close)
 
+	agentServer := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer "+strings.Repeat("s", 32) {
+			http.Error(writer, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"api_version": "unyolo.io/agent/v1", "build_id": "test", "contract_digest": "sha256:bdc7fc2230ea7db9ede54305f2adcb3e3c21451056e58f9467fd5dbcc4a3ddc7",
+			"credential": map[string]any{"credential_kind": "test", "generation": 1, "provider": "github", "ready": true, "verification_state": "verified"}, "operations": []string{},
+		})
+	}))
+	agentServer.TLS = &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}}
+	agentServer.StartTLS()
+	t.Cleanup(agentServer.Close)
+
 	invitation, err := store.Create(pairingstore.InvitationOptions{
 		ID: "pair-a", Endpoint: server.URL, CACertificate: ca.Certificate, ServerName: "127.0.0.1", ExpiresAt: now.Add(10 * time.Minute),
 		Bundle: pairingv1.Bundle{Connections: []pairingv1.BrokerConnection{{
-			BrokerName: "gh-broker", ClientID: "bob", Endpoint: "tls://broker.example:443", Secret: strings.Repeat("s", 32), ServerName: "broker.example",
+			BrokerName: "gh-broker", ClientID: "bob", Endpoint: strings.Replace(agentServer.URL, "https://", "tls://", 1), Secret: strings.Repeat("s", 32), ServerName: "127.0.0.1",
 		}}},
 	})
 	if err != nil {
@@ -58,6 +74,9 @@ func TestClaimPublishActivateAndVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := WaitForActive(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyConnections(context.Background(), result); err != nil {
 		t.Fatal(err)
 	}
 	if err := MarkVerified(context.Background(), result); err != nil {
