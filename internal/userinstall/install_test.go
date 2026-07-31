@@ -64,6 +64,35 @@ func TestActivatePublishesOneVerifiedRelease(t *testing.T) {
 	}
 }
 
+func TestActivateTightensWritableInstallRoots(t *testing.T) {
+	stage := writeStage(t, "v1.2.3")
+	dataHome, binHome := t.TempDir(), t.TempDir()
+	for path, mode := range map[string]os.FileMode{dataHome: 0o775, binHome: 0o777} {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "existing"), []byte("keep"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Activate(t.Context(), Options{StageRoot: stage, DataHome: dataHome, BinHome: binHome}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{dataHome, binHome} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o755 {
+			t.Fatalf("secured mode for %s = %04o", path, info.Mode().Perm())
+		}
+		data, err := os.ReadFile(filepath.Join(path, "existing"))
+		if err != nil || string(data) != "keep" {
+			t.Fatalf("existing contents for %s changed: %q, %v", path, data, err)
+		}
+	}
+}
+
 func TestActivateFailurePreservesExistingCLI(t *testing.T) {
 	stage := writeStage(t, "v1.2.3")
 	if err := os.Remove(filepath.Join(stage, "libexec", "openclaw-unyolo-setup")); err != nil {
