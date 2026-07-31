@@ -94,6 +94,7 @@ type Deployment struct {
 	APIVersion         string        `json:"api_version"`
 	Name               string        `json:"name"`
 	InstallationDigest string        `json:"installation_digest,omitempty"`
+	SourceSetDigest    string        `json:"source_set_digest,omitempty"`
 	Runtime            Runtime       `json:"runtime"`
 	Agents             []Agent       `json:"agents"`
 	Operators          []Operator    `json:"operators"`
@@ -223,8 +224,9 @@ func (d Deployment) Validate() error {
 	if d.APIVersion != APIVersion {
 		return fmt.Errorf("unsupported deployment API %q", d.APIVersion)
 	}
-	if !validName(d.Name) || d.InstallationDigest != "" && !digestPattern.MatchString(d.InstallationDigest) {
-		return errors.New("deployment name or installation digest is invalid")
+	if !validName(d.Name) || d.InstallationDigest != "" && !digestPattern.MatchString(d.InstallationDigest) ||
+		d.SourceSetDigest != "" && !digestPattern.MatchString(d.SourceSetDigest) {
+		return errors.New("deployment name or source digest is invalid")
 	}
 	if len(d.Agents) > MaxAgents || len(d.Operators) == 0 || len(d.Operators) > MaxOperators {
 		return errors.New("deployment must contain a bounded operator list and may contain bounded agents")

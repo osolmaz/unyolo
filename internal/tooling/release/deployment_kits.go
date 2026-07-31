@@ -11,15 +11,18 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
-	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/protocol/contract"
 )
 
-const deploymentReleaseAPIVersion = "unyolo.io/deployment-release-component/v1"
+const (
+	deploymentReleaseAPIVersion = "unyolo.io/deployment-release-component/v1"
+	sourceProviderAPIVersion    = "unyolo.io/deployment-source-provider/v1"
+)
 
 type deploymentReleaseComponent struct {
 	APIVersion             string                  `json:"api_version"`
@@ -51,6 +54,18 @@ type loadedDeploymentComponent struct {
 	directory  string
 }
 
+// SourceProvider describes one canonical release provider inside the source set.
+// It binds the provider identifier to its owned runtime components and its signed
+// ownership envelope.
+type SourceProvider struct {
+	APIVersion string                   `json:"api_version"`
+	ID         string                   `json:"id"`
+	Components []string                 `json:"components"`
+	Ownership  bundle.OwnershipEnvelope `json:"ownership"`
+	Profile    string                   `json:"profile"`
+	Files      []string                 `json:"files,omitempty"`
+}
+
 func generateDeploymentKits(work string, options Options, binaries map[string]string, goos, goarch string) (map[string]string, map[string]bool, error) {
 	components, err := loadDeploymentComponents(options, binaries)
 	if err != nil {
@@ -70,7 +85,7 @@ func generateDeploymentKits(work string, options Options, binaries map[string]st
 		return nil, nil, err
 	}
 	publicData := []byte(base64.StdEncoding.EncodeToString(publicKey) + "\n")
-	if err := generateAllDeploymentTemplates(root, options, components, binaries, providers, privateKey, publicData, goos, goarch); err != nil {
+	if err := generateSourceSet(root, options, components, binaries, providers, privateKey, publicData, goos, goarch); err != nil {
 		return nil, nil, err
 	}
 	files, err := collectGeneratedFiles(root, "deployment-kits")
@@ -92,13 +107,123 @@ func copyRuntimeArtifacts(root string, components []loadedDeploymentComponent, b
 	return runtimeBinaries, nil
 }
 
-func generateAllDeploymentTemplates(root string, options Options, components []loadedDeploymentComponent, binaries map[string]string, providers []string, privateKey ed25519.PrivateKey, publicData []byte, goos, goarch string) error {
-	for _, selected := range providerSelections(providers) {
-		if err := generateDeploymentTemplate(root, options, components, binaries, selected, privateKey, publicData, goos, goarch); err != nil {
+// generateSourceSet writes one canonical, verified release source set. It emits
+// the signed runtime manifest with every declared component, one provider
+// directory per selectable provider, and empty integration and platform
+// directories so setup callers can rely on a single stable layout.
+func generateSourceSet(root string, options Options, components []loadedDeploymentComponent, binaries map[string]string, providers []string, privateKey ed25519.PrivateKey, publicData []byte, goos, goarch string) error {
+	if err := prepareSourceSetLayout(root, goos); err != nil {
+		return err
+	}
+	manifest := bundle.Manifest{
+		APIVersion:             bundle.APIVersion,
+		BundleID:               fmt.Sprintf("unyolo-%s-%s-%s", strings.TrimPrefix(options.Version, "v"), goos, goarch),
+		SourceCommit:           options.SourceCommit,
+		OperatingSystem:        goos,
+		Architecture:           goarch,
+		OperatorContractDigest: contract.OperatorV1Digest,
+		AgentContractDigest:    contract.AgentV1Digest,
+		SetupCapabilities:      canonicalSetupCapabilities(goos, providers),
+	}
+	for _, loaded := range components {
+		runtimeComponent, err := releaseRuntimeComponent(loaded.descriptor, binaries[loaded.descriptor.Binary], options.Version)
+		if err != nil {
+			return err
+		}
+		manifest.Components = append(manifest.Components, runtimeComponent)
+	}
+	if err := writeRuntimeTrust(root, manifest, privateKey, publicData); err != nil {
+		return err
+	}
+	for _, provider := range providers {
+		if err := writeSourceProvider(root, provider, components); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func prepareSourceSetLayout(root, goos string) error {
+	directories := []string{
+		"runtime",
+		"providers",
+		"integrations",
+		filepath.Join("platform", goos),
+	}
+	for _, directory := range directories {
+		if err := os.MkdirAll(filepath.Join(root, directory), 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func canonicalSetupCapabilities(goos string, _ []string) bundle.SetupCapabilities {
+	capabilities := bundle.SetupCapabilities{}
+	switch goos {
+	case "linux":
+		capabilities.NativeServiceBackend = "systemd"
+		capabilities.Features = []string{"native_service", "local_accounts", "local_socket"}
+	case "darwin":
+		capabilities.NativeServiceBackend = "launchd"
+	}
+	return capabilities
+}
+
+//nolint:cyclop // Source-provider assembly rejects every unsafe or duplicated release input.
+func writeSourceProvider(root, provider string, components []loadedDeploymentComponent) error {
+	providerRoot := filepath.Join(root, "providers", provider)
+	if err := os.MkdirAll(providerRoot, 0o700); err != nil {
+		return err
+	}
+	var (
+		descriptor    SourceProvider
+		primary       loadedDeploymentComponent
+		primaryFound  bool
+		componentIDs  []string
+		trackedFiles  = map[string]bool{}
+		providerFiles []string
+	)
+	descriptor.APIVersion = sourceProviderAPIVersion
+	descriptor.ID = provider
+	for _, loaded := range components {
+		if loaded.descriptor.Provider != provider {
+			continue
+		}
+		componentIDs = append(componentIDs, loaded.descriptor.Name)
+		if loaded.descriptor.Name == provider {
+			primary, primaryFound = loaded, true
+		}
+	}
+	if !primaryFound {
+		return fmt.Errorf("provider %q has no primary component", provider)
+	}
+	sort.Strings(componentIDs)
+	descriptor.Components = componentIDs
+	descriptor.Ownership = primary.descriptor.Setup.Ownership
+	descriptor.Profile = "profile.json"
+	if err := copyReleaseData(filepath.Join(primary.directory, primary.descriptor.Profile), filepath.Join(providerRoot, "profile.json"), 0o600); err != nil {
+		return err
+	}
+	for _, file := range primary.descriptor.AdditionalProfileFiles {
+		if trackedFiles[file.Destination] {
+			return fmt.Errorf("provider %q duplicates static file %q", provider, file.Destination)
+		}
+		trackedFiles[file.Destination] = true
+		source := filepath.Join(primary.directory, file.Source)
+		destination := filepath.Join(providerRoot, filepath.FromSlash(file.Destination))
+		if err := copyReleaseData(source, destination, 0o600); err != nil {
+			return err
+		}
+		providerFiles = append(providerFiles, file.Destination)
+	}
+	sort.Strings(providerFiles)
+	descriptor.Files = providerFiles
+	data, err := json.MarshalIndent(descriptor, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeReleaseData(filepath.Join(providerRoot, "source.json"), append(data, '\n'), 0o600)
 }
 
 func loadDeploymentComponents(options Options, binaries map[string]string) ([]loadedDeploymentComponent, error) {
@@ -182,7 +307,7 @@ func validateComponentProfile(value deploymentReleaseComponent, selectable map[s
 
 func validateAdditionalProfileFiles(files []deploymentReleaseFile) error {
 	for _, file := range files {
-		if !safeArchivePath(file.Source) || !safeArchivePath(file.Destination) || file.Destination == profile.EntryFilename {
+		if !safeArchivePath(file.Source) || !safeArchivePath(file.Destination) {
 			return errors.New("additional profile file is invalid")
 		}
 	}
@@ -218,95 +343,6 @@ func selectableProviders(components []loadedDeploymentComponent) []string {
 	return result
 }
 
-func providerSelections(providers []string) [][]string {
-	result := make([][]string, 0, (1<<len(providers))-1)
-	for mask := 1; mask < 1<<len(providers); mask++ {
-		var selected []string
-		for index, provider := range providers {
-			if mask&(1<<index) != 0 {
-				selected = append(selected, provider)
-			}
-		}
-		result = append(result, selected)
-	}
-	return result
-}
-
-func generateDeploymentTemplate(root string, options Options, components []loadedDeploymentComponent, binaries map[string]string, selected []string, privateKey ed25519.PrivateKey, publicData []byte, goos, goarch string) error {
-	key := strings.Join(selected, "+")
-	template := filepath.Join(root, "templates", key)
-	if err := prepareDeploymentTemplate(template); err != nil {
-		return err
-	}
-	wanted := make(map[string]bool, len(selected))
-	for _, provider := range selected {
-		wanted[provider] = true
-	}
-	manifest := bundle.Manifest{
-		APIVersion: bundle.APIVersion,
-		BundleID:     fmt.Sprintf("unyolo-%s-%s-%s-%s", strings.TrimPrefix(options.Version, "v"), goos, goarch, key),
-		SourceCommit: options.SourceCommit, OperatingSystem: goos, Architecture: goarch,
-		OperatorContractDigest: contract.OperatorV1Digest, AgentContractDigest: contract.AgentV1Digest,
-	}
-	if goos == "linux" {
-		manifest.SetupCapabilities = bundle.SetupCapabilities{
-			NativeServiceBackend: "systemd",
-			Features: []string{"native_service", "local_accounts", "local_socket"},
-		}
-	}
-	deployment := profile.Deployment{
-		APIVersion: profile.APIVersion, Name: "unyolo-template",
-		Runtime: profile.Runtime{
-			Manifest:  profile.Reference{Path: "runtime/manifest.json", SHA256: zeroReleaseDigest()},
-			Signature: profile.Reference{Path: "runtime/manifest.sig", SHA256: zeroReleaseDigest()},
-			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroReleaseDigest()},
-		},
-		Agents: []profile.Agent{{
-			ID: "agent", ClientID: "agent",
-			Target:       profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"},
-			ComponentIDs: append([]string(nil), selected...),
-		}},
-		Operators: []profile.Operator{{ID: "operator", UnixUser: "operator"}},
-	}
-	for _, loaded := range components {
-		if err := appendDeploymentTemplateComponent(template, options.Version, loaded, binaries, wanted, &manifest, &deployment); err != nil {
-			return err
-		}
-	}
-	if err := writeRuntimeTrust(template, manifest, privateKey, publicData); err != nil {
-		return err
-	}
-	if err := writeDeploymentEntry(template, deployment); err != nil {
-		return err
-	}
-	return profile.Lock(template, false)
-}
-
-func prepareDeploymentTemplate(template string) error {
-	for _, directory := range []string{"runtime", "components"} {
-		if err := os.MkdirAll(filepath.Join(template, directory), 0o700); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func appendDeploymentTemplateComponent(template, version string, loaded loadedDeploymentComponent, binaries map[string]string, wanted map[string]bool, manifest *bundle.Manifest, deployment *profile.Deployment) error {
-	value := loaded.descriptor
-	if !wanted[value.Provider] {
-		return nil
-	}
-	runtimeComponent, err := releaseRuntimeComponent(value, binaries[value.Binary], version)
-	if err != nil {
-		return err
-	}
-	manifest.Components = append(manifest.Components, runtimeComponent)
-	if value.Name != value.Provider {
-		return nil
-	}
-	return appendProviderProfile(template, loaded, deployment)
-}
-
 func releaseRuntimeComponent(value deploymentReleaseComponent, binary, version string) (bundle.Component, error) {
 	artifactDigest, err := digestReleaseFile(binary)
 	if err != nil {
@@ -328,26 +364,7 @@ func releaseRuntimeComponent(value deploymentReleaseComponent, binary, version s
 	return component, nil
 }
 
-func appendProviderProfile(template string, loaded loadedDeploymentComponent, deployment *profile.Deployment) error {
-	value := loaded.descriptor
-	profileDestination := filepath.Join(template, "components", value.Provider+".json")
-	if err := copyReleaseData(filepath.Join(loaded.directory, value.Profile), profileDestination, 0o600); err != nil {
-		return err
-	}
-	for _, file := range value.AdditionalProfileFiles {
-		source := filepath.Join(loaded.directory, file.Source)
-		destination := filepath.Join(template, filepath.FromSlash(file.Destination))
-		if err := copyReleaseData(source, destination, 0o600); err != nil {
-			return err
-		}
-	}
-	deployment.Components = append(deployment.Components, profile.Component{
-		ID: value.Provider, Profile: profile.Reference{Path: "components/" + value.Provider + ".json", SHA256: zeroReleaseDigest()},
-	})
-	return nil
-}
-
-func writeRuntimeTrust(template string, manifest bundle.Manifest, privateKey ed25519.PrivateKey, publicData []byte) error {
+func writeRuntimeTrust(root string, manifest bundle.Manifest, privateKey ed25519.PrivateKey, publicData []byte) error {
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
@@ -362,19 +379,11 @@ func writeRuntimeTrust(template string, manifest bundle.Manifest, privateKey ed2
 		{"release.pub", publicData},
 	}
 	for _, file := range files {
-		if err := writeReleaseData(filepath.Join(template, "runtime", file.name), file.data, 0o600); err != nil {
+		if err := writeReleaseData(filepath.Join(root, "runtime", file.name), file.data, 0o600); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func writeDeploymentEntry(template string, deployment profile.Deployment) error {
-	data, err := json.MarshalIndent(deployment, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeReleaseData(filepath.Join(template, profile.EntryFilename), append(data, '\n'), 0o600)
 }
 
 func digestReleaseFile(path string) (string, error) {
@@ -384,8 +393,6 @@ func digestReleaseFile(path string) (string, error) {
 	}
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(data)), nil
 }
-
-func zeroReleaseDigest() string { return "sha256:" + strings.Repeat("0", 64) }
 
 func writeReleaseData(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

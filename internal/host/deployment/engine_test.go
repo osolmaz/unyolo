@@ -25,6 +25,7 @@ import (
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/identity"
 	"github.com/osolmaz/unyolo/protocol/contract"
+	"github.com/osolmaz/unyolo/setup/sourceset"
 )
 
 type fakeManager struct{}
@@ -125,7 +126,7 @@ func TestProductionEngineRequiresAttestedReleaseTemplate(t *testing.T) {
 	if err := engine.verifySnapshotTrust(snapshot); err == nil {
 		t.Fatal("deployment without an attested release template was accepted")
 	}
-	runtimeRoot := filepath.Join(state, "verified-releases", strings.Repeat("a", 64), "source-set", "templates", "fake", "runtime")
+	runtimeRoot := filepath.Join(state, "verified-releases", strings.Repeat("a", 64), "source-set", "runtime")
 	if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +139,11 @@ func TestProductionEngineRequiresAttestedReleaseTemplate(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(runtimeRoot, name), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
+	}
+	sourceRoot := filepath.Dir(runtimeRoot)
+	snapshot.Deployment.SourceSetDigest, err = sourceset.Digest(sourceRoot)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := engine.verifySnapshotTrust(snapshot); err != nil {
 		t.Fatal(err)

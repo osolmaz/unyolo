@@ -10,20 +10,25 @@ import (
 	"syscall"
 
 	"github.com/osolmaz/unyolo/deployment/profile"
+	"github.com/osolmaz/unyolo/setup/sourceset"
 )
 
 const maxVerifiedReleases = 64
 
-var (
-	verifiedReleaseNamePattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	verifiedTemplatePattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9+-]{0,254}$`)
-)
+var verifiedReleaseNamePattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
+// verifyAttestedReleaseTemplate checks that the deployment's runtime trust
+// files come from one root-verified source set.
 func verifyAttestedReleaseTemplate(stateDir string, snapshot profile.Snapshot) error {
 	_, err := verifiedReleaseSource(stateDir, snapshot)
 	return err
 }
 
+// verifiedReleaseSource returns the exact source-set root that produced the
+// supplied deployment snapshot. The generated deployment binds the digest of
+// every source file, while the runtime trust bytes provide a second identity
+// check against the signed runtime manifest.
+//
 //nolint:cyclop // Fail-closed attested-release traversal keeps every unsafe entry check in one trust boundary.
 func verifiedReleaseSource(stateDir string, snapshot profile.Snapshot) (string, error) {
 	root := filepath.Join(stateDir, "verified-releases")
@@ -36,6 +41,9 @@ func verifiedReleaseSource(stateDir string, snapshot profile.Snapshot) (string, 
 	}
 	if len(releases) == 0 || len(releases) > maxVerifiedReleases {
 		return "", errors.New("verified release store is empty or exceeds its bound")
+	}
+	if snapshot.Deployment.SourceSetDigest == "" {
+		return "", errors.New("deployment does not identify its verified source set")
 	}
 	candidate := runtimeTrustFiles(snapshot)
 	for _, release := range releases {
@@ -50,24 +58,12 @@ func verifiedReleaseSource(stateDir string, snapshot profile.Snapshot) (string, 
 		if err := verifyTrustedDirectory(sourceRoot); err != nil {
 			return "", err
 		}
-		templatesRoot := filepath.Join(sourceRoot, "templates")
-		if err := verifyTrustedDirectory(templatesRoot); err != nil {
-			return "", err
+		digest, digestErr := sourceset.Digest(sourceRoot)
+		if digestErr != nil {
+			return "", fmt.Errorf("digest verified release %q: %w", release.Name(), digestErr)
 		}
-		templates, err := os.ReadDir(templatesRoot)
-		if err != nil {
-			return "", err
-		}
-		if len(templates) == 0 || len(templates) > 255 {
-			return "", errors.New("verified release template set is empty or exceeds its bound")
-		}
-		for _, template := range templates {
-			if !verifiedTemplatePattern.MatchString(template.Name()) || !template.IsDir() || template.Type()&os.ModeSymlink != 0 {
-				return "", errors.New("verified release template set contains an unsafe entry")
-			}
-			if matchesRuntimeTrust(filepath.Join(templatesRoot, template.Name()), candidate) {
-				return sourceRoot, nil
-			}
+		if digest == snapshot.Deployment.SourceSetDigest && matchesRuntimeTrust(sourceRoot, candidate) {
+			return sourceRoot, nil
 		}
 	}
 	return "", errors.New("deployment runtime is not part of a root-verified attested release")
@@ -81,11 +77,8 @@ func runtimeTrustFiles(snapshot profile.Snapshot) map[string][]byte {
 	}
 }
 
-func matchesRuntimeTrust(templateRoot string, candidate map[string][]byte) bool {
-	if err := verifyTrustedDirectory(templateRoot); err != nil {
-		return false
-	}
-	runtimeRoot := filepath.Join(templateRoot, "runtime")
+func matchesRuntimeTrust(sourceRoot string, candidate map[string][]byte) bool {
+	runtimeRoot := filepath.Join(sourceRoot, "runtime")
 	if err := verifyTrustedDirectory(runtimeRoot); err != nil {
 		return false
 	}

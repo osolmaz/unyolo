@@ -25,6 +25,7 @@ import (
 	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
 	hostaccount "github.com/osolmaz/unyolo/internal/host/account"
+	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
 	"github.com/osolmaz/unyolo/internal/userinstall"
@@ -180,21 +181,20 @@ func releaseSetupCapabilities(kits string) (capability.Snapshot, error) {
 	if kits == "" {
 		return empty, nil
 	}
-	entries, err := os.ReadDir(filepath.Join(kits, "templates"))
+	manifestPath := filepath.Join(kits, "runtime", "manifest.json")
+	if _, err := os.Lstat(manifestPath); err != nil {
+		return capability.Snapshot{}, errors.New("verified release has no setup source")
+	}
+	manifest, _, err := bundle.Load(
+		manifestPath,
+		filepath.Join(kits, "runtime", "manifest.sig"),
+		filepath.Join(kits, "runtime", "release.pub"),
+		false,
+	)
 	if err != nil {
 		return capability.Snapshot{}, err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			continue
-		}
-		snapshot, loadErr := profile.Load(filepath.Join(kits, "templates", entry.Name()))
-		if loadErr != nil {
-			return capability.Snapshot{}, loadErr
-		}
-		return capability.Resolve(snapshot.Manifest, capability.HostProbe{})
-	}
-	return capability.Snapshot{}, errors.New("verified release has no setup source")
+	return capability.Resolve(manifest, capability.HostProbe{})
 }
 
 //nolint:cyclop // The coordinator checkpoints each user decision and keeps secret collection after review.
@@ -386,11 +386,7 @@ func agentAccountName(agent *setupintent.Agent, current string) string {
 }
 
 func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, sessions session.Store, setupSession *session.Session, desired installation.Installation, options setupOptions) error {
-	templatePath, artifacts, err := selectedReleaseTemplate(options, desired.CredentialService.Providers)
-	if err != nil {
-		return err
-	}
-	template, err := profile.Load(templatePath)
+	sourceSet, err := selectedReleaseSourceSet(options, desired.CredentialService.Providers)
 	if err != nil {
 		return err
 	}
@@ -402,7 +398,7 @@ func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, ses
 		return err
 	}
 	destination := filepath.Join(installRoot, fmt.Sprintf(".compiled-%d", time.Now().UnixNano()))
-	compiled, err := setupcompiler.Compile(setupcompiler.Options{Installation: desired, Template: template, ArtifactRoot: artifacts, Destination: destination})
+	compiled, err := setupcompiler.Compile(setupcompiler.Options{Installation: desired, SourceSet: sourceSet, Destination: destination})
 	if err != nil {
 		return err
 	}
@@ -749,22 +745,28 @@ func chooseProviders(ctx context.Context, prompter flow.SetupPrompter, options [
 	return selected, nil
 }
 
-func selectedReleaseTemplate(options setupOptions, selected []string) (string, string, error) {
+func selectedReleaseSourceSet(options setupOptions, selected []string) (string, error) {
 	if !filepath.IsAbs(options.DeploymentKits) || filepath.Clean(options.DeploymentKits) != options.DeploymentKits {
-		return "", "", errors.New("verified release source is unavailable")
+		return "", errors.New("verified release source is unavailable")
 	}
-	key, err := provider.SelectionKey(options.ProviderOptions, selected)
-	if err != nil {
-		return "", "", err
+	if _, err := provider.SelectionKey(options.ProviderOptions, selected); err != nil {
+		return "", err
 	}
-	template, artifacts := filepath.Join(options.DeploymentKits, "templates", key), options.RuntimeArtifacts
-	for _, path := range []string{template, artifacts} {
+	for _, subdir := range []string{"runtime", "providers", "artifacts"} {
+		path := filepath.Join(options.DeploymentKits, subdir)
 		info, statErr := os.Lstat(path)
 		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return "", "", errors.New("verified release is missing the selected setup source")
+			return "", errors.New("verified release is missing the setup source set")
 		}
 	}
-	return template, artifacts, nil
+	for _, id := range selected {
+		providerRoot := filepath.Join(options.DeploymentKits, "providers", id)
+		info, statErr := os.Lstat(providerRoot)
+		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("verified release is missing the selected provider source")
+		}
+	}
+	return options.DeploymentKits, nil
 }
 
 func validateGitHubCLI(path string) error {

@@ -51,18 +51,24 @@ func TestProviderOptionsLoadBesideInstalledExecutable(t *testing.T) {
 	}
 }
 
-func TestSelectedReleaseTemplateUsesProviderSet(t *testing.T) {
+func TestSelectedReleaseSourceSetUsesProviderSet(t *testing.T) {
 	root := t.TempDir()
-	template := filepath.Join(root, "templates", "github+huggingface")
-	artifacts := filepath.Join(root, "artifacts")
-	for _, path := range []string{template, artifacts} {
+	for _, path := range []string{
+		filepath.Join(root, "runtime"),
+		filepath.Join(root, "providers", "github"),
+		filepath.Join(root, "providers", "huggingface"),
+		filepath.Join(root, "artifacts"),
+	} {
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	selected, artifactRoot, err := selectedReleaseTemplate(setupOptions{ProviderOptions: testProviderOptions(), DeploymentKits: root, RuntimeArtifacts: artifacts}, []string{"huggingface", "github"})
-	if err != nil || selected != template || artifactRoot != artifacts {
-		t.Fatalf("selected setup source = %q, %q, %v", selected, artifactRoot, err)
+	sourceSet, err := selectedReleaseSourceSet(setupOptions{ProviderOptions: testProviderOptions(), DeploymentKits: root, RuntimeArtifacts: filepath.Join(root, "artifacts")}, []string{"huggingface", "github"})
+	if err != nil || sourceSet != root {
+		t.Fatalf("selected setup source = %q, %v", sourceSet, err)
+	}
+	if _, err := selectedReleaseSourceSet(setupOptions{ProviderOptions: testProviderOptions(), DeploymentKits: root, RuntimeArtifacts: filepath.Join(root, "artifacts")}, []string{"missing"}); err == nil {
+		t.Fatal("selectedReleaseSourceSet() accepted a provider absent from the release catalog")
 	}
 }
 

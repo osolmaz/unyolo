@@ -43,14 +43,17 @@ func TestActivatePublishesOneVerifiedRelease(t *testing.T) {
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Release != "unyolo/v1.2.3" || manifest.InstalledAt != now || len(manifest.Files) != 6 {
+	if manifest.Release != "unyolo/v1.2.3" || manifest.InstalledAt != now || len(manifest.Files) != 7 {
 		t.Fatalf("manifest = %+v", manifest)
 	}
 	if _, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "providers", "github.json")); err != nil {
 		t.Fatalf("installed provider catalog: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "deployment-kits", "templates", "test", "deployment.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "deployment-kits", "providers", "test", "source.json")); err != nil {
 		t.Fatalf("installed deployment kits: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "deployment-kits", "runtime", "manifest.json")); err != nil {
+		t.Fatalf("installed deployment runtime: %v", err)
 	}
 	artifactInfo, err := os.Stat(filepath.Join(dataHome, "unyolo", "releases", "v1.2.3", "deployment-kits", "artifacts", "test-broker"))
 	if err != nil || artifactInfo.Mode().Perm() != 0o755 {
@@ -421,7 +424,7 @@ func writeStage(t *testing.T, version string) string {
 	if err := os.Chmod(stage, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, directory := range []string{"bin", "libexec", filepath.Join("share", "providers"), filepath.Join("share", "deployment-kits", "templates", "test"), filepath.Join("share", "deployment-kits", "artifacts")} {
+	for _, directory := range []string{"bin", "libexec", filepath.Join("share", "providers"), filepath.Join("share", "deployment-kits", "runtime"), filepath.Join("share", "deployment-kits", "providers", "test"), filepath.Join("share", "deployment-kits", "artifacts")} {
 		if err := os.MkdirAll(filepath.Join(stage, directory), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -437,7 +440,10 @@ func writeStage(t *testing.T, version string) string {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(stage, "share", "deployment-kits", "templates", "test", "deployment.json"), []byte("deployment-template\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(stage, "share", "deployment-kits", "providers", "test", "source.json"), []byte("{\n  \"id\": \"test\"\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "share", "deployment-kits", "runtime", "manifest.json"), []byte("{\n  \"api_version\": \"unyolo.io/runtime-bundle/v1\"\n}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(stage, "share", "deployment-kits", "artifacts", "test-broker"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
