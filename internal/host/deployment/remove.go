@@ -51,6 +51,7 @@ type RemovalAction struct {
 	ID             string            `json:"id"`
 	ComponentID    string            `json:"component_id,omitempty"`
 	ResourceID     string            `json:"resource_id,omitempty"`
+	ResourceKind   string            `json:"resource_kind,omitempty"`
 	Path           string            `json:"path,omitempty"`
 	Home           string            `json:"home,omitempty"`
 	Shell          string            `json:"shell,omitempty"`
@@ -159,7 +160,7 @@ func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receip
 		}
 		plan.Actions = append(plan.Actions, RemovalAction{
 			Kind: kind, ID: resource.ComponentID + "." + resource.ActionID, ComponentID: resource.ComponentID,
-			ResourceID: resource.ID, Path: resource.Path, Home: resource.Home, Shell: resource.Shell,
+			ResourceID: resource.ID, ResourceKind: resource.Kind, Path: resource.Path, Home: resource.Home, Shell: resource.Shell,
 			Group: resource.Group, Fingerprint: resource.Fingerprint, Destructive: resource.Data,
 		})
 	}
@@ -409,8 +410,12 @@ func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAc
 }
 
 func verifyRemovalFingerprint(ctx context.Context, action RemovalAction) error {
+	kind := action.ResourceKind
+	if kind == "" {
+		kind = removalResourceKind(action)
+	}
 	current := receiptResourceFingerprint(ctx, ResourceReceipt{
-		Kind: removalResourceKind(action), ID: action.ResourceID, Path: action.Path, Data: action.Destructive,
+		Kind: kind, ID: action.ResourceID, Path: action.Path, Data: action.Destructive,
 	})
 	if current == "missing" {
 		return nil

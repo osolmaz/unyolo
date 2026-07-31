@@ -70,6 +70,19 @@ func TestSystemdManagerLifecycleAndStatus(t *testing.T) {
 	}
 }
 
+func TestSystemdManagerAcceptsActiveSocketWithoutMainProcess(t *testing.T) {
+	runner := &scriptedRunner{active: true}
+	manager := newNativeManager(runner)
+	status, err := manager.Status(t.Context(), "gh-broker-agent.socket")
+	if err != nil || !status.Active || status.PID != 0 || status.Executable != "" {
+		t.Fatalf("Status() = %+v, %v", status, err)
+	}
+	want := []runnerCall{{name: "systemctl", args: []string{"is-active", "--quiet", "gh-broker-agent.socket"}}}
+	if !reflect.DeepEqual(runner.calls, want) {
+		t.Fatalf("calls = %#v", runner.calls)
+	}
+}
+
 func TestSystemdManagerRejectsInactiveAndInvalidProcesses(t *testing.T) {
 	runner := &scriptedRunner{}
 	manager := newNativeManager(runner)

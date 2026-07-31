@@ -453,19 +453,37 @@ func enrichResourceReceipt(receipt *ResourceReceipt, value componentprofile.Prof
 
 func receiptResourceFingerprint(ctx context.Context, resource ResourceReceipt) string {
 	if resource.Kind == "directory" && resource.Data {
-		if _, err := os.Lstat(resource.Path); errors.Is(err, os.ErrNotExist) {
-			return "missing"
-		} else if err != nil {
-			return "unavailable"
-		}
-		value, err := sourceset.Digest(resource.Path)
-		if err != nil {
-			return "unavailable"
-		}
-		return value
+		return dataTreeFingerprint(ctx, resource.Path)
 	}
-	includeContent := slices.Contains([]string{"client", "credential", "secret_store", "git_config"}, resource.Kind) || resource.Kind == "file" && !resource.Data
+	includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
 	return componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
+}
+
+func dataTreeFingerprint(ctx context.Context, root string) string {
+	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
+		return "missing"
+	} else if err != nil {
+		return "unavailable"
+	}
+	hash := sha256.New()
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		fingerprint := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: "file", Path: path}, false)
+		if !receiptDigestPattern.MatchString(fingerprint) {
+			return fmt.Errorf("fingerprint %s: %s", relative, fingerprint)
+		}
+		_, _ = fmt.Fprintf(hash, "%s\x00%s\x00%d\x00", filepath.ToSlash(relative), fingerprint, entry.Type())
+		return nil
+	}); err != nil {
+		return "unavailable"
+	}
+	return fmt.Sprintf("sha256:%x", hash.Sum(nil))
 }
 
 func resourceReceiptKey(resource ResourceReceipt) string {
