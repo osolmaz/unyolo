@@ -93,8 +93,8 @@ func TestRewriteComponentPolicyRefreshesManifestDigests(t *testing.T) {
 	policyPath := filepath.Join(root, "scope.json")
 	manifestPath := filepath.Join(root, "policy-manifest.json")
 	for path, body := range map[string]string{
-		profilePath:  `{"clients":["agent"]}`,
-		policyPath:   `{"rules":[{"clients":["agent"]}]}`,
+		profilePath:  "{\n  \"clients\": [\n    \"agent\"\n  ]\n}\n",
+		policyPath:   "{\n  \"rules\": [\n    {\n      \"clients\": [\n        \"agent\"\n      ]\n    }\n  ]\n}\n",
 		manifestPath: `{"version":1,"profile_digest":"sha256:old","policy_digest":"sha256:old"}`,
 	} {
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
