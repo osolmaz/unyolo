@@ -69,5 +69,13 @@
       "source": "files/github/gh-broker-operator.socket",
       "destination": "files/github/gh-broker-operator.socket"
     }
-  ]
+  ],
+  "platform_files": {
+    "darwin": [
+      {
+        "source": "files/darwin/io.unyolo.github.plist",
+        "destination": "files/darwin/io.unyolo.github.plist"
+      }
+    ]
+  }
 }

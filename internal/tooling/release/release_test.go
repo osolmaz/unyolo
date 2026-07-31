@@ -322,6 +322,12 @@ func TestDeploymentReleaseDescriptorValidation(t *testing.T) {
 		{"additional destination", func(value *deploymentReleaseComponent) {
 			value.AdditionalProfileFiles = []deploymentReleaseFile{{Source: "source", Destination: "../files/source"}}
 		}},
+		{"platform target", func(value *deploymentReleaseComponent) {
+			value.PlatformFiles = map[string][]deploymentReleaseFile{"windows": {{Source: "src", Destination: "dst"}}}
+		}},
+		{"platform source", func(value *deploymentReleaseComponent) {
+			value.PlatformFiles = map[string][]deploymentReleaseFile{"darwin": {{Source: "../unsafe", Destination: "files/darwin/x.plist"}}}
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -337,6 +343,46 @@ func TestDeploymentReleaseDescriptorValidation(t *testing.T) {
 	}
 	if err := validateDeploymentComponent(valid, binaries, map[string]bool{}, map[string]bool{"test": true}); err == nil {
 		t.Fatal("duplicate selectable provider was accepted")
+	}
+}
+
+func TestWriteSourceProviderEmitsPlatformFiles(t *testing.T) {
+	source := t.TempDir()
+	for _, directory := range []string{"files/linux", "files/darwin"} {
+		if err := os.MkdirAll(filepath.Join(source, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeReleaseFile(t, source, "profile.json", "{}\n")
+	writeReleaseFile(t, source, "files/linux/env", "linux=true\n")
+	writeReleaseFile(t, source, "files/darwin/io.unyolo.example.plist", "<plist/>\n")
+	loaded := loadedDeploymentComponent{
+		descriptor: deploymentReleaseComponent{
+			Provider: "example", Name: "example", Profile: "profile.json", Setup: &bundle.SetupAdapter{},
+			AdditionalProfileFiles: []deploymentReleaseFile{{Source: "files/linux/env", Destination: "files/linux/env"}},
+			PlatformFiles: map[string][]deploymentReleaseFile{
+				"darwin": {{Source: "files/darwin/io.unyolo.example.plist", Destination: "files/darwin/io.unyolo.example.plist"}},
+			},
+		},
+		directory: source,
+	}
+	root := t.TempDir()
+	if err := writeSourceProvider(root, "example", []loadedDeploymentComponent{loaded}, "darwin"); err != nil {
+		t.Fatalf("writeSourceProvider darwin: %v", err)
+	}
+	providerRoot := filepath.Join(root, "providers", "example")
+	if _, err := os.Stat(filepath.Join(providerRoot, "files", "darwin", "io.unyolo.example.plist")); err != nil {
+		t.Fatalf("darwin plist missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(providerRoot, "files", "linux", "env")); err != nil {
+		t.Fatalf("common file missing on darwin target: %v", err)
+	}
+	other := t.TempDir()
+	if err := writeSourceProvider(other, "example", []loadedDeploymentComponent{loaded}, "linux"); err != nil {
+		t.Fatalf("writeSourceProvider linux: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(other, "providers", "example", "files", "darwin", "io.unyolo.example.plist")); err == nil {
+		t.Fatal("darwin plist leaked into linux source set")
 	}
 }
 

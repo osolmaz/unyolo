@@ -69,5 +69,13 @@
       "source": "files/huggingface/hf-broker-operator.socket",
       "destination": "files/huggingface/hf-broker-operator.socket"
     }
-  ]
+  ],
+  "platform_files": {
+    "darwin": [
+      {
+        "source": "files/darwin/io.unyolo.huggingface.plist",
+        "destination": "files/darwin/io.unyolo.huggingface.plist"
+      }
+    ]
+  }
 }
