@@ -256,42 +256,49 @@ func rewritePolicyClients(path string, clients []string) error {
 	if err != nil {
 		return err
 	}
-	var value any
-	if err := strictjson.Decode(data, &value, true); err != nil {
+	var validated any
+	if err := strictjson.Decode(data, &validated, true); err != nil {
 		return err
 	}
-	if root, ok := value.(map[string]any); ok && len(clients) == 0 {
-		if _, exists := root["rules"]; exists {
-			root["rules"] = []any{}
+	lines := strings.Split(string(data), "\n")
+	result := make([]string, 0, len(lines)+len(clients))
+	replacements := 0
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
+		if strings.TrimSpace(line) != `"clients": [` {
+			result = append(result, line)
+			continue
 		}
-	}
-	rewriteClientFields(value, clients)
-	updated, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(updated, '\n'), 0o600)
-}
-
-func rewriteClientFields(value any, clients []string) {
-	switch current := value.(type) {
-	case []any:
-		for _, child := range current {
-			rewriteClientFields(child, clients)
-		}
-	case map[string]any:
-		for key, child := range current {
-			if key == "clients" {
-				values := make([]any, len(clients))
-				for index, client := range clients {
-					values[index] = client
-				}
-				current[key] = values
-				continue
+		result = append(result, line)
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))] + "  "
+		closing := index + 1
+		for ; closing < len(lines); closing++ {
+			trimmed := strings.TrimSpace(lines[closing])
+			if trimmed == "]" || trimmed == "]," {
+				break
 			}
-			rewriteClientFields(child, clients)
 		}
+		if closing == len(lines) {
+			return errors.New("policy client list is not closed")
+		}
+		for clientIndex, client := range clients {
+			encoded, marshalErr := json.Marshal(client)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			suffix := ","
+			if clientIndex == len(clients)-1 {
+				suffix = ""
+			}
+			result = append(result, indent+string(encoded)+suffix)
+		}
+		result = append(result, lines[closing])
+		index, replacements = closing, replacements+1
 	}
+	if replacements == 0 {
+		return errors.New("managed policy contains no client list")
+	}
+	return os.WriteFile(path, []byte(strings.Join(result, "\n")), 0o600)
 }
 
 func copySources(snapshot profile.Snapshot, artifactRoot, destination string) error {
