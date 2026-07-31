@@ -47,15 +47,16 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 
 func runSubcommand(ctx context.Context, name string, args []string, stdout io.Writer, stderr io.Writer) error {
 	command := map[string]func(context.Context, []string, io.Writer, io.Writer) error{
-		"doctor":                runDoctor,
-		"serve":                 runServe,
-		"run":                   runCommand,
-		"setup":                 runSetup,
-		"state":                 statecmd.Run,
-		"setup-component-probe": runSetupComponentProbe,
-		"setup-component":       runSetupComponent,
-		"version":               printVersion,
-		"--version":             printVersion,
+		"doctor":                 runDoctor,
+		"serve":                  runServe,
+		"run":                    runCommand,
+		"setup":                  runSetup,
+		"state":                  statecmd.Run,
+		"setup-component-probe":  runSetupComponentProbe,
+		"setup-component":        runSetupComponent,
+		"setup-component-render": runSetupComponentRender,
+		"version":                printVersion,
+		"--version":              printVersion,
 	}[name]
 	if command == nil {
 		return fmt.Errorf("unknown command %q", name)
@@ -76,6 +77,13 @@ func runSetupComponent(ctx context.Context, args []string, stdout io.Writer, _ i
 		return errors.New("setup-component does not accept arguments")
 	}
 	return component.Serve(ctx, os.Stdin, stdout, sudoDeploymentConfig())
+}
+
+func runSetupComponentRender(_ context.Context, args []string, stdout io.Writer, _ io.Writer) error {
+	if len(args) != 0 {
+		return errors.New("setup-component-render does not accept arguments")
+	}
+	return component.ServeRender(os.Stdin, stdout, component.StandardRenderer{})
 }
 
 func sudoDeploymentConfig() component.Config {

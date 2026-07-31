@@ -2,6 +2,7 @@
 package compiler
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -12,8 +13,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/deployment/profile"
+	adapterruntime "github.com/osolmaz/unyolo/deployment/runtime"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/pathutil"
 	"github.com/osolmaz/unyolo/internal/strictjson"
@@ -36,12 +39,13 @@ type Options struct {
 // to its owned runtime components, its signed ownership envelope, and its
 // deployment profile and static assets.
 type SourceProvider struct {
-	APIVersion string                   `json:"api_version"`
-	ID         string                   `json:"id"`
-	Components []string                 `json:"components"`
-	Ownership  bundle.OwnershipEnvelope `json:"ownership"`
-	Profile    string                   `json:"profile"`
-	Files      []string                 `json:"files,omitempty"`
+	APIVersion      string                   `json:"api_version"`
+	ID              string                   `json:"id"`
+	Components      []string                 `json:"components"`
+	Ownership       bundle.OwnershipEnvelope `json:"ownership"`
+	Profile         string                   `json:"profile"`
+	Files           []string                 `json:"files,omitempty"`
+	RenderArguments []string                 `json:"render_arguments"`
 }
 
 // Compile renders one host deployment from the installation record, verified
@@ -86,13 +90,10 @@ func Compile(options Options) (profile.Snapshot, error) {
 	if err := copyRuntimeTrust(options.SourceSet, staging); err != nil {
 		return profile.Snapshot{}, err
 	}
-	if err := copyProviderAssets(options.SourceSet, staging, selectedProviders); err != nil {
-		return profile.Snapshot{}, err
-	}
 	if err := copyRuntimeArtifacts(options.SourceSet, staging, manifest, selectedProviders); err != nil {
 		return profile.Snapshot{}, err
 	}
-	if err := renderProviderComponents(options.SourceSet, staging, options.Installation, selectedProviders); err != nil {
+	if err := renderProviderComponents(options.SourceSet, staging, options.Installation, manifest, selectedProviders); err != nil {
 		return profile.Snapshot{}, err
 	}
 	deployment, err := compileDeployment(options.Installation, selectedProviders, manifest, sourceDigest)
@@ -145,8 +146,14 @@ func loadSelectedProviders(sourceSet string, providers []string) ([]SourceProvid
 		if decodeErr := strictjson.Decode(data, &descriptor, true); decodeErr != nil {
 			return nil, fmt.Errorf("decode provider source %q: %w", entry.Name(), decodeErr)
 		}
-		if descriptor.APIVersion != SourceProviderAPIVersion || descriptor.ID != entry.Name() {
+		if descriptor.APIVersion != SourceProviderAPIVersion || descriptor.ID != entry.Name() ||
+			len(descriptor.RenderArguments) == 0 || len(descriptor.RenderArguments) > 8 {
 			return nil, fmt.Errorf("provider source %q identity is invalid", entry.Name())
+		}
+		for _, argument := range descriptor.RenderArguments {
+			if argument == "" || len(argument) > 4096 || strings.ContainsRune(argument, 0) {
+				return nil, fmt.Errorf("provider source %q render command is invalid", entry.Name())
+			}
 		}
 		available[descriptor.ID] = descriptor
 	}
@@ -175,24 +182,6 @@ func copyRuntimeTrust(sourceSet, staging string) error {
 		}
 		if err := writeRelative(staging, filepath.Join("runtime", name), data, 0o600); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-func copyProviderAssets(sourceSet, staging string, providers []SourceProvider) error {
-	for _, provider := range providers {
-		files := append([]string(nil), provider.Files...)
-		slices.Sort(files)
-		for _, file := range files {
-			source := filepath.Join(sourceSet, "providers", provider.ID, filepath.FromSlash(file))
-			data, err := readRegular(source, 4*1024*1024)
-			if err != nil {
-				return fmt.Errorf("copy provider %q asset %q: %w", provider.ID, file, err)
-			}
-			if err := writeRelative(staging, file, data, 0o600); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
@@ -259,6 +248,7 @@ func compileDeployment(source installation.Installation, providers []SourceProvi
 	for _, provider := range providers {
 		deployment.Components = append(deployment.Components, profile.Component{
 			ID: provider.ID, Profile: profile.Reference{Path: componentProfilePath(provider.ID), SHA256: zeroDigest()},
+			Metadata: &profile.Reference{Path: componentMetadataPath(provider.ID), SHA256: zeroDigest()},
 		})
 	}
 	// Ensure declared runtime manifest is not empty.
@@ -271,95 +261,129 @@ func compileDeployment(source installation.Installation, providers []SourceProvi
 	return deployment, nil
 }
 
-func renderProviderComponents(sourceSet, staging string, source installation.Installation, providers []SourceProvider) error {
+func renderProviderComponents(sourceSet, staging string, source installation.Installation, manifest bundle.Manifest, providers []SourceProvider) error {
 	if err := os.MkdirAll(filepath.Join(staging, "components"), 0o700); err != nil {
 		return err
 	}
 	for _, provider := range providers {
-		templatePath := filepath.Join(sourceSet, "providers", provider.ID, filepath.FromSlash(provider.Profile))
-		data, err := readRegular(templatePath, 4*1024*1024)
+		request, err := providerRenderRequest(sourceSet, source, manifest, provider)
 		if err != nil {
-			return fmt.Errorf("read component %q profile: %w", provider.ID, err)
-		}
-		var value component.Profile
-		if err := strictjson.Decode(data, &value, true); err != nil {
-			return fmt.Errorf("decode component %q: %w", provider.ID, err)
-		}
-		if err := renderComponent(&value, provider.ID, source); err != nil {
 			return err
 		}
-		componentPath := filepath.Join(staging, filepath.FromSlash(componentProfilePath(provider.ID)))
-		if err := writeJSON(componentPath, value); err != nil {
-			return err
+		response, err := runProviderRenderer(sourceSet, manifest, provider, request)
+		if err != nil {
+			return fmt.Errorf("render component %q: %w", provider.ID, err)
 		}
-		if err := rewriteComponentPolicy(staging, value.Files, clientsForProvider(source, provider.ID)); err != nil {
+		if err := writeRenderedProvider(staging, provider, response); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func renderComponent(value *component.Profile, providerID string, source installation.Installation) error {
-	localUsers := localUsersForProvider(source, providerID)
-	approverUsers := make([]string, 0, len(source.Approvers))
+func providerRenderRequest(sourceSet string, source installation.Installation, manifest bundle.Manifest, provider SourceProvider) (api.RenderRequest, error) {
+	templatePath := filepath.Join(sourceSet, "providers", provider.ID, filepath.FromSlash(provider.Profile))
+	profileTemplate, err := readRegular(templatePath, 4*1024*1024)
+	if err != nil {
+		return api.RenderRequest{}, fmt.Errorf("read component %q profile: %w", provider.ID, err)
+	}
+	request := api.RenderRequest{
+		APIVersion: api.RenderAPIVersion, ComponentID: provider.ID,
+		OperatingSystem: manifest.OperatingSystem, Architecture: manifest.Architecture,
+		Profile: profileTemplate,
+	}
+	capabilityData, err := json.Marshal(manifest.SetupCapabilities)
+	if err != nil {
+		return api.RenderRequest{}, err
+	}
+	request.CapabilityDigest = contentDigest(capabilityData)
 	for _, approver := range source.Approvers {
-		approverUsers = append(approverUsers, approver.Account)
+		request.Approvers = append(request.Approvers, api.RenderApprover{ID: approver.ID, Account: approver.Account})
 	}
-	slices.Sort(localUsers)
-	slices.Sort(approverUsers)
-	for index := range value.Groups {
-		switch {
-		case strings.HasSuffix(value.Groups[index].Name, "-agent"):
-			value.Groups[index].Members = append([]string(nil), localUsers...)
-		case strings.HasSuffix(value.Groups[index].Name, "-operator"):
-			value.Groups[index].Members = append([]string(nil), approverUsers...)
-		}
-	}
-	var clientDestination, clientOwner, clientGroup string
-	var clientMode uint32
-	var operatorDestination, operatorOwner, operatorGroup string
-	var operatorMode uint32
-	kept := value.Credentials[:0]
-	for _, credential := range value.Credentials {
-		if credential.Encoding != "client_secret_file" {
-			kept = append(kept, credential)
-			continue
-		}
-		if strings.Contains(credential.Slot, "operator") {
-			operatorDestination, operatorMode, operatorOwner, operatorGroup = credential.Destination, credential.Mode, credential.Owner, credential.Group
-		} else {
-			clientDestination, clientMode, clientOwner, clientGroup = credential.Destination, credential.Mode, credential.Owner, credential.Group
-		}
-	}
-	value.Credentials = kept
-	if clientDestination == "" || operatorDestination == "" {
-		return fmt.Errorf("component %q has no named secret store templates", providerID)
-	}
-	clientStore := component.SecretStore{ID: "clients", Destination: clientDestination, Mode: clientMode, Owner: clientOwner, Group: clientGroup}
-	operatorStore := component.SecretStore{ID: "approvers", Destination: operatorDestination, Mode: operatorMode, Owner: operatorOwner, Group: operatorGroup}
+	integrations := map[string]bool{}
 	for _, connection := range source.Connections {
-		if !slices.Contains(connection.Providers, providerID) {
-			continue
+		rendered := api.RenderConnection{
+			ID: connection.ID, ClientID: connection.ClientID, Providers: append([]string(nil), connection.Providers...),
+			TargetKind: string(connection.Target.Kind), Isolation: connection.Target.Isolation,
+			UnixUser: connection.Target.Account, Home: connection.Target.Home,
+			Container: connection.Target.Service, RemoteName: connection.Target.RemoteName,
 		}
-		clientStore.Entries = append(clientStore.Entries, component.SecretEntry{Identity: connection.ClientID, Slot: providerID + "-client-" + connection.ClientID})
-	}
-	for _, approver := range source.Approvers {
-		operatorStore.Entries = append(operatorStore.Entries, component.SecretEntry{Identity: approver.ID, Slot: providerID + "-approver-" + approver.ID})
-	}
-	value.SecretStores = []component.SecretStore{clientStore, operatorStore}
-	templateClient := component.Client{}
-	if len(value.Clients) > 0 {
-		templateClient = value.Clients[0]
-	}
-	value.Clients = nil
-	for _, connection := range source.Connections {
-		if connection.Target.Kind != installation.TargetLocalAccount || !slices.Contains(connection.Providers, providerID) {
-			continue
+		request.Connections = append(request.Connections, rendered)
+		for _, integration := range connection.Integrations {
+			integrations[integration] = true
 		}
-		client := templateClient
-		client.AgentID = connection.ID
-		client.SecretSlot = providerID + "-client-" + connection.ClientID
-		value.Clients = append(value.Clients, client)
+	}
+	for integration := range integrations {
+		request.Integrations = append(request.Integrations, integration)
+	}
+	slices.Sort(request.Integrations)
+	files := append([]string(nil), provider.Files...)
+	slices.Sort(files)
+	for _, relative := range files {
+		data, err := readRegular(filepath.Join(sourceSet, "providers", provider.ID, filepath.FromSlash(relative)), api.MaxMessageBytes)
+		if err != nil {
+			return api.RenderRequest{}, fmt.Errorf("read component %q asset %q: %w", provider.ID, relative, err)
+		}
+		request.Files = append(request.Files, api.RenderFile{Path: relative, SHA256: contentDigest(data), Data: data})
+	}
+	return request, request.Validate()
+}
+
+func runProviderRenderer(sourceSet string, manifest bundle.Manifest, provider SourceProvider, request api.RenderRequest) (api.RenderResponse, error) {
+	var runtimeComponent *bundle.Component
+	for index := range manifest.Components {
+		if manifest.Components[index].Name == provider.ID {
+			runtimeComponent = &manifest.Components[index]
+			break
+		}
+	}
+	if runtimeComponent == nil || runtimeComponent.Setup == nil {
+		return api.RenderResponse{}, errors.New("provider has no signed setup adapter")
+	}
+	executable := filepath.Join(sourceSet, filepath.FromSlash(runtimeComponent.Source))
+	info, err := os.Lstat(executable)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 {
+		return api.RenderResponse{}, errors.New("provider renderer executable is unsafe")
+	}
+	return (adapterruntime.Runner{}).RunRender(context.Background(), adapterruntime.Command{
+		Executable: executable, Arguments: append([]string(nil), provider.RenderArguments...),
+	}, request)
+}
+
+func writeRenderedProvider(staging string, provider SourceProvider, response api.RenderResponse) error {
+	expected := make(map[string]bool, len(provider.Files))
+	for _, path := range provider.Files {
+		expected[path] = true
+	}
+	if len(response.Files) != len(expected) {
+		return fmt.Errorf("component %q renderer returned an incomplete file set", provider.ID)
+	}
+	for _, file := range response.Files {
+		if !expected[file.Path] {
+			return fmt.Errorf("component %q renderer returned undeclared file %q", provider.ID, file.Path)
+		}
+		delete(expected, file.Path)
+		if err := writeRelative(staging, file.Path, file.Data, 0o600); err != nil {
+			return err
+		}
+	}
+	if len(expected) != 0 {
+		return fmt.Errorf("component %q renderer omitted declared files", provider.ID)
+	}
+	componentPath := filepath.Join(staging, filepath.FromSlash(componentProfilePath(provider.ID)))
+	if err := os.WriteFile(componentPath, response.Profile, 0o600); err != nil {
+		return err
+	}
+	metadata := response.Metadata()
+	if err := metadata.Validate(); err != nil {
+		return err
+	}
+	if err := writeJSON(filepath.Join(staging, filepath.FromSlash(componentMetadataPath(provider.ID))), metadata); err != nil {
+		return err
+	}
+	var rendered component.Profile
+	if err := strictjson.Decode(response.Profile, &rendered, true); err != nil {
+		return fmt.Errorf("decode rendered component %q: %w", provider.ID, err)
 	}
 	return nil
 }
@@ -450,123 +474,11 @@ func ownedPath(path string, prefixes []string) bool {
 	return false
 }
 
-func componentProfilePath(id string) string { return "components/" + id + ".json" }
-
-func clientsForProvider(source installation.Installation, provider string) []string {
-	var result []string
-	for _, connection := range source.Connections {
-		if slices.Contains(connection.Providers, provider) {
-			result = append(result, connection.ClientID)
-		}
-	}
-	slices.Sort(result)
-	return result
-}
-
-func localUsersForProvider(source installation.Installation, provider string) []string {
-	var result []string
-	for _, connection := range source.Connections {
-		if connection.Target.Kind == installation.TargetLocalAccount && slices.Contains(connection.Providers, provider) {
-			result = append(result, connection.Target.Account)
-		}
-	}
-	return result
-}
-
-func rewriteComponentPolicy(root string, files []component.ManagedFile, clients []string) error {
-	paths := map[string]string{}
-	for _, managed := range files {
-		name := filepath.Base(filepath.FromSlash(managed.Source.Path))
-		paths[name] = filepath.Join(root, filepath.FromSlash(managed.Source.Path))
-		if name == "policy-manifest.json" || !strings.Contains(name, "policy") && name != "scope.json" {
-			continue
-		}
-		if err := rewritePolicyClients(paths[name], clients); err != nil {
-			return err
-		}
-	}
-	manifestPath := paths["policy-manifest.json"]
-	profilePath := paths["policy-profile.json"]
-	policyPath := paths["scope.json"]
-	if manifestPath == "" || profilePath == "" || policyPath == "" {
-		return nil
-	}
-	profileData, err := os.ReadFile(profilePath) // #nosec G304 -- compiler staging path.
-	if err != nil {
-		return err
-	}
-	policyData, err := os.ReadFile(policyPath) // #nosec G304 -- compiler staging path.
-	if err != nil {
-		return err
-	}
-	manifestData, err := os.ReadFile(manifestPath) // #nosec G304 -- compiler staging path.
-	if err != nil {
-		return err
-	}
-	var manifest map[string]any
-	if err := strictjson.Decode(manifestData, &manifest, true); err != nil {
-		return err
-	}
-	manifest["profile_digest"] = contentDigest(profileData)
-	manifest["policy_digest"] = contentDigest(policyData)
-	return writeJSON(manifestPath, manifest)
-}
+func componentProfilePath(id string) string  { return "components/" + id + ".json" }
+func componentMetadataPath(id string) string { return "components/" + id + ".render.json" }
 
 func contentDigest(data []byte) string {
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(data))
-}
-
-// rewritePolicyClients changes only formatted clients arrays. Provider field
-// ordering remains intact because some provider validators require canonical
-// key order in addition to equivalent JSON values.
-func rewritePolicyClients(path string, clients []string) error {
-	data, err := os.ReadFile(path) // #nosec G304 -- compiler staging path.
-	if err != nil {
-		return err
-	}
-	var validated any
-	if err := strictjson.Decode(data, &validated, true); err != nil {
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	result := make([]string, 0, len(lines)+len(clients))
-	replacements := 0
-	for index := 0; index < len(lines); index++ {
-		line := lines[index]
-		if strings.TrimSpace(line) != `"clients": [` {
-			result = append(result, line)
-			continue
-		}
-		result = append(result, line)
-		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))] + "  "
-		closing := index + 1
-		for ; closing < len(lines); closing++ {
-			trimmed := strings.TrimSpace(lines[closing])
-			if trimmed == "]" || trimmed == "]," {
-				break
-			}
-		}
-		if closing == len(lines) {
-			return errors.New("policy client list is not closed")
-		}
-		for clientIndex, client := range clients {
-			encoded, marshalErr := json.Marshal(client)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			suffix := ","
-			if clientIndex == len(clients)-1 {
-				suffix = ""
-			}
-			result = append(result, indent+string(encoded)+suffix)
-		}
-		result = append(result, lines[closing])
-		index, replacements = closing, replacements+1
-	}
-	if replacements == 0 {
-		return errors.New("managed policy contains no client list")
-	}
-	return os.WriteFile(path, []byte(strings.Join(result, "\n")), 0o600)
 }
 
 func readRegular(path string, maximum int64) ([]byte, error) {

@@ -44,6 +44,8 @@ type RenderRequest struct {
 	Connections      []RenderConnection `json:"connections,omitempty"`
 	Integrations     []string           `json:"integrations,omitempty"`
 	CapabilityDigest string             `json:"capability_snapshot_digest,omitempty"`
+	Profile          json.RawMessage    `json:"profile"`
+	Files            []RenderFile       `json:"files,omitempty"`
 }
 
 // RenderFile is one nonsecret referenced file included in the rendered
@@ -84,6 +86,46 @@ type RenderResponse struct {
 	RenderDigest  string               `json:"render_digest"`
 }
 
+// RenderMetadata is the nonsecret, digest-bound part of a render response that
+// remains in the compiled installation for review and credential prompting.
+type RenderMetadata struct {
+	APIVersion    string               `json:"api_version"`
+	ComponentID   string               `json:"component_id"`
+	ReviewItems   []RenderReviewItem   `json:"review_items,omitempty"`
+	SecretPrompts []RenderSecretPrompt `json:"secret_prompts,omitempty"`
+	RenderDigest  string               `json:"render_digest"`
+}
+
+// Metadata returns the durable nonsecret projection of a render response.
+func (response RenderResponse) Metadata() RenderMetadata {
+	return RenderMetadata{
+		APIVersion: response.APIVersion, ComponentID: response.ComponentID,
+		ReviewItems:   append([]RenderReviewItem(nil), response.ReviewItems...),
+		SecretPrompts: append([]RenderSecretPrompt(nil), response.SecretPrompts...), RenderDigest: response.RenderDigest,
+	}
+}
+
+// Validate checks bounded render metadata.
+func (metadata RenderMetadata) Validate() error {
+	if metadata.APIVersion != RenderAPIVersion || !identifierPattern.MatchString(metadata.ComponentID) || !validDigest(metadata.RenderDigest) ||
+		len(metadata.ReviewItems) > MaxActions || len(metadata.SecretPrompts) > MaxCredentialSlots {
+		return errors.New("render metadata is invalid")
+	}
+	seen := map[string]bool{}
+	for _, prompt := range metadata.SecretPrompts {
+		if !identifierPattern.MatchString(prompt.Slot) || strings.TrimSpace(prompt.Label) == "" || seen[prompt.Slot] {
+			return errors.New("render metadata secret prompt is invalid or duplicated")
+		}
+		seen[prompt.Slot] = true
+	}
+	for _, item := range metadata.ReviewItems {
+		if strings.TrimSpace(item.Kind) == "" || strings.TrimSpace(item.Message) == "" || len(item.Message) > 4096 {
+			return errors.New("render metadata review item is invalid")
+		}
+	}
+	return nil
+}
+
 // Validate checks render request bounds and protocol invariants.
 //
 //nolint:cyclop // The render request is a closed nonsecret contract validated field by field.
@@ -97,7 +139,8 @@ func (request RenderRequest) Validate() error {
 	if len(request.Approvers) == 0 || len(request.Approvers) > MaxCredentialSlots {
 		return errors.New("render request approver count is invalid")
 	}
-	if len(request.Connections) > 32 || len(request.Integrations) > 32 {
+	if len(request.Connections) > 32 || len(request.Integrations) > 32 || len(request.Profile) == 0 ||
+		len(request.Profile) > MaxMessageBytes || !json.Valid(request.Profile) || len(request.Files) > MaxFiles {
 		return errors.New("render request collection exceeds limits")
 	}
 	seenApprovers := map[string]bool{}
@@ -116,6 +159,14 @@ func (request RenderRequest) Validate() error {
 			return errors.New("render request connection target kind is invalid")
 		}
 		seenConnections[connection.ID] = true
+	}
+	seenFiles := map[string]bool{}
+	for _, file := range request.Files {
+		if !safeRenderRelative(file.Path) || seenFiles[file.Path] || !validDigest(file.SHA256) ||
+			file.SHA256 != digest(file.Data) || len(file.Data) > MaxMessageBytes {
+			return errors.New("render request file is invalid or duplicated")
+		}
+		seenFiles[file.Path] = true
 	}
 	if request.CapabilityDigest != "" && !validDigest(request.CapabilityDigest) {
 		return errors.New("render request capability snapshot digest is invalid")
@@ -170,13 +221,16 @@ func (response RenderResponse) Validate() error {
 // rendered profile bytes, referenced files, review items, and secret prompt
 // metadata.
 func (response RenderResponse) CalculateRenderDigest() (string, error) {
+	files := append([]RenderFile{}, response.Files...)
+	reviewItems := append([]RenderReviewItem{}, response.ReviewItems...)
+	secretPrompts := append([]RenderSecretPrompt{}, response.SecretPrompts...)
 	values := struct {
 		ComponentID   string               `json:"component_id"`
 		Profile       json.RawMessage      `json:"profile"`
 		Files         []RenderFile         `json:"files"`
 		ReviewItems   []RenderReviewItem   `json:"review_items"`
 		SecretPrompts []RenderSecretPrompt `json:"secret_prompts"`
-	}{response.ComponentID, response.Profile, response.Files, response.ReviewItems, response.SecretPrompts}
+	}{response.ComponentID, response.Profile, files, reviewItems, secretPrompts}
 	data, err := json.Marshal(values)
 	if err != nil {
 		return "", err

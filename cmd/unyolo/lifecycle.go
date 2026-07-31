@@ -181,6 +181,13 @@ func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, stor
 		return err
 	}
 	defer func() { _ = os.RemoveAll(destination) }()
+	metadata, err := compiledRenderMetadata(compiled)
+	if err != nil {
+		return err
+	}
+	if err := showProviderReview(ctx, prompter, metadata); err != nil {
+		return err
+	}
 	if err := prompter.Note(ctx, fmt.Sprintf("Configuration digest: %s", compiled.Digest), "Prepared configuration"); err != nil {
 		return err
 	}
@@ -190,7 +197,7 @@ func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, stor
 	}
 	defer func() { _ = worker.Close() }()
 	return store.Publish(desired, destination, func(generated string) error {
-		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, session.Store{}, nil)
+		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, session.Store{}, nil, secretPromptIndex(metadata))
 	})
 }
 

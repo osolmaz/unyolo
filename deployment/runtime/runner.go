@@ -104,6 +104,60 @@ func (runner Runner) Run(ctx context.Context, command Command, request api.Reque
 	return response, nil
 }
 
+// RunRender executes one stateless provider render exchange with the same
+// bounded process and framing rules as host mutation adapters.
+func (runner Runner) RunRender(ctx context.Context, command Command, request api.RenderRequest) (api.RenderResponse, error) {
+	if err := validateCommand(command); err != nil {
+		return api.RenderResponse{}, err
+	}
+	if err := request.Validate(); err != nil {
+		return api.RenderResponse{}, err
+	}
+	timeout := runner.Timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	commandContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var input bytes.Buffer
+	output := &boundedBuffer{maximum: api.MaxMessageBytes + 4}
+	stderr := &boundedBuffer{maximum: maxStderrBytes}
+	if err := WriteFrame(&input, request); err != nil {
+		return api.RenderResponse{}, err
+	}
+	process := exec.CommandContext(commandContext, command.Executable, command.Arguments...) // #nosec G204 -- executable and arguments come from the verified release source set.
+	process.Stdin, process.Stdout, process.Stderr = &input, output, stderr
+	process.Env = runner.environment()
+	if err := process.Run(); err != nil {
+		if errors.Is(commandContext.Err(), context.DeadlineExceeded) {
+			return api.RenderResponse{}, errors.New("setup-component renderer timed out")
+		}
+		message := strings.TrimSpace(stderr.data.String())
+		if message == "" {
+			return api.RenderResponse{}, fmt.Errorf("setup-component renderer failed: %w", err)
+		}
+		return api.RenderResponse{}, fmt.Errorf("setup-component renderer failed: %w: %s", err, message)
+	}
+	if output.overflowed {
+		return api.RenderResponse{}, errors.New("setup-component render response exceeds size limit")
+	}
+	reader := bytes.NewReader(output.data.Bytes())
+	var response api.RenderResponse
+	if err := ReadFrame(reader, &response); err != nil {
+		return api.RenderResponse{}, err
+	}
+	if reader.Len() != 0 {
+		return api.RenderResponse{}, errors.New("setup-component renderer emitted trailing protocol bytes")
+	}
+	if response.ComponentID != request.ComponentID {
+		return api.RenderResponse{}, errors.New("setup-component render response identity does not match request")
+	}
+	if err := response.Validate(); err != nil {
+		return api.RenderResponse{}, err
+	}
+	return response, nil
+}
+
 func validateCommand(command Command) error {
 	if command.Executable == "" || !strings.HasPrefix(command.Executable, "/") {
 		return errors.New("setup-component executable must be absolute")

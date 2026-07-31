@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/deployment/flow"
 	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
 	"github.com/osolmaz/unyolo/deployment/profile"
@@ -26,6 +27,7 @@ import (
 	hostaccount "github.com/osolmaz/unyolo/internal/host/account"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
+	"github.com/osolmaz/unyolo/internal/strictjson"
 	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
 	"github.com/osolmaz/unyolo/internal/userinstall"
 	"github.com/osolmaz/unyolo/setup/capability"
@@ -400,6 +402,13 @@ func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, ses
 		return err
 	}
 	defer func() { _ = os.RemoveAll(destination) }()
+	metadata, err := compiledRenderMetadata(compiled)
+	if err != nil {
+		return err
+	}
+	if err := showProviderReview(ctx, prompter, metadata); err != nil {
+		return err
+	}
 	if err := showInstallationDetails(ctx, prompter, compiled); err != nil {
 		return err
 	}
@@ -432,8 +441,53 @@ func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, ses
 		return err
 	}
 	return installation.Store{Root: installRoot}.Publish(desired, destination, func(generated string) error {
-		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, sessions, setupSession)
+		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, sessions, setupSession, secretPromptIndex(metadata))
 	})
+}
+
+func compiledRenderMetadata(compiled profile.Snapshot) ([]api.RenderMetadata, error) {
+	metadata := make([]api.RenderMetadata, 0, len(compiled.Deployment.Components))
+	for _, component := range compiled.Deployment.Components {
+		if component.Metadata == nil {
+			return nil, fmt.Errorf("component %q has no render metadata", component.ID)
+		}
+		file, exists := compiled.Files[component.Metadata.Path]
+		if !exists {
+			return nil, fmt.Errorf("component %q render metadata is unavailable", component.ID)
+		}
+		var value api.RenderMetadata
+		if err := strictjson.Decode(file.Data, &value, true); err != nil {
+			return nil, err
+		}
+		if err := value.Validate(); err != nil || value.ComponentID != component.ID {
+			return nil, fmt.Errorf("component %q render metadata is invalid", component.ID)
+		}
+		metadata = append(metadata, value)
+	}
+	return metadata, nil
+}
+
+func showProviderReview(ctx context.Context, prompter flow.SetupPrompter, metadata []api.RenderMetadata) error {
+	var messages []string
+	for _, value := range metadata {
+		for _, item := range value.ReviewItems {
+			messages = append(messages, "- "+item.Message)
+		}
+	}
+	if len(messages) == 0 {
+		return nil
+	}
+	return prompter.Note(ctx, strings.Join(messages, "\n"), "Credential service changes")
+}
+
+func secretPromptIndex(metadata []api.RenderMetadata) map[string]api.RenderSecretPrompt {
+	result := map[string]api.RenderSecretPrompt{}
+	for _, value := range metadata {
+		for _, prompt := range value.SecretPrompts {
+			result[prompt.Slot] = prompt
+		}
+	}
+	return result
 }
 
 func showInstallationDetails(ctx context.Context, prompter flow.SetupPrompter, compiled profile.Snapshot) error {
@@ -450,7 +504,7 @@ func showInstallationDetails(ctx context.Context, prompter flow.SetupPrompter, c
 }
 
 //nolint:cyclop // The apply flow keeps session bookkeeping and secret transfer together across the review.
-func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, worker protectedSetupWorker, installationPath, generated string, sessions session.Store, setupSession *session.Session) error {
+func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, worker protectedSetupWorker, installationPath, generated string, sessions session.Store, setupSession *session.Session, prompts map[string]api.RenderSecretPrompt) error {
 	progress := prompter.Progress("Checking the requested system changes")
 	planned, err := worker.PlanInstallation(installationPath, generated)
 	if err != nil {
@@ -480,7 +534,7 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		}
 		return flow.CancelledError{}
 	}
-	secrets, err := collectPlanSecrets(ctx, prompter, planned.Plan)
+	secrets, err := collectPlanSecrets(ctx, prompter, planned.Plan, prompts)
 	if err != nil {
 		_ = worker.Cancel()
 		return err
@@ -512,10 +566,10 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 	return prompter.Outro(ctx, "Setup is complete and the selected connection was verified.")
 }
 
-func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan deploymentplan.Plan) (map[string][]byte, error) {
+func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan deploymentplan.Plan, prompts map[string]api.RenderSecretPrompt) (map[string][]byte, error) {
 	secrets := map[string][]byte{}
 	for _, slot := range privilege.RequiredSecretSlots(plan) {
-		value, err := collectPlanSecret(ctx, prompter, slot)
+		value, err := collectPlanSecret(ctx, prompter, slot, prompts[slot])
 		if err != nil {
 			clearSetupSecrets(secrets)
 			return nil, err
@@ -525,7 +579,7 @@ func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan d
 	return secrets, validateSetupSecretPairs(secrets)
 }
 
-func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot string) ([]byte, error) {
+func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot string, prompt api.RenderSecretPrompt) ([]byte, error) {
 	if strings.Contains(slot, "-client-") || strings.Contains(slot, "-approver-") {
 		value := make([]byte, 32)
 		if _, err := rand.Read(value); err != nil {
@@ -546,7 +600,11 @@ func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot st
 		value, err := prompter.Text(ctx, flow.Prompt{Message: "GitHub App ID", Description: "Use the numeric App ID shown in the GitHub App settings.", Required: true})
 		return []byte(value), err
 	}
-	return prompter.Secret(ctx, flow.Prompt{Message: friendlyCredentialLabel(slot), Description: "This is sent once to the selected credential service and is not saved in setup progress.", Required: true})
+	label := prompt.Label
+	if label == "" || label == slot {
+		label = friendlyCredentialLabel(slot)
+	}
+	return prompter.Secret(ctx, flow.Prompt{Message: label, Description: "This is sent once to the selected credential service and is not saved in setup progress.", Required: true})
 }
 
 func readSetupCredentialFile(path string) ([]byte, error) {

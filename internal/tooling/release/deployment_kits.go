@@ -59,12 +59,13 @@ type loadedDeploymentComponent struct {
 // It binds the provider identifier to its owned runtime components and its signed
 // ownership envelope.
 type SourceProvider struct {
-	APIVersion string                   `json:"api_version"`
-	ID         string                   `json:"id"`
-	Components []string                 `json:"components"`
-	Ownership  bundle.OwnershipEnvelope `json:"ownership"`
-	Profile    string                   `json:"profile"`
-	Files      []string                 `json:"files,omitempty"`
+	APIVersion      string                   `json:"api_version"`
+	ID              string                   `json:"id"`
+	Components      []string                 `json:"components"`
+	Ownership       bundle.OwnershipEnvelope `json:"ownership"`
+	Profile         string                   `json:"profile"`
+	Files           []string                 `json:"files,omitempty"`
+	RenderArguments []string                 `json:"render_arguments"`
 }
 
 func generateDeploymentKits(work string, options Options, binaries map[string]string, goos, goarch string) (map[string]string, map[string]bool, error) {
@@ -203,6 +204,7 @@ func writeSourceProvider(root, provider string, components []loadedDeploymentCom
 	descriptor.Components = componentIDs
 	descriptor.Ownership = primary.descriptor.Setup.Ownership
 	descriptor.Profile = "profile.json"
+	descriptor.RenderArguments = []string{"setup-component-render"}
 	if err := copyReleaseData(filepath.Join(primary.directory, primary.descriptor.Profile), filepath.Join(providerRoot, "profile.json"), 0o600); err != nil {
 		return err
 	}
@@ -368,7 +370,7 @@ func releaseRuntimeComponent(value deploymentReleaseComponent, binary, version s
 		return bundle.Component{}, err
 	}
 	component := bundle.Component{
-		Name: value.Name, Source: value.Binary, Destination: value.Destination, SHA256: artifactDigest,
+		Name: value.Name, Source: filepath.ToSlash(filepath.Join("artifacts", value.Binary)), Destination: value.Destination, SHA256: artifactDigest,
 		BuildID: version, Role: value.Role, Services: append([]string(nil), value.Services...),
 		OperatorEndpoint: value.OperatorEndpoint, OperatorTokenFile: value.OperatorTokenFile,
 		StateFormatDigest: value.StateFormatDigest, StateDir: value.StateDir, ReplaceState: value.ReplaceState,
