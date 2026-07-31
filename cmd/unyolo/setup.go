@@ -593,6 +593,9 @@ func runClientOnly(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err := pairingclient.WaitForActive(ctx, result); err != nil {
 		return err
 	}
+	if err := pairingclient.VerifyConnections(ctx, result); err != nil {
+		return err
+	}
 	if err := pairingclient.MarkVerified(ctx, result); err != nil {
 		return err
 	}
