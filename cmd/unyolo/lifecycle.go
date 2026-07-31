@@ -330,8 +330,8 @@ func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
-		Message: firstRemovalConfirmation(), Description: "This removes unchanged service configuration and runtime files created by unYOLO. Credentials, broker data, and managed agent accounts are kept.",
-		Affirmative: "Remove services and configuration", Negative: "Cancel", Safe: true,
+		Message: firstRemovalConfirmation(), Description: "This removes unchanged service configuration, generated connections, and managed agent accounts created by unYOLO. Provider credentials and broker data are kept.",
+		Affirmative: "Remove unYOLO resources", Negative: "Cancel", Safe: true,
 	})
 	if err != nil || !confirmed {
 		_ = worker.Cancel()
@@ -395,7 +395,7 @@ func showRemovalReview(ctx context.Context, prompter flow.SetupPrompter, plan ho
 }
 
 func firstRemovalConfirmation() string {
-	return "Remove services and configuration?"
+	return "Remove services, connections, and managed accounts?"
 }
 
 func confirmDestructiveDataRemoval(ctx context.Context, prompter flow.SetupPrompter, plan hostdeployment.RemovalPlan) error {

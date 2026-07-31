@@ -323,6 +323,82 @@ func (i Installer) DeactivateCandidate(ctx context.Context, candidate string) er
 	return syncDirectory(filepath.Dir(release))
 }
 
+// DeactivateInstallation restores the baseline that existed before an
+// installation and removes every now-inactive runtime bundle owned by it.
+func (i Installer) DeactivateInstallation(ctx context.Context, candidate, baseline string, owned []string) error {
+	if err := i.normalize(); err != nil {
+		return err
+	}
+	if !identifierPattern.MatchString(candidate) || baseline != "" && !identifierPattern.MatchString(baseline) || len(owned) == 0 || len(owned) > 64 {
+		return errors.New("installation runtime identity is invalid")
+	}
+	ownedSet := map[string]bool{}
+	for _, bundleID := range owned {
+		if !identifierPattern.MatchString(bundleID) || bundleID == baseline || ownedSet[bundleID] {
+			return errors.New("installation runtime history is invalid")
+		}
+		ownedSet[bundleID] = true
+	}
+	if !ownedSet[candidate] {
+		return errors.New("active installation runtime is absent from its history")
+	}
+	lock, err := acquireLock(i.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.close()
+	if err := i.recoverInterruptedActivation(); err != nil {
+		return err
+	}
+	active, activeManifest, err := i.currentManifest()
+	if err != nil {
+		return err
+	}
+	if active != candidate {
+		if active != baseline {
+			return errors.New("active runtime changed before installation removal")
+		}
+	} else if baseline == "" {
+		if err := i.restore("", Manifest{}, activeManifest); err != nil {
+			return err
+		}
+		if err := i.restoreActivationRecord(nil); err != nil {
+			return err
+		}
+	} else {
+		baselineManifest, err := i.manifest(baseline)
+		if err != nil {
+			return err
+		}
+		record, err := i.readActivation()
+		if err != nil || record.ActiveBundleID != candidate {
+			return errors.New("installation runtime activation record changed before removal")
+		}
+		next := Activation{APIVersion: APIVersion, ActiveBundleID: baseline, PreviousBundleID: candidate, ActivatedAt: i.Now().UTC()}
+		transaction := activationTransaction{APIVersion: APIVersion, CandidateBundleID: baseline,
+			PreviousBundleID: candidate, PreviousActivation: &record, FinalActivation: next, StartedAt: i.Now().UTC()}
+		if err := writeJSONAtomic(filepath.Join(i.Paths.StateDir, transactionFilename), transaction, 0o600); err != nil {
+			return err
+		}
+		if err := i.restore(baseline, baselineManifest, activeManifest); err != nil {
+			return i.failActivation(err, transaction, activeManifest, baselineManifest)
+		}
+		next.PreviousBundleID = ""
+		if err := writeJSONAtomic(filepath.Join(i.Paths.StateDir, activationFilename), next, 0o600); err != nil {
+			return err
+		}
+		if err := i.clearTransaction(); err != nil {
+			return err
+		}
+	}
+	for bundleID := range ownedSet {
+		if err := os.RemoveAll(filepath.Join(i.Paths.Root, "releases", bundleID)); err != nil {
+			return err
+		}
+	}
+	return syncDirectory(filepath.Join(i.Paths.Root, "releases"))
+}
+
 func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate string) error {
 	snapshot, err := i.activationSnapshot()
 	if err != nil {
