@@ -541,7 +541,7 @@ func (i Installer) inspectComponent(ctx context.Context, release string, compone
 func (i Installer) inspectService(ctx context.Context, release string, component Component, service string) ServiceReport {
 	status, err := i.Manager.Status(ctx, service)
 	expected := filepath.Join(release, component.Destination)
-	matches := err == nil && status.Active && processPathMatches(status.Executable, expected)
+	matches := err == nil && status.Active && (strings.HasSuffix(service, ".socket") || processPathMatches(status.Executable, expected))
 	return ServiceReport{Name: service, Active: status.Active, PID: status.PID,
 		Executable: status.Executable, Expected: expected, Matches: matches}
 }

@@ -921,6 +921,9 @@ func TestVerifyComponentRuntimeAcceptsActiveSocketWithoutProcess(t *testing.T) {
 	if err := installer.verifyComponentRuntime(t.Context(), release, component); err != nil {
 		t.Fatal(err)
 	}
+	if report := installer.inspectService(t.Context(), release, component, "gh-agent.socket"); !report.Active || !report.Matches {
+		t.Fatalf("socket report = %#v", report)
+	}
 }
 
 type fakeManager struct {
