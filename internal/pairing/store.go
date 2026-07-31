@@ -32,6 +32,45 @@ const (
 	StateRevoked  = "revoked"
 )
 
+// Event names emitted through the pairing audit stream. These are safe to log
+// and never carry secret material.
+const (
+	EventOffered  = "invitation.offered"
+	EventClaimed  = "invitation.claimed"
+	EventReady    = "connection.ready"
+	EventActive   = "connection.active"
+	EventVerified = "connection.verified"
+	EventExpired  = "invitation.expired"
+	EventRevoked  = "invitation.revoked"
+	EventPurged   = "invitation.purged"
+	EventDenied   = "invitation.denied"
+)
+
+// Event is a safe, secret-free record of one pairing lifecycle transition.
+type Event struct {
+	Name      string    `json:"name"`
+	PairingID string    `json:"pairing_id"`
+	State     string    `json:"state"`
+	At        time.Time `json:"at"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+// AuditSink receives Events for every lifecycle transition. It must not
+// receive secrets; the store guarantees Event contains only nonsecret fields.
+type AuditSink interface {
+	Emit(Event)
+}
+
+// AuditFunc adapts a function to AuditSink.
+type AuditFunc func(Event)
+
+// Emit forwards the event to the underlying function.
+func (f AuditFunc) Emit(event Event) {
+	if f != nil {
+		f(event)
+	}
+}
+
 var (
 	ErrGone      = errors.New("pairing invitation is no longer available")
 	ErrForbidden = errors.New("pairing credential is invalid")
@@ -62,7 +101,15 @@ type InvitationOptions struct {
 type Store struct {
 	Directory string
 	Now       func() time.Time
+	Audit     AuditSink
 	mu        sync.Mutex
+}
+
+func (store *Store) emit(name string, record Record, reason string) {
+	if store.Audit == nil {
+		return
+	}
+	store.Audit.Emit(Event{Name: name, PairingID: record.ID, State: record.State, At: store.now(), Reason: reason})
 }
 
 func (store *Store) Create(options InvitationOptions) (string, error) {
@@ -101,6 +148,7 @@ func (store *Store) Create(options InvitationOptions) (string, error) {
 	if err := store.save(record); err != nil {
 		return "", err
 	}
+	store.emit(EventOffered, record, "")
 	certificate := base64.RawStdEncoding.EncodeToString(options.CACertificate)
 	invitation := pairingv1.Invitation{
 		APIVersion: pairingv1.APIVersion, Endpoint: options.Endpoint, PairingID: options.ID, Token: invitationToken,
@@ -118,6 +166,7 @@ func (store *Store) Claim(id, token string) (pairingv1.Bundle, error) {
 		return pairingv1.Bundle{}, err
 	}
 	if record.State != StateOffered {
+		store.emit(EventDenied, record, "not-offered")
 		return pairingv1.Bundle{}, ErrGone
 	}
 	if store.now().After(record.InvitationExpires) {
@@ -125,12 +174,14 @@ func (store *Store) Claim(id, token string) (pairingv1.Bundle, error) {
 		return pairingv1.Bundle{}, ErrGone
 	}
 	if !matchesHash(record.InvitationTokenHash, token) {
+		store.emit(EventDenied, record, "wrong-token")
 		return pairingv1.Bundle{}, ErrForbidden
 	}
 	record.State, record.InvitationTokenHash, record.UpdatedAt = StateClaimed, "", store.now()
 	if err := store.save(record); err != nil {
 		return pairingv1.Bundle{}, err
 	}
+	store.emit(EventClaimed, record, "")
 	return record.Bundle, nil
 }
 
@@ -156,6 +207,7 @@ func (store *Store) Activate(id string) (Record, error) {
 	if err := store.save(record); err != nil {
 		return Record{}, err
 	}
+	store.emit(EventActive, record, "")
 	return redacted(record), nil
 }
 
@@ -191,7 +243,68 @@ func (store *Store) Revoke(id string) error {
 	}
 	record.State, record.Bundle, record.InvitationTokenHash, record.ClaimSecretHash = StateRevoked, pairingv1.Bundle{}, "", ""
 	record.UpdatedAt = store.now()
-	return store.save(record)
+	if err := store.save(record); err != nil {
+		return err
+	}
+	store.emit(EventRevoked, record, "")
+	return nil
+}
+
+// PurgeExpired walks the store and expires every offered/claimed/ready record
+// whose completion window has passed, erasing every remaining bundle from
+// disk. Records already terminal (verified, expired, revoked) whose retention
+// window has passed are removed entirely so no orphan bundles remain.
+func (store *Store) PurgeExpired(retention time.Duration) (int, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if _, err := os.Lstat(store.Directory); errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	entries, err := os.ReadDir(store.Directory)
+	if err != nil {
+		return 0, err
+	}
+	if retention < 0 {
+		retention = 0
+	}
+	now := store.now()
+	changed := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.Type().IsRegular() || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+		if !validID(id) {
+			continue
+		}
+		record, err := store.load(id)
+		if err != nil {
+			continue
+		}
+		switch record.State {
+		case StateOffered, StateClaimed, StateReady:
+			if !now.After(record.CompletionExpires) {
+				continue
+			}
+			if err := store.expire(&record); err != nil {
+				return changed, err
+			}
+			changed++
+		case StateActive:
+			continue
+		case StateVerified, StateExpired, StateRevoked:
+			if !now.After(record.UpdatedAt.Add(retention)) {
+				continue
+			}
+			if err := os.Remove(store.path(id)); err != nil {
+				return changed, err
+			}
+			store.emit(EventPurged, record, "")
+			changed++
+		}
+	}
+	return changed, nil
 }
 
 func (store *Store) claimTransition(id, secret string, allowed []string, next string, erase bool) (Record, error) {
@@ -202,6 +315,7 @@ func (store *Store) claimTransition(id, secret string, allowed []string, next st
 		return Record{}, err
 	}
 	if !matchesHash(record.ClaimSecretHash, secret) {
+		store.emit(EventDenied, record, "wrong-claim-secret")
 		return Record{}, ErrForbidden
 	}
 	valid := false
@@ -209,6 +323,7 @@ func (store *Store) claimTransition(id, secret string, allowed []string, next st
 		valid = valid || record.State == state
 	}
 	if !valid {
+		store.emit(EventDenied, record, "invalid-transition")
 		return Record{}, ErrGone
 	}
 	record.State, record.UpdatedAt = next, store.now()
@@ -217,6 +332,12 @@ func (store *Store) claimTransition(id, secret string, allowed []string, next st
 	}
 	if err := store.save(record); err != nil {
 		return Record{}, err
+	}
+	switch next {
+	case StateReady:
+		store.emit(EventReady, record, "")
+	case StateVerified:
+		store.emit(EventVerified, record, "")
 	}
 	return redacted(record), nil
 }
@@ -238,7 +359,11 @@ func (store *Store) loadCurrent(id string) (Record, error) {
 func (store *Store) expire(record *Record) error {
 	record.State, record.Bundle, record.InvitationTokenHash, record.ClaimSecretHash = StateExpired, pairingv1.Bundle{}, "", ""
 	record.UpdatedAt = store.now()
-	return store.save(*record)
+	if err := store.save(*record); err != nil {
+		return err
+	}
+	store.emit(EventExpired, *record, "")
+	return nil
 }
 
 func (store *Store) load(id string) (Record, error) {
