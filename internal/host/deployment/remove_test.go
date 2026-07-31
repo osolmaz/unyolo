@@ -16,6 +16,18 @@ import (
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
+func TestRemovalOrdersGroupsAroundAccountDeletion(t *testing.T) {
+	t.Parallel()
+	plan := FilterRemovalPlan(RemovalPlan{Actions: []RemovalAction{
+		{Kind: RemovalActionRemoveAccount, ID: "account"},
+		{Kind: RemovalActionRemoveGroup, ID: "secondary", ComponentID: "sudo"},
+		{Kind: RemovalActionRemoveGroup, ID: "primary", ComponentID: "sudo", Destructive: true},
+	}})
+	if got := []string{plan.Actions[0].ID, plan.Actions[1].ID, plan.Actions[2].ID}; !slices.Equal(got, []string{"secondary", "account", "primary"}) {
+		t.Fatalf("removal order = %#v", got)
+	}
+}
+
 func TestPlanRemovalRequiresReceipt(t *testing.T) {
 	t.Parallel()
 	state := t.TempDir()

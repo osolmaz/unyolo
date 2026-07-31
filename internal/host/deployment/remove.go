@@ -553,8 +553,8 @@ func FilterRemovalPlan(plan RemovalPlan) RemovalPlan {
 		plan.APIVersion = RemovalAPIVersion
 	}
 	slices.SortFunc(plan.Actions, func(a, b RemovalAction) int {
-		if removalActionRank(a.Kind) != removalActionRank(b.Kind) {
-			return removalActionRank(a.Kind) - removalActionRank(b.Kind)
+		if removalActionRank(a) != removalActionRank(b) {
+			return removalActionRank(a) - removalActionRank(b)
 		}
 		return strings.Compare(a.ID, b.ID)
 	})
@@ -567,20 +567,23 @@ func FilterRemovalPlan(plan RemovalPlan) RemovalPlan {
 	return plan
 }
 
-func removalActionRank(kind RemovalActionKind) int {
-	switch kind {
+func removalActionRank(action RemovalAction) int {
+	switch action.Kind {
 	case RemovalActionRemoveRuntime:
 		return 0
-	case RemovalActionRemoveAccount:
-		return 1
-	case RemovalActionRemoveFile, RemovalActionRemoveContainer:
-		return 2
 	case RemovalActionRemoveGroup:
+		if action.ComponentID != "" && !action.Destructive {
+			return 1
+		}
+		return 4
+	case RemovalActionRemoveAccount:
+		return 2
+	case RemovalActionRemoveFile, RemovalActionRemoveContainer:
 		return 3
 	case RemovalActionRemoveDirectory:
-		return 4
-	case RemovalActionDeleteReceipt:
 		return 5
+	case RemovalActionDeleteReceipt:
+		return 6
 	default:
 		return 99
 	}
