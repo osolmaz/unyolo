@@ -74,7 +74,7 @@ var Screens = map[string]Screen{
 	},
 	ScreenInstallCommand: {
 		Question:  "Install the unYOLO command?",
-		Reason:    "This installs the verified command for your account. No system services are changed.",
+		Reason:    "This installs the verified command for your account. If needed, it removes write access for other accounts from the command and data folders. No system services are changed.",
 		Primary:   "Install command",
 		Secondary: "Cancel",
 	},

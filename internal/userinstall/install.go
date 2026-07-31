@@ -139,7 +139,7 @@ func stagedManifest(record StageRecord, installedAt time.Time, files []installFi
 }
 
 func activateRelease(options Options, version string, files []installFile, manifest Manifest) error {
-	if err := ensureOwnedDirectory(options.DataHome, 0o755); err != nil {
+	if err := ensureOwnedInstallDirectory(options.DataHome, 0o755); err != nil {
 		return fmt.Errorf("prepare user data directory: %w", err)
 	}
 	root := filepath.Join(options.DataHome, "unyolo")
@@ -150,7 +150,7 @@ func activateRelease(options Options, version string, files []installFile, manif
 	if err := prepareRelease(filepath.Join(releases, version), releases, files, manifest); err != nil {
 		return err
 	}
-	if err := ensureOwnedDirectory(options.BinHome, 0o755); err != nil {
+	if err := ensureOwnedInstallDirectory(options.BinHome, 0o755); err != nil {
 		return fmt.Errorf("prepare user binary directory: %w", err)
 	}
 	return switchActive(root, options.BinHome, version)
@@ -521,6 +521,46 @@ func rollbackCurrent(current, currentTemp, oldTarget string, oldErr error) {
 	}
 }
 
+func ensureOwnedInstallDirectory(path string, mode os.FileMode) error {
+	if err := os.MkdirAll(path, mode); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if err := validateOwnedDirectoryIdentity(info); err != nil {
+		return err
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		if err := tightenDirectoryPermissions(path, info); err != nil {
+			return err
+		}
+	}
+	return verifyOwnedDirectory(path)
+}
+
+func tightenDirectoryPermissions(path string, expected os.FileInfo) error {
+	directory, err := os.Open(path) // #nosec G304 -- path is an explicit user-owned installation root checked again through the open handle.
+	if err != nil {
+		return err
+	}
+	info, statErr := directory.Stat()
+	if statErr != nil || !os.SameFile(expected, info) {
+		_ = directory.Close()
+		return errors.New("directory changed while permissions were being secured")
+	}
+	if err := validateOwnedDirectoryIdentity(info); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	mode := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+	mode &^= 0o022
+	chmodErr := directory.Chmod(mode)
+	closeErr := directory.Close()
+	return errors.Join(chmodErr, closeErr)
+}
+
 func ensureOwnedDirectory(path string, mode os.FileMode) error {
 	if err := os.MkdirAll(path, mode); err != nil {
 		return err
@@ -541,11 +581,18 @@ func verifyOwnedDirectory(path string) error {
 }
 
 func validateOwnedDirectoryInfo(info os.FileInfo) error {
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("directory must be real")
+	if err := validateOwnedDirectoryIdentity(info); err != nil {
+		return err
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("directory must not be group-writable (mode %04o)", info.Mode().Perm())
+	}
+	return nil
+}
+
+func validateOwnedDirectoryIdentity(info os.FileInfo) error {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("directory must be real")
 	}
 	if !ownedByCurrentUser(info) {
 		return errors.New("directory must be owned by the invoking user")
