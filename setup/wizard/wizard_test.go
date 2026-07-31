@@ -22,6 +22,31 @@ func TestGoalChoicesHideIncompletePaths(t *testing.T) {
 	}
 }
 
+func TestRemotePairingChoiceHiddenWithoutCapability(t *testing.T) {
+	t.Parallel()
+	nativeOnly := capability.Snapshot{Features: []capability.Feature{capability.FeatureNativeService, capability.FeatureLocalSocket, capability.FeatureLocalAccounts}}
+	locations := AgentLocationChoices(nativeOnly)
+	if HasChoice(locations, "remote") {
+		t.Fatalf("remote agent shown without pairing capability: %#v", locations)
+	}
+	withPairing := capability.Snapshot{Features: []capability.Feature{capability.FeatureNativeService, capability.FeatureLocalSocket, capability.FeatureLocalAccounts, capability.FeatureRemotePairing}}
+	if !HasChoice(AgentLocationChoices(withPairing), "remote") {
+		t.Fatal("remote agent hidden when pairing capability is present")
+	}
+}
+
+func TestGoalChoicesShowAgentConnectionForRemotePairingOnly(t *testing.T) {
+	t.Parallel()
+	pairingOnly := capability.Snapshot{Features: []capability.Feature{capability.FeatureRemotePairing}}
+	choices := GoalChoices(pairingOnly)
+	if !HasChoice(choices, "agent_connection") {
+		t.Fatalf("agent_connection missing when only pairing is available: %#v", choices)
+	}
+	if HasChoice(choices, "complete_local") || HasChoice(choices, "credential_service") {
+		t.Fatalf("server-side goals shown without native services: %#v", choices)
+	}
+}
+
 func TestApplyMatrix(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
