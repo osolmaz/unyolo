@@ -55,6 +55,13 @@ linters:
       - path: "^broker/conformance/"
         linters:
           - cyclop
+      - path: "^(cmd/unyolo(-[^/]+)?/|deployment/|git/client/|internal/config/client/|internal/host/|internal/pairing/|protocol/pairing/|setup/|transport/endpoint/)"
+        linters:
+          - cyclop
+          - nolintlint
+      - path: "^(cmd/unyolo/setup|deployment/component/apply|internal/host/bundle/activate|internal/host/deployment/engine)\\.go$"
+        linters:
+          - revive
 
 issues:
   max-issues-per-linter: 0

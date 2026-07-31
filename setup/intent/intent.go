@@ -26,7 +26,7 @@ type Goal string
 
 const (
 	GoalCommandOnly       Goal = "command_only"
-	GoalCredentialService Goal = "credential_service"
+	GoalCredentialService Goal = "credential_service" // #nosec G101 -- public setup goal name, not a credential.
 	GoalAgentConnection   Goal = "agent_connection"
 	GoalCompleteLocal     Goal = "complete_local"
 )

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -106,10 +107,8 @@ func buildReadyServer(ctx context.Context, args []string, stderr io.Writer, buil
 }
 
 func listenServeBindings(opts serveOptions, server *routes.Server) ([]serverhttp.Binding, error) {
-	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: opts.agentEndpoint}}
-	if server.OperatorHandler() != nil {
-		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *opts.operatorEndpoint})
-	}
+	operatorHandler := server.OperatorHandler()
+	listenerSpecs := serveListenerSpecs(opts, operatorHandler != nil)
 	tlsConfig, err := sudoServerTLSConfig(opts)
 	if err != nil {
 		return nil, err
@@ -118,21 +117,36 @@ func listenServeBindings(opts serveOptions, server *routes.Server) ([]serverhttp
 	if err != nil {
 		return nil, err
 	}
-	agentServer, err := serverhttp.New(server.Handler(), serverhttp.ProfileStreaming)
+	bindings, err := newServeBindings(server.Handler(), operatorHandler, listeners)
 	if err != nil {
 		_ = endpoint.CloseSet(listeners)
 		return nil, err
 	}
-	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
-	if server.OperatorHandler() != nil {
-		operatorServer, serverErr := serverhttp.New(server.OperatorHandler(), serverhttp.ProfileOperator)
-		if serverErr != nil {
-			_ = endpoint.CloseSet(listeners)
-			return nil, serverErr
-		}
-		bindings = append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]})
-	}
 	return bindings, nil
+}
+
+func serveListenerSpecs(opts serveOptions, withOperator bool) []endpoint.Named {
+	values := []endpoint.Named{{Name: "agent", Endpoint: opts.agentEndpoint}}
+	if withOperator {
+		values = append(values, endpoint.Named{Name: "operator", Endpoint: *opts.operatorEndpoint})
+	}
+	return values
+}
+
+func newServeBindings(agentHandler, operatorHandler http.Handler, listeners map[string]net.Listener) ([]serverhttp.Binding, error) {
+	agentServer, err := serverhttp.New(agentHandler, serverhttp.ProfileStreaming)
+	if err != nil {
+		return nil, err
+	}
+	bindings := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if operatorHandler == nil {
+		return bindings, nil
+	}
+	operatorServer, err := serverhttp.New(operatorHandler, serverhttp.ProfileOperator)
+	if err != nil {
+		return nil, err
+	}
+	return append(bindings, serverhttp.Binding{Server: operatorServer, Listener: listeners["operator"]}), nil
 }
 
 func printServeBindings(stdout io.Writer, bindings []serverhttp.Binding) {
@@ -220,22 +234,35 @@ func validateServeSecurityOptions(opts serveOptions) error {
 	if !filepath.IsAbs(opts.helperSocket) {
 		return errors.New("helper socket path must be absolute")
 	}
+	if err := validateServeApproverOptions(opts); err != nil {
+		return err
+	}
+	needsTLS := serveNeedsTLS(opts)
+	if needsTLS != (opts.tlsCertificate != "" && opts.tlsPrivateKey != "") {
+		return errors.New("--tls-cert-file and --tls-key-file are required exactly for TLS listeners")
+	}
+	if !needsTLS {
+		return nil
+	}
+	_, err := sudoServerTLSConfig(opts)
+	return err
+}
+
+func validateServeApproverOptions(opts serveOptions) error {
 	if (opts.telegramToken == "") != (opts.telegramChatID == 0) {
 		return errors.New("telegram token file and chat id must be configured together")
 	}
 	if opts.operatorSecrets == "" && opts.telegramToken == "" {
 		return errors.New("an operator credential or Telegram approval channel is required")
 	}
-	needsTLS := opts.agentEndpoint.Scheme() == endpoint.SchemeTLS || opts.operatorEndpoint != nil && opts.operatorEndpoint.Scheme() == endpoint.SchemeTLS
-	if needsTLS != (opts.tlsCertificate != "" && opts.tlsPrivateKey != "") {
-		return errors.New("--tls-cert-file and --tls-key-file are required exactly for TLS listeners")
-	}
-	if needsTLS {
-		if _, err := sudoServerTLSConfig(opts); err != nil {
-			return err
-		}
-	}
 	return nil
+}
+
+func serveNeedsTLS(opts serveOptions) bool {
+	if opts.agentEndpoint.Scheme() == endpoint.SchemeTLS {
+		return true
+	}
+	return opts.operatorEndpoint != nil && opts.operatorEndpoint.Scheme() == endpoint.SchemeTLS
 }
 
 func buildServer(opts serveOptions, stderr io.Writer) (*routes.Server, error) {

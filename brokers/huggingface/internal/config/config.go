@@ -189,25 +189,41 @@ func loadGitEndpoint(getenv func(string) string, cfg *Config, parseOptions endpo
 	if gitEndpoint.Scheme() != endpoint.SchemeTCP && gitEndpoint.Scheme() != endpoint.SchemeTLS {
 		return fmt.Errorf("%s must use tcp or tls", brokerEnvName("GIT_ENDPOINT"))
 	}
-	if !gitEndpoint.Ephemeral() && (gitEndpoint.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && gitEndpoint.String() == cfg.OperatorEndpoint.String()) {
+	if gitEndpointConflicts(gitEndpoint, cfg) {
 		return errors.New("git, agent, and operator endpoints must differ")
 	}
 	cfg.GitEndpoint = &gitEndpoint
 	return nil
 }
 
+func gitEndpointConflicts(gitEndpoint endpoint.Endpoint, cfg *Config) bool {
+	if gitEndpoint.Ephemeral() || gitEndpoint.String() == cfg.AgentEndpoint.String() {
+		return !gitEndpoint.Ephemeral()
+	}
+	return cfg.OperatorEndpoint != nil && gitEndpoint.String() == cfg.OperatorEndpoint.String()
+}
+
 func validateTLSFiles(cfg *Config) error {
-	needsTLS := cfg.AgentEndpoint.Scheme() == endpoint.SchemeTLS || cfg.OperatorEndpoint != nil && cfg.OperatorEndpoint.Scheme() == endpoint.SchemeTLS ||
-		cfg.GitEndpoint != nil && cfg.GitEndpoint.Scheme() == endpoint.SchemeTLS
-	if needsTLS != (cfg.TLSCertificateFile != "" && cfg.TLSPrivateKeyFile != "") {
+	needsTLS := configNeedsTLS(cfg)
+	hasTLSFiles := cfg.TLSCertificateFile != "" && cfg.TLSPrivateKeyFile != ""
+	if needsTLS != hasTLSFiles {
 		return fmt.Errorf("%s and %s are required exactly for TLS listeners", brokerEnvName("TLS_CERT_FILE"), brokerEnvName("TLS_KEY_FILE"))
 	}
-	if needsTLS {
-		if _, err := endpoint.ServerTLSConfig(cfg.TLSCertificateFile, cfg.TLSPrivateKeyFile); err != nil {
-			return err
-		}
+	if !needsTLS {
+		return nil
 	}
-	return nil
+	_, err := endpoint.ServerTLSConfig(cfg.TLSCertificateFile, cfg.TLSPrivateKeyFile)
+	return err
+}
+
+func configNeedsTLS(cfg *Config) bool {
+	if cfg.AgentEndpoint.Scheme() == endpoint.SchemeTLS {
+		return true
+	}
+	if cfg.OperatorEndpoint != nil && cfg.OperatorEndpoint.Scheme() == endpoint.SchemeTLS {
+		return true
+	}
+	return cfg.GitEndpoint != nil && cfg.GitEndpoint.Scheme() == endpoint.SchemeTLS
 }
 
 func validateRuntimeOrigins(upstreamHubURL, upstreamRouterURL string, development bool) error {

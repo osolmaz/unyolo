@@ -2,6 +2,7 @@
 package capability
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -153,6 +154,6 @@ func dockerComposeAvailable() bool {
 	if !hasCommand("docker") {
 		return false
 	}
-	output, err := exec.Command("docker", "compose", "version", "--short").Output()
+	output, err := exec.CommandContext(context.Background(), "docker", "compose", "version", "--short").Output()
 	return err == nil && strings.TrimSpace(string(output)) != ""
 }
