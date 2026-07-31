@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unyolo.io/protocol/pairing/v1/schema.json",
+  "title": "unYOLO pairing V1",
+  "oneOf": [
+    { "$ref": "#/$defs/invitation" },
+    { "$ref": "#/$defs/bundle" },
+    { "$ref": "#/$defs/state" }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$", "maxLength": 64 },
+    "invitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "endpoint", "pairing_id", "token", "ca_certificate", "ca_fingerprint", "server_name", "expires_at"],
+      "properties": {
+        "api_version": { "const": "unyolo.io/pairing/v1" },
+        "endpoint": { "type": "string", "format": "uri" },
+        "pairing_id": { "$ref": "#/$defs/id" },
+        "token": { "type": "string", "minLength": 43, "maxLength": 43 },
+        "ca_certificate": { "type": "string", "maxLength": 87382 },
+        "ca_fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "server_name": { "type": "string", "minLength": 1, "maxLength": 253 },
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["broker_name", "client_id", "endpoint", "shared_secret", "server_name"],
+      "properties": {
+        "broker_name": { "$ref": "#/$defs/id" },
+        "client_id": { "$ref": "#/$defs/id" },
+        "endpoint": { "type": "string", "pattern": "^tls://" },
+        "git_endpoint": { "type": "string", "pattern": "^tls://" },
+        "shared_secret": { "type": "string", "minLength": 32 },
+        "server_name": { "type": "string", "minLength": 1, "maxLength": 253 }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "pairing_id", "claim_secret", "ca_certificate", "connections"],
+      "properties": {
+        "api_version": { "const": "unyolo.io/pairing/v1" },
+        "pairing_id": { "$ref": "#/$defs/id" },
+        "claim_secret": { "type": "string", "minLength": 43, "maxLength": 43 },
+        "ca_certificate": { "type": "string", "maxLength": 87382 },
+        "connections": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/connection" } }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "pairing_id", "state"],
+      "properties": {
+        "api_version": { "const": "unyolo.io/pairing/v1" },
+        "pairing_id": { "$ref": "#/$defs/id" },
+        "state": { "enum": ["offered", "claimed", "ready", "active", "verified", "expired", "revoked"] }
+      }
+    }
+  }
+}
