@@ -897,6 +897,32 @@ func TestStateFormatReplacementIsExplicitAndRollbackRestoresOldState(t *testing.
 	}
 }
 
+func TestVerifyComponentRuntimeAcceptsActiveSocketWithoutProcess(t *testing.T) {
+	root := t.TempDir()
+	release := filepath.Join(root, "releases", "bundle-one")
+	if err := os.MkdirAll(filepath.Join(release, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(release, "bin", "gh"), []byte("binary"), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(release, filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeManager{
+		root: root, destinations: map[string]string{"gh.service": "bin/gh"},
+		active: map[string]bool{"gh-agent.socket": true, "gh.service": true},
+	}
+	installer := Installer{
+		Paths: Paths{Root: root}, Manager: manager,
+		Probe: func(context.Context, Component) error { return nil },
+	}
+	component := Component{Name: "gh", Destination: "bin/gh", Services: []string{"gh-agent.socket", "gh.service"}}
+	if err := installer.verifyComponentRuntime(t.Context(), release, component); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type fakeManager struct {
 	root            string
 	destinations    map[string]string
@@ -956,6 +982,9 @@ func (m *fakeManager) Reload(context.Context) error {
 func (m *fakeManager) Status(_ context.Context, service string) (ServiceStatus, error) {
 	if !m.active[service] {
 		return ServiceStatus{}, nil
+	}
+	if strings.HasSuffix(service, ".socket") {
+		return ServiceStatus{Active: true}, nil
 	}
 	current, err := filepath.EvalSymlinks(filepath.Join(m.root, "current"))
 	if err != nil {

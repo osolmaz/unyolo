@@ -52,6 +52,9 @@ func (m *systemdManager) Status(ctx context.Context, service string) (ServiceSta
 		//nolint:nilerr
 		return ServiceStatus{}, nil
 	}
+	if strings.HasSuffix(service, ".socket") {
+		return ServiceStatus{Active: true}, nil
+	}
 	output, err := m.runner.Run(ctx, "systemctl", "show", "--property=MainPID", "--value", service)
 	if err != nil {
 		return ServiceStatus{}, err

@@ -165,6 +165,9 @@ func (i Installer) verifyComponentRuntime(ctx context.Context, release string, c
 		if err != nil || !status.Active {
 			return fmt.Errorf("service %s is not active", service)
 		}
+		if strings.HasSuffix(service, ".socket") {
+			continue
+		}
 		expected := filepath.Join(release, component.Destination)
 		if !processPathMatches(status.Executable, expected) {
 			return fmt.Errorf("service %s executable does not match candidate bundle", service)

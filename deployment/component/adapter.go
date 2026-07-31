@@ -579,7 +579,7 @@ func fingerprintPath(path string, includeContent bool) string {
 		return "unsupported"
 	}
 	hash := sha256.New()
-	_, _ = fmt.Fprintf(hash, "%d:%d:%d:%d:%d", stat.Dev, stat.Ino, stat.Uid, stat.Gid, info.Mode())
+	_, _ = fmt.Fprintf(hash, "%d:%d:%d:%d:%d:%d:%d", stat.Dev, stat.Ino, stat.Uid, stat.Gid, info.Mode(), info.Size(), info.ModTime().UnixNano())
 	if info.Mode().IsRegular() && includeContent {
 		file, openErr := os.Open(path) // #nosec G304 -- provider-owned validated path.
 		if openErr != nil {

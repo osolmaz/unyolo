@@ -125,7 +125,7 @@ func TestPlanRemovalRequiresSeparateDataConfirmation(t *testing.T) {
 	if err := os.WriteFile(path, []byte("secret-store\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fingerprint := componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "secret_store", ID: "clients", Path: path}, true)
+	fingerprint := componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "secret_store", ID: "clients", Path: path}, false)
 	receipt := sampleReceipt()
 	receipt.Accounts = nil
 	receipt.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "secret-store-clients", Kind: "secret_store", ID: "clients", Path: path, Created: true, Data: true, Fingerprint: fingerprint}}
@@ -147,8 +147,12 @@ func TestPlanRemovalRequiresSeparateDataConfirmation(t *testing.T) {
 	if !slices.ContainsFunc(removed.Actions, func(action RemovalAction) bool { return action.Kind == RemovalActionRemoveFile && action.Destructive }) {
 		t.Fatalf("confirmed data removal was not planned: %#v", removed)
 	}
-	if err := os.WriteFile(path, []byte("changed secret-store\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("changed-data\n"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	original := removed.Actions[slices.IndexFunc(removed.Actions, func(action RemovalAction) bool { return action.Path == path })]
+	if err := verifyRemovalFingerprint(t.Context(), original); err == nil {
+		t.Fatal("post-confirmation data change passed the final fingerprint check")
 	}
 	changed, err := engine.PlanRemoval(t.Context(), true)
 	if err != nil {
