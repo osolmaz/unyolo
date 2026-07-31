@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/deployment/provider"
 	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/setup/installation"
 	setupintent "github.com/osolmaz/unyolo/setup/intent"
@@ -49,6 +50,40 @@ func TestIntentFromInstallationRejectsAmbiguousMultiConnectionEdit(t *testing.T)
 	value.Connections[1].ID, value.Connections[1].ClientID = "alice", "alice"
 	if _, err := intentFromInstallation(value); err == nil {
 		t.Fatal("multi-connection reconfigure was accepted by a single-connection editor")
+	}
+}
+
+func TestEditInstallationChangesProvidersApproversAndConnections(t *testing.T) {
+	t.Parallel()
+	value := installationWithProviders()
+	value.Connections = []installation.Connection{{
+		ID: "bob", ClientID: "bob", Providers: []string{"github", "huggingface"},
+		Target: installation.Target{Kind: installation.TargetLocalAccount, Isolation: "separate", AccountMode: setupintent.AccountExisting, Account: "bob", Home: "/home/bob", Shell: "/bin/bash", UID: 1001, GID: 1001},
+	}}
+	prompter := &scriptedPrompter{t: t, answers: []scriptedAnswer{
+		{kind: "select", stringValue: "providers"},
+		{kind: "multiselect", stringSlice: []string{"github"}},
+		{kind: "select", stringValue: "add-approver"},
+		{kind: "text", stringValue: "alice"},
+		{kind: "select", stringValue: "remove-connection"},
+		{kind: "select", stringValue: "bob"},
+		{kind: "select", stringValue: "done"},
+	}}
+	updated, err := editInstallation(t.Context(), prompter, value, setupOptions{ProviderOptions: []provider.Option{
+		{APIVersion: provider.APIVersion, ID: "github", Label: "GitHub"},
+		{APIVersion: provider.APIVersion, ID: "huggingface", Label: "Hugging Face"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.CredentialService.Providers) != 1 || updated.CredentialService.Providers[0] != "github" {
+		t.Fatalf("providers = %#v", updated.CredentialService.Providers)
+	}
+	if len(updated.Approvers) != 2 || updated.Approvers[1].Account != "alice" {
+		t.Fatalf("approvers = %#v", updated.Approvers)
+	}
+	if len(updated.Connections) != 0 {
+		t.Fatalf("connections = %#v", updated.Connections)
 	}
 }
 

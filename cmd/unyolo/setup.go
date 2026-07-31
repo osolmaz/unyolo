@@ -227,6 +227,12 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if err := prompter.Note(ctx, setupcopy.Intro, "What this does"); err != nil {
 		return err
 	}
+	if !options.New && options.ResumeID == "" {
+		handled, err := offerExistingInstallation(ctx, prompter, options)
+		if err != nil || handled {
+			return err
+		}
+	}
 	store, err := setupSessionStore()
 	if err != nil {
 		return err
@@ -271,7 +277,10 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return finishCommandOnly(ctx, prompter, store, &setupSession, options.Activate)
 	}
 	if result.Intent.Goal == setupintent.GoalAgentConnection && result.Intent.CredentialService == nil {
-		return runClientOnly(ctx, prompter, store, &setupSession, options)
+		if result.Intent.Agent != nil && result.Intent.Agent.Location == setupintent.AgentRemote {
+			return runClientOnly(ctx, prompter, store, &setupSession, options)
+		}
+		return addLocalConnection(ctx, prompter, store, &setupSession, result.Intent, options)
 	}
 	if err := result.Intent.Validate(); err != nil {
 		return err
@@ -281,6 +290,70 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 		return err
 	}
 	return compileReviewAndApply(ctx, prompter, store, &setupSession, desired, options)
+}
+
+func addLocalConnection(ctx context.Context, prompter flow.SetupPrompter, sessions session.Store, setupSession *session.Session, value setupintent.Intent, options setupOptions) error {
+	root, err := installation.DefaultRoot()
+	if err != nil {
+		return err
+	}
+	store := installation.Store{Root: root}
+	current, err := store.Load(installation.DefaultName)
+	if err != nil {
+		return errors.New("no local credential-service installation is available; install credential services first or use remote pairing")
+	}
+	combined := value
+	combined.Goal = setupintent.GoalCompleteLocal
+	combined.CredentialService = &setupintent.CredentialService{
+		Location: current.CredentialService.Location, Providers: append([]string(nil), current.CredentialService.Providers...),
+	}
+	addition, err := installationFromIntent(combined, options.Operator, current.Name)
+	if err != nil {
+		return err
+	}
+	if len(addition.Connections) != 1 {
+		return errors.New("local connection setup did not produce one connection")
+	}
+	for _, existing := range current.Connections {
+		if existing.ID == addition.Connections[0].ID || existing.ClientID == addition.Connections[0].ClientID {
+			return errors.New("that connection already exists; use setup reconfigure to change it")
+		}
+	}
+	current.Connections = append(current.Connections, addition.Connections[0])
+	if err := current.Validate(); err != nil {
+		return err
+	}
+	return compileReviewAndApply(ctx, prompter, sessions, setupSession, current, options)
+}
+
+func offerExistingInstallation(ctx context.Context, prompter flow.SetupPrompter, options setupOptions) (bool, error) {
+	root, err := installation.DefaultRoot()
+	if err != nil {
+		return false, nil
+	}
+	store := installation.Store{Root: root}
+	current, err := store.Load(installation.DefaultName)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	change, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message: "Review or change the existing installation?", Description: "Your saved choices contain no credentials.",
+		Affirmative: "Review installation", Negative: "Set up something else", Safe: true, Initial: true,
+	})
+	if err != nil {
+		return false, err
+	}
+	if !change {
+		return false, nil
+	}
+	updated, err := editInstallation(ctx, prompter, current, options)
+	if err != nil {
+		return true, err
+	}
+	return true, applyReconfiguration(ctx, prompter, store, updated, options)
 }
 
 func providerChoicesFromOptions(options []provider.Option) []wizard.ProviderChoice {
