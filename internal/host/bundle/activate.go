@@ -264,6 +264,65 @@ func (i Installer) RollbackCandidate(ctx context.Context, candidate string) erro
 	return i.rollbackCandidateLocked(ctx, candidate)
 }
 
+// DeactivateCandidate idempotently removes an installation-owned active
+// candidate, restores its recorded predecessor, and removes the candidate from
+// the rollback chain and immutable release store.
+func (i Installer) DeactivateCandidate(ctx context.Context, candidate string) error {
+	if err := i.normalize(); err != nil {
+		return err
+	}
+	if !identifierPattern.MatchString(candidate) {
+		return errors.New("runtime candidate identity is invalid")
+	}
+	lock, err := acquireLock(i.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.close()
+	if err := i.recoverInterruptedActivation(); err != nil {
+		return err
+	}
+	snapshot, err := i.activationSnapshot()
+	if err != nil {
+		return err
+	}
+	active, _, err := i.currentManifest()
+	if err != nil {
+		return err
+	}
+	if active == candidate && snapshot == nil {
+		return errors.New("active runtime candidate has no activation record")
+	}
+	if snapshot != nil && active != snapshot.ActiveBundleID {
+		return errors.New("runtime activation record and current release are inconsistent")
+	}
+	if snapshot != nil && snapshot.ActiveBundleID == candidate {
+		if err := i.rollbackCandidateLocked(ctx, candidate); err != nil {
+			return err
+		}
+	}
+	snapshot, err = i.activationSnapshot()
+	if err != nil {
+		return err
+	}
+	if snapshot != nil {
+		if snapshot.ActiveBundleID == candidate {
+			return errors.New("runtime candidate remained active after deactivation")
+		}
+		if snapshot.PreviousBundleID == candidate {
+			snapshot.PreviousBundleID = ""
+			if err := writeJSONAtomic(filepath.Join(i.Paths.StateDir, activationFilename), *snapshot, 0o600); err != nil {
+				return err
+			}
+		}
+	}
+	release := filepath.Join(i.Paths.Root, "releases", candidate)
+	if err := os.RemoveAll(release); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(release))
+}
+
 func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate string) error {
 	snapshot, err := i.activationSnapshot()
 	if err != nil {

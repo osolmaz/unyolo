@@ -32,7 +32,7 @@ func TestLockAndLoadDeploymentPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if snapshot.Deployment.Name != "test-host" || snapshot.Manifest.BundleID != "test-bundle" || len(snapshot.Files) != 5 {
+	if snapshot.Deployment.Name != "test-host" || snapshot.Manifest.BundleID != "test-bundle-fake" || len(snapshot.Files) != 6 {
 		t.Fatalf("unexpected snapshot: %#v", snapshot)
 	}
 	if !strings.HasPrefix(snapshot.Digest, "sha256:") {
@@ -99,9 +99,8 @@ func TestDeploymentValidationRejectsUnsafeIdentities(t *testing.T) {
 	base := Deployment{
 		APIVersion: APIVersion, Name: "host",
 		Runtime: Runtime{
-			Manifest:  Reference{Path: "manifest", SHA256: "sha256:" + strings.Repeat("0", 64)},
-			Signature: Reference{Path: "signature", SHA256: "sha256:" + strings.Repeat("1", 64)},
-			PublicKey: Reference{Path: "key", SHA256: "sha256:" + strings.Repeat("2", 64)},
+			Manifest: Reference{Path: "manifest", SHA256: "sha256:" + strings.Repeat("0", 64)}, Signature: Reference{Path: "signature", SHA256: "sha256:" + strings.Repeat("1", 64)},
+			PublicKey: Reference{Path: "key", SHA256: "sha256:" + strings.Repeat("2", 64)}, Activation: Reference{Path: "activation", SHA256: "sha256:" + strings.Repeat("4", 64)},
 		},
 		Agents: []Agent{{ID: "agent", ClientID: "client", Target: AgentTarget{
 			Kind: "local_account", Isolation: "separate", UnixUser: "agent", AccountMode: "managed", Home: "/var/lib/agent", Shell: "/usr/sbin/nologin",
@@ -242,15 +241,21 @@ func testPack(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "runtime", "manifest.json"), manifestData, 0o600)
 	writeTestFile(t, filepath.Join(root, "runtime", "manifest.sig"), []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(private, manifestData))+"\n"), 0o600)
 	writeTestFile(t, filepath.Join(root, "runtime", "release.pub"), []byte(base64.StdEncoding.EncodeToString(public)+"\n"), 0o600)
+	activation := manifest
+	activation.BundleID = manifest.BundleID + "-fake"
+	activationData, err := json.Marshal(activation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(root, "runtime", "activation.json"), activationData, 0o600)
 	writeTestFile(t, filepath.Join(root, "policies", "fake.json"), []byte("{}\n"), 0o600)
 	component := `{"api_version":"unyolo.io/fake-deployment/v1","policy":{"path":"policies/fake.json","sha256":"sha256:` + strings.Repeat("0", 64) + `"}}` + "\n"
 	writeTestFile(t, filepath.Join(root, "components", "fake.json"), []byte(component), 0o600)
 	deployment := Deployment{
 		APIVersion: APIVersion, Name: "test-host",
 		Runtime: Runtime{
-			Manifest:  Reference{Path: "runtime/manifest.json", SHA256: zeroDigest()},
-			Signature: Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
-			PublicKey: Reference{Path: "runtime/release.pub", SHA256: zeroDigest()},
+			Manifest: Reference{Path: "runtime/manifest.json", SHA256: zeroDigest()}, Signature: Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
+			PublicKey: Reference{Path: "runtime/release.pub", SHA256: zeroDigest()}, Activation: Reference{Path: "runtime/activation.json", SHA256: zeroDigest()},
 		},
 		Agents: []Agent{{ID: "agent", ClientID: "agent", Target: AgentTarget{
 			Kind: "local_account", Isolation: "separate", UnixUser: "nobody", AccountMode: "existing", Home: "/tmp/agent", Shell: "/bin/false",

@@ -590,6 +590,53 @@ func TestRollbackCandidateRestoresFirstInstall(t *testing.T) {
 	}
 }
 
+func TestDeactivateCandidateRemovesFirstInstallIdempotently(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	manifest, data := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.DeactivateCandidate(t.Context(), manifest.BundleID); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.DeactivateCandidate(t.Context(), manifest.BundleID); err != nil {
+		t.Fatalf("repeated deactivation: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "current")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("current pointer remains: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "releases", manifest.BundleID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("candidate release remains: %v", err)
+	}
+}
+
+func TestDeactivateCandidateRestoresPredecessorAndClearsRollbackLink(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Probe: func(context.Context, Component) error { return nil }}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if err := installer.Activate(t.Context(), two, twoData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.DeactivateCandidate(t.Context(), two.BundleID); err != nil {
+		t.Fatal(err)
+	}
+	assertCurrentBundle(t, root, one.BundleID)
+	record, err := installer.readActivation()
+	if err != nil || record.PreviousBundleID != "" {
+		t.Fatalf("activation record = %#v, %v", record, err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "releases", two.BundleID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("candidate release remains: %v", err)
+	}
+}
+
 func TestRollbackRequiresPreviousBundle(t *testing.T) {
 	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
 	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}

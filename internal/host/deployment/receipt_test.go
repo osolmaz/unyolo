@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/unyolo/deployment/api"
+	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/identity"
@@ -99,6 +100,25 @@ func TestReceiptRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPendingReceiptLifecycle(t *testing.T) {
+	t.Parallel()
+	state := t.TempDir()
+	receipt := sampleReceipt()
+	if err := StagePendingReceipt(state, receipt); err != nil {
+		t.Fatal(err)
+	}
+	loaded, found, err := LoadPendingReceipt(state)
+	if err != nil || !found || loaded.DeploymentDigest != receipt.DeploymentDigest {
+		t.Fatalf("LoadPendingReceipt() = %#v, %v, %v", loaded, found, err)
+	}
+	if err := DiscardPendingReceipt(state); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := LoadPendingReceipt(state); err != nil || found {
+		t.Fatalf("pending receipt remained: found=%v err=%v", found, err)
+	}
+}
+
 func TestReceiptRejectsSecretLikeUnknownFields(t *testing.T) {
 	t.Parallel()
 	receipt := sampleReceipt()
@@ -114,6 +134,56 @@ func TestReceiptRejectsSecretLikeUnknownFields(t *testing.T) {
 	}
 	if _, _, err := LoadReceipt(state); err == nil {
 		t.Fatal("receipt containing unknown fields was accepted")
+	}
+}
+
+func TestReceiptCapturesCreatedResourceFingerprint(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	managedPath := filepath.Join(root, "policy.json")
+	if err := os.WriteFile(managedPath, []byte("policy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	componentData, err := json.Marshal(componentprofile.Profile{
+		APIVersion: "unyolo.io/test-deployment/v1",
+		Files:      []componentprofile.ManagedFile{{ID: "policy", Destination: managedPath}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned := Planned{
+		Snapshot: profile.Snapshot{
+			Deployment: profile.Deployment{Name: "default", InstallationDigest: "sha256:" + strings.Repeat("d", 64), Components: []profile.Component{{ID: "test", Profile: profile.Reference{Path: "components/test.json"}}}},
+			Files:      map[string]profile.File{"components/test.json": {Path: "components/test.json", Data: componentData}},
+			Digest:     "sha256:" + strings.Repeat("e", 64), Manifest: bundle.Manifest{BundleID: "engine-test", Components: []bundle.Component{{Name: "test"}}},
+		},
+		Responses: []api.Response{{ComponentID: "test", PlanDigest: "sha256:" + strings.Repeat("f", 64), Actions: []api.PlannedAction{{
+			ID: "file-policy", Type: "replace", Risk: "medium", CurrentState: "missing",
+			Resource: api.Resource{Kind: "file", ID: "policy", Path: managedPath}, DesiredDigest: "sha256:" + strings.Repeat("1", 64),
+		}}}},
+	}
+	receipt, err := ReceiptFromPlanContext(t.Context(), planned, "default", time.Unix(1, 0).UTC(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.Resources) != 1 || !receipt.Resources[0].Created || !receiptDigestPattern.MatchString(receipt.Resources[0].Fingerprint) {
+		t.Fatalf("resource receipt = %#v", receipt.Resources)
+	}
+}
+
+func TestMergeReceiptPreservesOriginalOwnership(t *testing.T) {
+	t.Parallel()
+	previous := sampleReceipt()
+	previous.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "file-policy", Kind: "file", ID: "policy", Path: "/etc/gh-broker/policy.json", Created: true, Fingerprint: "sha256:" + strings.Repeat("1", 64)}}
+	current := sampleReceipt()
+	current.RuntimeBundleID = "engine-test-next"
+	current.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "file-policy", Kind: "file", ID: "policy", Path: "/etc/gh-broker/policy.json", Fingerprint: "sha256:" + strings.Repeat("2", 64)}}
+	merged, err := MergeReceipt(previous, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !merged.Resources[0].Created || merged.Resources[0].Fingerprint != current.Resources[0].Fingerprint || merged.BaselineBundleID != previous.BaselineBundleID {
+		t.Fatalf("merged receipt = %#v", merged)
 	}
 }
 

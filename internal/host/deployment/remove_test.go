@@ -3,11 +3,16 @@ package deployment
 import (
 	"context"
 	"errors"
+	"os"
 	"os/user"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/deployment/api"
+	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
@@ -20,7 +25,7 @@ func TestPlanRemovalRequiresReceipt(t *testing.T) {
 	}
 }
 
-func TestPlanRemovalCollectsServicesAndRuntime(t *testing.T) {
+func TestPlanRemovalCollectsRuntimeAndFinalCleanup(t *testing.T) {
 	t.Parallel()
 	state := t.TempDir()
 	receipt := sampleReceipt()
@@ -37,8 +42,74 @@ func TestPlanRemovalCollectsServicesAndRuntime(t *testing.T) {
 	for _, action := range plan.Actions {
 		kinds[action.Kind]++
 	}
-	if kinds[RemovalActionDisableService] != 1 || kinds[RemovalActionRemoveRuntime] != 1 || kinds[RemovalActionDeleteReceipt] != 1 {
+	if kinds[RemovalActionRemoveRuntime] != 1 || kinds[RemovalActionDeleteReceipt] != 1 {
 		t.Fatalf("plan kinds = %#v", kinds)
+	}
+}
+
+func TestPlanRemovalRemovesOnlyUnchangedCreatedResources(t *testing.T) {
+	t.Parallel()
+	state, root := t.TempDir(), t.TempDir()
+	path := filepath.Join(root, "policy.json")
+	if err := os.WriteFile(path, []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "file", ID: "policy", Path: path}, true)
+	receipt := sampleReceipt()
+	receipt.Accounts = nil
+	receipt.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "file-policy", Kind: "file", ID: "policy", Path: path, Created: true, Fingerprint: fingerprint}}
+	if err := SaveReceipt(state, receipt); err != nil {
+		t.Fatal(err)
+	}
+	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}, Development: true, Manager: fakeManager{}}}
+	plan, err := engine.PlanRemoval(t.Context(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan.Actions, func(action RemovalAction) bool { return action.Kind == RemovalActionRemoveFile }) {
+		t.Fatalf("unchanged created file was not removable: %#v", plan)
+	}
+	if err := os.WriteFile(path, []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := engine.PlanRemoval(t.Context(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(changed.Actions, func(action RemovalAction) bool { return action.Kind == RemovalActionRemoveFile }) ||
+		!slices.ContainsFunc(changed.Retained, func(item RemovalRetention) bool { return item.Reason == RemovalReasonChanged }) {
+		t.Fatalf("changed file was not retained: %#v", changed)
+	}
+}
+
+func TestPlanRemovalRequiresSeparateDataConfirmation(t *testing.T) {
+	t.Parallel()
+	state, root := t.TempDir(), t.TempDir()
+	path := filepath.Join(root, "clients.json")
+	if err := os.WriteFile(path, []byte("secret-store\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "secret_store", ID: "clients", Path: path}, false)
+	receipt := sampleReceipt()
+	receipt.Accounts = nil
+	receipt.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "secret-store-clients", Kind: "secret_store", ID: "clients", Path: path, Created: true, Data: true, Fingerprint: fingerprint}}
+	if err := SaveReceipt(state, receipt); err != nil {
+		t.Fatal(err)
+	}
+	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}, Development: true, Manager: fakeManager{}}}
+	kept, err := engine.PlanRemoval(t.Context(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(kept.Retained, func(item RemovalRetention) bool { return item.Reason == RemovalReasonInstallation }) {
+		t.Fatalf("data was not retained by default: %#v", kept)
+	}
+	removed, err := engine.PlanRemoval(t.Context(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(removed.Actions, func(action RemovalAction) bool { return action.Kind == RemovalActionRemoveFile && action.Destructive }) {
+		t.Fatalf("confirmed data removal was not planned: %#v", removed)
 	}
 }
 
@@ -97,8 +168,8 @@ func TestFilterRemovalPlanNormalizesOrder(t *testing.T) {
 		APIVersion: "",
 		Actions: []RemovalAction{
 			{Kind: RemovalActionDeleteReceipt, ID: "receipt"},
-			{Kind: RemovalActionDisableService, ID: "b"},
-			{Kind: RemovalActionDisableService, ID: "a"},
+			{Kind: RemovalActionRemoveFile, ID: "b"},
+			{Kind: RemovalActionRemoveFile, ID: "a"},
 		},
 		Retained: []RemovalRetention{
 			{Kind: "account", ID: "b"},
@@ -109,8 +180,8 @@ func TestFilterRemovalPlanNormalizesOrder(t *testing.T) {
 	if normalized.APIVersion != RemovalAPIVersion {
 		t.Fatalf("api version = %q", normalized.APIVersion)
 	}
-	// Actions sort first by kind then by ID. delete_receipt < disable_service alphabetically.
-	if normalized.Actions[0].Kind != RemovalActionDeleteReceipt || normalized.Actions[1].ID != "a" || normalized.Actions[2].ID != "b" {
+	// Resource deletion precedes final receipt deletion.
+	if normalized.Actions[0].ID != "a" || normalized.Actions[1].ID != "b" || normalized.Actions[2].Kind != RemovalActionDeleteReceipt {
 		t.Fatalf("actions not sorted: %#v", normalized.Actions)
 	}
 	if normalized.Retained[0].ID != "a" || normalized.Retained[1].ID != "b" {
@@ -139,7 +210,7 @@ func TestRemoveManagedAccountRefusesWhenAccountChanged(t *testing.T) {
 		t.Skipf("no current user available: %v", err)
 	}
 	// Removing an existing user with a mismatched home should fail closed before invoking any command.
-	err = removeManagedAccount(t.Context(), current.Username, "/nonexistent/home/for/receipt-test")
+	err = removeManagedAccount(t.Context(), current.Username, "/nonexistent/home/for/receipt-test", "")
 	if err == nil {
 		t.Fatal("expected failure due to home mismatch")
 	}
@@ -151,7 +222,7 @@ func TestRemoveManagedAccountRefusesWhenAccountChanged(t *testing.T) {
 func TestRemoveManagedAccountIgnoresUnknownUser(t *testing.T) {
 	t.Parallel()
 	// A user that doesn't exist is a noop, not an error, so the plan can safely re-run.
-	err := removeManagedAccount(t.Context(), "unyolo-nonexistent-user-for-tests", "/nowhere")
+	err := removeManagedAccount(t.Context(), "unyolo-nonexistent-user-for-tests", "/nowhere", "")
 	if err != nil {
 		var unknown user.UnknownUserError
 		if errors.As(err, &unknown) {

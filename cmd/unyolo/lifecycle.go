@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/deployment/session"
@@ -19,6 +20,8 @@ import (
 	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
 	setupcompiler "github.com/osolmaz/unyolo/setup/compiler"
 	"github.com/osolmaz/unyolo/setup/installation"
+	setupintent "github.com/osolmaz/unyolo/setup/intent"
+	"github.com/osolmaz/unyolo/setup/wizard"
 )
 
 // runSetupDiscard removes one uncommitted local setup session by ID.
@@ -120,6 +123,10 @@ func runReconfigureOrRepair(ctx context.Context, stdout, stderr io.Writer, actio
 	if err := validateGitHubCLI(options.GitHubCLI); err != nil {
 		return err
 	}
+	options.Capabilities, err = releaseSetupCapabilities(options.DeploymentKits)
+	if err != nil {
+		return err
+	}
 	installRoot, err := installation.DefaultRoot()
 	if err != nil {
 		return err
@@ -144,20 +151,86 @@ func runReconfigureOrRepair(ctx context.Context, stdout, stderr io.Writer, actio
 	if err := prompter.Note(ctx, message, "Current installation"); err != nil {
 		return err
 	}
-	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
-		Message:     confirmMessageFor(action),
-		Description: "This will recompile, replan, and reapply the same installation record.",
-		Affirmative: confirmActionFor(action),
-		Negative:    "Cancel",
-		Safe:        true,
-	})
-	if err != nil || !confirmed {
+	if action == "reconfigure" {
+		desired, err = editInstallation(ctx, prompter, desired, options)
 		if err != nil {
 			return err
 		}
-		return flow.CancelledError{}
+	} else {
+		confirmed, confirmErr := prompter.Confirm(ctx, flow.ConfirmPrompt{
+			Message:     confirmMessageFor(action),
+			Description: "This recompiles and reapplies the saved installation without changing its choices.",
+			Affirmative: confirmActionFor(action),
+			Negative:    "Cancel",
+			Safe:        true,
+		})
+		if confirmErr != nil || !confirmed {
+			if confirmErr != nil {
+				return confirmErr
+			}
+			return flow.CancelledError{}
+		}
 	}
 	return applyReconfiguration(ctx, prompter, store, desired, options)
+}
+
+func editInstallation(ctx context.Context, prompter flow.SetupPrompter, desired installation.Installation, options setupOptions) (installation.Installation, error) {
+	initial, err := intentFromInstallation(desired)
+	if err != nil {
+		return installation.Installation{}, err
+	}
+	providers := providerChoicesFromOptions(options.ProviderOptions)
+	for index := range providers {
+		providers[index].Selected = slices.Contains(desired.CredentialService.Providers, providers[index].Value)
+	}
+	result, err := wizard.New(wizard.Options{
+		Prompter: prompter, Capabilities: options.Capabilities, Providers: providers,
+		Accounts: existingAccountLister{}, Initial: wizard.State{Intent: initial, InstallationName: desired.Name},
+		InitialStep: wizard.StepGoal, CurrentAccount: options.Operator,
+	}).Run(ctx)
+	if err != nil {
+		return installation.Installation{}, err
+	}
+	if result.Intent.Goal == setupintent.GoalCommandOnly || result.Intent.Goal == setupintent.GoalAgentConnection {
+		return installation.Installation{}, errors.New("reconfigure keeps the credential services on this computer; use setup remove for removal or setup to connect a separate client")
+	}
+	updated, err := installationFromIntent(result.Intent, options.Operator, desired.Name)
+	if err != nil {
+		return installation.Installation{}, err
+	}
+	updated.Approvers = append([]installation.Approver(nil), desired.Approvers...)
+	return updated, updated.Validate()
+}
+
+func intentFromInstallation(value installation.Installation) (setupintent.Intent, error) {
+	result := setupintent.Intent{
+		APIVersion: setupintent.APIVersion, Goal: setupintent.GoalCredentialService,
+		CredentialService: &setupintent.CredentialService{Location: value.CredentialService.Location, Providers: append([]string(nil), value.CredentialService.Providers...)},
+	}
+	if len(value.Connections) == 0 {
+		return result, nil
+	}
+	if len(value.Connections) != 1 {
+		return setupintent.Intent{}, errors.New("interactive reconfiguration currently requires exactly one recorded connection")
+	}
+	connection := value.Connections[0]
+	result.Goal = setupintent.GoalCompleteLocal
+	result.Integrations = append([]string(nil), connection.Integrations...)
+	switch connection.Target.Kind {
+	case installation.TargetLocalAccount:
+		result.Agent = &setupintent.Agent{
+			Location: setupintent.AgentLocalAccount, ConnectionName: connection.ID,
+			Account: &setupintent.Account{Mode: connection.Target.AccountMode, Name: connection.Target.Account},
+		}
+		result.Connection = &setupintent.Connection{Transport: setupintent.TransportLocalSocket}
+	case installation.TargetContainer:
+		result.Agent = &setupintent.Agent{Location: setupintent.AgentContainer, ConnectionName: connection.ID}
+	case installation.TargetRemote:
+		result.Agent = &setupintent.Agent{Location: setupintent.AgentRemote, ConnectionName: connection.ID}
+	default:
+		return setupintent.Intent{}, errors.New("recorded connection target is invalid")
+	}
+	return result, nil
 }
 
 func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, store installation.Store, desired installation.Installation, options setupOptions) error {
@@ -210,7 +283,7 @@ func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer
 	accessible := flags.Bool("accessible", false, "use screen-reader-friendly prompts")
 	noOpen := flags.Bool("no-open", false, "print browser URLs instead of opening them")
 	bootstrapStage := flags.String("bootstrap-stage", "", "activate one verified bootstrap stage before removal")
-	removeState := flags.Bool("remove-state", false, "also remove recorded installation state after uninstall")
+	removeState := flags.Bool("remove-state", false, "also remove installation-owned credentials and data")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -257,8 +330,8 @@ func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
-		Message: firstRemovalConfirmation(), Description: "This removes services, disables units, and cleans up managed accounts. Provider credentials and broker state are kept.",
-		Affirmative: "Remove services", Negative: "Cancel", Safe: true,
+		Message: firstRemovalConfirmation(), Description: "This removes unchanged service configuration and runtime files created by unYOLO. Credentials, broker data, and managed agent accounts are kept.",
+		Affirmative: "Remove services and configuration", Negative: "Cancel", Safe: true,
 	})
 	if err != nil || !confirmed {
 		_ = worker.Cancel()
@@ -280,6 +353,15 @@ func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 	applyProgress.Stop(result.Message)
+	if removalFinished(result) {
+		root, rootErr := installation.DefaultRoot()
+		if rootErr != nil {
+			return rootErr
+		}
+		if err := (installation.Store{Root: root}).Discard(result.RemovalReport.InstallationName); err != nil {
+			return err
+		}
+	}
 	if err := writeRemovalReport(stdout, result); err != nil {
 		return err
 	}
@@ -313,18 +395,18 @@ func showRemovalReview(ctx context.Context, prompter flow.SetupPrompter, plan ho
 }
 
 func firstRemovalConfirmation() string {
-	return "Remove services and managed accounts?"
+	return "Remove services and configuration?"
 }
 
 func confirmDestructiveDataRemoval(ctx context.Context, prompter flow.SetupPrompter, plan hostdeployment.RemovalPlan) error {
-	message := "This second confirmation also removes the recorded installation state.\n" +
-		"Provider credentials and broker state are removed only when their paths appear in the receipt."
+	message := "This second confirmation also removes installation-owned credentials, client connections, and broker data.\n" +
+		"Changed, preexisting, and ambiguous paths are still retained."
 	if err := prompter.Note(ctx, message, "Destructive removal"); err != nil {
 		return err
 	}
 	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
-		Message: "Also remove recorded state?", Description: "This deletes the ownership receipt after uninstall.",
-		Affirmative: "Remove state", Negative: "Keep state", Safe: false,
+		Message: "Also remove credentials and data?", Description: "Only unchanged resources recorded as created by this installation are deleted.",
+		Affirmative: "Remove credentials and data", Negative: "Keep credentials and data", Safe: false,
 	})
 	if err != nil || !confirmed {
 		if err != nil {
@@ -333,6 +415,18 @@ func confirmDestructiveDataRemoval(ctx context.Context, prompter flow.SetupPromp
 		return flow.CancelledError{}
 	}
 	return nil
+}
+
+func removalFinished(result privilege.Result) bool {
+	if result.RemovalReport == nil {
+		return false
+	}
+	for _, action := range result.RemovalReport.RemovedActions {
+		if action.Kind == hostdeployment.RemovalActionDeleteReceipt {
+			return true
+		}
+	}
+	return false
 }
 
 func writeRemovalReport(stdout io.Writer, result privilege.Result) error {

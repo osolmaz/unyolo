@@ -84,11 +84,11 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	if !report.Healthy || report.RuntimeBundleID != "engine-test" {
+	if !report.Healthy || report.RuntimeBundleID != "engine-test-fake" {
 		t.Fatalf("report = %#v", report)
 	}
 	if receipt, found, receiptErr := LoadReceipt(state); receiptErr != nil || !found ||
-		receipt.RuntimeBundleID != "engine-test" || receipt.DeploymentName != "engine-host" {
+		receipt.RuntimeBundleID != "engine-test-fake" || receipt.DeploymentName != "engine-host" {
 		t.Fatalf("ownership receipt = %#v, found=%v, err=%v", receipt, found, receiptErr)
 	}
 	exported, err := engine.ExportObserved(t.Context(), pack)
@@ -429,14 +429,20 @@ func engineTestPack(t *testing.T) string {
 	writeEngineFile(t, filepath.Join(pack, "runtime", "manifest.json"), manifestData)
 	writeEngineFile(t, filepath.Join(pack, "runtime", "manifest.sig"), []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(private, manifestData))))
 	writeEngineFile(t, filepath.Join(pack, "runtime", "release.pub"), []byte(base64.StdEncoding.EncodeToString(public)))
+	activation := manifest
+	activation.BundleID = manifest.BundleID + "-fake"
+	activationData, err := json.Marshal(activation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeEngineFile(t, filepath.Join(pack, "runtime", "activation.json"), activationData)
 	writeEngineFile(t, filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"unyolo.io/fake-deployment/v1"}`))
 
 	deployment := map[string]any{
 		"api_version": "unyolo.io/host-deployment/v1", "name": "engine-host",
 		"runtime": map[string]any{
-			"manifest":   engineRef("runtime/manifest.json", manifestData),
-			"signature":  engineRefFile(t, pack, "runtime/manifest.sig"),
-			"public_key": engineRefFile(t, pack, "runtime/release.pub"),
+			"manifest": engineRef("runtime/manifest.json", manifestData), "signature": engineRefFile(t, pack, "runtime/manifest.sig"),
+			"public_key": engineRefFile(t, pack, "runtime/release.pub"), "activation": engineRef("runtime/activation.json", activationData),
 		},
 		"agents": []any{map[string]any{"id": "agent", "client_id": "agent", "target": map[string]any{
 			"kind": "local_account", "isolation": "separate", "unix_user": "agent", "account_mode": "existing", "home": "/home/agent", "shell": "/bin/false",
