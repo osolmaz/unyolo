@@ -379,7 +379,11 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			if capturePostApply {
 				resource.Fingerprint = receiptResourceFingerprint(ctx, resource, fingerprintKey)
 				if !receiptDigestPattern.MatchString(resource.Fingerprint) {
-					return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
+					if resource.Data {
+						resource.Fingerprint = ""
+					} else {
+						return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
+					}
 				}
 			}
 			receipt.Resources = append(receipt.Resources, resource)
@@ -599,6 +603,10 @@ func refreshReceiptFingerprints(ctx context.Context, value Receipt, fingerprintK
 		resource := &value.Resources[index]
 		fingerprint := receiptResourceFingerprint(ctx, *resource, fingerprintKey)
 		if !receiptDigestPattern.MatchString(fingerprint) {
+			if resource.Data {
+				resource.Fingerprint = ""
+				continue
+			}
 			return Receipt{}, fmt.Errorf("refresh fingerprint for %s resource %q", resource.Kind, resource.ID)
 		}
 		resource.Fingerprint = fingerprint

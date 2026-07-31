@@ -238,6 +238,31 @@ func TestRefreshReceiptClientFingerprintIncludesContent(t *testing.T) {
 	}
 }
 
+func TestRefreshReceiptRetainsUnverifiedLargeData(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	file, err := os.Create(filepath.Join(root, "large-state.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(16*1024*1024 + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	value := sampleReceipt()
+	value.Resources = []ResourceReceipt{{ComponentID: "huggingface", ActionID: "directory-state", Kind: "directory", ID: "state", Path: root, Created: true, Data: true}}
+	refreshed, err := refreshReceiptFingerprints(t.Context(), value, []byte(strings.Repeat("k", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Resources[0].Fingerprint != "" {
+		t.Fatalf("large state fingerprint = %q, want conservative unverified retention", refreshed.Resources[0].Fingerprint)
+	}
+}
+
 func TestReceiptFromPlanCollectsAgentsAndServices(t *testing.T) {
 	t.Parallel()
 	planned := Planned{
