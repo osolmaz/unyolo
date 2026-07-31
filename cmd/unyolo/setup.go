@@ -14,7 +14,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"time"
 
@@ -197,7 +196,28 @@ func releaseSetupCapabilities(kits string) (capability.Snapshot, error) {
 	return capability.Resolve(manifest, capability.HostProbe{})
 }
 
-//nolint:cyclop // The coordinator checkpoints each user decision and keeps secret collection after review.
+// sessionPersister mirrors coordinator state into the resumable session file.
+type sessionPersister struct {
+	store              session.Store
+	setupSession       *session.Session
+	capabilityDigest   string
+	initialInstallName string
+}
+
+func (p *sessionPersister) Save(state wizard.State, step wizard.Step) error {
+	p.setupSession.Intent = state.Intent
+	p.setupSession.CapabilityDigest = p.capabilityDigest
+	p.setupSession.CurrentStep = string(step)
+	p.setupSession.CompletedStep = appendUnique(p.setupSession.CompletedStep, string(step))
+	if state.InstallationName != "" && p.initialInstallName == "" {
+		// Installation names are tracked separately once the wizard picks a
+		// non-default name; the session record retains "default" because
+		// that identifies the installation store slot.
+		_ = state.InstallationName
+	}
+	return p.store.Save(*p.setupSession)
+}
+
 func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setupOptions) error {
 	if err := prompter.Intro(ctx, setupcopy.Title); err != nil {
 		return err
@@ -216,127 +236,92 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if setupSession.CapabilityDigest != "" && setupSession.CapabilityDigest != options.Capabilities.Digest {
 		setupSession.Intent = setupintent.Intent{APIVersion: setupintent.APIVersion}
 		setupSession.CompletedStep = nil
-		setupSession.CurrentStep = "goal"
+		setupSession.CurrentStep = string(wizard.StepGoal)
 	}
 	setupSession.CapabilityDigest = options.Capabilities.Digest
-	if setupSession.Intent.Goal == "" {
-		goal, selectErr := chooseGoal(ctx, prompter, options.Capabilities)
-		if selectErr != nil {
-			return selectErr
-		}
-		setupSession.Intent.Goal = setupintent.Goal(goal)
-		if err := checkpoint(store, &setupSession, "goal"); err != nil {
-			return err
-		}
+
+	installationExists, err := installationDefaultExists()
+	if err != nil {
+		return err
 	}
-	if setupSession.Intent.Goal == setupintent.GoalCommandOnly {
+	coordinator := wizard.New(wizard.Options{
+		Prompter:           prompter,
+		Persist:            &sessionPersister{store: store, setupSession: &setupSession, capabilityDigest: options.Capabilities.Digest},
+		Capabilities:       options.Capabilities,
+		Providers:          providerChoicesFromOptions(options.ProviderOptions),
+		Accounts:           existingAccountLister{},
+		Initial:            wizard.State{Intent: setupSession.Intent},
+		InitialStep:        wizard.Step(setupSession.CurrentStep),
+		InstallationExists: installationExists,
+		CurrentAccount:     options.Operator,
+	})
+	result, err := coordinator.Run(ctx)
+	if err != nil {
+		return err
+	}
+
+	setupSession.Intent = result.Intent
+	if err := store.Save(setupSession); err != nil {
+		return err
+	}
+
+	if result.Intent.Goal == setupintent.GoalCommandOnly {
 		return finishCommandOnly(ctx, prompter, store, &setupSession, options.Activate)
 	}
-	if setupSession.Intent.Goal == setupintent.GoalAgentConnection && setupSession.Intent.CredentialService == nil {
+	if result.Intent.Goal == setupintent.GoalAgentConnection && result.Intent.CredentialService == nil {
 		return runClientOnly(ctx, prompter, store, &setupSession, options)
 	}
-	if err := collectServiceIntent(ctx, prompter, store, &setupSession, options); err != nil {
+	if err := result.Intent.Validate(); err != nil {
 		return err
 	}
-	if setupSession.Intent.Goal == setupintent.GoalCompleteLocal {
-		if err := collectAgentIntent(ctx, prompter, store, &setupSession, options); err != nil {
-			return err
-		}
-	}
-	if err := setupSession.Intent.Validate(); err != nil {
-		return err
-	}
-	desired, err := installationFromIntent(setupSession.Intent, options.Operator)
+	desired, err := installationFromIntent(result.Intent, options.Operator, result.InstallationName)
 	if err != nil {
 		return err
 	}
 	return compileReviewAndApply(ctx, prompter, store, &setupSession, desired, options)
 }
 
-func chooseGoal(ctx context.Context, prompter flow.SetupPrompter, capabilities capability.Snapshot) (string, error) {
-	choices := wizard.GoalChoices(capabilities)
-	options := make([]flow.Option, 0, len(choices))
-	for _, choice := range choices {
-		options = append(options, flow.Option{Value: choice.Value, Label: choice.Label, Hint: choice.Hint})
+func providerChoicesFromOptions(options []provider.Option) []wizard.ProviderChoice {
+	choices := make([]wizard.ProviderChoice, 0, len(options))
+	for _, option := range options {
+		choices = append(choices, wizard.ProviderChoice{Value: option.ID, Label: option.Label, Hint: option.Hint, Selected: option.Selected})
 	}
-	if len(options) == 0 {
-		return "", errors.New("this release has no completed setup path")
-	}
-	return prompter.Select(ctx, flow.SelectPrompt{Message: "What do you want to set up?", Options: options, InitialValue: options[0].Value})
+	return choices
 }
 
-func collectServiceIntent(ctx context.Context, prompter flow.SetupPrompter, store session.Store, setupSession *session.Session, options setupOptions) error {
-	if setupSession.Intent.CredentialService != nil {
-		return nil
-	}
-	if !options.Capabilities.Has(capability.FeatureNativeService) {
-		return errors.New("this release cannot install credential services on this computer")
-	}
-	selected, err := chooseProviders(ctx, prompter, options.ProviderOptions)
-	if err != nil {
-		return err
-	}
-	setupSession.Intent.CredentialService = &setupintent.CredentialService{Location: setupintent.ServiceNative, Providers: selected}
-	return checkpoint(store, setupSession, "providers")
-}
+// existingAccountLister lists suitable local accounts via the host backend.
+type existingAccountLister struct{}
 
-func collectAgentIntent(ctx context.Context, prompter flow.SetupPrompter, store session.Store, setupSession *session.Session, options setupOptions) error {
-	if setupSession.Intent.Agent != nil {
-		return nil
-	}
-	choices := wizard.AgentLocationChoices(options.Capabilities)
-	choices = slices.DeleteFunc(choices, func(choice wizard.Choice) bool { return choice.Value == "container" || choice.Value == "remote" })
-	flowOptions := make([]flow.Option, 0, len(choices))
-	for _, choice := range choices {
-		flowOptions = append(flowOptions, flow.Option{Value: choice.Value, Label: choice.Label, Hint: choice.Hint})
-	}
-	if len(flowOptions) == 0 {
-		return errors.New("this release cannot connect a local account")
-	}
-	mode, err := prompter.Select(ctx, flow.SelectPrompt{Message: "Which account will run the agent?", Options: flowOptions, InitialValue: flowOptions[0].Value})
-	if err != nil {
-		return err
-	}
-	record, err := chooseAccount(ctx, prompter, mode, options)
-	if err != nil {
-		return err
-	}
-	setupSession.Intent.Agent = &setupintent.Agent{Location: setupintent.AgentLocalAccount, ConnectionName: record.Name, Account: &setupintent.Account{Mode: setupintent.AccountMode(mode), Name: record.Name}}
-	if mode == "current" {
-		setupSession.Intent.Agent.Account.Name = ""
-	}
-	setupSession.Intent.Connection = &setupintent.Connection{Transport: setupintent.TransportLocalSocket}
-	return checkpoint(store, setupSession, "account")
-}
-
-func chooseAccount(ctx context.Context, prompter flow.SetupPrompter, mode string, options setupOptions) (hostaccount.Record, error) {
-	if mode == "current" {
-		return inspectAccount(ctx, options.Operator)
-	}
+func (existingAccountLister) List(ctx context.Context) ([]wizard.Account, error) {
 	backend := hostaccount.New(commandRunner{})
-	if mode == "managed" {
-		name := "unyolo-agent"
-		home := "/var/lib/unyolo-agent"
-		uid := 0
-		if runtime.GOOS == "darwin" {
-			home, uid = "/Users/Shared/unyolo-agent", 550
-		}
-		plan, err := backend.PlanCreate(name, home, uid)
-		return plan.Record, err
-	}
-	accounts, err := backend.List(ctx)
+	records, err := backend.List(ctx)
 	if err != nil {
-		return hostaccount.Record{}, err
+		return nil, err
 	}
-	choices := make([]flow.Option, 0, len(accounts))
-	for _, account := range accounts {
-		choices = append(choices, flow.Option{Value: account.Name, Label: account.Name, Hint: account.Home})
+	accounts := make([]wizard.Account, 0, len(records))
+	for _, record := range records {
+		accounts = append(accounts, wizard.Account{Name: record.Name, Home: record.Home})
 	}
-	name, err := prompter.Select(ctx, flow.SelectPrompt{Message: "Which existing account should be connected?", Options: choices, Searchable: true})
+	return accounts, nil
+}
+
+func installationDefaultExists() (bool, error) {
+	root, err := installation.DefaultRoot()
 	if err != nil {
-		return hostaccount.Record{}, err
+		return false, nil
 	}
-	return backend.Inspect(ctx, name)
+	directory, err := (installation.Store{Root: root}).Directory(installation.DefaultName)
+	if err != nil {
+		return false, nil
+	}
+	info, err := os.Lstat(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
 }
 
 func inspectAccount(ctx context.Context, name string) (hostaccount.Record, error) {
@@ -349,19 +334,31 @@ func (commandRunner) Run(ctx context.Context, name string, args ...string) ([]by
 	return exec.CommandContext(ctx, name, args...).CombinedOutput() // #nosec G204 -- account backend assembles fixed commands.
 }
 
-func installationFromIntent(value setupintent.Intent, approver string) (installation.Installation, error) {
+//nolint:cyclop // Installation assembly maps every account mode explicitly.
+func installationFromIntent(value setupintent.Intent, approver, name string) (installation.Installation, error) {
+	if name == "" {
+		name = installation.DefaultName
+	}
 	result := installation.Installation{
-		APIVersion: installation.APIVersion, Name: installation.DefaultName,
+		APIVersion: installation.APIVersion, Name: name,
 		CredentialService: *value.CredentialService, Approvers: []installation.Approver{{ID: approver, Account: approver}},
 	}
-	if value.Agent != nil {
+	if value.Agent != nil && value.Agent.Location == setupintent.AgentLocalAccount {
 		record, err := inspectAccount(context.Background(), agentAccountName(value.Agent, approver))
 		if err != nil && value.Agent.Account.Mode != setupintent.AccountManaged {
 			return installation.Installation{}, err
 		}
-		target := installation.Target{Kind: installation.TargetLocalAccount, Isolation: "separate", AccountMode: value.Agent.Account.Mode, Account: record.Name, Home: record.Home, Shell: record.Shell, UID: record.UID, GID: record.GID}
+		target := installation.Target{
+			Kind: installation.TargetLocalAccount, Isolation: "separate",
+			AccountMode: value.Agent.Account.Mode, Account: record.Name, Home: record.Home,
+			Shell: record.Shell, UID: record.UID, GID: record.GID,
+		}
 		if value.Agent.Account.Mode == setupintent.AccountManaged {
-			plan, planErr := hostaccount.New(commandRunner{}).PlanCreate(value.Agent.ConnectionName, map[bool]string{true: "/Users/Shared/unyolo-agent", false: "/var/lib/unyolo-agent"}[runtime.GOOS == "darwin"], map[bool]int{true: 550, false: 0}[runtime.GOOS == "darwin"])
+			plan, planErr := hostaccount.New(commandRunner{}).PlanCreate(
+				value.Agent.ConnectionName,
+				map[bool]string{true: "/Users/Shared/unyolo-agent", false: "/var/lib/unyolo-agent"}[runtime.GOOS == "darwin"],
+				map[bool]int{true: 550, false: 0}[runtime.GOOS == "darwin"],
+			)
 			if planErr != nil {
 				return installation.Installation{}, planErr
 			}
@@ -403,10 +400,16 @@ func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, ses
 		return err
 	}
 	defer func() { _ = os.RemoveAll(destination) }()
-	if err := showInstallationReview(ctx, prompter, desired, compiled); err != nil {
+	if err := showInstallationDetails(ctx, prompter, compiled); err != nil {
 		return err
 	}
-	installCLI, err := prompter.Confirm(ctx, flow.ConfirmPrompt{Message: "Install the unYOLO command?", Description: "This installs the verified command for your account.", Affirmative: "Install command", Negative: "Cancel", Safe: true})
+	installCLI, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message:     setupcopy.Screens[setupcopy.ScreenInstallCommand].Question,
+		Description: setupcopy.Screens[setupcopy.ScreenInstallCommand].Reason,
+		Affirmative: setupcopy.Screens[setupcopy.ScreenInstallCommand].Primary,
+		Negative:    setupcopy.Screens[setupcopy.ScreenInstallCommand].Secondary,
+		Safe:        true,
+	})
 	if err != nil || !installCLI {
 		if err != nil {
 			return err
@@ -433,27 +436,17 @@ func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, ses
 	})
 }
 
-func showInstallationReview(ctx context.Context, prompter flow.SetupPrompter, desired installation.Installation, compiled profile.Snapshot) error {
-	connections := "No agent will be connected yet."
-	if len(desired.Connections) > 0 {
-		parts := make([]string, 0, len(desired.Connections))
-		for _, connection := range desired.Connections {
-			parts = append(parts, connection.Target.Account+" will receive access to "+strings.Join(connection.Providers, ", "))
-		}
-		connections = strings.Join(parts, "\n")
-	}
-	message := fmt.Sprintf("Credential services: %s\nApprover account: %s\n%s", strings.Join(desired.CredentialService.Providers, ", "), desired.Approvers[0].Account, connections)
-	if err := prompter.Note(ctx, message, "Review the changes"); err != nil {
+func showInstallationDetails(ctx context.Context, prompter flow.SetupPrompter, compiled profile.Snapshot) error {
+	showDetails, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message:     "Show technical details?",
+		Affirmative: "Show details",
+		Negative:    "Continue",
+		Safe:        true,
+	})
+	if err != nil || !showDetails {
 		return err
 	}
-	showDetails, err := prompter.Confirm(ctx, flow.ConfirmPrompt{Message: "Show technical details?", Affirmative: "Show details", Negative: "Continue", Safe: true})
-	if err != nil {
-		return err
-	}
-	if showDetails {
-		return prompter.Note(ctx, fmt.Sprintf("Configuration digest: %s\nRuntime: %s", compiled.Digest, compiled.Manifest.BundleID), "Technical details")
-	}
-	return nil
+	return prompter.Note(ctx, fmt.Sprintf("Configuration digest: %s\nRuntime: %s", compiled.Digest, compiled.Manifest.BundleID), "Technical details")
 }
 
 //nolint:cyclop // The apply flow keeps session bookkeeping and secret transfer together across the review.
@@ -469,11 +462,17 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		_ = worker.Cancel()
 		return err
 	}
-	if err := prompter.Note(ctx, fmt.Sprintf("%d changes\nPlan digest: %s", len(planned.Plan.Actions), planned.PlanDigest), "System changes"); err != nil {
+	if err := prompter.Note(ctx, fmt.Sprintf("%d changes", len(planned.Plan.Actions)), "System changes"); err != nil {
 		_ = worker.Cancel()
 		return err
 	}
-	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{Message: "Allow these administrator changes?", Description: "The helper rejects changed system state or a changed plan.", Affirmative: "Apply system changes", Negative: "Cancel", Safe: true})
+	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message:     setupcopy.Screens[setupcopy.ScreenAdminChanges].Question,
+		Description: setupcopy.Screens[setupcopy.ScreenAdminChanges].Reason,
+		Affirmative: setupcopy.Screens[setupcopy.ScreenAdminChanges].Primary,
+		Negative:    setupcopy.Screens[setupcopy.ScreenAdminChanges].Secondary,
+		Safe:        true,
+	})
 	if err != nil || !confirmed {
 		_ = worker.Cancel()
 		if err != nil {
@@ -645,7 +644,13 @@ func runAdvancedSetup(ctx context.Context, prompter flow.SetupPrompter, options 
 	if err != nil {
 		return err
 	}
-	apply, err := prompter.Confirm(ctx, flow.ConfirmPrompt{Message: "Apply these administrator changes?", Description: fmt.Sprintf("Plan digest: %s", planned.PlanDigest), Affirmative: "Apply system changes", Negative: "Cancel", Safe: true})
+	apply, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message:     setupcopy.Screens[setupcopy.ScreenAdminChanges].Question,
+		Description: setupcopy.Screens[setupcopy.ScreenAdminChanges].Reason,
+		Affirmative: setupcopy.Screens[setupcopy.ScreenAdminChanges].Primary,
+		Negative:    setupcopy.Screens[setupcopy.ScreenAdminChanges].Secondary,
+		Safe:        true,
+	})
 	if err != nil || !apply {
 		_ = worker.Cancel()
 		if err != nil {
@@ -672,7 +677,13 @@ func runAdvancedSetup(ctx context.Context, prompter flow.SetupPrompter, options 
 }
 
 func finishCommandOnly(ctx context.Context, prompter flow.SetupPrompter, store session.Store, setupSession *session.Session, activate func(context.Context) error) error {
-	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{Message: "Install the unYOLO command?", Description: "No administrator changes will be made.", Affirmative: "Install command", Negative: "Cancel", Safe: true})
+	confirmed, err := prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message:     setupcopy.Screens[setupcopy.ScreenInstallCommand].Question,
+		Description: setupcopy.Screens[setupcopy.ScreenInstallCommand].Reason,
+		Affirmative: setupcopy.Screens[setupcopy.ScreenInstallCommand].Primary,
+		Negative:    setupcopy.Screens[setupcopy.ScreenInstallCommand].Secondary,
+		Safe:        true,
+	})
 	if err != nil || !confirmed {
 		if err != nil {
 			return err
@@ -701,7 +712,13 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 		if existing, found, err := store.NewestIncomplete(build); err != nil {
 			return session.Session{}, err
 		} else if found {
-			resume, confirmErr := prompter.Confirm(ctx, flow.ConfirmPrompt{Message: "Continue the unfinished setup?", Affirmative: "Continue", Negative: "Start over", Initial: true})
+			resume, confirmErr := prompter.Confirm(ctx, flow.ConfirmPrompt{
+				Message:     setupcopy.Screens[setupcopy.ScreenResumeChoice].Question,
+				Description: setupcopy.Screens[setupcopy.ScreenResumeChoice].Reason,
+				Affirmative: setupcopy.Screens[setupcopy.ScreenResumeChoice].Primary,
+				Negative:    setupcopy.Screens[setupcopy.ScreenResumeChoice].Secondary,
+				Initial:     true,
+			})
 			if confirmErr != nil {
 				return session.Session{}, confirmErr
 			}
@@ -714,35 +731,11 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err != nil {
 		return session.Session{}, err
 	}
-	created.CurrentStep = "goal"
+	created.CurrentStep = string(wizard.StepGoal)
 	if err := store.Save(created); err != nil {
 		return session.Session{}, err
 	}
 	return created, nil
-}
-
-func checkpoint(store session.Store, value *session.Session, step string) error {
-	value.CompletedStep = appendUnique(value.CompletedStep, step)
-	value.CurrentStep = step
-	return store.Save(*value)
-}
-
-func chooseProviders(ctx context.Context, prompter flow.SetupPrompter, options []provider.Option) ([]string, error) {
-	if len(options) == 0 {
-		return nil, errors.New("verified release contains no credential services")
-	}
-	choices, initial := make([]flow.Option, 0, len(options)), []string{}
-	for _, option := range options {
-		choices = append(choices, flow.Option{Value: option.ID, Label: option.Label, Hint: option.Hint})
-		if option.Selected {
-			initial = append(initial, option.ID)
-		}
-	}
-	selected, err := prompter.MultiSelect(ctx, flow.SelectPrompt{Message: "Which credential services do you want?", Description: "Select at least one.", Options: choices, InitialValues: initial, Required: true})
-	if err != nil {
-		return nil, err
-	}
-	return selected, nil
 }
 
 func selectedReleaseSourceSet(options setupOptions, selected []string) (string, error) {
@@ -955,8 +948,10 @@ func clearSetupSecrets(values map[string][]byte) {
 }
 
 func appendUnique(values []string, value string) []string {
-	if slices.Contains(values, value) {
-		return values
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
 	}
 	return append(values, value)
 }
