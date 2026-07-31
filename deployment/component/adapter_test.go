@@ -401,7 +401,7 @@ func TestHostInspectionHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	account := Account{Name: current.Username, Group: group.Name, Home: current.HomeDir, Shell: shell}
-	members, err := groupMemberNames(t.Context(), group.Name)
+	members, err := hostAccountBackend().GroupMembers(t.Context(), group.Name)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,10 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -569,7 +567,7 @@ func groupFingerprint(ctx context.Context, value Group) string {
 	if err != nil {
 		return "missing"
 	}
-	members, err := groupMemberNames(ctx, value.Name)
+	members, err := hostAccountBackend().GroupMembers(ctx, value.Name)
 	if err != nil {
 		return "unavailable"
 	}
@@ -589,45 +587,13 @@ func groupMatches(ctx context.Context, value Group) bool {
 	if _, err := user.LookupGroup(value.Name); err != nil {
 		return false
 	}
-	members, err := groupMemberNames(ctx, value.Name)
+	members, err := hostAccountBackend().GroupMembers(ctx, value.Name)
 	if err != nil {
 		return false
 	}
 	desired := append([]string(nil), value.Members...)
 	slices.Sort(desired)
 	return slices.Equal(members, desired)
-}
-
-func groupMemberNames(ctx context.Context, name string) ([]string, error) {
-	var output []byte
-	var err error
-	if runtime.GOOS == "darwin" {
-		output, err = exec.CommandContext(ctx, "dscl", ".", "-read", "/Groups/"+name, "GroupMembership").Output() // #nosec G204 -- validated exact group argument.
-	} else {
-		output, err = exec.CommandContext(ctx, "getent", "group", name).Output() // #nosec G204 -- validated exact group argument.
-	}
-	if err != nil {
-		return nil, err
-	}
-	text := strings.TrimSpace(string(output))
-	var members []string
-	if runtime.GOOS == "darwin" {
-		_, value, found := strings.Cut(text, ":")
-		if !found {
-			return nil, errors.New("group membership output is invalid")
-		}
-		members = strings.Fields(value)
-	} else {
-		parts := strings.Split(text, ":")
-		if len(parts) != 4 {
-			return nil, errors.New("group membership output is invalid")
-		}
-		if parts[3] != "" {
-			members = strings.Split(parts[3], ",")
-		}
-	}
-	slices.Sort(members)
-	return members, nil
 }
 
 func accountMatches(ctx context.Context, value Account) bool {
@@ -644,26 +610,11 @@ func accountMatches(ctx context.Context, value Account) bool {
 }
 
 func accountShell(ctx context.Context, name string) (string, error) {
-	if runtime.GOOS == "darwin" {
-		output, err := exec.CommandContext(ctx, "dscl", ".", "-read", "/Users/"+name, "UserShell").Output() // #nosec G204 -- validated account is one fixed command argument.
-		if err != nil {
-			return "", err
-		}
-		_, shell, found := strings.Cut(strings.TrimSpace(string(output)), ":")
-		if !found {
-			return "", errors.New("account shell is invalid")
-		}
-		return strings.TrimSpace(shell), nil
-	}
-	output, err := exec.CommandContext(ctx, "getent", "passwd", name).Output() // #nosec G204 -- validated account is one fixed command argument.
+	record, err := hostAccountBackend().Inspect(ctx, name)
 	if err != nil {
 		return "", err
 	}
-	parts := strings.Split(strings.TrimSpace(string(output)), ":")
-	if len(parts) != 7 {
-		return "", errors.New("account shell is invalid")
-	}
-	return parts[6], nil
+	return record.Shell, nil
 }
 
 func matchesDirectory(value Directory) bool {

@@ -21,9 +21,19 @@ import (
 	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/internal/config/client"
 	"github.com/osolmaz/unyolo/internal/config/secretfile"
+	"github.com/osolmaz/unyolo/internal/host/account"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
+
+type componentAccountRunner struct{}
+
+func (componentAccountRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	// #nosec G204 -- provider-owned validated arguments to a fixed identity command.
+	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+}
+
+func hostAccountBackend() account.Backend { return account.New(componentAccountRunner{}) }
 
 type backup struct {
 	APIVersion string          `json:"api_version"`
@@ -187,6 +197,7 @@ func createBackup(ctx context.Context, config Config, paths []string, profile Pr
 }
 
 func snapshotIdentityBackups(ctx context.Context, profile Profile) ([]accountBackup, []groupBackup, error) {
+	backend := hostAccountBackend()
 	accounts := make([]accountBackup, 0, len(profile.Accounts))
 	for _, account := range profile.Accounts {
 		_, err := user.Lookup(account.Name)
@@ -203,7 +214,7 @@ func snapshotIdentityBackups(ctx context.Context, profile Profile) ([]accountBac
 		}
 		entry := groupBackup{Name: group.Name, Existed: err == nil}
 		if entry.Existed {
-			entry.Members, err = groupMemberNames(ctx, group.Name)
+			entry.Members, err = backend.GroupMembers(ctx, group.Name)
 			if err != nil {
 				return nil, nil, errors.New("inspect component group members for rollback")
 			}
@@ -257,21 +268,17 @@ func readSecrets(descriptors []api.SecretDescriptor) (map[string][]byte, error) 
 }
 
 func applyGroups(ctx context.Context, values []Group) error {
+	backend := hostAccountBackend()
 	for _, value := range values {
-		if _, err := user.LookupGroup(value.Name); err == nil {
-			continue
-		}
-		if runtime.GOOS != "linux" {
-			return errors.New("automatic service group creation is supported only on Linux")
-		}
-		if output, err := exec.CommandContext(ctx, "groupadd", "--system", value.Name).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned name is one fixed command argument.
-			return fmt.Errorf("create service group: %w: %s", err, strings.TrimSpace(string(output)))
+		if err := backend.EnsureGroup(ctx, value.Name); err != nil {
+			return fmt.Errorf("create service group %q: %w", value.Name, err)
 		}
 	}
 	return nil
 }
 
 func applyAccounts(ctx context.Context, values []Account) error {
+	backend := hostAccountBackend()
 	for _, value := range values {
 		if _, err := user.Lookup(value.Name); err == nil {
 			if !accountMatches(ctx, value) {
@@ -279,20 +286,43 @@ func applyAccounts(ctx context.Context, values []Account) error {
 			}
 			continue
 		}
-		if runtime.GOOS != "linux" {
-			return errors.New("automatic service account creation is supported only on Linux")
-		}
-		arguments := []string{"--system", "--home-dir", value.Home, "--shell", value.Shell, "--gid", value.Group, value.Name}
-		if output, err := exec.CommandContext(ctx, "useradd", arguments...).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned fields are arguments to a fixed command.
-			return fmt.Errorf("create service account: %w: %s", err, strings.TrimSpace(string(output)))
+		if err := createComponentAccount(ctx, backend, value); err != nil {
+			return fmt.Errorf("create service account %q: %w", value.Name, err)
 		}
 	}
 	return nil
 }
 
+func createComponentAccount(ctx context.Context, backend account.Backend, value Account) error {
+	switch runtime.GOOS {
+	case "linux":
+		arguments := []string{"--system", "--home-dir", value.Home, "--shell", value.Shell, "--gid", value.Group, value.Name}
+		if output, err := exec.CommandContext(ctx, "useradd", arguments...).CombinedOutput(); err != nil { // #nosec G204 -- validated provider-owned fields are arguments to a fixed command.
+			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	case "darwin":
+		uid, err := backend.PickUID(ctx)
+		if err != nil {
+			return err
+		}
+		plan, err := backend.PlanCreate(value.Name, value.Home, uid)
+		if err != nil {
+			return err
+		}
+		if _, err := backend.ApplyCreate(ctx, plan); err != nil {
+			return err
+		}
+		return nil
+	default:
+		return fmt.Errorf("automatic service account creation is unsupported on %s", runtime.GOOS)
+	}
+}
+
 func applyGroupMembers(ctx context.Context, values []Group) error {
+	backend := hostAccountBackend()
 	for _, value := range values {
-		current, err := groupMemberNames(ctx, value.Name)
+		current, err := backend.GroupMembers(ctx, value.Name)
 		if err != nil {
 			return fmt.Errorf("inspect component group members: %w", err)
 		}
@@ -302,42 +332,18 @@ func applyGroupMembers(ctx context.Context, values []Group) error {
 			if slices.Contains(current, member) {
 				continue
 			}
-			if err := editGroupMember(ctx, value.Name, member, true); err != nil {
-				return err
+			if err := backend.AddGroupMember(ctx, value.Name, member); err != nil {
+				return fmt.Errorf("add %q to component group %q: %w", member, value.Name, err)
 			}
 		}
 		for _, member := range current {
 			if slices.Contains(desired, member) {
 				continue
 			}
-			if err := editGroupMember(ctx, value.Name, member, false); err != nil {
-				return err
+			if err := backend.RemoveGroupMember(ctx, value.Name, member); err != nil {
+				return fmt.Errorf("remove %q from component group %q: %w", member, value.Name, err)
 			}
 		}
-	}
-	return nil
-}
-
-func editGroupMember(ctx context.Context, group, member string, add bool) error {
-	var command *exec.Cmd
-	if runtime.GOOS == "darwin" {
-		action := "-d"
-		if add {
-			action = "-a"
-		}
-		command = exec.CommandContext(ctx, "dseditgroup", "-o", "edit", action, member, "-t", "user", group) // #nosec G204 -- validated exact user and group arguments.
-	} else if add {
-		command = exec.CommandContext(ctx, "usermod", "--append", "--groups", group, member) // #nosec G204 -- validated exact user and group arguments.
-	} else {
-		command = exec.CommandContext(ctx, "gpasswd", "--delete", member, group) // #nosec G204 -- validated exact user and group arguments.
-	}
-	output, err := command.CombinedOutput()
-	if err != nil {
-		action := "remove"
-		if add {
-			action = "add"
-		}
-		return fmt.Errorf("%s component group member: %w: %s", action, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
@@ -697,6 +703,7 @@ func rollbackIdentities(ctx context.Context, config Config, record backup) error
 }
 
 func rollbackAccounts(ctx context.Context, config Config, accounts []accountBackup) error {
+	backend := hostAccountBackend()
 	for index := len(accounts) - 1; index >= 0; index-- {
 		entry := accounts[index]
 		if entry.Existed {
@@ -705,58 +712,49 @@ func rollbackAccounts(ctx context.Context, config Config, accounts []accountBack
 		if !slices.Contains(config.AllowedAccounts, entry.Name) {
 			return errors.New("component rollback account exceeds ownership")
 		}
-		if _, err := user.Lookup(entry.Name); isUnknownUser(err) {
-			continue
-		} else if err != nil {
-			return errors.New("inspect component rollback account")
-		}
-		if output, err := exec.CommandContext(ctx, "userdel", entry.Name).CombinedOutput(); err != nil { // #nosec G204 -- signed ownership and the backup bind this validated account name.
-			return fmt.Errorf("remove component account: %w: %s", err, strings.TrimSpace(string(output)))
+		if err := backend.RemoveAccount(ctx, entry.Name); err != nil {
+			return fmt.Errorf("remove component account %q: %w", entry.Name, err)
 		}
 	}
 	return nil
 }
 
 func rollbackGroups(ctx context.Context, config Config, groups []groupBackup) error {
+	backend := hostAccountBackend()
 	for index := len(groups) - 1; index >= 0; index-- {
 		entry := groups[index]
 		if !slices.Contains(config.AllowedGroups, entry.Name) {
 			return errors.New("component rollback group exceeds ownership")
 		}
 		if !entry.Existed {
-			if _, err := user.LookupGroup(entry.Name); isUnknownGroup(err) {
-				continue
-			} else if err != nil {
-				return errors.New("inspect component rollback group")
-			}
-			if output, err := exec.CommandContext(ctx, "groupdel", entry.Name).CombinedOutput(); err != nil { // #nosec G204 -- signed ownership and the backup bind this validated group name.
-				return fmt.Errorf("remove component group: %w: %s", err, strings.TrimSpace(string(output)))
+			if err := backend.RemoveGroup(ctx, entry.Name); err != nil {
+				return fmt.Errorf("remove component group %q: %w", entry.Name, err)
 			}
 			continue
 		}
-		if err := restoreGroupMembers(ctx, entry); err != nil {
+		if err := restoreGroupMembers(ctx, backend, entry); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func restoreGroupMembers(ctx context.Context, entry groupBackup) error {
-	current, err := groupMemberNames(ctx, entry.Name)
+func restoreGroupMembers(ctx context.Context, backend account.Backend, entry groupBackup) error {
+	current, err := backend.GroupMembers(ctx, entry.Name)
 	if err != nil {
 		return err
 	}
 	for _, member := range entry.Members {
 		if !slices.Contains(current, member) {
-			if err := editGroupMember(ctx, entry.Name, member, true); err != nil {
-				return err
+			if err := backend.AddGroupMember(ctx, entry.Name, member); err != nil {
+				return fmt.Errorf("add %q to component group %q: %w", member, entry.Name, err)
 			}
 		}
 	}
 	for _, member := range current {
 		if !slices.Contains(entry.Members, member) {
-			if err := editGroupMember(ctx, entry.Name, member, false); err != nil {
-				return err
+			if err := backend.RemoveGroupMember(ctx, entry.Name, member); err != nil {
+				return fmt.Errorf("remove %q from component group %q: %w", member, entry.Name, err)
 			}
 		}
 	}
