@@ -32,6 +32,23 @@ func TestIntentGoals(t *testing.T) {
 	}
 }
 
+func TestValidatePartialAcceptsWizardTransitions(t *testing.T) {
+	t.Parallel()
+	values := []Intent{
+		{APIVersion: APIVersion, Goal: GoalCompleteLocal, CredentialService: &CredentialService{Location: ServiceNative}},
+		{APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentLocalAccount, Account: &Account{Mode: AccountExisting}}, Connection: &Connection{Transport: TransportLocalSocket}},
+		{APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentRemote}},
+	}
+	for _, value := range values {
+		if err := value.ValidatePartial(); err != nil {
+			t.Fatalf("ValidatePartial(%#v): %v", value, err)
+		}
+		if err := value.Validate(); err == nil {
+			t.Fatalf("incomplete intent passed full validation: %#v", value)
+		}
+	}
+}
+
 func TestIntentRejectsInvalidCrossFields(t *testing.T) {
 	t.Parallel()
 	cases := map[string]Intent{

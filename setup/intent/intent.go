@@ -126,6 +126,19 @@ func (value Intent) Validate() error {
 	if needsService != (value.CredentialService != nil) || needsAgent != (value.Agent != nil && value.Connection != nil) {
 		return errors.New("setup intent fields do not match the selected goal")
 	}
+	if value.CredentialService != nil && len(value.CredentialService.Providers) == 0 {
+		return errors.New("credential-service selection is incomplete")
+	}
+	if value.Agent != nil {
+		if err := value.Agent.validate(); err != nil {
+			return err
+		}
+	}
+	if value.Connection != nil {
+		if err := value.Connection.validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -139,23 +152,53 @@ func (value Intent) ValidatePartial() error {
 	}
 	if value.CredentialService != nil {
 		if !slices.Contains([]ServiceLocation{ServiceNative, ServiceDocker}, value.CredentialService.Location) ||
-			len(value.CredentialService.Providers) == 0 || len(value.CredentialService.Providers) > MaxProviders ||
-			!uniqueNames(value.CredentialService.Providers) {
+			len(value.CredentialService.Providers) > MaxProviders ||
+			len(value.CredentialService.Providers) > 0 && !uniqueNames(value.CredentialService.Providers) {
 			return errors.New("credential-service selection is invalid")
 		}
 	}
 	if value.Agent != nil {
-		if err := value.Agent.validate(); err != nil {
+		if err := value.Agent.validatePartial(); err != nil {
 			return err
 		}
 	}
 	if value.Connection != nil {
-		if err := value.Connection.validate(); err != nil {
+		if err := value.Connection.validatePartial(); err != nil {
 			return err
 		}
 	}
 	if len(value.Integrations) > MaxIntegrations || !uniqueNames(value.Integrations) {
 		return errors.New("integration selection is invalid")
+	}
+	return nil
+}
+
+func (value Agent) validatePartial() error {
+	if !slices.Contains([]AgentLocation{AgentLocalAccount, AgentContainer, AgentRemote}, value.Location) ||
+		value.ConnectionName != "" && !validName(value.ConnectionName) {
+		return errors.New("agent selection is invalid")
+	}
+	switch value.Location {
+	case AgentLocalAccount:
+		if value.Account == nil || value.Container != nil || !slices.Contains([]AccountMode{AccountCurrent, AccountExisting, AccountManaged}, value.Account.Mode) {
+			return errors.New("local agent requires one account selection")
+		}
+		if value.Account.Mode == AccountCurrent && value.Account.Name != "" ||
+			value.Account.Mode != AccountCurrent && value.Account.Name != "" && !validName(value.Account.Name) {
+			return errors.New("agent account selection is invalid")
+		}
+	case AgentContainer:
+		if value.Account != nil {
+			return errors.New("container agent cannot contain an account")
+		}
+		if value.Container != nil && (value.Container.ProjectDirectory != "" && (!filepath.IsAbs(value.Container.ProjectDirectory) || filepath.Clean(value.Container.ProjectDirectory) != value.Container.ProjectDirectory) ||
+			value.Container.Service != "" && !validName(value.Container.Service)) {
+			return errors.New("container agent selection is invalid")
+		}
+	case AgentRemote:
+		if value.Account != nil || value.Container != nil {
+			return errors.New("remote agent cannot contain local target fields")
+		}
 	}
 	return nil
 }
@@ -189,6 +232,22 @@ func (value Agent) validate() error {
 		}
 	}
 	return nil
+}
+
+func (value Connection) validatePartial() error {
+	if !slices.Contains([]Transport{TransportLocalSocket, TransportTLS}, value.Transport) {
+		return errors.New("connection transport is invalid")
+	}
+	if value.Transport == TransportLocalSocket {
+		if value.RemoteEndpoint != "" || value.ServerName != "" {
+			return errors.New("local connection cannot contain network fields")
+		}
+		return nil
+	}
+	if value.RemoteEndpoint == "" && value.ServerName == "" {
+		return nil
+	}
+	return value.validate()
 }
 
 func (value Connection) validate() error {
