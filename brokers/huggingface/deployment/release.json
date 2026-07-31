@@ -6,6 +6,8 @@
   "destination": "bin/hf-broker",
   "role": "provider",
   "services": [
+    "hf-broker-agent.socket",
+    "hf-broker-operator.socket",
     "hf-broker.service"
   ],
   "agent_contract": true,
@@ -27,6 +29,8 @@
         "/var/lib/unyolo-agent/.config/hf-broker/client.json"
       ],
       "services": [
+        "hf-broker-agent.socket",
+        "hf-broker-operator.socket",
         "hf-broker.service"
       ],
       "accounts": [

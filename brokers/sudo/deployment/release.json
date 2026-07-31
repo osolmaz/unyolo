@@ -6,6 +6,8 @@
   "destination": "bin/sudo-broker",
   "role": "provider",
   "services": [
+    "sudo-broker-agent.socket",
+    "sudo-broker-operator.socket",
     "sudo-broker.service"
   ],
   "agent_contract": true,
@@ -28,6 +30,8 @@
         "/var/lib/unyolo-agent/.config/sudo-broker/client.json"
       ],
       "services": [
+        "sudo-broker-agent.socket",
+        "sudo-broker-operator.socket",
         "sudo-broker.service"
       ],
       "accounts": [

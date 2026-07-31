@@ -6,6 +6,8 @@
   "destination": "bin/gh-broker",
   "role": "provider",
   "services": [
+    "gh-broker-agent.socket",
+    "gh-broker-operator.socket",
     "gh-broker.service"
   ],
   "agent_contract": true,
@@ -27,6 +29,8 @@
         "/var/lib/unyolo-agent/.config/gh-broker/client.json"
       ],
       "services": [
+        "gh-broker-agent.socket",
+        "gh-broker-operator.socket",
         "gh-broker.service"
       ],
       "accounts": [
