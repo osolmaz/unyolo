@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.unyolo.huggingface</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Application Support/unyolo/current/bin/hf-broker</string>
+  </array>
+  <key>UserName</key>
+  <string>hf-broker</string>
+  <key>GroupName</key>
+  <string>hf-broker</string>
+  <key>KeepAlive</key>
+  <false/>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>WorkingDirectory</key>
+  <string>/Library/Application Support/unyolo/var/hf-broker</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Application Support/unyolo/var/hf-broker/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Application Support/unyolo/var/hf-broker/stderr.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_BROKER_AGENT_ENDPOINT</key>
+    <string>activation://agent</string>
+    <key>HF_BROKER_DEVELOPMENT</key>
+    <string>false</string>
+    <key>HF_BROKER_OPERATOR_ENDPOINT</key>
+    <string>activation://operator</string>
+    <key>HF_BROKER_OPERATOR_SECRETS_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/hf-broker/operator-secrets</string>
+    <key>HF_BROKER_SCOPE_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/hf-broker/scope.json</string>
+    <key>HF_BROKER_SECRETS_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/hf-broker/secrets</string>
+    <key>HF_BROKER_STATE_DIR</key>
+    <string>/Library/Application Support/unyolo/var/hf-broker</string>
+  </dict>
+  <key>Sockets</key>
+  <dict>
+    <key>agent</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/unyolo/huggingface/agent/broker.sock</string>
+      <key>SockPathOwner</key>
+      <string>hf-broker</string>
+      <key>SockPathGroup</key>
+      <string>hf-broker-agent</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+    <key>operator</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/unyolo/huggingface/operator/broker.sock</string>
+      <key>SockPathOwner</key>
+      <string>hf-broker</string>
+      <key>SockPathGroup</key>
+      <string>hf-broker-operator</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+  </dict>
+</dict>
+</plist>

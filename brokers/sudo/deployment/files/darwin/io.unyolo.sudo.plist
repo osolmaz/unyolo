@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.unyolo.sudo</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Application Support/unyolo/current/bin/sudo-broker</string>
+    <string>serve</string>
+    <string>--policy</string>
+    <string>/Library/Application Support/unyolo/etc/sudo-broker/policy.json</string>
+    <string>--catalog</string>
+    <string>/Library/Application Support/unyolo/etc/sudo-broker/catalog.json</string>
+    <string>--secrets</string>
+    <string>/Library/Application Support/unyolo/etc/sudo-broker/secrets</string>
+    <string>--operator-secrets</string>
+    <string>/Library/Application Support/unyolo/etc/sudo-broker/operator-secrets</string>
+    <string>--state</string>
+    <string>/Library/Application Support/unyolo/var/sudo-broker/frontend</string>
+    <string>--helper-socket</string>
+    <string>/private/var/run/unyolo/sudo/helper.sock</string>
+    <string>--agent-endpoint</string>
+    <string>activation://agent</string>
+    <string>--operator-endpoint</string>
+    <string>activation://operator</string>
+  </array>
+  <key>UserName</key>
+  <string>sudo-broker</string>
+  <key>GroupName</key>
+  <string>sudo-broker</string>
+  <key>KeepAlive</key>
+  <false/>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>WorkingDirectory</key>
+  <string>/Library/Application Support/unyolo/var/sudo-broker/frontend</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Application Support/unyolo/var/sudo-broker/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Application Support/unyolo/var/sudo-broker/stderr.log</string>
+  <key>Sockets</key>
+  <dict>
+    <key>agent</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/unyolo/sudo/agent/broker.sock</string>
+      <key>SockPathOwner</key>
+      <string>sudo-broker</string>
+      <key>SockPathGroup</key>
+      <string>sudo-broker-agent</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+    <key>operator</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/unyolo/sudo/operator/broker.sock</string>
+      <key>SockPathOwner</key>
+      <string>sudo-broker</string>
+      <key>SockPathGroup</key>
+      <string>sudo-broker-operator</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+  </dict>
+</dict>
+</plist>

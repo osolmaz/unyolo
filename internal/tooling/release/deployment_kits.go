@@ -25,23 +25,24 @@ const (
 )
 
 type deploymentReleaseComponent struct {
-	APIVersion             string                  `json:"api_version"`
-	Provider               string                  `json:"provider"`
-	Name                   string                  `json:"name"`
-	Binary                 string                  `json:"binary"`
-	Destination            string                  `json:"destination"`
-	Role                   bundle.Role             `json:"role"`
-	Services               []string                `json:"services"`
-	OperatorEndpoint       string                  `json:"operator_endpoint,omitempty"`
-	OperatorTokenFile      string                  `json:"operator_token_file,omitempty"`
-	AgentContract          bool                    `json:"agent_contract"`
-	StateFormatDigest      string                  `json:"state_format_digest"`
-	StateDir               string                  `json:"state_dir,omitempty"`
-	ReplaceState           bool                    `json:"replace_state,omitempty"`
-	Required               bool                    `json:"required"`
-	Setup                  *bundle.SetupAdapter    `json:"setup,omitempty"`
-	Profile                string                  `json:"profile,omitempty"`
-	AdditionalProfileFiles []deploymentReleaseFile `json:"additional_profile_files,omitempty"`
+	APIVersion             string                             `json:"api_version"`
+	Provider               string                             `json:"provider"`
+	Name                   string                             `json:"name"`
+	Binary                 string                             `json:"binary"`
+	Destination            string                             `json:"destination"`
+	Role                   bundle.Role                        `json:"role"`
+	Services               []string                           `json:"services"`
+	OperatorEndpoint       string                             `json:"operator_endpoint,omitempty"`
+	OperatorTokenFile      string                             `json:"operator_token_file,omitempty"`
+	AgentContract          bool                               `json:"agent_contract"`
+	StateFormatDigest      string                             `json:"state_format_digest"`
+	StateDir               string                             `json:"state_dir,omitempty"`
+	ReplaceState           bool                               `json:"replace_state,omitempty"`
+	Required               bool                               `json:"required"`
+	Setup                  *bundle.SetupAdapter               `json:"setup,omitempty"`
+	Profile                string                             `json:"profile,omitempty"`
+	AdditionalProfileFiles []deploymentReleaseFile            `json:"additional_profile_files,omitempty"`
+	PlatformFiles          map[string][]deploymentReleaseFile `json:"platform_files,omitempty"`
 }
 
 type deploymentReleaseFile struct {
@@ -136,7 +137,7 @@ func generateSourceSet(root string, options Options, components []loadedDeployme
 		return err
 	}
 	for _, provider := range providers {
-		if err := writeSourceProvider(root, provider, components); err != nil {
+		if err := writeSourceProvider(root, provider, components, goos); err != nil {
 			return err
 		}
 	}
@@ -171,7 +172,7 @@ func canonicalSetupCapabilities(goos string, _ []string) bundle.SetupCapabilitie
 }
 
 //nolint:cyclop // Source-provider assembly rejects every unsafe or duplicated release input.
-func writeSourceProvider(root, provider string, components []loadedDeploymentComponent) error {
+func writeSourceProvider(root, provider string, components []loadedDeploymentComponent, goos string) error {
 	providerRoot := filepath.Join(root, "providers", provider)
 	if err := os.MkdirAll(providerRoot, 0o700); err != nil {
 		return err
@@ -205,7 +206,9 @@ func writeSourceProvider(root, provider string, components []loadedDeploymentCom
 	if err := copyReleaseData(filepath.Join(primary.directory, primary.descriptor.Profile), filepath.Join(providerRoot, "profile.json"), 0o600); err != nil {
 		return err
 	}
-	for _, file := range primary.descriptor.AdditionalProfileFiles {
+	files := append([]deploymentReleaseFile(nil), primary.descriptor.AdditionalProfileFiles...)
+	files = append(files, primary.descriptor.PlatformFiles[goos]...)
+	for _, file := range files {
 		if trackedFiles[file.Destination] {
 			return fmt.Errorf("provider %q duplicates static file %q", provider, file.Destination)
 		}
@@ -268,7 +271,23 @@ func validateDeploymentComponent(value deploymentReleaseComponent, binaries map[
 	if err := validateAdditionalProfileFiles(value.AdditionalProfileFiles); err != nil {
 		return err
 	}
+	if err := validatePlatformFiles(value.PlatformFiles); err != nil {
+		return err
+	}
 	names[value.Name] = true
+	return nil
+}
+
+func validatePlatformFiles(values map[string][]deploymentReleaseFile) error {
+	supported := map[string]bool{"linux": true, "darwin": true}
+	for goos, files := range values {
+		if !supported[goos] {
+			return fmt.Errorf("platform_files uses unsupported target %q", goos)
+		}
+		if err := validateAdditionalProfileFiles(files); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

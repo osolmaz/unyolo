@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.unyolo.github</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Library/Application Support/unyolo/current/bin/gh-broker</string>
+  </array>
+  <key>UserName</key>
+  <string>gh-broker</string>
+  <key>GroupName</key>
+  <string>gh-broker</string>
+  <key>KeepAlive</key>
+  <false/>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>WorkingDirectory</key>
+  <string>/Library/Application Support/unyolo/var/gh-broker</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Application Support/unyolo/var/gh-broker/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Application Support/unyolo/var/gh-broker/stderr.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>GH_BROKER_AGENT_ENDPOINT</key>
+    <string>activation://agent</string>
+    <key>GH_BROKER_DEVELOPMENT</key>
+    <string>false</string>
+    <key>GH_BROKER_GITHUB_APP_ID_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/github-app-id</string>
+    <key>GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/github-app-private-key.pem</string>
+    <key>GH_BROKER_GITHUB_HTTP_TIMEOUT</key>
+    <string>30</string>
+    <key>GH_BROKER_GITHUB_STREAM_TIMEOUT</key>
+    <string>600</string>
+    <key>GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/github-webhook-secret</string>
+    <key>GH_BROKER_MAX_RECEIVE_PACK_BYTES</key>
+    <string>26214400</string>
+    <key>GH_BROKER_OPERATOR_ENDPOINT</key>
+    <string>activation://operator</string>
+    <key>GH_BROKER_OPERATOR_SECRETS_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/operator-secrets</string>
+    <key>GH_BROKER_SCOPE_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/scope.json</string>
+    <key>GH_BROKER_SECRETS_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/secrets</string>
+    <key>GH_BROKER_STATE_DIR</key>
+    <string>/Library/Application Support/unyolo/var/gh-broker</string>
+  </dict>
+  <key>Sockets</key>
+  <dict>
+    <key>agent</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/unyolo/github/agent/broker.sock</string>
+      <key>SockPathOwner</key>
+      <string>gh-broker</string>
+      <key>SockPathGroup</key>
+      <string>gh-broker-agent</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+    <key>operator</key>
+    <dict>
+      <key>SockPathName</key>
+      <string>/private/var/run/unyolo/github/operator/broker.sock</string>
+      <key>SockPathOwner</key>
+      <string>gh-broker</string>
+      <key>SockPathGroup</key>
+      <string>gh-broker-operator</string>
+      <key>SockPathMode</key>
+      <integer>432</integer>
+    </dict>
+  </dict>
+</dict>
+</plist>

@@ -74,5 +74,13 @@
       "source": "files/sudo/sudo-broker-operator.socket",
       "destination": "files/sudo/sudo-broker-operator.socket"
     }
-  ]
+  ],
+  "platform_files": {
+    "darwin": [
+      {
+        "source": "files/darwin/io.unyolo.sudo.plist",
+        "destination": "files/darwin/io.unyolo.sudo.plist"
+      }
+    ]
+  }
 }
