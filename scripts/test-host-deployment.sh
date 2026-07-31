@@ -23,13 +23,12 @@ EOF
     usermod --append --groups unyolo-e2e-agent operator
 
     cp -a /tmp/deployment /tmp/failure-deployment
-    sed -i "s#/etc/unyolo-e2e#/proc/unyolo-e2e#g" /tmp/failure-deployment/components/fake.json
     /tmp/unyolo system profile lock --profile /tmp/failure-deployment
     /tmp/unyolo system plan \
       --development --profile /tmp/failure-deployment \
       --root /tmp/failure-runtime --state-dir /tmp/failure-state --json >/tmp/failure-plan.json
     failure_plan=$(awk -F\" '\''/"digest":/ {print $4; exit}'\'' /tmp/failure-plan.json)
-    printf "%s" "rollback-secret-canary" >/tmp/failure-secret
+    : >/tmp/failure-secret
     chmod 0600 /tmp/failure-secret
     if /tmp/unyolo system apply \
       --development --profile /tmp/failure-deployment \

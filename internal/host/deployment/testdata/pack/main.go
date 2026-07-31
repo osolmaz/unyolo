@@ -89,8 +89,10 @@ func main() {
 			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroDigest()}, Activation: profile.Reference{Path: "runtime/activation.json", SHA256: zeroDigest()},
 		},
 		Agents: []profile.Agent{{
-			ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed",
-			Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin", ComponentIDs: []string{"fake"},
+			ID: "agent", ClientID: "agent",
+			Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "unyolo-agent", AccountMode: "managed",
+				Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"},
+			ComponentIDs: []string{"fake"},
 		}},
 		Operators:  []profile.Operator{{ID: "operator", UnixUser: "operator"}},
 		Components: []profile.Component{{ID: "fake", Profile: profile.Reference{Path: "components/fake.json", SHA256: zeroDigest()}}},

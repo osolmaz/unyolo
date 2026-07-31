@@ -4,7 +4,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
-allowed_go_roots='^(agent|approval|auth|authorization|broker|brokers|cmd|credential|deployment|git|install|internal|mcp|operation|operator|plugins|protocol|telemetry|transport)$'
+allowed_go_roots='^(agent|approval|auth|authorization|broker|brokers|cmd|credential|deployment|git|install|internal|mcp|operation|operator|plugins|protocol|setup|telemetry|transport)$'
 unexpected_go_roots=$(
 	go list -f '{{.Dir}}' ./... |
 		while IFS= read -r package_dir; do
