@@ -19,49 +19,58 @@ var (
 	verifiedTemplatePattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9+-]{0,254}$`)
 )
 
-//nolint:cyclop // Fail-closed attested-release traversal keeps every unsafe entry check in one trust boundary.
 func verifyAttestedReleaseTemplate(stateDir string, snapshot profile.Snapshot) error {
+	_, err := verifiedReleaseSource(stateDir, snapshot)
+	return err
+}
+
+//nolint:cyclop // Fail-closed attested-release traversal keeps every unsafe entry check in one trust boundary.
+func verifiedReleaseSource(stateDir string, snapshot profile.Snapshot) (string, error) {
 	root := filepath.Join(stateDir, "verified-releases")
 	if err := verifyTrustedDirectory(root); err != nil {
-		return fmt.Errorf("inspect verified release store: %w", err)
+		return "", fmt.Errorf("inspect verified release store: %w", err)
 	}
 	releases, err := os.ReadDir(root)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if len(releases) == 0 || len(releases) > maxVerifiedReleases {
-		return errors.New("verified release store is empty or exceeds its bound")
+		return "", errors.New("verified release store is empty or exceeds its bound")
 	}
 	candidate := runtimeTrustFiles(snapshot)
 	for _, release := range releases {
 		if !verifiedReleaseNamePattern.MatchString(release.Name()) || !release.IsDir() || release.Type()&os.ModeSymlink != 0 {
-			return errors.New("verified release store contains an unsafe entry")
+			return "", errors.New("verified release store contains an unsafe entry")
 		}
 		releaseRoot := filepath.Join(root, release.Name())
 		if err := verifyTrustedDirectory(releaseRoot); err != nil {
-			return err
+			return "", err
 		}
-		templatesRoot := filepath.Join(releaseRoot, "templates")
+		sourceRoot := filepath.Join(releaseRoot, "source-set")
+		if err := verifyTrustedDirectory(sourceRoot); err != nil {
+			return "", err
+		}
+		templatesRoot := filepath.Join(sourceRoot, "templates")
 		if err := verifyTrustedDirectory(templatesRoot); err != nil {
-			return err
+			return "", err
 		}
 		templates, err := os.ReadDir(templatesRoot)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if len(templates) == 0 || len(templates) > 255 {
-			return errors.New("verified release template set is empty or exceeds its bound")
+			return "", errors.New("verified release template set is empty or exceeds its bound")
 		}
 		for _, template := range templates {
 			if !verifiedTemplatePattern.MatchString(template.Name()) || !template.IsDir() || template.Type()&os.ModeSymlink != 0 {
-				return errors.New("verified release template set contains an unsafe entry")
+				return "", errors.New("verified release template set contains an unsafe entry")
 			}
 			if matchesRuntimeTrust(filepath.Join(templatesRoot, template.Name()), candidate) {
-				return nil
+				return sourceRoot, nil
 			}
 		}
 	}
-	return errors.New("deployment runtime is not part of a root-verified attested release")
+	return "", errors.New("deployment runtime is not part of a root-verified attested release")
 }
 
 func runtimeTrustFiles(snapshot profile.Snapshot) map[string][]byte {

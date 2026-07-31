@@ -113,18 +113,29 @@ func Decode(data []byte) (Intent, error) {
 	return value, nil
 }
 
-// Validate enforces the closed cross-field contract.
+// Validate enforces the complete closed cross-field contract.
 func (value Intent) Validate() error {
-	if value.APIVersion != APIVersion || !slices.Contains([]Goal{GoalCommandOnly, GoalCredentialService, GoalAgentConnection, GoalCompleteLocal}, value.Goal) {
-		return errors.New("setup intent identity is invalid")
+	if err := value.ValidatePartial(); err != nil {
+		return err
+	}
+	if value.Goal == "" {
+		return errors.New("setup goal is required")
 	}
 	needsService := value.Goal == GoalCredentialService || value.Goal == GoalCompleteLocal
 	needsAgent := value.Goal == GoalAgentConnection || value.Goal == GoalCompleteLocal
 	if needsService != (value.CredentialService != nil) || needsAgent != (value.Agent != nil && value.Connection != nil) {
 		return errors.New("setup intent fields do not match the selected goal")
 	}
-	if value.Goal == GoalCommandOnly && len(value.Integrations) != 0 {
-		return errors.New("command-only setup cannot configure integrations")
+	return nil
+}
+
+// ValidatePartial validates a resumable draft without requiring later answers.
+func (value Intent) ValidatePartial() error {
+	if value.APIVersion != APIVersion || value.Goal != "" && !slices.Contains([]Goal{GoalCommandOnly, GoalCredentialService, GoalAgentConnection, GoalCompleteLocal}, value.Goal) {
+		return errors.New("setup intent identity is invalid")
+	}
+	if value.Goal == GoalCommandOnly && (value.CredentialService != nil || value.Agent != nil || value.Connection != nil || len(value.Integrations) != 0) {
+		return errors.New("command-only setup cannot contain host choices")
 	}
 	if value.CredentialService != nil {
 		if !slices.Contains([]ServiceLocation{ServiceNative, ServiceDocker}, value.CredentialService.Location) ||

@@ -252,7 +252,16 @@ func checksumFor(path, name string) (string, error) {
 
 // Plan asks the worker to inspect protected state and return one plan.
 func (client *Client) Plan(profile string) (Response, error) {
-	if err := deploymentruntime.WriteFrame(client.input, Request{APIVersion: APIVersion, Profile: profile}); err != nil {
+	return client.plan(Request{APIVersion: APIVersion, InputKind: "profile", Profile: profile})
+}
+
+// PlanInstallation asks root to recompile and compare a generated installation.
+func (client *Client) PlanInstallation(installation, profile string) (Response, error) {
+	return client.plan(Request{APIVersion: APIVersion, InputKind: "installation", Installation: installation, Profile: profile})
+}
+
+func (client *Client) plan(request Request) (Response, error) {
+	if err := deploymentruntime.WriteFrame(client.input, request); err != nil {
 		return Response{}, err
 	}
 	var response Response

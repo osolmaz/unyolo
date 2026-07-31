@@ -37,7 +37,7 @@ func validateReleaseDeploymentProfile(t *testing.T, path, id string, config comp
 	request := api.Request{
 		APIVersion: api.APIVersion, Action: api.ActionValidate,
 		DeploymentDigest: "sha256:" + strings.Repeat("a", 64), ComponentID: id, Profile: profileData,
-		Agents: []api.AgentBinding{{ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent"}},
+		Agents: []api.AgentBinding{{ID: "agent", ClientID: "agent", TargetKind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent"}},
 	}
 	var input, output bytes.Buffer
 	if err := deploymentruntime.WriteFrame(&input, request); err != nil {

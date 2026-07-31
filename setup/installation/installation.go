@@ -40,8 +40,13 @@ const (
 
 type Target struct {
 	Kind             TargetKind              `json:"kind"`
+	Isolation        string                  `json:"isolation"`
 	AccountMode      setupintent.AccountMode `json:"account_mode,omitempty"`
 	Account          string                  `json:"account,omitempty"`
+	Home             string                  `json:"home,omitempty"`
+	Shell            string                  `json:"shell,omitempty"`
+	UID              int                     `json:"uid,omitempty"`
+	GID              int                     `json:"gid,omitempty"`
 	ProjectDirectory string                  `json:"project_directory,omitempty"`
 	Service          string                  `json:"service,omitempty"`
 	RemoteName       string                  `json:"remote_name,omitempty"`
@@ -135,20 +140,23 @@ func (value Installation) Digest() (string, error) {
 }
 
 func (value Target) validate() error {
+	if !slices.Contains([]string{"separate", "container", "remote", "reduced"}, value.Isolation) {
+		return errors.New("target isolation is invalid")
+	}
 	switch value.Kind {
 	case TargetLocalAccount:
-		if !slices.Contains([]setupintent.AccountMode{setupintent.AccountCurrent, setupintent.AccountExisting, setupintent.AccountManaged}, value.AccountMode) ||
-			(value.AccountMode == setupintent.AccountCurrent && value.Account != "") ||
-			(value.AccountMode != setupintent.AccountCurrent && !validAccount(value.Account)) || value.ProjectDirectory != "" || value.Service != "" || value.RemoteName != "" {
+		if !slices.Contains([]string{"separate", "reduced"}, value.Isolation) || !slices.Contains([]setupintent.AccountMode{setupintent.AccountCurrent, setupintent.AccountExisting, setupintent.AccountManaged}, value.AccountMode) ||
+			!validAccount(value.Account) || !filepath.IsAbs(value.Home) || filepath.Clean(value.Home) != value.Home || !filepath.IsAbs(value.Shell) || filepath.Clean(value.Shell) != value.Shell ||
+			value.UID < 0 || value.GID < 0 || value.ProjectDirectory != "" || value.Service != "" || value.RemoteName != "" {
 			return errors.New("local account target is invalid")
 		}
 	case TargetContainer:
-		if value.AccountMode != "" || value.Account != "" || !filepath.IsAbs(value.ProjectDirectory) || filepath.Clean(value.ProjectDirectory) != value.ProjectDirectory ||
+		if value.Isolation != "container" || value.AccountMode != "" || value.Account != "" || value.Home != "" || value.Shell != "" || value.UID != 0 || value.GID != 0 || !filepath.IsAbs(value.ProjectDirectory) || filepath.Clean(value.ProjectDirectory) != value.ProjectDirectory ||
 			!validName(value.Service) || value.RemoteName != "" {
 			return errors.New("container target is invalid")
 		}
 	case TargetRemote:
-		if value.AccountMode != "" || value.Account != "" || value.ProjectDirectory != "" || value.Service != "" || !validName(value.RemoteName) {
+		if value.Isolation != "remote" || value.AccountMode != "" || value.Account != "" || value.Home != "" || value.Shell != "" || value.UID != 0 || value.GID != 0 || value.ProjectDirectory != "" || value.Service != "" || !validName(value.RemoteName) {
 			return errors.New("remote target is invalid")
 		}
 	default:

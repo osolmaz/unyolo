@@ -25,6 +25,8 @@ import (
 	"github.com/osolmaz/unyolo/internal/host/identity"
 	hostsetup "github.com/osolmaz/unyolo/internal/host/setup"
 	"github.com/osolmaz/unyolo/internal/strictjson"
+	setupcompiler "github.com/osolmaz/unyolo/setup/compiler"
+	"github.com/osolmaz/unyolo/setup/installation"
 )
 
 const exportAPIVersion = "unyolo.io/host-export/v1"
@@ -135,6 +137,61 @@ func (engine *Engine) Validate(ctx context.Context, profileRoot string) (profile
 	return snapshot, nil
 }
 
+// PlanInstallation independently recompiles one installer-generated deployment before planning.
+func (engine *Engine) PlanInstallation(ctx context.Context, installationPath, profileRoot string) (Planned, error) {
+	compiledRoot, err := engine.compileInstallationSource(installationPath, profileRoot)
+	if err != nil {
+		return Planned{}, err
+	}
+	defer func() { _ = os.RemoveAll(compiledRoot) }()
+	return engine.Plan(ctx, compiledRoot)
+}
+
+func (engine *Engine) compileInstallationSource(installationPath, profileRoot string) (string, error) {
+	data, err := os.ReadFile(installationPath) // #nosec G304 -- explicit root-worker input verified by strict decoding.
+	if err != nil {
+		return "", err
+	}
+	source, err := installation.Decode(data)
+	if err != nil {
+		return "", err
+	}
+	candidate, err := profile.Load(profileRoot)
+	if err != nil {
+		return "", err
+	}
+	sourceRoot, err := verifiedReleaseSource(engine.options.Paths.StateDir, candidate)
+	if err != nil {
+		return "", err
+	}
+	providers := append([]string(nil), source.CredentialService.Providers...)
+	slices.Sort(providers)
+	templateRoot := filepath.Join(sourceRoot, "templates", strings.Join(providers, "+"))
+	template, err := profile.Load(templateRoot)
+	if err != nil {
+		return "", err
+	}
+	verificationRoot, err := os.MkdirTemp(engine.options.Paths.StateDir, ".installation-verify-*")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(verificationRoot); err != nil {
+		return "", err
+	}
+	compiled, err := setupcompiler.Compile(setupcompiler.Options{
+		Installation: source, Template: template, ArtifactRoot: filepath.Join(sourceRoot, "artifacts"), Destination: verificationRoot,
+	})
+	if err != nil {
+		_ = os.RemoveAll(verificationRoot)
+		return "", err
+	}
+	if compiled.Digest != candidate.Digest {
+		_ = os.RemoveAll(verificationRoot)
+		return "", errors.New("generated deployment does not match root-attested compilation")
+	}
+	return verificationRoot, nil
+}
+
 // Plan computes one canonical host plan and stages root-owned adapter copies.
 //
 //nolint:cyclop // Host planning binds profile, identity, runtime, component, and observed-state checks together.
@@ -192,6 +249,30 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 		return Planned{}, err
 	}
 	return Planned{Plan: value, Snapshot: snapshot, Responses: responses, Accounts: accounts, ActiveBundleID: active, Commands: commands}, nil
+}
+
+// ApplyInstallation rechecks root compilation before executing a generated installation.
+func (engine *Engine) ApplyInstallation(ctx context.Context, installationPath, profileRoot, expectedPlan string, sources []SecretSource) (Verification, error) {
+	owner, err := engine.secretSourceOwner()
+	if err != nil {
+		return Verification{}, err
+	}
+	secretFiles, err := openSecretSources(sources, owner)
+	if err != nil {
+		return Verification{}, err
+	}
+	defer closeSecretSources(secretFiles)
+	return engine.ApplyInstallationDescriptors(ctx, installationPath, profileRoot, expectedPlan, secretFiles)
+}
+
+// ApplyInstallationDescriptors applies generated installation inputs from one-use descriptors.
+func (engine *Engine) ApplyInstallationDescriptors(ctx context.Context, installationPath, profileRoot, expectedPlan string, secretFiles map[string]*os.File) (Verification, error) {
+	compiledRoot, err := engine.compileInstallationSource(installationPath, profileRoot)
+	if err != nil {
+		return Verification{}, err
+	}
+	defer func() { _ = os.RemoveAll(compiledRoot) }()
+	return engine.ApplyDescriptors(ctx, compiledRoot, expectedPlan, secretFiles)
 }
 
 // Apply replans, binds the exact digest, and executes one durable transaction.
@@ -378,8 +459,8 @@ func buildIdentityPlan(snapshot profile.Snapshot, accounts map[string]identity.A
 		}
 		response.Actions = append(response.Actions, api.PlannedAction{
 			ID: "account-" + agent.ID, Type: "create", Risk: "high",
-			Resource:      api.Resource{Kind: "account", ID: agent.UnixUser},
-			DesiredDigest: digestText(agent.UnixUser + "\x00" + agent.Home + "\x00" + agent.Shell),
+			Resource:      api.Resource{Kind: "account", ID: agent.Target.UnixUser},
+			DesiredDigest: digestText(agent.Target.UnixUser + "\x00" + agent.Target.Home + "\x00" + agent.Target.Shell),
 		})
 	}
 	data, err := json.Marshal(response.Actions)
@@ -496,7 +577,11 @@ func agentBindings(snapshot profile.Snapshot, componentID string) []api.AgentBin
 			bound = bound || (integration.Kind == componentID && integration.AgentID == agent.ID)
 		}
 		if bound {
-			result = append(result, api.AgentBinding{ID: agent.ID, ClientID: agent.ClientID, UnixUser: agent.UnixUser, Home: agent.Home})
+			result = append(result, api.AgentBinding{
+				ID: agent.ID, ClientID: agent.ClientID, TargetKind: agent.Target.Kind, Isolation: agent.Target.Isolation,
+				AccountMode: agent.Target.AccountMode, UnixUser: agent.Target.UnixUser, Home: agent.Target.Home,
+				Container: agent.Target.Service, RemoteName: agent.Target.RemoteName,
+			})
 		}
 	}
 	slices.SortFunc(result, func(a, b api.AgentBinding) int { return strings.Compare(a.ID, b.ID) })
@@ -626,7 +711,7 @@ func (engine *Engine) identitySteps(planned Planned) ([]transaction.Step, error)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := os.Lstat(agent.Home); err == nil {
+		if _, err := os.Lstat(agent.Target.Home); err == nil {
 			return nil, fmt.Errorf("managed agent %q home already exists", agent.ID)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("inspect managed agent %q home: %w", agent.ID, err)
@@ -634,7 +719,7 @@ func (engine *Engine) identitySteps(planned Planned) ([]transaction.Step, error)
 		steps = append(steps, transaction.Step{
 			ID: "identity." + agent.ID, Kind: "identity:" + agent.ID,
 			Apply: func(ctx context.Context) (string, error) {
-				if _, err := os.Lstat(agent.Home); !errors.Is(err, os.ErrNotExist) {
+				if _, err := os.Lstat(agent.Target.Home); !errors.Is(err, os.ErrNotExist) {
 					return "", fmt.Errorf("managed agent %q home appeared before creation", agent.ID)
 				}
 				process := exec.CommandContext(ctx, command[0], command[1:]...) // #nosec G204 -- fixed account command with validated profile fields.
@@ -657,7 +742,7 @@ func deleteManagedAgent(ctx context.Context, agent profile.Agent, handle string)
 	if handle != "created" {
 		return errors.New("managed agent rollback handle is invalid")
 	}
-	account, err := user.Lookup(agent.UnixUser)
+	account, err := user.Lookup(agent.Target.UnixUser)
 	if err != nil {
 		var unknown user.UnknownUserError
 		if errors.As(err, &unknown) {
@@ -665,18 +750,18 @@ func deleteManagedAgent(ctx context.Context, agent profile.Agent, handle string)
 		}
 		return fmt.Errorf("inspect managed agent for rollback: %w", err)
 	}
-	if filepath.Clean(account.HomeDir) != agent.Home {
+	if filepath.Clean(account.HomeDir) != agent.Target.Home {
 		return errors.New("managed agent changed before rollback")
 	}
-	output, err := exec.CommandContext(ctx, "getent", "passwd", agent.UnixUser).Output() // #nosec G204 -- managed account names are validated before planning.
+	output, err := exec.CommandContext(ctx, "getent", "passwd", agent.Target.UnixUser).Output() // #nosec G204 -- managed account names are validated before planning.
 	fields := strings.Split(strings.TrimSpace(string(output)), ":")
-	if err != nil || len(fields) != 7 || filepath.Clean(fields[5]) != agent.Home || filepath.Clean(fields[6]) != agent.Shell {
+	if err != nil || len(fields) != 7 || filepath.Clean(fields[5]) != agent.Target.Home || filepath.Clean(fields[6]) != agent.Target.Shell {
 		return errors.New("managed agent identity changed before rollback")
 	}
-	if output, err := exec.CommandContext(ctx, "userdel", "--remove", agent.UnixUser).CombinedOutput(); err != nil { // #nosec G204 -- validated managed account name.
+	if output, err := exec.CommandContext(ctx, "userdel", "--remove", agent.Target.UnixUser).CombinedOutput(); err != nil { // #nosec G204 -- validated managed account name.
 		return fmt.Errorf("remove managed agent: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	if err := os.RemoveAll(agent.Home); err != nil {
+	if err := os.RemoveAll(agent.Target.Home); err != nil {
 		return fmt.Errorf("remove managed agent home: %w", err)
 	}
 	return nil

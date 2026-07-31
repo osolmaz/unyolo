@@ -26,8 +26,10 @@ var verifyIdentity = verifyWorkerIdentity
 
 // Request starts one privileged planning session.
 type Request struct {
-	APIVersion string `json:"api_version"`
-	Profile    string `json:"profile"`
+	APIVersion   string `json:"api_version"`
+	InputKind    string `json:"input_kind"`
+	Profile      string `json:"profile"`
+	Installation string `json:"installation,omitempty"`
 }
 
 // Response returns the redacted canonical plan.
@@ -61,7 +63,9 @@ type Result struct {
 
 type deploymentEngine interface {
 	Plan(context.Context, string) (hostdeployment.Planned, error)
+	PlanInstallation(context.Context, string, string) (hostdeployment.Planned, error)
 	ApplyDescriptors(context.Context, string, string, map[string]*os.File) (hostdeployment.Verification, error)
+	ApplyInstallationDescriptors(context.Context, string, string, string, map[string]*os.File) (hostdeployment.Verification, error)
 }
 
 // Serve runs one plan-review-apply exchange and exits.
@@ -75,10 +79,18 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, engine deploy
 	if err := deploymentruntime.ReadFrame(input, &request); err != nil {
 		return err
 	}
-	if request.APIVersion != APIVersion || !filepath.IsAbs(request.Profile) || filepath.Clean(request.Profile) != request.Profile {
+	if request.APIVersion != APIVersion || !filepath.IsAbs(request.Profile) || filepath.Clean(request.Profile) != request.Profile ||
+		!slices.Contains([]string{"profile", "installation"}, request.InputKind) || request.InputKind == "profile" && request.Installation != "" ||
+		request.InputKind == "installation" && (!filepath.IsAbs(request.Installation) || filepath.Clean(request.Installation) != request.Installation) {
 		return errors.New("setup worker request is invalid")
 	}
-	planned, err := engine.Plan(ctx, request.Profile)
+	var planned hostdeployment.Planned
+	var err error
+	if request.InputKind == "installation" {
+		planned, err = engine.PlanInstallation(ctx, request.Installation, request.Profile)
+	} else {
+		planned, err = engine.Plan(ctx, request.Profile)
+	}
 	if err != nil {
 		return err
 	}
@@ -135,7 +147,12 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, engine deploy
 	if err != nil {
 		return err
 	}
-	report, err := engine.ApplyDescriptors(ctx, request.Profile, decision.PlanDigest, secretFiles)
+	var report hostdeployment.Verification
+	if request.InputKind == "installation" {
+		report, err = engine.ApplyInstallationDescriptors(ctx, request.Installation, request.Profile, decision.PlanDigest, secretFiles)
+	} else {
+		report, err = engine.ApplyDescriptors(ctx, request.Profile, decision.PlanDigest, secretFiles)
+	}
 	closeFiles(secretFiles)
 	writerErr := waitWriters()
 	if err != nil || writerErr != nil {

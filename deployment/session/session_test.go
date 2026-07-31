@@ -6,18 +6,23 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	setupintent "github.com/osolmaz/unyolo/setup/intent"
 )
 
 func TestSessionRoundTripAndResume(t *testing.T) {
 	now := time.Date(2026, 7, 26, 1, 2, 3, 0, time.UTC)
 	store := Store{Directory: filepath.Join(t.TempDir(), "state"), Now: func() time.Time { return now }}
-	value, err := New("build-1", "test-host", now)
+	value, err := New("build-1", now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	value.Answers["mode"] = []string{"recommended"}
+	value.Intent.Goal = "credential_service"
+	value.Intent.CredentialService = &setupintent.CredentialService{Location: setupintent.ServiceNative, Providers: []string{"github"}}
 	value.SecretSlots = []SecretSlot{{ID: "github-token", Supplied: true}}
-	value.CompletedStep = []string{"mode", "github-token"}
+	value.CompletedStep = []string{"goal", "providers"}
+	value.CurrentStep = "review"
+	value.CapabilityDigest = "sha256:" + strings.Repeat("a", 64)
 	value.Phase = PhaseEnrolling
 	if err := store.Save(value); err != nil {
 		t.Fatal(err)
@@ -26,7 +31,7 @@ func TestSessionRoundTripAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Answers["mode"][0] != "recommended" || !loaded.SecretSlots[0].Supplied {
+	if loaded.Intent.Goal != setupintent.GoalCredentialService || loaded.SecretSlots[0].Supplied {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 	resumed, found, err := store.NewestIncomplete("build-1")
@@ -55,10 +60,10 @@ func TestSessionValidationAndDefaultDirectory(t *testing.T) {
 	if _, err := DefaultDirectory(); err == nil {
 		t.Fatal("relative XDG_STATE_HOME was accepted")
 	}
-	if _, err := New("", "host", time.Now()); err == nil {
+	if _, err := New("", time.Now()); err == nil {
 		t.Fatal("empty build was accepted")
 	}
-	base, err := New("build", "host", time.Now())
+	base, err := New("build", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +76,12 @@ func TestSessionValidationAndDefaultDirectory(t *testing.T) {
 		{"build", func(value *Session) { value.BuildID = "" }},
 		{"phase", func(value *Session) { value.Phase = "bad" }},
 		{"step", func(value *Session) { value.CompletedStep = []string{"bad step"} }},
-		{"answer", func(value *Session) {
-			value.Answers = map[string][]string{"secret": {strings.Repeat("x", MaxSessionBytes)}}
+		{"intent", func(value *Session) {
+			value.Intent.Goal = setupintent.GoalCommandOnly
+			value.Intent.Integrations = []string{"openclaw"}
 		}},
+		{"current step", func(value *Session) { value.CurrentStep = "bad step" }},
+		{"capability", func(value *Session) { value.CapabilityDigest = "bad" }},
 		{"slot", func(value *Session) { value.SecretSlots = []SecretSlot{{ID: "bad slot"}} }},
 		{"digest", func(value *Session) { value.Generated = map[string]string{"file": "bad"} }},
 	}
@@ -93,7 +101,7 @@ func TestSessionListNewestAndActiveCancellation(t *testing.T) {
 	tick := 0
 	store := Store{Directory: filepath.Join(t.TempDir(), "state"), Now: func() time.Time { tick++; return now.Add(time.Duration(tick) * time.Second) }}
 	for _, phase := range []Phase{PhaseStarted, PhaseComplete, PhaseApplying} {
-		value, err := New("build", "host", now)
+		value, err := New("build", now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,7 +133,7 @@ func TestSessionRejectsUnsafeDirectoryMode(t *testing.T) {
 	if err := os.Mkdir(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	value, err := New("build", "host", time.Now())
+	value, err := New("build", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

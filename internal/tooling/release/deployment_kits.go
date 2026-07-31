@@ -243,10 +243,16 @@ func generateDeploymentTemplate(root string, options Options, components []loade
 		wanted[provider] = true
 	}
 	manifest := bundle.Manifest{
-		APIVersion:   bundle.APIVersion,
+		APIVersion: bundle.APIVersion,
 		BundleID:     fmt.Sprintf("unyolo-%s-%s-%s-%s", strings.TrimPrefix(options.Version, "v"), goos, goarch, key),
 		SourceCommit: options.SourceCommit, OperatingSystem: goos, Architecture: goarch,
 		OperatorContractDigest: contract.OperatorV1Digest, AgentContractDigest: contract.AgentV1Digest,
+	}
+	if goos == "linux" {
+		manifest.SetupCapabilities = bundle.SetupCapabilities{
+			NativeServiceBackend: "systemd",
+			Features: []string{"native_service", "local_accounts", "local_socket"},
+		}
 	}
 	deployment := profile.Deployment{
 		APIVersion: profile.APIVersion, Name: "unyolo-template",
@@ -256,8 +262,9 @@ func generateDeploymentTemplate(root string, options Options, components []loade
 			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroReleaseDigest()},
 		},
 		Agents: []profile.Agent{{
-			ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed",
-			Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin", ComponentIDs: append([]string(nil), selected...),
+			ID: "agent", ClientID: "agent",
+			Target:       profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"},
+			ComponentIDs: append([]string(nil), selected...),
 		}},
 		Operators: []profile.Operator{{ID: "operator", UnixUser: "operator"}},
 	}

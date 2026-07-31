@@ -16,7 +16,7 @@ func TestInspectDeploymentRejectsRootEquivalentAgent(t *testing.T) {
 		"operator": {Username: "operator", Uid: "1002", Gid: "1002", HomeDir: "/home/operator"},
 	}, map[string][]string{"agent": {"1001", "27"}, "operator": {"1002"}})
 	deployment := profile.Deployment{
-		Agents:    []profile.Agent{{ID: "agent", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}},
+		Agents:    []profile.Agent{{ID: "agent", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}}},
 		Operators: []profile.Operator{{ID: "operator", UnixUser: "operator"}},
 	}
 	_, err := inspector.InspectDeployment(context.Background(), deployment)
@@ -31,7 +31,7 @@ func TestInspectDeploymentAcceptsSeparatedAccounts(t *testing.T) {
 		"operator": {Username: "operator", Uid: "1002", Gid: "1002", HomeDir: "/home/operator"},
 	}, map[string][]string{"agent": {"1001"}, "operator": {"1002"}})
 	deployment := profile.Deployment{
-		Agents:    []profile.Agent{{ID: "agent", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}},
+		Agents:    []profile.Agent{{ID: "agent", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}}},
 		Operators: []profile.Operator{{ID: "operator", UnixUser: "operator"}},
 	}
 	accounts, err := inspector.InspectDeployment(context.Background(), deployment)
@@ -50,7 +50,7 @@ func TestInspectDeploymentFailureModes(t *testing.T) {
 	}
 	baseGroups := map[string][]string{"agent": {"1001"}, "operator": {"1002"}}
 	base := profile.Deployment{
-		Agents:    []profile.Agent{{ID: "agent", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}},
+		Agents:    []profile.Agent{{ID: "agent", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}}},
 		Operators: []profile.Operator{{ID: "operator", UnixUser: "operator"}},
 	}
 	tests := []struct {
@@ -59,10 +59,10 @@ func TestInspectDeploymentFailureModes(t *testing.T) {
 		groups  map[string][]string
 		prepare func(*profile.Deployment)
 	}{
-		{"missing existing agent", baseUsers, baseGroups, func(value *profile.Deployment) { value.Agents[0].UnixUser = "missing" }},
-		{"home mismatch", baseUsers, baseGroups, func(value *profile.Deployment) { value.Agents[0].Home = "/wrong" }},
+		{"missing existing agent", baseUsers, baseGroups, func(value *profile.Deployment) { value.Agents[0].Target.UnixUser = "missing" }},
+		{"home mismatch", baseUsers, baseGroups, func(value *profile.Deployment) { value.Agents[0].Target.Home = "/wrong" }},
 		{"duplicate agent UID", baseUsers, baseGroups, func(value *profile.Deployment) {
-			value.Agents = append(value.Agents, profile.Agent{ID: "two", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"})
+			value.Agents = append(value.Agents, profile.Agent{ID: "two", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "agent", AccountMode: "existing", Home: "/home/agent", Shell: "/bin/false"}})
 		}},
 		{"operator shares UID", map[string]*user.User{"agent": baseUsers["agent"], "operator": {Username: "operator", Uid: "1001", Gid: "1002", HomeDir: "/home/operator"}}, baseGroups, func(*profile.Deployment) {}},
 		{"root operator", map[string]*user.User{"agent": baseUsers["agent"], "operator": {Username: "operator", Uid: "0", Gid: "0", HomeDir: "/root"}}, map[string][]string{"agent": {"1001"}, "operator": {"0"}}, func(*profile.Deployment) {}},
@@ -78,8 +78,8 @@ func TestInspectDeploymentFailureModes(t *testing.T) {
 		})
 	}
 	managed := base
-	managed.Agents[0].UnixUser = "managed-agent"
-	managed.Agents[0].AccountMode = "managed"
+	managed.Agents[0].Target.UnixUser = "managed-agent"
+	managed.Agents[0].Target.AccountMode = "managed"
 	accounts, err := fakeInspector(baseUsers, baseGroups).InspectDeployment(context.Background(), managed)
 	if err != nil || !accounts["agent:agent"].Missing {
 		t.Fatalf("managed missing account = %#v, %v", accounts, err)
@@ -98,19 +98,19 @@ func TestLookupCurrentShell(t *testing.T) {
 }
 
 func TestSafeManagedCommand(t *testing.T) {
-	valid := profile.Agent{UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}
+	valid := profile.Agent{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}}
 	command, err := SafeManagedCommand(valid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(command) < 2 || command[0] != "useradd" || command[len(command)-1] != valid.UnixUser {
+	if len(command) < 2 || command[0] != "useradd" || command[len(command)-1] != valid.Target.UnixUser {
 		t.Fatalf("command = %v", command)
 	}
 	for _, invalid := range []profile.Agent{
-		{UnixUser: "bad user", AccountMode: "managed", Home: valid.Home, Shell: valid.Shell},
-		{UnixUser: valid.UnixUser, AccountMode: "existing", Home: valid.Home, Shell: valid.Shell},
-		{UnixUser: valid.UnixUser, AccountMode: "managed", Home: "relative", Shell: valid.Shell},
-		{UnixUser: valid.UnixUser, AccountMode: "managed", Home: valid.Home, Shell: "/bin/bash"},
+		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "bad user", AccountMode: "managed", Home: valid.Target.Home, Shell: valid.Target.Shell}},
+		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: valid.Target.UnixUser, AccountMode: "existing", Home: valid.Target.Home, Shell: valid.Target.Shell}},
+		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: valid.Target.UnixUser, AccountMode: "managed", Home: "relative", Shell: valid.Target.Shell}},
+		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: valid.Target.UnixUser, AccountMode: "managed", Home: valid.Target.Home, Shell: "/bin/bash"}},
 	} {
 		if _, err := SafeManagedCommand(invalid); err == nil {
 			t.Fatalf("unsafe agent was accepted: %#v", invalid)

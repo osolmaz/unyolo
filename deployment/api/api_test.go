@@ -13,7 +13,7 @@ func TestRequestValidate(t *testing.T) {
 		DeploymentDigest: fixedDigest("a"), ComponentID: "github",
 		Profile: []byte(`{"api_version":"test"}`),
 		Files:   []File{{Path: "policy.json", SHA256: digestBytes([]byte("policy")), Data: []byte("policy")}},
-		Agents:  []AgentBinding{{ID: "agent", UnixUser: "agent", Home: "/home/agent", ClientID: "client"}},
+		Agents:  []AgentBinding{{ID: "agent", ClientID: "client", TargetKind: "local_account", Isolation: "separate", AccountMode: "existing", UnixUser: "agent", Home: "/home/agent"}},
 	}
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)

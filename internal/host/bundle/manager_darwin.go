@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -26,10 +27,27 @@ func (m *launchdManager) Start(ctx context.Context, service string) error {
 	return m.serviceAction(ctx, "kickstart", "-k", service)
 }
 
-// launchd services remain registered by their loaded system domain definitions.
-func (m *launchdManager) Enable(context.Context, string) error { return nil }
+func (m *launchdManager) Enable(ctx context.Context, service string) error {
+	if m.registered(ctx, service) {
+		return nil
+	}
+	definition := filepath.Join("/Library/LaunchDaemons", service+".plist")
+	_, err := m.runner.Run(ctx, "launchctl", "bootstrap", "system", definition)
+	return err
+}
 
-func (m *launchdManager) Disable(context.Context, string) error { return nil }
+func (m *launchdManager) Disable(ctx context.Context, service string) error {
+	if !m.registered(ctx, service) {
+		return nil
+	}
+	_, err := m.runner.Run(ctx, "launchctl", "bootout", "system/"+service)
+	return err
+}
+
+func (m *launchdManager) registered(ctx context.Context, service string) bool {
+	_, err := m.runner.Run(ctx, "launchctl", "print", "system/"+service)
+	return err == nil
+}
 
 func (m *launchdManager) serviceAction(ctx context.Context, action, option, service string) error {
 	_, err := m.runner.Run(ctx, "launchctl", action, option, "system/"+service)

@@ -22,6 +22,7 @@ import (
 	"github.com/osolmaz/unyolo/deployment/api"
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 )
 
@@ -91,6 +92,23 @@ type Credential struct {
 	Action      string `json:"action,omitempty"`
 }
 
+// SecretEntry binds one desired identity to one write-only secret slot.
+type SecretEntry struct {
+	Identity string `json:"identity"`
+	Slot     string `json:"slot"`
+	Rotate   bool   `json:"rotate,omitempty"`
+}
+
+// SecretStore declares one authoritative named client or approver store.
+type SecretStore struct {
+	ID          string        `json:"id"`
+	Destination string        `json:"destination"`
+	Mode        uint32        `json:"mode"`
+	Owner       string        `json:"owner"`
+	Group       string        `json:"group"`
+	Entries     []SecretEntry `json:"entries"`
+}
+
 // Client declares one generated private client V1 document.
 type Client struct {
 	AgentID     string `json:"agent_id"`
@@ -103,14 +121,15 @@ type Client struct {
 
 // Profile is the common resource section embedded in each provider profile.
 type Profile struct {
-	APIVersion  string        `json:"api_version"`
-	Accounts    []Account     `json:"accounts,omitempty"`
-	Groups      []Group       `json:"groups,omitempty"`
-	Directories []Directory   `json:"directories,omitempty"`
-	Files       []ManagedFile `json:"files,omitempty"`
-	Credentials []Credential  `json:"credentials,omitempty"`
-	Clients     []Client      `json:"clients,omitempty"`
-	Services    []string      `json:"services,omitempty"`
+	APIVersion   string        `json:"api_version"`
+	Accounts     []Account     `json:"accounts,omitempty"`
+	Groups       []Group       `json:"groups,omitempty"`
+	Directories  []Directory   `json:"directories,omitempty"`
+	Files        []ManagedFile `json:"files,omitempty"`
+	Credentials  []Credential  `json:"credentials,omitempty"`
+	SecretStores []SecretStore `json:"secret_stores,omitempty"`
+	Clients      []Client      `json:"clients,omitempty"`
+	Services     []string      `json:"services,omitempty"`
 }
 
 // Serve handles one setup-component request and writes one response.
@@ -176,6 +195,7 @@ func dispatchWithoutInspection(ctx context.Context, request api.Request, profile
 type inspected struct {
 	actions      []api.PlannedAction
 	credentials  []api.CredentialAction
+	storeSecrets map[string][]byte
 	planDigest   string
 	fingerprints []string
 	files        map[string]api.File
@@ -187,7 +207,7 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 	if err := validateProfile(profile, config, request.Agents); err != nil {
 		return inspected{}, err
 	}
-	state := inspected{files: map[string]api.File{}, agents: map[string]api.AgentBinding{}}
+	state := inspected{files: map[string]api.File{}, agents: map[string]api.AgentBinding{}, storeSecrets: map[string][]byte{}}
 	for _, file := range request.Files {
 		state.files[file.Path] = file
 	}
@@ -271,6 +291,43 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 			})
 		}
 	}
+	for _, store := range profile.SecretStores {
+		state.fingerprints = append(state.fingerprints, "secret-store:"+store.ID+":"+pathFingerprint(store.Destination))
+		current, readErr := readNamedStore(store.Destination)
+		if readErr != nil {
+			return inspected{}, readErr
+		}
+		desired := map[string]bool{}
+		changed := len(current) != len(store.Entries)
+		for _, entry := range store.Entries {
+			desired[entry.Identity] = true
+			action := "retain"
+			secret, exists := current[entry.Identity]
+			if !exists {
+				action = "install"
+			} else if entry.Rotate {
+				action = "rotate"
+			}
+			state.credentials = append(state.credentials, api.CredentialAction{Slot: entry.Slot, Action: action})
+			if action == "retain" {
+				state.storeSecrets[entry.Slot] = []byte(secret)
+			} else {
+				changed = true
+			}
+		}
+		for identity := range current {
+			if !desired[identity] {
+				changed = true
+			}
+		}
+		if changed || !matchesMetadata(store.Destination, store.Mode, store.Owner, store.Group) {
+			state.actions = append(state.actions, api.PlannedAction{
+				ID: "secret-store-" + store.ID, Type: "reconcile", Risk: "high",
+				Resource:      api.Resource{Kind: "secret_store", ID: store.ID, Path: store.Destination},
+				DesiredDigest: metadataDigest(store.Mode, store.Owner, store.Group), Restart: true,
+			})
+		}
+	}
 	for _, client := range profile.Clients {
 		agent := state.agents[client.AgentID]
 		path, err := clientconfig.Path(agent.Home, client.BrokerName)
@@ -281,6 +338,8 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		var expected []byte
 		if credential, found := credentialBySlot(profile.Credentials, client.SecretSlot); found {
 			expected, _ = readInstalledCredential(credential)
+		} else if stored := state.storeSecrets[client.SecretSlot]; len(stored) > 0 {
+			expected = append([]byte(nil), stored...)
 		}
 		current := clientCurrent(path, agent.Home, client, expected)
 		if credentialAction(state.credentials, client.SecretSlot) != "retain" {
@@ -353,7 +412,7 @@ func validateProfile(profile Profile, config Config, agents []api.AgentBinding) 
 	if profile.APIVersion != config.ProfileAPI {
 		return errors.New("component deployment profile API is invalid")
 	}
-	if len(profile.Accounts) > 32 || len(profile.Groups) > 64 || len(profile.Directories) > 64 || len(profile.Files) > 128 || len(profile.Credentials) > 32 || len(profile.Clients) > 32 || len(profile.Services) > 16 {
+	if len(profile.Accounts) > 32 || len(profile.Groups) > 64 || len(profile.Directories) > 64 || len(profile.Files) > 128 || len(profile.Credentials) > 32 || len(profile.SecretStores) > 16 || len(profile.Clients) > 32 || len(profile.Services) > 16 {
 		return errors.New("component deployment profile exceeds limits")
 	}
 	agentIDs := map[string]bool{}
@@ -401,6 +460,18 @@ func validateProfile(profile Profile, config Config, agents []api.AgentBinding) 
 		}
 		seenSlots[credential.Slot] = true
 	}
+	for _, store := range profile.SecretStores {
+		if store.ID == "" || !validResource("secret-store-"+store.ID, store.Destination, store.Mode, store.Owner, store.Group, config.AllowedPaths, seenIDs, seenPaths) || len(store.Entries) > 64 {
+			return errors.New("component named secret store is invalid")
+		}
+		seenEntries := map[string]bool{}
+		for _, entry := range store.Entries {
+			if entry.Identity == "" || entry.Slot == "" || seenEntries[entry.Identity] || seenSlots[entry.Slot] {
+				return errors.New("component named secret entry is invalid or duplicated")
+			}
+			seenEntries[entry.Identity], seenSlots[entry.Slot] = true, true
+		}
+	}
 	for _, client := range profile.Clients {
 		if !agentIDs[client.AgentID] || !seenSlots[client.SecretSlot] || client.BrokerName == "" || client.EnvPrefix == "" {
 			return errors.New("component client binding is invalid")
@@ -412,6 +483,22 @@ func validateProfile(profile Profile, config Config, agents []api.AgentBinding) 
 		}
 	}
 	return nil
+}
+
+func readNamedStore(path string) (map[string]string, error) {
+	data, err := readBoundedNoFollow(path, maxSecretBytes)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, errors.New("installed named secret store is unavailable")
+	}
+	values, err := secretfile.ParseBytesWithOptions(data, secretfile.ParseOptions{AllowEmpty: true})
+	clear(data)
+	if err != nil {
+		return nil, errors.New("installed named secret store is invalid")
+	}
+	return values, nil
 }
 
 func validResource(id, path string, mode uint32, owner, group string, allowed []string, ids, paths map[string]bool) bool {

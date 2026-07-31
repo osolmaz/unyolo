@@ -26,6 +26,10 @@ func (engine *fakeDeploymentEngine) Plan(context.Context, string) (hostdeploymen
 	return engine.planned, nil
 }
 
+func (engine *fakeDeploymentEngine) PlanInstallation(context.Context, string, string) (hostdeployment.Planned, error) {
+	return engine.planned, nil
+}
+
 func (engine *fakeDeploymentEngine) ApplyDescriptors(_ context.Context, _ string, _ string, files map[string]*os.File) (hostdeployment.Verification, error) {
 	if file := files["token"]; file != nil {
 		data, err := io.ReadAll(file)
@@ -35,6 +39,10 @@ func (engine *fakeDeploymentEngine) ApplyDescriptors(_ context.Context, _ string
 		engine.secret = string(data)
 	}
 	return engine.report, nil
+}
+
+func (engine *fakeDeploymentEngine) ApplyInstallationDescriptors(ctx context.Context, _ string, profile, digest string, files map[string]*os.File) (hostdeployment.Verification, error) {
+	return engine.ApplyDescriptors(ctx, profile, digest, files)
 }
 
 func TestWorkerServeCancelAndApply(t *testing.T) {
@@ -57,7 +65,7 @@ func TestWorkerServeCancelAndApply(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var input, output bytes.Buffer
-			for _, value := range []any{Request{APIVersion: APIVersion, Profile: "/tmp/profile"}, test.decision} {
+			for _, value := range []any{Request{APIVersion: APIVersion, InputKind: "profile", Profile: "/tmp/profile"}, test.decision} {
 				if err := deploymentruntime.WriteFrame(&input, value); err != nil {
 					t.Fatal(err)
 				}
@@ -98,7 +106,7 @@ func TestWorkerServeRejectsInvalidDecisions(t *testing.T) {
 		{APIVersion: APIVersion, Action: "apply", PlanDigest: digest, SecretSlots: []string{"extra"}},
 	} {
 		var input, output bytes.Buffer
-		_ = deploymentruntime.WriteFrame(&input, Request{APIVersion: APIVersion, Profile: "/tmp/profile"})
+		_ = deploymentruntime.WriteFrame(&input, Request{APIVersion: APIVersion, InputKind: "profile", Profile: "/tmp/profile"})
 		_ = deploymentruntime.WriteFrame(&input, decision)
 		if err := Serve(t.Context(), &input, &output, engine, time.Second); err == nil {
 			t.Fatalf("decision was accepted: %#v", decision)
