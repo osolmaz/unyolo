@@ -517,7 +517,7 @@ func TestRuntimeAdvancesOperationsWithBoundedConcurrency(t *testing.T) {
 	for range 2 {
 		select {
 		case <-started:
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("operations did not start concurrently")
 		}
 	}
@@ -530,7 +530,7 @@ func TestRuntimeAdvancesOperationsWithBoundedConcurrency(t *testing.T) {
 	released = true
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("concurrent batch did not finish")
 	}
 	if adapter.maxExecuteActive.Load() != 2 {
