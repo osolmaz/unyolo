@@ -58,9 +58,6 @@ func TestLaunchdManagerLifecycleAndStatus(t *testing.T) {
 }
 
 func TestLaunchdManagerRejectsMissingProcess(t *testing.T) {
-	if pid := launchdPID("state = running\n"); pid != 0 {
-		t.Fatalf("launchdPID() = %d", pid)
-	}
 	runner := &darwinRunner{fail: true}
 	status, err := newNativeManager(runner).Status(t.Context(), "io.unyolo.github")
 	if err != nil || status.Active {

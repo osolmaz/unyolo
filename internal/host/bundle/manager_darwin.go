@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -27,41 +26,44 @@ func (m *launchdManager) Start(ctx context.Context, service string) error {
 	return m.serviceAction(ctx, "kickstart", "-k", service)
 }
 
+// Enable bootstraps the LaunchDaemon with launchctl, loading its root-owned
+// plist and starting it under launchd's supervision.
 func (m *launchdManager) Enable(ctx context.Context, service string) error {
 	if m.registered(ctx, service) {
 		return nil
 	}
-	definition := filepath.Join("/Library/LaunchDaemons", service+".plist")
-	_, err := m.runner.Run(ctx, "launchctl", "bootstrap", "system", definition)
+	_, err := m.runner.Run(ctx, "launchctl", "bootstrap", "system", launchdPlistPath(service))
 	return err
 }
 
+// Disable unloads the LaunchDaemon with launchctl bootout so a subsequent
+// Enable can restore the prior state.
 func (m *launchdManager) Disable(ctx context.Context, service string) error {
 	if !m.registered(ctx, service) {
 		return nil
 	}
-	_, err := m.runner.Run(ctx, "launchctl", "bootout", "system/"+service)
+	_, err := m.runner.Run(ctx, "launchctl", "bootout", launchdSystemTarget(service))
 	return err
 }
 
 func (m *launchdManager) registered(ctx context.Context, service string) bool {
-	_, err := m.runner.Run(ctx, "launchctl", "print", "system/"+service)
+	_, err := m.runner.Run(ctx, "launchctl", "print", launchdSystemTarget(service))
 	return err == nil
 }
 
 func (m *launchdManager) serviceAction(ctx context.Context, action, option, service string) error {
-	_, err := m.runner.Run(ctx, "launchctl", action, option, "system/"+service)
+	_, err := m.runner.Run(ctx, "launchctl", action, option, launchdSystemTarget(service))
 	return err
 }
 
 func (m *launchdManager) Reload(context.Context) error { return nil }
 
 func (m *launchdManager) Status(ctx context.Context, service string) (ServiceStatus, error) {
-	output, err := m.runner.Run(ctx, "launchctl", "print", "system/"+service)
+	output, err := m.runner.Run(ctx, "launchctl", "print", launchdSystemTarget(service))
 	if err != nil {
 		return ServiceStatus{}, nil
 	}
-	pid := launchdPID(string(output))
+	pid := launchdParsePID(string(output))
 	if pid <= 0 {
 		return ServiceStatus{}, errors.New("launchd service has no process")
 	}
@@ -70,15 +72,4 @@ func (m *launchdManager) Status(ctx context.Context, service string) (ServiceSta
 		return ServiceStatus{}, err
 	}
 	return ServiceStatus{Active: true, PID: pid, Executable: strings.TrimSpace(string(executable))}, nil
-}
-
-func launchdPID(output string) int {
-	for _, line := range strings.Split(output, "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if ok && strings.TrimSpace(key) == "pid" {
-			pid, _ := strconv.Atoi(strings.TrimSpace(value))
-			return pid
-		}
-	}
-	return 0
 }
