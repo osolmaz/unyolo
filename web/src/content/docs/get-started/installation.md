@@ -1,26 +1,45 @@
 ---
 title: Installation
-description: Verified release installs, what the installer will and will not do, and building from source.
+description: Install the current unYOLO release and understand which setup paths it supports.
 ---
 
-The default installer starts guided Linux host setup. It verifies one exact release, runs its CLI
-from a private staging directory, and lets the operator choose GitHub, Hugging Face, or both. A
-separate named command installs one broker binary without host setup.
+unYOLO verifies one exact release before it runs or installs release files. The current default
+installer starts complete Linux host setup. A separate command can install one broker binary without
+host setup.
 
-## Guided setup
+<div class="callout callout--warn">
+<span class="callout__title">Current installer limits</span>
+<p>Version 0.6.3 does not yet ask whether you want credential services, an agent connection, or
+both. It also does not let you select an existing account such as <code>bob</code> or create a named
+agent account through the wizard. Managed macOS host setup is not implemented. Choose No at the
+final confirmation if the fixed Linux host plan is not what you want.</p>
+</div>
 
-Run the normal command as the trusted operator, not as root:
+The target guided flow is defined in the
+[guided installation contract](https://github.com/osolmaz/unyolo/blob/main/docs/GUIDED_INSTALLATION.md).
+It starts with the user's goal and covers credential-service-only, agent-connection-only, complete
+local, Docker, and remote-agent paths as each platform backend becomes available.
+
+## Current guided setup
+
+Run the command as your normal account, not as root:
 
 ```sh
 curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-The first choice selects providers. Ctrl-C on that screen exits with status 130, removes staging,
-and leaves no CLI installation or setup state. Setup then opens the selected deployment kit, shows
-its complete plan, and asks before installing the user CLI or starting protected host planning.
+The installer downloads the release into a private temporary directory and checks its checksum and
+GitHub build record. It then asks which credential services to install. Ctrl-C on the first screen
+removes the temporary files and leaves no installation or saved setup.
 
-After confirmation, the same verified release is installed atomically below the operator's XDG data
-and binary directories. A later planning or apply error keeps that CLI and the nonsecret setup
+After the first choice, setup may save nonsecret answers so the run can be resumed. The current
+release generates a Linux host configuration with the logical client name `agent` and operating-
+system account `unyolo-agent`. It shows a summary before it installs the command or starts any
+administrator work.
+
+The first confirmation installs the same checked release under your user data and binary
+directories. A second confirmation appears after unYOLO inspects the host and lists the exact system
+changes. Cancelling after the first confirmation leaves the installed command and saved nonsecret
 session available for recovery.
 
 ## Binary-only install
@@ -58,7 +77,7 @@ The installer detects the supported platform and downloads its archive with `che
 checks the archive digest and verifies GitHub artifact attestations against the repository, release
 workflow, and selected tag. Verification uses a pinned GitHub CLI build when no separately verified
 `UNYOLO_VERIFIER_FILE` is configured. Guided setup retains that checksum-verified executable and
-uses it for the protected root verification phase, so a system `gh` installation is not required.
+uses it again before administrator changes, so a system `gh` installation is not required.
 
 The archive is checked before extraction. Unknown entries, links, path escapes, missing companion
 files, and version mismatches fail closed. Guided setup downloads and verifies this archive once.
@@ -108,8 +127,7 @@ go build ./cmd/unyolo ./cmd/unyolo-telegram
 ```
 
 A source build carries no attestation, so keep it to development and to hosts where you control the
-whole chain. Development build identities cannot enter a signed production runtime bundle, which
-the host command enforces rather than warns about.
+whole chain. Development builds cannot be used as a checked production release. The host command rejects them.
 
 ## The Xet helper for hf-broker
 
@@ -131,6 +149,6 @@ managed service.
 
 ## Host deployment details
 
-The default guided flow installs and reconciles the selected services from one locked, nonsecret
-deployment pack. See [host deployment](/docs/deploy/host-deployment) for the pack format, protected
-planning, unattended commands, and recovery behavior.
+The current guided flow creates a locked configuration for the selected Linux services. It contains
+no provider credentials. See [host deployment](/docs/deploy/host-deployment) for the internal file
+format, administrator commands, and recovery behavior.

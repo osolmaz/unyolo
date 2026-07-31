@@ -1,53 +1,49 @@
 # Host deployment
 
-unYOLO can install or reconcile a complete Linux agent host from one locked,
-nonsecret deployment pack. The same pack drives guided setup and unattended
-commands. Darwin binaries remain available for existing-account and client
-workflows, but guided host provisioning fails closed until native launchd and
-account provisioning are implemented and tested.
+This document defines the internal configuration used to install credential services on a host. A
+configuration records the required accounts, groups, files, sockets, services, client connections,
+and checks. It contains no provider credentials.
 
-## Guided setup
+Most users should not create this configuration by hand. The guided installer collects a plain setup
+intent and generates the internal files only when the selected path installs credential services on
+the local machine. Client-only and command-only setup do not generate a host deployment.
 
-The full installer and provider-selection contract is specified in
-[`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md). Run the default command as
-the trusted operator, not as root:
+The current host engine supports complete managed deployment on Linux. macOS service and account
+management must use native launchd and local-account adapters and pass the platform requirements in
+[`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md) before the installer offers managed macOS setup.
+Darwin binaries alone do not make that path supported.
 
-```sh
-curl -fsSL https://unyolo.io/install.sh | sh
-```
+## Relationship to guided setup
 
-The bootstrap resolves one exact release, verifies its checksum and GitHub
-build attestation, and runs the CLI from private staging. The first screen lets
-the operator select GitHub, Hugging Face, or both. Ctrl-C there removes staging
-and exits without an installation or setup session.
+The guided installer separates four user goals:
 
-Recommended and Custom setup filter the verified deployment kit to the selected
-providers and materialize its locked graph below
-`~/.config/unyolo/deployments/<deployment-name>/`. Existing deployment mode
-reviews the selected pack in place.
+- install credential services and connect a local agent
+- install credential services only
+- connect an agent to existing credential services
+- install the unYOLO command only
 
-Setup shows the deployment review before asking whether to install the verified
-CLI and continue to protected planning. CLI activation finishes before the root
-worker starts. The root phase copies and rehashes the checksum-verified GitHub
-CLI from private staging, uses that exact executable to verify the release
-archive's GitHub attestation, and stores the archive's exact runtime templates
-below the root-owned host state. Production validation and planning reject a runtime manifest,
-signature, or public key that differs from those attested templates. The CLI
-refuses interactive root execution. Setup validates every signed component
-adapter and shows the complete plan. Only then does it start the matching
-root-owned worker. Credential values move
-through one-use anonymous pipes and are not written to the setup session or
-pack.
+Only the first two goals produce a host deployment configuration. The selected agent account and
+client name flow into the generated groups, client files, policies, and checks. The generator must
+not replace those choices with fixed `agent` or `unyolo-agent` names.
 
-Use `--accessible` for the screen-reader prompt path and `--no-open` on a remote
-terminal. Incomplete local sessions can be inspected with:
+The default internal name is `default`. The installer asks for another name only when more than one
+local deployment exists or a collision requires a choice. Generated files stay under the user
+configuration root: `$XDG_CONFIG_HOME/unyolo/deployments/<name>/` on Linux by default and
+`~/Library/Application Support/unyolo/deployments/<name>/` on macOS.
+
+The unprivileged installer shows a plain summary before administrator work. A technical-details view
+may show the configuration path and plan digest. After confirmation, a verified root worker checks
+the same locked configuration, rejects changed host state, and applies one transaction. Credentials
+move through one-use anonymous pipes and are never written to the setup session or configuration.
+
+Incomplete sessions can be inspected or resumed:
 
 ```sh
 unyolo setup status
 unyolo setup --resume <session-id>
 ```
 
-## Deployment pack
+## Deployment configuration
 
 `deployment.json` binds the runtime and Unix identities to selected components
 plus any optional integrations. Every other file is referenced by a relative path and exact
@@ -70,8 +66,8 @@ resource shape. This example shows the important fields without credentials:
   ],
   "groups": [
     { "name": "gh-broker" },
-    { "name": "gh-broker-agent", "members": ["unyolo-agent"] },
-    { "name": "gh-broker-operator", "members": ["operator"] }
+    { "name": "gh-broker-agent", "members": ["bob"] },
+    { "name": "gh-broker-operator", "members": ["onur"] }
   ],
   "directories": [
     {
@@ -104,12 +100,12 @@ resource shape. This example shows the important fields without credentials:
       "owner": "root",
       "group": "gh-broker",
       "encoding": "client_secret_file",
-      "client_id": "unyolo-agent"
+      "client_id": "bob"
     }
   ],
   "clients": [
     {
-      "agent_id": "agent",
+      "agent_id": "bob",
       "broker_name": "gh-broker",
       "env_prefix": "GH_BROKER",
       "secret_slot": "github-client-secret",
@@ -167,7 +163,7 @@ runtime checks plus authenticated discovery from the real agent identity.
 Credentials are retained by default. Set a credential declaration's `action`
 to `rotate`, review the resulting credential and client-file actions, apply it
 with the matching `--secret-file`, then return the declaration to `retain` and
-lock the pack again.
+lock the configuration again.
 
 Client commands load `~/.config/<broker>/client.json` directly. Production does
 not rely on shell startup files or exported broker credentials.

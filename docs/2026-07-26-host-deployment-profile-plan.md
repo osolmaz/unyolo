@@ -2,7 +2,12 @@
 
 Date: 2026-07-26
 
-Status: accepted
+Status: accepted implementation record
+
+The host engine and locked configuration described here remain the internal deployment mechanism.
+The user-flow sections are superseded by [`GUIDED_INSTALLATION.md`](GUIDED_INSTALLATION.md), which
+separates credential-service setup from agent connection and defines Linux, macOS, Docker, and
+remote-agent paths.
 
 ## Objective
 

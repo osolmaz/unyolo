@@ -88,12 +88,13 @@ release artifact, and audit stream.
 curl -fsSL https://unyolo.io/install.sh | sh
 ```
 
-That starts guided Linux host setup and lets you select GitHub, Hugging Face,
-or both. Ctrl-C on the first screen removes staging and installs nothing. The
-installer verifies one exact release before setup, then activates that same CLI
-only after you approve the deployment review. Named arguments such as `-s --
-github` remain available for binary-only installs. See
-[installation](https://unyolo.io/docs/get-started/installation).
+The current release starts complete Linux host setup and lets you select GitHub,
+Hugging Face, or both. It uses the fixed agent account `unyolo-agent`; it does
+not yet provide client-only setup, existing-account selection, Docker setup, or
+managed macOS setup. Ctrl-C on the first screen removes temporary files and
+installs nothing. See [installation](https://unyolo.io/docs/get-started/installation)
+for current behavior and [guided installation](docs/GUIDED_INSTALLATION.md) for
+the replacement user flow and platform contract.
 
 ## Build
 
