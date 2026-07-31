@@ -129,8 +129,24 @@
   ],
   "credentials": [
     {
-      "slot": "github-provider-token",
-      "destination": "/etc/gh-broker/github-token",
+      "slot": "github-app-id",
+      "destination": "/etc/gh-broker/github-app-id",
+      "mode": 384,
+      "owner": "gh-broker",
+      "group": "gh-broker",
+      "encoding": "raw"
+    },
+    {
+      "slot": "github-app-private-key",
+      "destination": "/etc/gh-broker/github-app-private-key.pem",
+      "mode": 384,
+      "owner": "gh-broker",
+      "group": "gh-broker",
+      "encoding": "raw"
+    },
+    {
+      "slot": "github-webhook-secret",
+      "destination": "/etc/gh-broker/github-webhook-secret",
       "mode": 384,
       "owner": "gh-broker",
       "group": "gh-broker",

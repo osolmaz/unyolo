@@ -115,6 +115,8 @@ type SelectPrompt struct {
 type ConfirmPrompt struct {
 	Message     string
 	Description string
+	Affirmative string
+	Negative    string
 	Initial     bool
 	Safe        bool
 	Navigation  Navigation

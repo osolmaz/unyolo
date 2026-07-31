@@ -48,15 +48,25 @@ type Runtime struct {
 	PublicKey Reference `json:"public_key"`
 }
 
-// Agent binds a unYOLO client identity to one Unix account.
+// Agent binds a unYOLO client identity to one local, container, or remote target.
 type Agent struct {
-	ID           string   `json:"id"`
-	ClientID     string   `json:"client_id"`
-	UnixUser     string   `json:"unix_user"`
-	AccountMode  string   `json:"account_mode"`
-	Home         string   `json:"home"`
-	Shell        string   `json:"shell"`
-	ComponentIDs []string `json:"component_ids"`
+	ID           string      `json:"id"`
+	ClientID     string      `json:"client_id"`
+	Target       AgentTarget `json:"target"`
+	ComponentIDs []string    `json:"component_ids"`
+}
+
+// AgentTarget is the closed deployment target union.
+type AgentTarget struct {
+	Kind             string `json:"kind"`
+	Isolation        string `json:"isolation"`
+	AccountMode      string `json:"account_mode,omitempty"`
+	UnixUser         string `json:"unix_user,omitempty"`
+	Home             string `json:"home,omitempty"`
+	Shell            string `json:"shell,omitempty"`
+	ProjectDirectory string `json:"project_directory,omitempty"`
+	Service          string `json:"service,omitempty"`
+	RemoteName       string `json:"remote_name,omitempty"`
 }
 
 // Operator binds an existing trusted Unix account.
@@ -81,13 +91,14 @@ type Integration struct {
 
 // Deployment is the closed deployment.json document.
 type Deployment struct {
-	APIVersion   string        `json:"api_version"`
-	Name         string        `json:"name"`
-	Runtime      Runtime       `json:"runtime"`
-	Agents       []Agent       `json:"agents"`
-	Operators    []Operator    `json:"operators"`
-	Components   []Component   `json:"components"`
-	Integrations []Integration `json:"integrations,omitempty"`
+	APIVersion         string        `json:"api_version"`
+	Name               string        `json:"name"`
+	InstallationDigest string        `json:"installation_digest,omitempty"`
+	Runtime            Runtime       `json:"runtime"`
+	Agents             []Agent       `json:"agents"`
+	Operators          []Operator    `json:"operators"`
+	Components         []Component   `json:"components"`
+	Integrations       []Integration `json:"integrations,omitempty"`
 }
 
 // File is one immutable referenced file.
@@ -212,11 +223,11 @@ func (d Deployment) Validate() error {
 	if d.APIVersion != APIVersion {
 		return fmt.Errorf("unsupported deployment API %q", d.APIVersion)
 	}
-	if !validName(d.Name) {
-		return errors.New("deployment name is invalid")
+	if !validName(d.Name) || d.InstallationDigest != "" && !digestPattern.MatchString(d.InstallationDigest) {
+		return errors.New("deployment name or installation digest is invalid")
 	}
-	if len(d.Agents) == 0 || len(d.Agents) > MaxAgents || len(d.Operators) == 0 || len(d.Operators) > MaxOperators {
-		return errors.New("deployment must contain bounded nonempty agent and operator lists")
+	if len(d.Agents) > MaxAgents || len(d.Operators) == 0 || len(d.Operators) > MaxOperators {
+		return errors.New("deployment must contain a bounded operator list and may contain bounded agents")
 	}
 	if len(d.Components) == 0 || len(d.Components) > MaxComponents || len(d.Integrations) > MaxIntegrations {
 		return errors.New("deployment component or integration count is invalid")
@@ -234,18 +245,11 @@ func (d Deployment) Validate() error {
 func validateIdentities(d Deployment) error {
 	agents, operators, components, integrations := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, agent := range d.Agents {
-		if !registerName(agents, agent.ID) || !validName(agent.ClientID) || !validUnixName(agent.UnixUser) {
+		if !registerName(agents, agent.ID) || !validName(agent.ClientID) || len(agent.ComponentIDs) == 0 || len(agent.ComponentIDs) > MaxComponents {
 			return fmt.Errorf("agent %q has an invalid or duplicate identity", agent.ID)
 		}
-		if agent.AccountMode != "managed" && agent.AccountMode != "existing" {
-			return fmt.Errorf("agent %q has an invalid account mode", agent.ID)
-		}
-		if !cleanAbsolute(agent.Home) || !cleanAbsolute(agent.Shell) || len(agent.ComponentIDs) == 0 || len(agent.ComponentIDs) > MaxComponents {
-			return fmt.Errorf("agent %q has invalid host paths or component bindings", agent.ID)
-		}
-		if agent.AccountMode == "managed" && (agent.Home == "/" || agent.Home == "/root" ||
-			!slices.Contains([]string{"nologin", "false"}, filepath.Base(agent.Shell))) {
-			return fmt.Errorf("managed agent %q must use a noninteractive account", agent.ID)
+		if err := validateAgentTarget(agent.Target); err != nil {
+			return fmt.Errorf("agent %q: %w", agent.ID, err)
 		}
 	}
 	for _, operator := range d.Operators {
@@ -262,6 +266,33 @@ func validateIdentities(d Deployment) error {
 		if !registerName(integrations, integration.ID) || !validName(integration.Kind) || integration.ID != integration.Kind {
 			return fmt.Errorf("integration %q has an invalid, duplicate, or noncanonical identity", integration.ID)
 		}
+	}
+	return nil
+}
+
+func validateAgentTarget(target AgentTarget) error {
+	if !slices.Contains([]string{"separate", "container", "remote", "reduced"}, target.Isolation) {
+		return errors.New("target isolation is invalid")
+	}
+	switch target.Kind {
+	case "local_account":
+		if !slices.Contains([]string{"current", "existing", "managed"}, target.AccountMode) || !validUnixName(target.UnixUser) ||
+			!cleanAbsolute(target.Home) || !cleanAbsolute(target.Shell) || target.ProjectDirectory != "" || target.Service != "" || target.RemoteName != "" {
+			return errors.New("local account target is invalid")
+		}
+		if target.AccountMode == "managed" && (target.Home == "/" || target.Home == "/root" || !slices.Contains([]string{"nologin", "false"}, filepath.Base(target.Shell))) {
+			return errors.New("managed account target must use a noninteractive account")
+		}
+	case "container":
+		if target.Isolation != "container" || !cleanAbsolute(target.ProjectDirectory) || !validName(target.Service) || target.AccountMode != "" || target.UnixUser != "" || target.Home != "" || target.Shell != "" || target.RemoteName != "" {
+			return errors.New("container target is invalid")
+		}
+	case "remote":
+		if target.Isolation != "remote" || !validName(target.RemoteName) || target.AccountMode != "" || target.UnixUser != "" || target.Home != "" || target.Shell != "" || target.ProjectDirectory != "" || target.Service != "" {
+			return errors.New("remote target is invalid")
+		}
+	default:
+		return errors.New("target kind is invalid")
 	}
 	return nil
 }

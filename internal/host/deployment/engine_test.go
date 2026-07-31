@@ -40,7 +40,7 @@ func (fakeManager) Status(context.Context, string) (bundle.ServiceStatus, error)
 
 func TestBuildIdentityPlanCreatesOnlyMissingManagedAgents(t *testing.T) {
 	snapshot := profile.Snapshot{Deployment: profile.Deployment{
-		Agents: []profile.Agent{{ID: "agent", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}},
+		Agents: []profile.Agent{{ID: "agent", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}}},
 	}}
 	response, err := buildIdentityPlan(snapshot, map[string]identity.Account{"agent:agent": {Missing: true}})
 	if err != nil {
@@ -121,7 +121,7 @@ func TestProductionEngineRequiresAttestedReleaseTemplate(t *testing.T) {
 	if err := engine.verifySnapshotTrust(snapshot); err == nil {
 		t.Fatal("deployment without an attested release template was accepted")
 	}
-	runtimeRoot := filepath.Join(state, "verified-releases", strings.Repeat("a", 64), "templates", "fake", "runtime")
+	runtimeRoot := filepath.Join(state, "verified-releases", strings.Repeat("a", 64), "source-set", "templates", "fake", "runtime")
 	if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,9 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 	planned := Planned{
 		Snapshot: profile.Snapshot{
 			Deployment: profile.Deployment{
-				Agents:     []profile.Agent{{ID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}},
+				Agents: []profile.Agent{{ID: "agent", Target: profile.AgentTarget{
+					Kind: "local_account", Isolation: "separate", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin",
+				}}},
 				Components: []profile.Component{{ID: "github"}},
 			},
 			Manifest: bundle.Manifest{Components: []bundle.Component{{Name: "github", Services: []string{"gh-broker.service"}}}},
@@ -334,7 +336,7 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 }
 
 func TestDeleteManagedAgentRejectsUnknownHandle(t *testing.T) {
-	agent := profile.Agent{UnixUser: "missing-unyolo-agent", Home: "/home/missing-unyolo-agent", Shell: "/usr/sbin/nologin"}
+	agent := profile.Agent{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "missing-unyolo-agent", Home: "/home/missing-unyolo-agent", Shell: "/usr/sbin/nologin"}}
 	if err := deleteManagedAgent(t.Context(), agent, "retained"); err == nil {
 		t.Fatal("unknown managed-agent rollback handle was accepted")
 	}
@@ -426,7 +428,9 @@ func engineTestPack(t *testing.T) string {
 			"signature":  engineRefFile(t, pack, "runtime/manifest.sig"),
 			"public_key": engineRefFile(t, pack, "runtime/release.pub"),
 		},
-		"agents":     []any{map[string]any{"id": "agent", "client_id": "agent", "unix_user": "agent", "account_mode": "existing", "home": "/home/agent", "shell": "/bin/false", "component_ids": []string{"fake"}}},
+		"agents": []any{map[string]any{"id": "agent", "client_id": "agent", "target": map[string]any{
+			"kind": "local_account", "isolation": "separate", "unix_user": "agent", "account_mode": "existing", "home": "/home/agent", "shell": "/bin/false",
+		}, "component_ids": []string{"fake"}}},
 		"operators":  []any{map[string]any{"id": "operator", "unix_user": "operator"}},
 		"components": []any{map[string]any{"id": "fake", "profile": engineRefFile(t, pack, "components/fake.json")}},
 	}

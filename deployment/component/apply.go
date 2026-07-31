@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/unyolo/auth"
 	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
@@ -104,6 +105,14 @@ func apply(ctx context.Context, request api.Request, profile Profile, config Con
 		return "", err
 	}
 	defer clearSecrets(installed)
+	storeSecrets, err := applySecretStores(profile.SecretStores, state.credentials, secrets, planned)
+	if err != nil {
+		return "", err
+	}
+	defer clearSecrets(storeSecrets)
+	for slot, secret := range storeSecrets {
+		installed[slot] = secret
+	}
 	clients := plannedValues(profile.Clients, planned, "client-", func(value Client) string { return value.AgentID })
 	if err := applyClients(clients, state.agents, installed); err != nil {
 		return "", err
@@ -455,6 +464,58 @@ func readInstalledCredential(value Credential) ([]byte, error) {
 	return data, nil
 }
 
+func applySecretStores(values []SecretStore, actions []api.CredentialAction, supplied map[string][]byte, planned map[string]bool) (map[string][]byte, error) {
+	result := map[string][]byte{}
+	for _, value := range values {
+		current, err := readNamedStore(value.Destination)
+		if err != nil {
+			clearSecrets(result)
+			return nil, err
+		}
+		desired := make(map[string]string, len(value.Entries))
+		for _, entry := range value.Entries {
+			action := credentialAction(actions, entry.Slot)
+			var secret string
+			if action == "install" || action == "rotate" {
+				raw := supplied[entry.Slot]
+				secret = string(raw)
+				if secret != strings.TrimSpace(secret) || len(raw) < auth.MinimumSecretBytes || strings.ContainsAny(secret, "\x00\r\n") {
+					clearSecrets(result)
+					return nil, fmt.Errorf("named secret slot %q was not supplied safely", entry.Slot)
+				}
+			} else {
+				secret = current[entry.Identity]
+				if secret == "" {
+					clearSecrets(result)
+					return nil, fmt.Errorf("retained named secret %q is unavailable", entry.Identity)
+				}
+			}
+			desired[entry.Identity] = secret
+			result[entry.Slot] = []byte(secret)
+		}
+		if planned["secret-store-"+value.ID] {
+			body, renderErr := secretfile.RenderWithOptions(desired, secretfile.ParseOptions{AllowEmpty: true})
+			if renderErr != nil {
+				clearSecrets(result)
+				return nil, renderErr
+			}
+			uid, gid, ownerErr := resolveOwner(value.Owner, value.Group)
+			if ownerErr != nil {
+				clear(body)
+				clearSecrets(result)
+				return nil, ownerErr
+			}
+			if err := writeAtomic(value.Destination, body, os.FileMode(value.Mode), uid, gid); err != nil {
+				clear(body)
+				clearSecrets(result)
+				return nil, err
+			}
+			clear(body)
+		}
+	}
+	return result, nil
+}
+
 func applyClients(values []Client, agents map[string]api.AgentBinding, secrets map[string][]byte) error {
 	for _, value := range values {
 		agent := agents[value.AgentID]
@@ -519,11 +580,32 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 		}
 		evidence = append(evidence, "credential "+credential.Slot+" is installed")
 	}
+	for _, store := range profile.SecretStores {
+		values, err := readNamedStore(store.Destination)
+		if err != nil || len(values) != len(store.Entries) || !matchesMetadata(store.Destination, store.Mode, store.Owner, store.Group) {
+			return nil, fmt.Errorf("named secret store %q does not match", store.ID)
+		}
+		for _, entry := range store.Entries {
+			if values[entry.Identity] == "" {
+				return nil, fmt.Errorf("named secret store %q is missing identity %q", store.ID, entry.Identity)
+			}
+		}
+		evidence = append(evidence, "named secret store "+store.ID+" matches")
+	}
 	for _, value := range profile.Clients {
 		agent := state.agents[value.AgentID]
 		path, _ := clientconfig.Path(agent.Home, value.BrokerName)
-		credential, _ := credentialBySlot(profile.Credentials, value.SecretSlot)
-		expected, err := readInstalledCredential(credential)
+		credential, found := credentialBySlot(profile.Credentials, value.SecretSlot)
+		var expected []byte
+		var err error
+		if found {
+			expected, err = readInstalledCredential(credential)
+		} else {
+			expected = append([]byte(nil), state.storeSecrets[value.SecretSlot]...)
+			if len(expected) == 0 {
+				err = errors.New("installed named client credential is unavailable")
+			}
+		}
 		if err != nil {
 			return nil, err
 		}

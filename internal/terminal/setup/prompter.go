@@ -38,6 +38,7 @@ type Options struct {
 	NoOpen     bool
 	OpenURL    func(context.Context, string) error
 	Width      int
+	Height     int
 }
 
 // Prompter is an inline Huh-backed SetupPrompter.
@@ -51,6 +52,7 @@ type Prompter struct {
 	noOpen        bool
 	openURL       func(context.Context, string) error
 	width         int
+	height        int
 	mu            sync.Mutex
 	progress      map[*indicator]struct{}
 	closed        bool
@@ -77,9 +79,13 @@ func New(options Options) *Prompter {
 	if width <= 0 {
 		width = terminalWidth(output)
 	}
+	height := options.Height
+	if height <= 0 {
+		height = terminalHeight(output)
+	}
 	return &Prompter{
 		input: input, terminalInput: terminalInput, inputState: tracked, output: output, accessible: accessible, color: color,
-		noOpen: options.NoOpen, openURL: options.OpenURL, width: width,
+		noOpen: options.NoOpen, openURL: options.OpenURL, width: width, height: height,
 		progress: map[*indicator]struct{}{},
 	}
 }
@@ -118,13 +124,16 @@ func (p *Prompter) Note(_ context.Context, message, title string) error {
 func (p *Prompter) Select(ctx context.Context, prompt flow.SelectPrompt) (string, error) {
 	value := prompt.InitialValue
 	options := huhOptions(prompt.Options)
+	description, height := p.selectionLayout(prompt.Description, prompt.Navigation, len(options))
 	field := huh.NewSelect[string]().
 		Title(safeText(prompt.Message)).
-		Description(p.description(prompt.Description, prompt.Navigation)).
+		Description(description).
 		Options(options...).
 		Value(&value).
-		Filtering(prompt.Searchable).
-		Height(selectHeight(len(options)))
+		Filtering(prompt.Searchable)
+	if height > 0 {
+		field.Height(height)
+	}
 	if err := p.runForm(ctx, field); err != nil {
 		return "", err
 	}
@@ -135,13 +144,16 @@ func (p *Prompter) Select(ctx context.Context, prompt flow.SelectPrompt) (string
 func (p *Prompter) MultiSelect(ctx context.Context, prompt flow.SelectPrompt) ([]string, error) {
 	values := append([]string(nil), prompt.InitialValues...)
 	options := huhOptions(prompt.Options)
+	description, height := p.selectionLayout(prompt.Description, prompt.Navigation, len(options))
 	field := huh.NewMultiSelect[string]().
 		Title(safeText(prompt.Message)).
-		Description(p.description(prompt.Description, prompt.Navigation)).
+		Description(description).
 		Options(options...).
 		Value(&values).
-		Filtering(prompt.Searchable).
-		Height(selectHeight(len(options)))
+		Filtering(prompt.Searchable)
+	if height > 0 {
+		field.Height(height)
+	}
 	if prompt.Required {
 		field.Validate(func(values []string) error {
 			if len(values) == 0 {
@@ -223,11 +235,18 @@ func (p *Prompter) Confirm(ctx context.Context, prompt flow.ConfirmPrompt) (bool
 	if prompt.Safe {
 		value = false
 	}
+	affirmative, negative := prompt.Affirmative, prompt.Negative
+	if affirmative == "" {
+		affirmative = "Continue"
+	}
+	if negative == "" {
+		negative = "Cancel"
+	}
 	field := huh.NewConfirm().
 		Title(safeText(prompt.Message)).
 		Description(p.description(prompt.Description, prompt.Navigation)).
-		Affirmative("Yes").
-		Negative("No").
+		Affirmative(safeText(affirmative)).
+		Negative(safeText(negative)).
 		Inline(false).
 		Value(&value)
 	if err := p.runForm(ctx, field); err != nil {
@@ -459,6 +478,36 @@ func terminalWidth(output io.Writer) int {
 	return width
 }
 
+func terminalHeight(output io.Writer) int {
+	file, ok := output.(*os.File)
+	if !ok {
+		return 24
+	}
+	_, height, err := term.GetSize(int(file.Fd()))
+	if err != nil || height <= 0 {
+		return 24
+	}
+	return height
+}
+
+func (p *Prompter) selectionLayout(description string, navigation flow.Navigation, count int) (string, int) {
+	text := p.description(description, navigation)
+	overhead := 6 + len(wrap(text, max(20, p.width-4)))
+	if count+overhead <= p.height {
+		return text, 0
+	}
+	visible := max(3, p.height-overhead)
+	if visible >= count {
+		return text, 0
+	}
+	hidden := count - visible
+	if text != "" {
+		text += "\n"
+	}
+	text += fmt.Sprintf("%d more options below", hidden)
+	return text, min(p.height-2, visible+overhead+1)
+}
+
 func safeText(value string) string {
 	value = strings.ReplaceAll(value, "\x1b", "")
 	return controlPattern.ReplaceAllString(value, "")
@@ -485,5 +534,3 @@ func wrap(value string, width int) []string {
 	}
 	return result
 }
-
-func selectHeight(count int) int { return min(max(count, 3), 12) }

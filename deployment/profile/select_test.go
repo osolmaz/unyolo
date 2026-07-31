@@ -72,8 +72,10 @@ func TestSelectedDeploymentSupportsEveryDefaultProviderSet(t *testing.T) {
 	deployment := Deployment{
 		APIVersion: APIVersion, Name: "template",
 		Components: []Component{{ID: "github"}, {ID: "huggingface"}},
-		Agents:     []Agent{{ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin", ComponentIDs: []string{"github", "huggingface"}}},
-		Operators:  []Operator{{ID: "operator", UnixUser: "operator"}},
+		Agents: []Agent{{ID: "agent", ClientID: "agent", Target: AgentTarget{
+			Kind: "local_account", Isolation: "separate", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin",
+		}, ComponentIDs: []string{"github", "huggingface"}}},
+		Operators: []Operator{{ID: "operator", UnixUser: "operator"}},
 	}
 	for _, selected := range [][]string{{"github"}, {"huggingface"}, {"github", "huggingface"}} {
 		result, err := selectedDeployment(deployment, "host", selected)

@@ -50,7 +50,7 @@ func TestAdapterPlanApplyVerifyRollback(t *testing.T) {
 	base := api.Request{
 		APIVersion: api.APIVersion, DeploymentDigest: strings.Repeat("a", 71), ComponentID: "test", Profile: profileData,
 		Files:  []api.File{{Path: "policy.json", SHA256: digest(policy), Data: policy}},
-		Agents: []api.AgentBinding{{ID: "agent", ClientID: "agent", UnixUser: current.Username, Home: agentHome}},
+		Agents: []api.AgentBinding{{ID: "agent", ClientID: "agent", TargetKind: "local_account", Isolation: "separate", AccountMode: "existing", UnixUser: current.Username, Home: agentHome}},
 	}
 	base.DeploymentDigest = "sha256:" + strings.Repeat("a", 64)
 
@@ -235,7 +235,7 @@ func TestValidateProfileRejectsUnsafeResources(t *testing.T) {
 			Services:    []string{"test.service"},
 		}
 	}
-	agents := []api.AgentBinding{{ID: "agent", ClientID: "agent", UnixUser: "agent", Home: "/home/agent"}}
+	agents := []api.AgentBinding{{ID: "agent", ClientID: "agent", TargetKind: "local_account", Isolation: "separate", AccountMode: "existing", UnixUser: "agent", Home: "/home/agent"}}
 	if err := validateProfile(valid(), config, agents); err != nil {
 		t.Fatal(err)
 	}

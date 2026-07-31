@@ -92,7 +92,7 @@ verified_release="$verified_releases/$archive_digest"
 if [ ! -e "$verified_release" ]; then
   verified_new="$verified_release.new.$$"
   install -d -o root -g root -m 0700 "$verified_new"
-  cp -R "$temporary/extracted/deployment-kits/templates" "$verified_new/templates"
+  cp -R "$temporary/extracted/deployment-kits" "$verified_new/source-set"
   chown -R root:root "$verified_new"
   find "$verified_new" -type d -exec chmod 0755 {} +
   find "$verified_new" -type f -exec chmod 0644 {} +

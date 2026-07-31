@@ -16,6 +16,7 @@ import (
 
 	"github.com/osolmaz/unyolo/internal/securefile"
 	"github.com/osolmaz/unyolo/internal/strictjson"
+	setupintent "github.com/osolmaz/unyolo/setup/intent"
 )
 
 const (
@@ -49,18 +50,20 @@ type SecretSlot struct {
 
 // Session is one resumable nonsecret setup session.
 type Session struct {
-	APIVersion    string              `json:"api_version"`
-	ID            string              `json:"id"`
-	BuildID       string              `json:"build_id"`
-	Deployment    string              `json:"deployment"`
-	CompletedStep []string            `json:"completed_step_ids"`
-	Answers       map[string][]string `json:"answers"`
-	SecretSlots   []SecretSlot        `json:"secret_slots"`
-	Generated     map[string]string   `json:"generated_file_digests"`
-	Phase         Phase               `json:"phase"`
-	LastSafeError string              `json:"last_safe_error,omitempty"`
-	CreatedAt     time.Time           `json:"created_at"`
-	UpdatedAt     time.Time           `json:"updated_at"`
+	APIVersion       string             `json:"api_version"`
+	ID               string             `json:"id"`
+	BuildID          string             `json:"build_id"`
+	InstallationName string             `json:"installation_name"`
+	Intent           setupintent.Intent `json:"setup_intent"`
+	CurrentStep      string             `json:"current_step_id,omitempty"`
+	CompletedStep    []string           `json:"completed_step_ids"`
+	CapabilityDigest string             `json:"capability_snapshot_digest,omitempty"`
+	SecretSlots      []SecretSlot       `json:"secret_slots"`
+	Generated        map[string]string  `json:"generated_file_digests"`
+	Phase            Phase              `json:"phase"`
+	LastSafeError    string             `json:"last_safe_error,omitempty"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
 }
 
 // Store owns setup sessions below one operator state directory.
@@ -88,23 +91,26 @@ func DefaultDirectory() (string, error) {
 }
 
 // New creates an in-memory session with a random identity.
-func New(buildID, deployment string, now time.Time) (Session, error) {
-	if strings.TrimSpace(buildID) == "" || strings.TrimSpace(deployment) == "" {
-		return Session{}, errors.New("setup build and deployment names are required")
+func New(buildID string, now time.Time) (Session, error) {
+	if strings.TrimSpace(buildID) == "" {
+		return Session{}, errors.New("setup build identity is required")
 	}
 	var random [16]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return Session{}, fmt.Errorf("create setup session ID: %w", err)
 	}
 	return Session{
-		APIVersion: APIVersion, ID: hex.EncodeToString(random[:]), BuildID: buildID,
-		Deployment: deployment, Answers: map[string][]string{}, Generated: map[string]string{},
+		APIVersion: APIVersion, ID: hex.EncodeToString(random[:]), BuildID: buildID, InstallationName: "default",
+		Intent: setupintent.Intent{APIVersion: setupintent.APIVersion}, Generated: map[string]string{},
 		Phase: PhaseStarted, CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 	}, nil
 }
 
 // Save writes a session atomically with owner-only permissions.
 func (store Store) Save(value Session) error {
+	for index := range value.SecretSlots {
+		value.SecretSlots[index].Supplied = false
+	}
 	if err := value.Validate(); err != nil {
 		return err
 	}
@@ -208,8 +214,11 @@ func (store Store) Cancel(id string) error {
 //
 //nolint:cyclop // Resumable state is checked exhaustively to keep secret-bearing fields out of persistence.
 func (value Session) Validate() error {
-	if value.APIVersion != APIVersion || !validID(value.ID) || strings.TrimSpace(value.BuildID) == "" || strings.TrimSpace(value.Deployment) == "" {
+	if value.APIVersion != APIVersion || !validID(value.ID) || strings.TrimSpace(value.BuildID) == "" || value.InstallationName != "default" {
 		return errors.New("setup session identity is invalid")
+	}
+	if err := value.Intent.ValidatePartial(); err != nil {
+		return fmt.Errorf("setup session intent: %w", err)
 	}
 	if value.CreatedAt.IsZero() || value.UpdatedAt.IsZero() || value.UpdatedAt.Before(value.CreatedAt) {
 		return errors.New("setup session timestamps are invalid")
@@ -217,8 +226,11 @@ func (value Session) Validate() error {
 	if !slices.Contains([]Phase{PhaseStarted, PhaseEnrolling, PhaseProfile, PhasePlanned, PhaseApplying, PhaseComplete, PhaseCancelled}, value.Phase) {
 		return errors.New("setup session phase is invalid")
 	}
-	if len(value.CompletedStep) > 256 || len(value.Answers) > 256 || len(value.SecretSlots) > 64 || len(value.Generated) > 256 || len(value.LastSafeError) > 4096 {
+	if len(value.CompletedStep) > 256 || len(value.SecretSlots) > 64 || len(value.Generated) > 256 || len(value.LastSafeError) > 4096 {
 		return errors.New("setup session exceeds collection limits")
+	}
+	if value.CurrentStep != "" && !fieldIDPattern.MatchString(value.CurrentStep) || value.CapabilityDigest != "" && !digestPattern.MatchString(value.CapabilityDigest) {
+		return errors.New("setup session step or capability digest is invalid")
 	}
 	seenSteps := map[string]bool{}
 	for _, step := range value.CompletedStep {
@@ -227,21 +239,9 @@ func (value Session) Validate() error {
 		}
 		seenSteps[step] = true
 	}
-	for key, answers := range value.Answers {
-		lower := strings.ToLower(key)
-		if !fieldIDPattern.MatchString(key) || strings.Contains(lower, "secret") || strings.Contains(lower, "token") ||
-			strings.Contains(lower, "password") || strings.Contains(lower, "credential") || len(answers) > 64 {
-			return errors.New("setup answer key is invalid or secret-like")
-		}
-		for _, answer := range answers {
-			if len(answer) > 4096 || strings.ContainsAny(answer, "\x00\r\n") {
-				return errors.New("setup answer is invalid")
-			}
-		}
-	}
 	seenSlots := map[string]bool{}
 	for _, slot := range value.SecretSlots {
-		if !fieldIDPattern.MatchString(slot.ID) || seenSlots[slot.ID] {
+		if !fieldIDPattern.MatchString(slot.ID) || seenSlots[slot.ID] || slot.Supplied {
 			return errors.New("setup secret slot ID is invalid or duplicated")
 		}
 		seenSlots[slot.ID] = true

@@ -50,7 +50,9 @@ func TestLaunchdManagerLifecycleAndStatus(t *testing.T) {
 	if err != nil || !status.Active || status.PID != 42 || status.Executable == "" {
 		t.Fatalf("Status() = %+v, %v", status, err)
 	}
-	if !reflect.DeepEqual(runner.calls, []string{"launchctl:kill", "launchctl:kickstart", "launchctl:print", "ps:-p"}) {
+	if !reflect.DeepEqual(runner.calls, []string{
+		"launchctl:kill", "launchctl:kickstart", "launchctl:print", "launchctl:print", "launchctl:bootout", "launchctl:print", "ps:-p",
+	}) {
 		t.Fatalf("calls = %v", runner.calls)
 	}
 }

@@ -50,10 +50,15 @@ type SecretDescriptor struct {
 
 // AgentBinding is one validated deployment agent available to a component.
 type AgentBinding struct {
-	ID       string `json:"id"`
-	ClientID string `json:"client_id"`
-	UnixUser string `json:"unix_user"`
-	Home     string `json:"home"`
+	ID          string `json:"id"`
+	ClientID    string `json:"client_id"`
+	TargetKind  string `json:"target_kind"`
+	Isolation   string `json:"isolation"`
+	AccountMode string `json:"account_mode,omitempty"`
+	UnixUser    string `json:"unix_user,omitempty"`
+	Home        string `json:"home,omitempty"`
+	Container   string `json:"container,omitempty"`
+	RemoteName  string `json:"remote_name,omitempty"`
 }
 
 // Request is one bounded adapter request.
@@ -146,9 +151,16 @@ func (request Request) Validate() error {
 		seenFiles[file.Path] = true
 	}
 	for _, agent := range request.Agents {
-		if !identifierPattern.MatchString(agent.ID) || !identifierPattern.MatchString(agent.ClientID) || strings.TrimSpace(agent.UnixUser) == "" ||
-			!strings.HasPrefix(agent.Home, "/") || seenAgents[agent.ID] {
+		if !identifierPattern.MatchString(agent.ID) || !identifierPattern.MatchString(agent.ClientID) || seenAgents[agent.ID] ||
+			!slices.Contains([]string{"local_account", "container", "remote"}, agent.TargetKind) ||
+			!slices.Contains([]string{"separate", "container", "remote", "reduced"}, agent.Isolation) {
 			return errors.New("setup-component agent binding is invalid or duplicated")
+		}
+		if agent.TargetKind == "local_account" && (strings.TrimSpace(agent.UnixUser) == "" || !strings.HasPrefix(agent.Home, "/") || !slices.Contains([]string{"current", "existing", "managed"}, agent.AccountMode)) {
+			return errors.New("setup-component local agent binding is invalid")
+		}
+		if agent.TargetKind == "container" && agent.Container == "" || agent.TargetKind == "remote" && agent.RemoteName == "" {
+			return errors.New("setup-component nonlocal agent binding is invalid")
 		}
 		seenAgents[agent.ID] = true
 	}

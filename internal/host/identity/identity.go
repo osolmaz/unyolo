@@ -60,11 +60,14 @@ func (inspector Inspector) InspectDeployment(ctx context.Context, deployment pro
 	result := map[string]Account{}
 	usedUIDs := map[int]string{}
 	for _, agent := range deployment.Agents {
-		account, err := inspector.inspect(ctx, agent.UnixUser)
+		if agent.Target.Kind != "local_account" {
+			continue
+		}
+		account, err := inspector.inspect(ctx, agent.Target.UnixUser)
 		if err != nil {
 			var unknown user.UnknownUserError
-			if agent.AccountMode == "managed" && errors.As(err, &unknown) {
-				result["agent:"+agent.ID] = Account{Name: agent.UnixUser, Home: agent.Home, Shell: agent.Shell, Missing: true}
+			if agent.Target.AccountMode == "managed" && errors.As(err, &unknown) {
+				result["agent:"+agent.ID] = Account{Name: agent.Target.UnixUser, Home: agent.Target.Home, Shell: agent.Target.Shell, Missing: true}
 				continue
 			}
 			return nil, fmt.Errorf("inspect agent %q: %w", agent.ID, err)
@@ -155,15 +158,17 @@ func validateAgent(account Account, desired profile.Agent) error {
 	if account.UID == 0 {
 		return errors.New("agent must not be root")
 	}
-	for _, group := range rootEquivalentGroups {
-		if slices.Contains(account.Groups, group) {
-			return fmt.Errorf("agent belongs to root-equivalent group %q", group)
+	if desired.Target.Isolation != "reduced" {
+		for _, group := range rootEquivalentGroups {
+			if slices.Contains(account.Groups, group) {
+				return fmt.Errorf("agent belongs to root-equivalent group %q", group)
+			}
 		}
 	}
-	if filepath.Clean(account.Home) != desired.Home {
+	if filepath.Clean(account.Home) != desired.Target.Home {
 		return fmt.Errorf("home mismatch: found %q", account.Home)
 	}
-	if account.Shell != "" && filepath.Clean(account.Shell) != desired.Shell {
+	if account.Shell != "" && filepath.Clean(account.Shell) != desired.Target.Shell {
 		return fmt.Errorf("shell mismatch: found %q", account.Shell)
 	}
 	return nil
@@ -171,13 +176,13 @@ func validateAgent(account Account, desired profile.Agent) error {
 
 // SafeManagedCommand returns one fixed Linux account-creation argv.
 func SafeManagedCommand(agent profile.Agent) ([]string, error) {
-	if agent.AccountMode != "managed" {
+	if agent.Target.Kind != "local_account" || agent.Target.AccountMode != "managed" {
 		return nil, errors.New("account is not managed")
 	}
-	if !managedNamePattern.MatchString(agent.UnixUser) || !filepath.IsAbs(agent.Home) || filepath.Clean(agent.Home) != agent.Home ||
-		agent.Home == "/" || agent.Home == "/root" || !filepath.IsAbs(agent.Shell) ||
-		!slices.Contains([]string{"nologin", "false"}, filepath.Base(agent.Shell)) {
+	if !managedNamePattern.MatchString(agent.Target.UnixUser) || !filepath.IsAbs(agent.Target.Home) || filepath.Clean(agent.Target.Home) != agent.Target.Home ||
+		agent.Target.Home == "/" || agent.Target.Home == "/root" || !filepath.IsAbs(agent.Target.Shell) ||
+		!slices.Contains([]string{"nologin", "false"}, filepath.Base(agent.Target.Shell)) {
 		return nil, errors.New("managed account fields are unsafe")
 	}
-	return []string{"useradd", "--system", "--create-home", "--home-dir", agent.Home, "--shell", agent.Shell, agent.UnixUser}, nil
+	return []string{"useradd", "--system", "--create-home", "--home-dir", agent.Target.Home, "--shell", agent.Target.Shell, agent.Target.UnixUser}, nil
 }

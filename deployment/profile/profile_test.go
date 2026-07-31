@@ -103,12 +103,19 @@ func TestDeploymentValidationRejectsUnsafeIdentities(t *testing.T) {
 			Signature: Reference{Path: "signature", SHA256: "sha256:" + strings.Repeat("1", 64)},
 			PublicKey: Reference{Path: "key", SHA256: "sha256:" + strings.Repeat("2", 64)},
 		},
-		Agents:     []Agent{{ID: "agent", ClientID: "client", UnixUser: "agent", AccountMode: "managed", Home: "/var/lib/agent", Shell: "/usr/sbin/nologin", ComponentIDs: []string{"github"}}},
+		Agents: []Agent{{ID: "agent", ClientID: "client", Target: AgentTarget{
+			Kind: "local_account", Isolation: "separate", UnixUser: "agent", AccountMode: "managed", Home: "/var/lib/agent", Shell: "/usr/sbin/nologin",
+		}, ComponentIDs: []string{"github"}}},
 		Operators:  []Operator{{ID: "operator", UnixUser: "operator"}},
 		Components: []Component{{ID: "github", Profile: Reference{Path: "component", SHA256: "sha256:" + strings.Repeat("3", 64)}}},
 	}
 	if err := base.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	serverOnly := base
+	serverOnly.Agents = nil
+	if err := serverOnly.Validate(); err != nil {
+		t.Fatalf("server-only deployment: %v", err)
 	}
 	cases := []struct {
 		name string
@@ -116,9 +123,9 @@ func TestDeploymentValidationRejectsUnsafeIdentities(t *testing.T) {
 	}{
 		{"version", func(value *Deployment) { value.APIVersion = "old" }},
 		{"name", func(value *Deployment) { value.Name = "bad name" }},
-		{"agent mode", func(value *Deployment) { value.Agents[0].AccountMode = "root" }},
-		{"agent user", func(value *Deployment) { value.Agents[0].UnixUser = "bad user" }},
-		{"agent shell", func(value *Deployment) { value.Agents[0].Shell = "/bin/bash" }},
+		{"agent mode", func(value *Deployment) { value.Agents[0].Target.AccountMode = "root" }},
+		{"agent user", func(value *Deployment) { value.Agents[0].Target.UnixUser = "bad user" }},
+		{"agent shell", func(value *Deployment) { value.Agents[0].Target.Shell = "/bin/bash" }},
 		{"operator", func(value *Deployment) { value.Operators[0].UnixUser = "bad user" }},
 		{"component", func(value *Deployment) { value.Components[0].ID = "bad id" }},
 		{"unknown binding", func(value *Deployment) { value.Agents[0].ComponentIDs = []string{"missing"} }},
@@ -245,7 +252,9 @@ func testPack(t *testing.T) string {
 			Signature: Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
 			PublicKey: Reference{Path: "runtime/release.pub", SHA256: zeroDigest()},
 		},
-		Agents:     []Agent{{ID: "agent", ClientID: "agent", UnixUser: "nobody", AccountMode: "existing", Home: "/tmp/agent", Shell: "/bin/false", ComponentIDs: []string{"fake"}}},
+		Agents: []Agent{{ID: "agent", ClientID: "agent", Target: AgentTarget{
+			Kind: "local_account", Isolation: "separate", UnixUser: "nobody", AccountMode: "existing", Home: "/tmp/agent", Shell: "/bin/false",
+		}, ComponentIDs: []string{"fake"}}},
 		Operators:  []Operator{{ID: "operator", UnixUser: "operator"}},
 		Components: []Component{{ID: "fake", Profile: Reference{Path: "components/fake.json", SHA256: zeroDigest()}}},
 	}

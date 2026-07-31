@@ -17,10 +17,14 @@ func TestRendererHelpers(t *testing.T) {
 	if len(lines) < 2 {
 		t.Fatalf("wrap = %v", lines)
 	}
-	for _, test := range []struct{ count, want int }{{0, 3}, {2, 3}, {10, 10}} {
-		if got := selectHeight(test.count); got != test.want {
-			t.Fatalf("selectHeight(%d) = %d", test.count, got)
-		}
+	prompter := &Prompter{width: 80, height: 24}
+	if _, height := prompter.selectionLayout("Choose one", flow.Navigation{}, 8); height != 0 {
+		t.Fatalf("fitting menu height = %d", height)
+	}
+	prompter.height = 10
+	description, height := prompter.selectionLayout("Choose one", flow.Navigation{}, 12)
+	if height == 0 || !strings.Contains(description, "more options below") {
+		t.Fatalf("clipped menu layout = %q, %d", description, height)
 	}
 	validator := promptValidator(flow.Prompt{Required: true, Validate: func(value string) error {
 		if len(value) < 2 || len(value) > 4 || strings.Trim(value, "abcdefghijklmnopqrstuvwxyz") != "" {

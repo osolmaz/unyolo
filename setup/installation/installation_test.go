@@ -18,7 +18,7 @@ func validInstallation() Installation {
 		Approvers: []Approver{{ID: "onur", Account: "onur"}},
 		Connections: []Connection{{
 			ID: "bob", ClientID: "bob",
-			Target:    Target{Kind: TargetLocalAccount, AccountMode: setupintent.AccountExisting, Account: "bob"},
+			Target:    Target{Kind: TargetLocalAccount, Isolation: "separate", AccountMode: setupintent.AccountExisting, Account: "bob", Home: "/home/bob", Shell: "/bin/bash", UID: 1000, GID: 1000},
 			Providers: []string{"github"}, Integrations: []string{"openclaw"},
 		}},
 	}

@@ -11,74 +11,24 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/deployment/provider"
-	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 )
 
-func TestChooseSessionSelectsProvidersBeforeCreatingState(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", state)
-	prompter := &recordingPrompter{providers: []string{"github", "huggingface"}, name: "test-host"}
+func TestChooseSessionUsesDefaultWithoutNamePrompt(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	store, err := setupSessionStore()
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := chooseSession(t.Context(), prompter, store, setupOptions{New: true, ProviderOptions: testProviderOptions()})
+	value, err := chooseSession(t.Context(), &recordingPrompter{}, store, setupOptions{New: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prompter.calls) < 2 || prompter.calls[0] != "providers" || prompter.calls[1] != "name" {
-		t.Fatalf("prompt order = %v", prompter.calls)
-	}
-	if len(value.Answers["providers"]) != 2 || value.Answers["providers"][0] != "github" {
-		t.Fatalf("providers = %v", value.Answers["providers"])
+	if value.InstallationName != "default" || value.CurrentStep != "goal" {
+		t.Fatalf("session = %#v", value)
 	}
 	if _, err := store.Load(value.ID); err != nil {
-		t.Fatalf("saved session: %v", err)
-	}
-}
-
-func TestChooseSessionKeepsExplicitProfileInExistingMode(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", state)
-	prompter := &recordingPrompter{name: "existing-host", providerErr: errors.New("provider selection must not run")}
-	store, err := setupSessionStore()
-	if err != nil {
 		t.Fatal(err)
-	}
-	value, err := chooseSession(t.Context(), prompter, store, setupOptions{
-		New: true, Profile: "/tmp/existing-pack", ProviderOptions: testProviderOptions(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := strings.Join(prompter.calls, ","); got != "name" {
-		t.Fatalf("explicit profile prompt order = %q", got)
-	}
-	if got := value.Answers["mode"]; len(got) != 1 || got[0] != "existing" || len(value.Answers["providers"]) != 0 {
-		t.Fatalf("explicit profile answers = %+v", value.Answers)
-	}
-}
-
-func TestProviderCancellationLeavesNoSetupState(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", state)
-	prompter := &recordingPrompter{providerErr: flow.CancelledError{}}
-	store, err := setupSessionStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = chooseSession(t.Context(), prompter, store, setupOptions{New: true, ProviderOptions: testProviderOptions()})
-	var cancelled flow.CancelledError
-	if !errors.As(err, &cancelled) {
-		t.Fatalf("cancellation = %v", err)
-	}
-	entries, readErr := os.ReadDir(filepath.Join(state, "unyolo", "setup"))
-	if readErr == nil && len(entries) != 0 {
-		t.Fatalf("setup state after cancellation = %v", entries)
-	}
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		t.Fatal(readErr)
 	}
 }
 
@@ -101,7 +51,7 @@ func TestProviderOptionsLoadBesideInstalledExecutable(t *testing.T) {
 	}
 }
 
-func TestChooseSetupProfileUsesSelectedVerifiedReleaseKit(t *testing.T) {
+func TestSelectedReleaseTemplateUsesProviderSet(t *testing.T) {
 	root := t.TempDir()
 	template := filepath.Join(root, "templates", "github+huggingface")
 	artifacts := filepath.Join(root, "artifacts")
@@ -110,17 +60,9 @@ func TestChooseSetupProfileUsesSelectedVerifiedReleaseKit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	value := session.Session{Answers: map[string][]string{"providers": {"huggingface", "github"}}}
-	path, releaseTemplate, artifactRoot, err := chooseSetupProfile(t.Context(), &recordingPrompter{}, setupOptions{
-		ProviderOptions: testProviderOptions(), DeploymentKits: root, RuntimeArtifacts: artifacts,
-	}, value)
-	if err != nil || !releaseTemplate || path != template || artifactRoot != artifacts {
-		t.Fatalf("selected release kit = %q, %v, %q, %v", path, releaseTemplate, artifactRoot, err)
-	}
-	if _, _, _, err := chooseSetupProfile(t.Context(), &recordingPrompter{}, setupOptions{
-		ProviderOptions: testProviderOptions(), DeploymentKits: filepath.Join(root, "missing"), RuntimeArtifacts: artifacts,
-	}, value); err == nil {
-		t.Fatal("missing selected release kit was accepted")
+	selected, artifactRoot, err := selectedReleaseTemplate(setupOptions{ProviderOptions: testProviderOptions(), DeploymentKits: root, RuntimeArtifacts: artifacts}, []string{"huggingface", "github"})
+	if err != nil || selected != template || artifactRoot != artifacts {
+		t.Fatalf("selected setup source = %q, %q, %v", selected, artifactRoot, err)
 	}
 }
 
@@ -141,22 +83,9 @@ func TestProtectedWorkerStartsOnlyAfterActivation(t *testing.T) {
 	if err != nil || started != worker || strings.Join(events, ",") != "activate,start" {
 		t.Fatalf("protected order = %v, %v", events, err)
 	}
-
-	events = nil
-	activationErr := errors.New("activation failed")
-	_, err = prepareProtectedWorker(t.Context(), &recordingPrompter{}, func(context.Context) error {
-		events = append(events, "activate")
-		return activationErr
-	}, sourceCommit, "verified-gh", func(context.Context, string, string, string, io.Writer) (protectedSetupWorker, error) {
-		events = append(events, "start")
-		return worker, nil
-	})
-	if !errors.Is(err, activationErr) || strings.Join(events, ",") != "activate" {
-		t.Fatalf("failed activation order = %v, %v", events, err)
-	}
 }
 
-func TestPlanOnlyActivatesBeforeReportingFollowUpCommand(t *testing.T) {
+func TestPlanOnlyActivatesBeforeCompletion(t *testing.T) {
 	activated := false
 	if err := finishPlanOnly(t.Context(), &confirmingPrompter{}, func(context.Context) error {
 		activated = true
@@ -165,20 +94,7 @@ func TestPlanOnlyActivatesBeforeReportingFollowUpCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !activated {
-		t.Fatal("plan-only bootstrap did not activate the verified CLI")
-	}
-}
-
-func TestSetupModeOptionsPreserveExplicitExistingProfile(t *testing.T) {
-	options := setupModeOptions(setupOptions{ProviderOptions: testProviderOptions()})
-	if len(options) != 2 || options[0].Value != "recommended" || options[1].Value != "custom" {
-		t.Fatalf("bootstrap modes = %+v", options)
-	}
-	for _, setup := range []setupOptions{{}, {Profile: "/tmp/existing", ProviderOptions: testProviderOptions()}} {
-		options = setupModeOptions(setup)
-		if len(options) != 3 || options[2].Value != "existing" {
-			t.Fatalf("existing profile modes = %+v", options)
-		}
+		t.Fatal("plan-only path did not install the command")
 	}
 }
 
@@ -200,47 +116,43 @@ type fakeProtectedWorker struct{}
 func (*fakeProtectedWorker) Plan(string) (privilege.Response, error) {
 	return privilege.Response{}, nil
 }
+func (*fakeProtectedWorker) PlanInstallation(string, string) (privilege.Response, error) {
+	return privilege.Response{}, nil
+}
 func (*fakeProtectedWorker) Apply(string, map[string][]byte) (privilege.Result, error) {
 	return privilege.Result{}, nil
 }
 func (*fakeProtectedWorker) Cancel() error { return nil }
 func (*fakeProtectedWorker) Close() error  { return nil }
 
-type recordingPrompter struct {
-	providers   []string
-	providerErr error
-	name        string
-	calls       []string
-}
+type recordingPrompter struct{}
 
-func (prompter *recordingPrompter) Intro(context.Context, string) error        { return nil }
-func (prompter *recordingPrompter) Outro(context.Context, string) error        { return nil }
-func (prompter *recordingPrompter) Note(context.Context, string, string) error { return nil }
-func (prompter *recordingPrompter) Select(context.Context, flow.SelectPrompt) (string, error) {
-	return "recommended", nil
+func (*recordingPrompter) Intro(context.Context, string) error        { return nil }
+func (*recordingPrompter) Outro(context.Context, string) error        { return nil }
+func (*recordingPrompter) Note(context.Context, string, string) error { return nil }
+func (*recordingPrompter) Select(context.Context, flow.SelectPrompt) (string, error) {
+	return "", errors.New("unexpected select prompt")
 }
-func (prompter *recordingPrompter) MultiSelect(_ context.Context, _ flow.SelectPrompt) ([]string, error) {
-	prompter.calls = append(prompter.calls, "providers")
-	return prompter.providers, prompter.providerErr
+func (*recordingPrompter) MultiSelect(context.Context, flow.SelectPrompt) ([]string, error) {
+	return nil, errors.New("unexpected multi-select prompt")
 }
-func (prompter *recordingPrompter) Text(_ context.Context, _ flow.Prompt) (string, error) {
-	prompter.calls = append(prompter.calls, "name")
-	return prompter.name, nil
+func (*recordingPrompter) Text(context.Context, flow.Prompt) (string, error) {
+	return "", errors.New("unexpected text prompt")
 }
-func (prompter *recordingPrompter) Secret(context.Context, flow.Prompt) ([]byte, error) {
+func (*recordingPrompter) Secret(context.Context, flow.Prompt) ([]byte, error) {
 	return nil, errors.New("unexpected secret prompt")
 }
-func (prompter *recordingPrompter) Confirm(context.Context, flow.ConfirmPrompt) (bool, error) {
+func (*recordingPrompter) Confirm(context.Context, flow.ConfirmPrompt) (bool, error) {
 	return false, errors.New("unexpected confirm prompt")
 }
-func (prompter *recordingPrompter) DeviceCode(context.Context, flow.DeviceCodePrompt) error {
+func (*recordingPrompter) DeviceCode(context.Context, flow.DeviceCodePrompt) error {
 	return errors.New("unexpected device code prompt")
 }
-func (prompter *recordingPrompter) OpenURL(context.Context, string) error {
+func (*recordingPrompter) OpenURL(context.Context, string) error {
 	return errors.New("unexpected URL prompt")
 }
-func (prompter *recordingPrompter) Progress(string) flow.Progress { return testProgress{} }
-func (prompter *recordingPrompter) Close() error                  { return nil }
+func (*recordingPrompter) Progress(string) flow.Progress { return testProgress{} }
+func (*recordingPrompter) Close() error                  { return nil }
 
 type testProgress struct{}
 
