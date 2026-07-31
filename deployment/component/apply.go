@@ -74,7 +74,9 @@ func apply(ctx context.Context, request api.Request, profile Profile, config Con
 	paths := changedPaths(profile, state)
 	record, err := createBackup(ctx, config, paths, profile)
 	if err != nil {
-		return "", err
+		// No component mutation occurs before the backup is durable, so this
+		// failure has a definitive rolled-back outcome.
+		return "", rolledBackApplyError{cause: err}
 	}
 	defer func() {
 		if returnErr != nil {
