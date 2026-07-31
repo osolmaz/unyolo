@@ -176,19 +176,6 @@ const description =
             more permissions, you can give it timed grants that expire on their own.
           </p>
 
-          <div class="hero__install" aria-label="Install unYOLO">
-            <code>{installCommand}</code>
-            <button
-              class="hero__copy"
-              type="button"
-              aria-label="Copy install command"
-              data-install-copy={installCommand}
-            >
-              <Icon name="copy" />
-              <span data-copy-label aria-live="polite">Copy</span>
-            </button>
-          </div>
-
           <div class="hero__actions">
             <a class="button button--primary" href="/docs/get-started/quickstart">
               Get started
@@ -202,6 +189,33 @@ const description =
         </div>
 
         <HeroTheater />
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- install -->
+    <section class="installer" aria-labelledby="installer-title">
+      <div class="wrap installer__inner">
+        <h2 id="installer-title">Install unYOLO</h2>
+        <p>Run the guided installer on macOS or Linux.</p>
+
+        <div class="installer__command" aria-label="Install command">
+          <span class="installer__prompt" aria-hidden="true">$</span>
+          <code>{installCommand}</code>
+          <button
+            class="installer__copy"
+            type="button"
+            aria-label="Copy install command"
+            data-install-copy={installCommand}
+          >
+            <Icon name="copy" />
+            <span data-copy-label aria-live="polite">Copy</span>
+          </button>
+        </div>
+
+        <a class="text-link" href="/docs/get-started/installation">
+          Installation options
+          <Icon name="arrow-right" />
+        </a>
       </div>
     </section>
 
