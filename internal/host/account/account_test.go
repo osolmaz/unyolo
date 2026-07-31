@@ -252,6 +252,35 @@ func TestRemoveAccountDeletesExisting(t *testing.T) {
 	}
 }
 
+func TestMacApplyCreateRejectsExistingHome(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	runner := &fakeRunner{run: func(string, ...string) ([]byte, error) { return nil, errors.New("missing") }}
+	backend := Backend{OS: "darwin", Runner: runner}
+	plan, err := backend.PlanCreate("unyolo-agent", home, 601)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.ApplyCreate(context.Background(), plan); err == nil {
+		t.Fatal("preexisting home accepted")
+	}
+}
+
+func TestVerifyRejectsDrift(t *testing.T) {
+	t.Parallel()
+	runner := &fakeRunner{run: func(name string, args ...string) ([]byte, error) {
+		joined := strings.Join(append([]string{name}, args...), " ")
+		if strings.Contains(joined, "-read /Users/broker") {
+			return []byte("UniqueID: 500\nPrimaryGroupID: 500\nNFSHomeDirectory: /Users/broker\nUserShell: /usr/bin/false\nIsHidden: 1\n"), nil
+		}
+		return nil, errors.New("unexpected")
+	}}
+	backend := Backend{OS: "darwin", Runner: runner}
+	if err := backend.Verify(context.Background(), Record{Name: "broker", UID: 501, GID: 501, Home: "/Users/broker", Shell: "/usr/bin/false", Hidden: true}); err == nil {
+		t.Fatal("verify accepted mismatched UID")
+	}
+}
+
 func formatCalls(calls [][]string) []string {
 	result := make([]string, len(calls))
 	for index, call := range calls {
