@@ -151,9 +151,9 @@ var ForbiddenNormalTerms = []string{
 	"provider-owned enrollment profile",
 	"credential slot",
 	"plan digest",
-	"operator-owned",
+	"operator",
 }
 
 // FooterHint is the persistent action hint rendered under menu and text
 // screens so keyboard controls are always visible.
-const FooterHint = "Enter continues · Shift+Tab goes back · Ctrl+C cancels"
+const FooterHint = "Enter continues · Choose ← Go back to return · Ctrl+C cancels"

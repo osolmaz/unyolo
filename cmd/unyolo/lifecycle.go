@@ -175,31 +175,184 @@ func runReconfigureOrRepair(ctx context.Context, stdout, stderr io.Writer, actio
 }
 
 func editInstallation(ctx context.Context, prompter flow.SetupPrompter, desired installation.Installation, options setupOptions) (installation.Installation, error) {
-	initial, err := intentFromInstallation(desired)
-	if err != nil {
-		return installation.Installation{}, err
+	for {
+		actions := []flow.Option{
+			{Value: "done", Label: "Review and apply"},
+			{Value: "providers", Label: "Change credential services"},
+			{Value: "add-approver", Label: "Add an approver"},
+			{Value: "add-connection", Label: "Add an agent connection"},
+		}
+		if len(desired.Approvers) > 1 {
+			actions = append(actions, flow.Option{Value: "remove-approver", Label: "Remove an approver"})
+		}
+		if len(desired.Connections) > 0 {
+			actions = append(actions,
+				flow.Option{Value: "change-connection", Label: "Change an agent connection"},
+				flow.Option{Value: "remove-connection", Label: "Remove an agent connection"})
+		}
+		action, err := prompter.Select(ctx, flow.SelectPrompt{
+			Message: "What would you like to change?", Description: installationSummary(desired),
+			Options: actions, InitialValue: "done",
+		})
+		if err != nil {
+			return installation.Installation{}, err
+		}
+		switch action {
+		case "done":
+			return desired, desired.Validate()
+		case "providers":
+			selected, err := editProviders(ctx, prompter, desired, options)
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			desired.CredentialService.Providers = selected
+			for index := range desired.Connections {
+				desired.Connections[index].Providers = append([]string(nil), selected...)
+			}
+		case "add-approver":
+			account, err := prompter.Text(ctx, flow.Prompt{Message: "Which local account can approve requests?", Required: true, Navigation: flow.Navigation{CanGoBack: true}})
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			if slices.ContainsFunc(desired.Approvers, func(value installation.Approver) bool { return value.Account == account }) {
+				return installation.Installation{}, errors.New("that approver already exists")
+			}
+			desired.Approvers = append(desired.Approvers, installation.Approver{ID: account, Account: account})
+		case "remove-approver":
+			id, err := selectApprover(ctx, prompter, desired.Approvers)
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			desired.Approvers = slices.DeleteFunc(desired.Approvers, func(value installation.Approver) bool { return value.ID == id })
+		case "add-connection":
+			connection, err := editOneConnection(ctx, prompter, nil, desired, options)
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			if slices.ContainsFunc(desired.Connections, func(value installation.Connection) bool {
+				return value.ID == connection.ID || value.ClientID == connection.ClientID
+			}) {
+				return installation.Installation{}, errors.New("that connection already exists")
+			}
+			desired.Connections = append(desired.Connections, connection)
+		case "change-connection", "remove-connection":
+			id, err := selectConnection(ctx, prompter, desired.Connections, "Which connection?")
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			index := slices.IndexFunc(desired.Connections, func(value installation.Connection) bool { return value.ID == id })
+			if action == "remove-connection" {
+				desired.Connections = slices.Delete(desired.Connections, index, index+1)
+				continue
+			}
+			connection, err := editOneConnection(ctx, prompter, &desired.Connections[index], desired, options)
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			desired.Connections[index] = connection
+		}
+		if err := desired.Validate(); err != nil {
+			return installation.Installation{}, err
+		}
 	}
-	providers := providerChoicesFromOptions(options.ProviderOptions)
-	for index := range providers {
-		providers[index].Selected = slices.Contains(desired.CredentialService.Providers, providers[index].Value)
+}
+
+func installationSummary(value installation.Installation) string {
+	return fmt.Sprintf("Credential services: %s · Approvers: %d · Connections: %d", joinProviders(value), len(value.Approvers), len(value.Connections))
+}
+
+func isBackNavigation(err error) bool {
+	var navigation flow.NavigationError
+	return errors.As(err, &navigation) && navigation.Direction == "back"
+}
+
+func editProviders(ctx context.Context, prompter flow.SetupPrompter, desired installation.Installation, options setupOptions) ([]string, error) {
+	choices := providerChoicesFromOptions(options.ProviderOptions)
+	seen := map[string]bool{}
+	providerOptions := make([]flow.Option, 0, len(choices)+len(desired.CredentialService.Providers))
+	for _, choice := range choices {
+		providerOptions = append(providerOptions, flow.Option{Value: choice.Value, Label: choice.Label, Hint: choice.Hint})
+		seen[choice.Value] = true
+	}
+	for _, providerID := range desired.CredentialService.Providers {
+		if !seen[providerID] {
+			providerOptions = append(providerOptions, flow.Option{Value: providerID, Label: providerID})
+		}
+	}
+	return prompter.MultiSelect(ctx, flow.SelectPrompt{
+		Message: "Which credential services should run?", Options: providerOptions,
+		InitialValues: append([]string(nil), desired.CredentialService.Providers...), Required: true,
+		Navigation: flow.Navigation{CanGoBack: true},
+	})
+}
+
+func selectApprover(ctx context.Context, prompter flow.SetupPrompter, values []installation.Approver) (string, error) {
+	options := make([]flow.Option, 0, len(values))
+	for _, value := range values {
+		options = append(options, flow.Option{Value: value.ID, Label: value.Account})
+	}
+	return prompter.Select(ctx, flow.SelectPrompt{Message: "Which approver should be removed?", Options: options, Navigation: flow.Navigation{CanGoBack: true}})
+}
+
+func selectConnection(ctx context.Context, prompter flow.SetupPrompter, values []installation.Connection, message string) (string, error) {
+	options := make([]flow.Option, 0, len(values))
+	for _, value := range values {
+		options = append(options, flow.Option{Value: value.ID, Label: value.ID, Hint: value.Target.Account})
+	}
+	return prompter.Select(ctx, flow.SelectPrompt{Message: message, Options: options, Navigation: flow.Navigation{CanGoBack: true}})
+}
+
+func editOneConnection(ctx context.Context, prompter flow.SetupPrompter, existing *installation.Connection, desired installation.Installation, options setupOptions) (installation.Connection, error) {
+	initial := setupintent.Intent{APIVersion: setupintent.APIVersion, Goal: setupintent.GoalAgentConnection}
+	if existing != nil {
+		initial.Integrations = append([]string(nil), existing.Integrations...)
+		if existing.Target.Kind != installation.TargetLocalAccount {
+			return installation.Connection{}, errors.New("this release cannot interactively change that connection target")
+		}
+		initial.Agent = &setupintent.Agent{Location: setupintent.AgentLocalAccount, ConnectionName: existing.ID,
+			Account: &setupintent.Account{Mode: existing.Target.AccountMode, Name: existing.Target.Account}}
+		initial.Connection = &setupintent.Connection{Transport: setupintent.TransportLocalSocket}
 	}
 	result, err := wizard.New(wizard.Options{
-		Prompter: prompter, Capabilities: options.Capabilities, Providers: providers,
-		Accounts: existingAccountLister{}, Initial: wizard.State{Intent: initial, InstallationName: desired.Name},
-		InitialStep: wizard.StepGoal, CurrentAccount: options.Operator,
+		Prompter: prompter, Capabilities: options.Capabilities, Accounts: existingAccountLister{},
+		Initial: wizard.State{Intent: initial}, InitialStep: wizard.StepAgentLocation, CurrentAccount: options.Operator,
 	}).Run(ctx)
 	if err != nil {
-		return installation.Installation{}, err
+		return installation.Connection{}, err
 	}
-	if result.Intent.Goal == setupintent.GoalCommandOnly || result.Intent.Goal == setupintent.GoalAgentConnection {
-		return installation.Installation{}, errors.New("reconfigure keeps the credential services on this computer; use setup remove for removal or setup to connect a separate client")
+	if result.Intent.Goal != setupintent.GoalAgentConnection {
+		return installation.Connection{}, errors.New("connection editing cannot change the installation goal")
 	}
-	updated, err := installationFromIntent(result.Intent, options.Operator, desired.Name)
+	combined := result.Intent
+	combined.Goal = setupintent.GoalCompleteLocal
+	combined.CredentialService = &setupintent.CredentialService{Location: desired.CredentialService.Location,
+		Providers: append([]string(nil), desired.CredentialService.Providers...)}
+	generated, err := installationFromIntent(combined, options.Operator, desired.Name)
 	if err != nil {
-		return installation.Installation{}, err
+		return installation.Connection{}, err
 	}
-	updated.Approvers = append([]installation.Approver(nil), desired.Approvers...)
-	return updated, updated.Validate()
+	if len(generated.Connections) != 1 {
+		return installation.Connection{}, errors.New("connection editor did not produce one connection")
+	}
+	return generated.Connections[0], nil
 }
 
 func intentFromInstallation(value installation.Installation) (setupintent.Intent, error) {
@@ -263,6 +416,9 @@ func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, stor
 	}
 	if err := prompter.Note(ctx, fmt.Sprintf("Configuration digest: %s", compiled.Digest), "Prepared configuration"); err != nil {
 		return err
+	}
+	if options.PlanOnly {
+		return store.Publish(desired, destination, func(string) error { return nil })
 	}
 	worker, err := prepareProtectedWorker(ctx, prompter, nil, options.SourceCommit, options.GitHubCLI, startSetupWorker)
 	if err != nil {

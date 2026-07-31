@@ -130,7 +130,7 @@ func Applies(state State, step Step) bool {
 		return state.Intent.Agent != nil && state.Intent.Agent.Location == setupintent.AgentLocalAccount &&
 			state.Intent.Agent.Account != nil && state.Intent.Agent.Account.Mode == setupintent.AccountCurrent
 	case StepInstallName:
-		return goal != setupintent.GoalCommandOnly && state.InstallationExists
+		return (goal == setupintent.GoalCredentialService || goal == setupintent.GoalCompleteLocal) && state.InstallationExists
 	case StepReview:
 		return goal != setupintent.GoalCommandOnly
 	case StepDone:
