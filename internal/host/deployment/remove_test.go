@@ -82,6 +82,30 @@ func TestPlanRemovalRemovesOnlyUnchangedCreatedResources(t *testing.T) {
 	}
 }
 
+func TestPlanRemovalUsesContentFingerprintForGeneratedClients(t *testing.T) {
+	t.Parallel()
+	state, root := t.TempDir(), t.TempDir()
+	path := filepath.Join(root, "client.json")
+	if err := os.WriteFile(path, []byte("generated\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := componentprofile.ResourceFingerprint(t.Context(), api.Resource{Kind: "client", ID: "bob", Path: path}, true)
+	receipt := sampleReceipt()
+	receipt.Accounts = nil
+	receipt.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: path, Created: true, Fingerprint: fingerprint}}
+	if err := SaveReceipt(state, receipt); err != nil {
+		t.Fatal(err)
+	}
+	engine := &Engine{options: Options{Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}, Development: true, Manager: fakeManager{}}}
+	plan, err := engine.PlanRemoval(t.Context(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan.Actions, func(action RemovalAction) bool { return action.Kind == RemovalActionRemoveFile && action.Path == path }) {
+		t.Fatalf("unchanged generated client was not removable: %#v", plan)
+	}
+}
+
 func TestPlanRemovalRequiresSeparateDataConfirmation(t *testing.T) {
 	t.Parallel()
 	state, root := t.TempDir(), t.TempDir()

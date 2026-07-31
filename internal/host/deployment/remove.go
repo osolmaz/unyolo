@@ -144,7 +144,7 @@ func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receip
 			plan.Retained = append(plan.Retained, retention)
 			continue
 		}
-		includeContent := resource.Kind == "file" && !resource.Data
+		includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
 		current := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
 		if current != "missing" && current != resource.Fingerprint {
 			retention.Reason = RemovalReasonChanged
