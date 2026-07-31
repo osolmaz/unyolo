@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/osolmaz/unyolo/deployment/flow"
+	"github.com/osolmaz/unyolo/deployment/session"
 	setupcopy "github.com/osolmaz/unyolo/setup/copy"
 	"github.com/osolmaz/unyolo/setup/installation"
 	setupintent "github.com/osolmaz/unyolo/setup/intent"
@@ -126,6 +129,52 @@ func TestFinishCommandOnlyDoesNotStartWorker(t *testing.T) {
 		if strings.Contains(strings.ToLower(transcript), forbidden) {
 			t.Fatalf("command-only transcript contained %q: %s", forbidden, transcript)
 		}
+	}
+}
+
+func TestChooseSessionOffersToDiscardUnreadableProgress(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		discard bool
+	}{
+		{name: "discard", discard: true},
+		{name: "cancel", discard: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := filepath.Join(t.TempDir(), "setup")
+			if err := os.MkdirAll(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			oldID := strings.Repeat("a", 32)
+			old := `{"api_version":"unyolo.io/setup-session/v1","id":"` + oldID + `","build_id":"v0.6.3","deployment":"default"}`
+			oldPath := filepath.Join(directory, oldID+".json")
+			if err := os.WriteFile(oldPath, []byte(old), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			prompter := &scriptedPrompter{t: t, answers: []scriptedAnswer{{
+				kind: "confirm", boolValue: test.discard, message: setupcopy.Screens[setupcopy.ScreenDiscardProgress].Question,
+			}}}
+			created, err := chooseSession(t.Context(), prompter, session.Store{Directory: directory}, setupOptions{})
+			if !test.discard {
+				var cancelled flow.CancelledError
+				if !errors.As(err, &cancelled) {
+					t.Fatalf("chooseSession() error = %T %v", err, err)
+				}
+				if _, statErr := os.Stat(oldPath); statErr != nil {
+					t.Fatalf("cancel removed saved progress: %v", statErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if created.ID == oldID || created.CurrentStep != "goal" {
+				t.Fatalf("created session = %#v", created)
+			}
+			if _, statErr := os.Stat(oldPath); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("discard left old progress: %v", statErr)
+			}
+		})
 	}
 }
 

@@ -72,6 +72,36 @@ type Store struct {
 	Now       func() time.Time
 }
 
+// UnreadableSessionsError identifies saved setup progress that cannot be used
+// by the current release. The files remain untouched until the user explicitly
+// chooses to discard them.
+type UnreadableSessionsError struct {
+	ids []string
+}
+
+func (err *UnreadableSessionsError) Error() string {
+	return "saved setup progress cannot be opened"
+}
+
+// SessionIDs returns the exact saved-progress files that could not be decoded
+// or validated.
+func (err *UnreadableSessionsError) SessionIDs() []string {
+	return append([]string(nil), err.ids...)
+}
+
+type unreadableSessionError struct {
+	id  string
+	err error
+}
+
+func (err *unreadableSessionError) Error() string {
+	return fmt.Sprintf("read setup session %s: %v", err.id, err.err)
+}
+
+func (err *unreadableSessionError) Unwrap() error {
+	return err.err
+}
+
 // DefaultDirectory returns the current user's setup state directory.
 func DefaultDirectory() (string, error) {
 	var state string
@@ -143,14 +173,14 @@ func (store Store) Load(id string) (Session, error) {
 		return Session{}, err
 	}
 	if len(data) > MaxSessionBytes {
-		return Session{}, errors.New("setup session exceeds size limit")
+		return Session{}, &unreadableSessionError{id: id, err: errors.New("setup session exceeds size limit")}
 	}
 	var value Session
 	if err := strictjson.Decode(data, &value, true); err != nil {
-		return Session{}, fmt.Errorf("decode setup session: %w", err)
+		return Session{}, &unreadableSessionError{id: id, err: fmt.Errorf("decode setup session: %w", err)}
 	}
 	if err := value.Validate(); err != nil {
-		return Session{}, err
+		return Session{}, &unreadableSessionError{id: id, err: err}
 	}
 	return value, nil
 }
@@ -165,18 +195,64 @@ func (store Store) List() ([]Session, error) {
 		return nil, err
 	}
 	values := make([]Session, 0, len(entries))
+	var unreadableIDs []string
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
 		value, loadErr := store.Load(strings.TrimSuffix(entry.Name(), ".json"))
 		if loadErr != nil {
+			var unreadable *unreadableSessionError
+			if errors.As(loadErr, &unreadable) {
+				unreadableIDs = append(unreadableIDs, unreadable.id)
+				continue
+			}
 			return nil, loadErr
 		}
 		values = append(values, value)
 	}
+	if len(unreadableIDs) != 0 {
+		slices.Sort(unreadableIDs)
+		return nil, &UnreadableSessionsError{ids: unreadableIDs}
+	}
 	slices.SortFunc(values, func(a, b Session) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
 	return values, nil
+}
+
+// DiscardUnreadable removes only exact owner-only session files that still
+// fail the current strict decoder. It never interprets or converts old state.
+func (store Store) DiscardUnreadable(ids []string) error {
+	unique := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if !validID(id) {
+			return errors.New("setup session ID is invalid")
+		}
+		if _, found := unique[id]; found {
+			return errors.New("setup session ID is duplicated")
+		}
+		unique[id] = struct{}{}
+	}
+	ordered := make([]string, 0, len(unique))
+	for id := range unique {
+		ordered = append(ordered, id)
+	}
+	slices.Sort(ordered)
+	for _, id := range ordered {
+		if _, err := store.Load(id); err == nil {
+			return errors.New("setup session became readable; refusing to discard it")
+		} else {
+			var unreadable *unreadableSessionError
+			if !errors.As(err, &unreadable) {
+				return err
+			}
+		}
+	}
+	for _, id := range ordered {
+		if err := os.Remove(filepath.Join(store.Directory, id+".json")); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewestIncomplete returns the newest compatible resumable session.

@@ -36,6 +36,7 @@ const (
 	ScreenAdminChanges    = "administrator_changes"
 	ScreenInstallName     = "installation_name"
 	ScreenResumeChoice    = "resume_choice"
+	ScreenDiscardProgress = "discard_progress"
 )
 
 // Screens is the closed set of screens referenced by the wizard state machine.
@@ -92,6 +93,12 @@ var Screens = map[string]Screen{
 		Reason:    "The saved answers contain no credentials.",
 		Primary:   "Continue",
 		Secondary: "Start over",
+	},
+	ScreenDiscardProgress: {
+		Question:  "Saved setup progress cannot be opened. Discard it and start over?",
+		Reason:    "This removes only unfinished answers. Installed services, credentials, and saved installations are not changed.",
+		Primary:   "Discard and start over",
+		Secondary: "Cancel",
 	},
 }
 
