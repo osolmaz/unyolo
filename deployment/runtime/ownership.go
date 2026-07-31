@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,21 +13,30 @@ import (
 
 // ValidateOwnership rejects adapter claims outside its signed envelope.
 func ValidateOwnership(response api.Response, component bundle.Component) error {
+	return ValidateOwnershipWithPaths(response, component, nil)
+}
+
+// ValidateOwnershipWithPaths also accepts exact generated client paths bound to validated installation identities.
+func ValidateOwnershipWithPaths(response api.Response, component bundle.Component, generatedClientPaths []string) error {
 	if component.Setup == nil {
 		return errors.New("component has no setup ownership envelope")
 	}
 	for _, action := range response.Actions {
-		if err := validateResource(action.Resource, component.Setup.Ownership); err != nil {
-			return errors.New("setup-component action exceeds signed ownership envelope")
+		if err := validateResource(action.Resource, component.Setup.Ownership, generatedClientPaths); err != nil {
+			return fmt.Errorf("setup-component action %s %q exceeds signed ownership envelope: %w", action.Resource.Kind, action.Resource.ID, err)
 		}
 	}
 	return nil
 }
 
 //nolint:cyclop // Signed ownership is an exhaustive closed resource-kind switch.
-func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) error {
+func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope, generatedClientPaths []string) error {
 	switch resource.Kind {
-	case "file", "directory", "socket", "client", "git_config":
+	case "client", "git_config":
+		if resource.Path == "" || !OwnedPath(resource.Path, envelope.Paths) && !slices.Contains(generatedClientPaths, resource.Path) {
+			return errors.New("generated client path is not bound to a selected identity")
+		}
+	case "file", "directory", "socket":
 		if resource.Path == "" || !OwnedPath(resource.Path, envelope.Paths) {
 			return errors.New("path is not owned")
 		}
@@ -42,7 +52,7 @@ func validateResource(resource api.Resource, envelope bundle.OwnershipEnvelope) 
 		if !slices.Contains(envelope.Groups, resource.ID) {
 			return errors.New("group is not owned")
 		}
-	case "credential":
+	case "credential", "secret_store":
 		if strings.TrimSpace(resource.ID) == "" || resource.Path == "" || !OwnedPath(resource.Path, envelope.Paths) {
 			return errors.New("credential identity or path is not owned")
 		}

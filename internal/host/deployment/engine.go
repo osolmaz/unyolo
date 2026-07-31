@@ -17,10 +17,12 @@ import (
 	"time"
 
 	"github.com/osolmaz/unyolo/deployment/api"
+	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
 	"github.com/osolmaz/unyolo/deployment/profile"
 	adapterruntime "github.com/osolmaz/unyolo/deployment/runtime"
 	"github.com/osolmaz/unyolo/deployment/transaction"
+	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/identity"
 	hostsetup "github.com/osolmaz/unyolo/internal/host/setup"
@@ -563,10 +565,50 @@ func (engine *Engine) runComponent(ctx context.Context, snapshot profile.Snapsho
 	if err != nil {
 		return api.Response{}, fmt.Errorf("component %q: %w", id, err)
 	}
-	if err := adapterruntime.ValidateOwnership(response, runtimeComponent); err != nil {
+	var clientPaths []string
+	if responseNeedsGeneratedClientPaths(response) {
+		clientPaths, err = generatedClientPaths(snapshot, desired)
+		if err != nil {
+			return api.Response{}, fmt.Errorf("component %q: %w", id, err)
+		}
+	}
+	if err := adapterruntime.ValidateOwnershipWithPaths(response, runtimeComponent, clientPaths); err != nil {
 		return api.Response{}, fmt.Errorf("component %q: %w", id, err)
 	}
 	return response, nil
+}
+
+func responseNeedsGeneratedClientPaths(response api.Response) bool {
+	return slices.ContainsFunc(response.Actions, func(action api.PlannedAction) bool {
+		return action.Resource.Kind == "client" || action.Resource.Kind == "git_config"
+	})
+}
+
+func generatedClientPaths(snapshot profile.Snapshot, desired profile.Component) ([]string, error) {
+	var component componentprofile.Profile
+	if err := strictjson.Decode(snapshot.Files[desired.Profile.Path].Data, &component, true); err != nil {
+		return nil, errors.New("component deployment profile is invalid")
+	}
+	homes := map[string]string{}
+	for _, agent := range snapshot.Deployment.Agents {
+		if agent.Target.Kind == "local_account" {
+			homes[agent.ID] = agent.Target.Home
+		}
+	}
+	paths := make([]string, 0, len(component.Clients))
+	for _, client := range component.Clients {
+		home := homes[client.AgentID]
+		if home == "" {
+			return nil, fmt.Errorf("client %q has no selected local identity", client.AgentID)
+		}
+		path, err := clientconfig.Path(home, client.BrokerName)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	return paths, nil
 }
 
 func agentBindings(snapshot profile.Snapshot, componentID string) []api.AgentBinding {
