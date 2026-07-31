@@ -383,6 +383,11 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 		}
 		return engine.verifyPlanned(ctx, planned)
 	}
+	fingerprintKey, err := ensureReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return Verification{}, fmt.Errorf("prepare ownership fingerprint key: %w", err)
+	}
+	clear(fingerprintKey)
 	pendingReceipt, err := ReceiptFromPlanContext(ctx, planned, planned.Snapshot.Deployment.Name, engine.now(), false)
 	if err != nil {
 		return Verification{}, fmt.Errorf("prepare ownership receipt: %w", err)
@@ -417,7 +422,16 @@ func (engine *Engine) now() time.Time {
 }
 
 func (engine *Engine) saveOwnershipReceipt(ctx context.Context, planned Planned, capturePostApply bool) error {
-	current, err := ReceiptFromPlanContext(ctx, planned, planned.Snapshot.Deployment.Name, engine.now(), capturePostApply)
+	var fingerprintKey []byte
+	var err error
+	if capturePostApply {
+		fingerprintKey, err = ensureReceiptFingerprintKey(engine.options.Paths.StateDir)
+		if err != nil {
+			return fmt.Errorf("load ownership fingerprint key: %w", err)
+		}
+		defer clear(fingerprintKey)
+	}
+	current, err := receiptFromPlanContext(ctx, planned, planned.Snapshot.Deployment.Name, engine.now(), capturePostApply, fingerprintKey)
 	if err != nil {
 		return fmt.Errorf("record ownership receipt: %w", err)
 	}
@@ -445,7 +459,12 @@ func (engine *Engine) commitPendingReceipt(ctx context.Context) error {
 	if !found {
 		return errors.New("committed host transaction has no pending ownership receipt")
 	}
-	pending, err = RefreshReceiptFingerprints(ctx, pending)
+	fingerprintKey, err := ensureReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer clear(fingerprintKey)
+	pending, err = refreshReceiptFingerprints(ctx, pending, fingerprintKey)
 	if err != nil {
 		return err
 	}
