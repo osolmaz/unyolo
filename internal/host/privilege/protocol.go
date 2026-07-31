@@ -22,21 +22,30 @@ import (
 
 const APIVersion = "unyolo.io/setup-worker/v1"
 
+// Removal input kind values driven by the reviewed removal plan flow.
+const (
+	InputKindProfile      = "profile"
+	InputKindInstallation = "installation"
+	InputKindRemoval      = "removal"
+)
+
 var verifyIdentity = verifyWorkerIdentity
 
 // Request starts one privileged planning session.
 type Request struct {
 	APIVersion   string `json:"api_version"`
 	InputKind    string `json:"input_kind"`
-	Profile      string `json:"profile"`
+	Profile      string `json:"profile,omitempty"`
 	Installation string `json:"installation,omitempty"`
+	RemoveState  bool   `json:"remove_state,omitempty"`
 }
 
 // Response returns the redacted canonical plan.
 type Response struct {
-	APIVersion string              `json:"api_version"`
-	PlanDigest string              `json:"plan_digest"`
-	Plan       deploymentplan.Plan `json:"plan"`
+	APIVersion  string                     `json:"api_version"`
+	PlanDigest  string                     `json:"plan_digest,omitempty"`
+	Plan        deploymentplan.Plan        `json:"plan,omitempty"`
+	RemovalPlan hostdeployment.RemovalPlan `json:"removal_plan,omitempty"`
 }
 
 // Decision is the only message accepted after planning.
@@ -56,9 +65,10 @@ type SecretFrame struct {
 
 // Result is the final closed worker outcome.
 type Result struct {
-	APIVersion string `json:"api_version"`
-	Status     string `json:"status"`
-	Message    string `json:"message"`
+	APIVersion    string                        `json:"api_version"`
+	Status        string                        `json:"status"`
+	Message       string                        `json:"message"`
+	RemovalReport *hostdeployment.RemovalReport `json:"removal_report,omitempty"`
 }
 
 type deploymentEngine interface {
@@ -66,6 +76,8 @@ type deploymentEngine interface {
 	PlanInstallation(context.Context, string, string) (hostdeployment.Planned, error)
 	ApplyDescriptors(context.Context, string, string, map[string]*os.File) (hostdeployment.Verification, error)
 	ApplyInstallationDescriptors(context.Context, string, string, string, map[string]*os.File) (hostdeployment.Verification, error)
+	PlanRemoval(context.Context, bool) (hostdeployment.RemovalPlan, error)
+	ApplyRemoval(context.Context, hostdeployment.RemovalPlan) (hostdeployment.RemovalReport, error)
 }
 
 // Serve runs one plan-review-apply exchange and exits.
@@ -79,14 +91,15 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, engine deploy
 	if err := deploymentruntime.ReadFrame(input, &request); err != nil {
 		return err
 	}
-	if request.APIVersion != APIVersion || !filepath.IsAbs(request.Profile) || filepath.Clean(request.Profile) != request.Profile ||
-		!slices.Contains([]string{"profile", "installation"}, request.InputKind) || request.InputKind == "profile" && request.Installation != "" ||
-		request.InputKind == "installation" && (!filepath.IsAbs(request.Installation) || filepath.Clean(request.Installation) != request.Installation) {
-		return errors.New("setup worker request is invalid")
+	if err := validateRequest(request); err != nil {
+		return err
+	}
+	if request.InputKind == InputKindRemoval {
+		return serveRemoval(ctx, input, output, engine, request, reviewDeadline)
 	}
 	var planned hostdeployment.Planned
 	var err error
-	if request.InputKind == "installation" {
+	if request.InputKind == InputKindInstallation {
 		planned, err = engine.PlanInstallation(ctx, request.Installation, request.Profile)
 	} else {
 		planned, err = engine.Plan(ctx, request.Profile)
@@ -159,6 +172,88 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, engine deploy
 		return errors.Join(err, writerErr)
 	}
 	return deploymentruntime.WriteFrame(output, Result{APIVersion: APIVersion, Status: "succeeded", Message: fmt.Sprintf("Verified deployment %s", report.DeploymentName)})
+}
+
+// validateRequest keeps every input-kind precondition in one closed trust boundary.
+func validateRequest(request Request) error {
+	if request.APIVersion != APIVersion {
+		return errors.New("setup worker request API is invalid")
+	}
+	switch request.InputKind {
+	case InputKindProfile:
+		if request.Installation != "" || request.RemoveState ||
+			!filepath.IsAbs(request.Profile) || filepath.Clean(request.Profile) != request.Profile {
+			return errors.New("setup worker profile request is invalid")
+		}
+	case InputKindInstallation:
+		if request.RemoveState ||
+			!filepath.IsAbs(request.Profile) || filepath.Clean(request.Profile) != request.Profile ||
+			!filepath.IsAbs(request.Installation) || filepath.Clean(request.Installation) != request.Installation {
+			return errors.New("setup worker installation request is invalid")
+		}
+	case InputKindRemoval:
+		if request.Profile != "" || request.Installation != "" {
+			return errors.New("setup worker removal request is invalid")
+		}
+	default:
+		return errors.New("setup worker request kind is invalid")
+	}
+	return nil
+}
+
+func serveRemoval(ctx context.Context, input io.Reader, output io.Writer, engine deploymentEngine, request Request, reviewDeadline time.Duration) error {
+	plan, err := engine.PlanRemoval(ctx, request.RemoveState)
+	if err != nil {
+		return err
+	}
+	if err := deploymentruntime.WriteFrame(output, Response{APIVersion: APIVersion, RemovalPlan: plan}); err != nil {
+		return err
+	}
+	if reviewDeadline <= 0 {
+		reviewDeadline = 5 * time.Minute
+	}
+	reviewContext, cancel := context.WithTimeout(ctx, reviewDeadline)
+	defer cancel()
+	decisionChannel := make(chan struct {
+		value Decision
+		err   error
+	}, 1)
+	go func() {
+		var decision Decision
+		err := deploymentruntime.ReadFrame(input, &decision)
+		decisionChannel <- struct {
+			value Decision
+			err   error
+		}{decision, err}
+	}()
+	var decision Decision
+	select {
+	case <-reviewContext.Done():
+		return errors.New("setup worker review deadline expired")
+	case decoded := <-decisionChannel:
+		if decoded.err != nil {
+			return decoded.err
+		}
+		decision = decoded.value
+	}
+	if decision.APIVersion != APIVersion {
+		return errors.New("setup worker decision is invalid")
+	}
+	switch decision.Action {
+	case "cancel":
+		return deploymentruntime.WriteFrame(output, Result{APIVersion: APIVersion, Status: "cancelled", Message: "No host changes were removed"})
+	case "apply":
+		if len(decision.SecretSlots) != 0 {
+			return errors.New("setup worker removal decision must not carry secret slots")
+		}
+	default:
+		return errors.New("setup worker accepts only apply or cancel")
+	}
+	report, err := engine.ApplyRemoval(ctx, plan)
+	if err != nil {
+		return err
+	}
+	return deploymentruntime.WriteFrame(output, Result{APIVersion: APIVersion, Status: "succeeded", Message: "Removed the recorded host installation", RemovalReport: &report})
 }
 
 // RequiredSecretSlots returns the ordered transient slots needed by a plan.

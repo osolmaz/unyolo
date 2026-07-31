@@ -41,7 +41,9 @@ import (
 type protectedSetupWorker interface {
 	Plan(string) (privilege.Response, error)
 	PlanInstallation(string, string) (privilege.Response, error)
+	PlanRemoval(bool) (privilege.Response, error)
 	Apply(string, map[string][]byte) (privilege.Result, error)
+	ApplyRemoval() (privilege.Result, error)
 	Cancel() error
 	Close() error
 }
@@ -60,6 +62,14 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 			return runSetupStatus(args[1:], stdout, stderr)
 		case "cancel":
 			return runSetupCancel(args[1:], stdout, stderr)
+		case "discard":
+			return runSetupDiscard(args[1:], stdout, stderr)
+		case "repair":
+			return runSetupRepair(ctx, args[1:], stdout, stderr)
+		case "reconfigure":
+			return runSetupReconfigure(ctx, args[1:], stdout, stderr)
+		case "remove":
+			return runSetupRemove(ctx, args[1:], stdout, stderr)
 		}
 	}
 	flags := flag.NewFlagSet("unyolo setup", flag.ContinueOnError)
@@ -450,6 +460,7 @@ func showInstallationReview(ctx context.Context, prompter flow.SetupPrompter, de
 	return nil
 }
 
+//nolint:cyclop // The apply flow keeps session bookkeeping and secret transfer together across the review.
 func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, worker protectedSetupWorker, installationPath, generated string, sessions session.Store, setupSession *session.Session) error {
 	progress := prompter.Progress("Checking the requested system changes")
 	planned, err := worker.PlanInstallation(installationPath, generated)
@@ -458,8 +469,7 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		return err
 	}
 	progress.Stop("System changes are ready to review")
-	setupSession.Phase = session.PhasePlanned
-	if err := sessions.Save(*setupSession); err != nil {
+	if err := savePhase(sessions, setupSession, session.PhasePlanned); err != nil {
 		_ = worker.Cancel()
 		return err
 	}
@@ -481,12 +491,13 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		return err
 	}
 	defer clearSetupSecrets(secrets)
-	setupSession.SecretSlots = nil
-	for slot := range secrets {
-		setupSession.SecretSlots = append(setupSession.SecretSlots, session.SecretSlot{ID: slot})
+	if setupSession != nil {
+		setupSession.SecretSlots = nil
+		for slot := range secrets {
+			setupSession.SecretSlots = append(setupSession.SecretSlots, session.SecretSlot{ID: slot})
+		}
 	}
-	setupSession.Phase = session.PhaseApplying
-	if err := sessions.Save(*setupSession); err != nil {
+	if err := savePhase(sessions, setupSession, session.PhaseApplying); err != nil {
 		_ = worker.Cancel()
 		return err
 	}
@@ -497,8 +508,10 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		return err
 	}
 	applyProgress.Stop(result.Message)
-	setupSession.Phase, setupSession.SecretSlots = session.PhaseComplete, nil
-	if err := sessions.Save(*setupSession); err != nil {
+	if setupSession != nil {
+		setupSession.SecretSlots = nil
+	}
+	if err := savePhase(sessions, setupSession, session.PhaseComplete); err != nil {
 		return err
 	}
 	return prompter.Outro(ctx, "Setup is complete and the selected connection was verified.")
@@ -857,11 +870,27 @@ func runSetupStatus(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	installRoot, rootErr := installation.DefaultRoot()
+	var recorded *installation.Installation
+	if rootErr == nil {
+		if _ = (installation.Store{Root: installRoot}).Recover(); true {
+			if loaded, loadErr := (installation.Store{Root: installRoot}).Load(installation.DefaultName); loadErr == nil {
+				recorded = &loaded
+			}
+		}
+	}
 	if *jsonOutput {
 		return json.NewEncoder(stdout).Encode(struct {
-			APIVersion string            `json:"api_version"`
-			Sessions   []session.Session `json:"sessions"`
-		}{session.APIVersion, values})
+			APIVersion   string                     `json:"api_version"`
+			Sessions     []session.Session          `json:"sessions"`
+			Installation *installation.Installation `json:"installation,omitempty"`
+		}{session.APIVersion, values, recorded})
+	}
+	if recorded != nil {
+		if _, err := fmt.Fprintf(stdout, "Installation: %s (%d connections, %d providers)\n",
+			recorded.Name, len(recorded.Connections), len(recorded.CredentialService.Providers)); err != nil {
+			return err
+		}
 	}
 	if len(values) == 0 {
 		_, err = fmt.Fprintln(stdout, "No setup sessions")
@@ -928,4 +957,13 @@ func appendUnique(values []string, value string) []string {
 		return values
 	}
 	return append(values, value)
+}
+
+// savePhase saves one session phase transition or is a noop when no session is bound.
+func savePhase(sessions session.Store, setupSession *session.Session, phase session.Phase) error {
+	if setupSession == nil {
+		return nil
+	}
+	setupSession.Phase = phase
+	return sessions.Save(*setupSession)
 }
