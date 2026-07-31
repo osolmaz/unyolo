@@ -45,6 +45,7 @@ unYOLO.
 
 ## Implementation records
 
+- [Guided installer](2026-07-31-guided-installer-implementation-plan.md)
 - [Universal reusable grants](2026-07-29-universal-reusable-grants-plan.md)
 - [Host deployment profile](2026-07-26-host-deployment-profile-plan.md)
 - [Atomic runtime bundle](2026-07-21-atomic-runtime-bundle-plan.md)

@@ -8,7 +8,9 @@ for every choice and keep internal deployment terms out of the normal flow.
 
 The current `v0.6.3` installer does not meet this contract. It assumes a complete Linux host, uses a
 fixed agent account, and does not provide client-only setup. Public documentation must describe
-those limits until an implementation passes the completion criteria in this document.
+those limits until an implementation passes the completion criteria in this document. The code-level
+work is defined in the
+[guided installer implementation plan](2026-07-31-guided-installer-implementation-plan.md).
 
 ## User terms
 
@@ -157,7 +159,9 @@ the review must state that the account provides weaker isolation.
 
 The current account remains an explicit, nonrecommended choice. The installer explains that an
 agent running with the user's full file access may be able to read files outside unYOLO's policy
-boundary. It must not describe this choice as equivalent to a separate account.
+boundary. It must not describe this choice as equivalent to a separate account. Connection health
+and operating-system isolation are reported separately. A working current-account connection may
+still have reduced isolation.
 
 ### Docker container
 
@@ -339,6 +343,18 @@ plan. It generates client configuration only for an agent-connection plan. A com
 both from the same intent. The internal deployment name defaults to `default`; the installer asks
 for another name only when the user is managing more than one installation or a name collision
 requires a choice.
+
+## Durable installation record
+
+A server-side setup stores one nonsecret `unyolo.io/installation/v1` record under the user
+configuration root. It records selected credential services, approvers, and zero or more agent
+connections. This record is the source for guided reconfiguration. The locked host deployment is a
+deterministic generated output and root independently recompiles it from release-attested sources
+before planning.
+
+A credential-services-only installation starts with zero agent connections. Adding, rotating, or
+removing a connection updates the same installation record. A client-only setup on another machine
+stores only its local client configuration and connection receipt.
 
 ## Navigation and saved progress
 
