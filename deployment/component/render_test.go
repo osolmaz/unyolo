@@ -24,7 +24,7 @@ func standardRenderRequest() (api.RenderRequest, []byte) {
   ]
 }`
 	request := api.RenderRequest{
-		APIVersion: api.RenderAPIVersion, ComponentID: "github", OperatingSystem: "linux", Architecture: "amd64",
+		APIVersion: api.RenderAPIVersion, ComponentID: "github", OperatingSystem: "linux", Architecture: "amd64", Profile: json.RawMessage(template),
 		Approvers: []api.RenderApprover{{ID: "alice", Account: "alice"}},
 		Connections: []api.RenderConnection{
 			{ID: "bob", ClientID: "bob", Providers: []string{"github"}, TargetKind: "local_account", Isolation: "separate", UnixUser: "bob", Home: "/home/bob"},
@@ -72,6 +72,28 @@ func TestStandardRendererDigestBindsFilesAndPrompts(t *testing.T) {
 	}
 	if len(response.SecretPrompts) == 0 || len(response.ReviewItems) == 0 {
 		t.Fatalf("render prompts and review items should not be empty")
+	}
+}
+
+func TestRewriteClientArraysHandlesInlineAndMultilineLists(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		"{\n  \"clients\": [\"agent\"],\n  \"allow\": true\n}\n",
+		"{\n  \"clients\": [\n    \"agent\"\n  ],\n  \"allow\": true\n}\n",
+	} {
+		updated, err := rewriteClientArrays([]byte(input), []string{"alice", "bob"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var value struct {
+			Clients []string `json:"clients"`
+		}
+		if err := json.Unmarshal(updated, &value); err != nil {
+			t.Fatal(err)
+		}
+		if len(value.Clients) != 2 || value.Clients[0] != "alice" || value.Clients[1] != "bob" {
+			t.Fatalf("rewritten clients = %#v", value.Clients)
+		}
 	}
 }
 

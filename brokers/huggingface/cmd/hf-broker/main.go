@@ -94,6 +94,7 @@ var commandRunners = map[string]func(commandContext, []string) error{
 	"mcp":                      runMCPCommand,
 	"state":                    runStateCommand,
 	"setup-component":          runSetupComponentCommand,
+	"setup-component-render":   runSetupComponentRenderCommand,
 	"setup-component-probe":    runSetupComponentProbeCommand,
 	"__doctor-isolation-probe": runIsolationProbeCommand,
 }
@@ -144,6 +145,13 @@ func runSetupComponentCommand(command commandContext, args []string) error {
 		return errors.New("setup-component does not accept arguments")
 	}
 	return component.Serve(command.ctx, command.stdin, command.stdout, huggingFaceDeploymentConfig())
+}
+
+func runSetupComponentRenderCommand(command commandContext, args []string) error {
+	if len(args) != 0 {
+		return errors.New("setup-component-render does not accept arguments")
+	}
+	return component.ServeRender(command.stdin, command.stdout, component.StandardRenderer{})
 }
 
 func huggingFaceDeploymentConfig() component.Config {

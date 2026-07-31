@@ -77,8 +77,9 @@ type Operator struct {
 
 // Component points to one provider-owned setup profile.
 type Component struct {
-	ID      string    `json:"id"`
-	Profile Reference `json:"profile"`
+	ID       string     `json:"id"`
+	Profile  Reference  `json:"profile"`
+	Metadata *Reference `json:"render_metadata,omitempty"`
 }
 
 // Integration points to one client integration profile.
@@ -352,6 +353,9 @@ func (d Deployment) references() []Reference {
 	result := []Reference{d.Runtime.Manifest, d.Runtime.Signature, d.Runtime.PublicKey}
 	for _, component := range d.Components {
 		result = append(result, component.Profile)
+		if component.Metadata != nil {
+			result = append(result, *component.Metadata)
+		}
 	}
 	for _, integration := range d.Integrations {
 		result = append(result, integration.Profile)

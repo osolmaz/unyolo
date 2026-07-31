@@ -67,11 +67,17 @@ func Lock(root string, check bool) error {
 			changed = true
 		}
 	}
-	for _, reference := range []*Reference{
+	directRefs := []*Reference{
 		&deployment.Runtime.Manifest,
 		&deployment.Runtime.Signature,
 		&deployment.Runtime.PublicKey,
-	} {
+	}
+	for index := range deployment.Components {
+		if deployment.Components[index].Metadata != nil {
+			directRefs = append(directRefs, deployment.Components[index].Metadata)
+		}
+	}
+	for _, reference := range directRefs {
 		actual, digestErr := digestPath(packRoot, reference.Path)
 		if digestErr != nil {
 			return digestErr

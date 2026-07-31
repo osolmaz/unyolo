@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"path"
 	"slices"
 	"strings"
+
+	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
 
 	"github.com/osolmaz/unyolo/deployment/api"
 )
@@ -30,6 +34,12 @@ type StandardRenderer struct{}
 //
 //nolint:cyclop // Deterministic render binds every provider-owned resource before hashing.
 func (StandardRenderer) Render(request api.RenderRequest, profileTemplate []byte, assets map[string][]byte) (api.RenderResponse, error) {
+	if len(request.Profile) == 0 {
+		request.Profile = append([]byte(nil), profileTemplate...)
+	}
+	if len(request.Files) == 0 {
+		request.Files = renderAssetFiles(assets)
+	}
 	if err := request.Validate(); err != nil {
 		return api.RenderResponse{}, err
 	}
@@ -42,12 +52,17 @@ func (StandardRenderer) Render(request api.RenderRequest, profileTemplate []byte
 		return api.RenderResponse{}, err
 	}
 	renderStandardClients(&profile, request)
+	renderedAssets := cloneAssets(assets)
+	if err := renderPolicyAssets(&profile, renderedAssets, clientsForRender(request)); err != nil {
+		return api.RenderResponse{}, err
+	}
+	bindRenderedAssetDigests(&profile, renderedAssets)
 	renderedProfile, err := json.MarshalIndent(profile, "", "  ")
 	if err != nil {
 		return api.RenderResponse{}, err
 	}
 	renderedProfile = append(renderedProfile, '\n')
-	files := renderAssetFiles(assets)
+	files := renderAssetFiles(renderedAssets)
 	prompts := renderSecretPrompts(request.ComponentID, profile, request)
 	reviewItems := renderReviewItems(request)
 	response := api.RenderResponse{
@@ -63,6 +78,32 @@ func (StandardRenderer) Render(request api.RenderRequest, profileTemplate []byte
 		return api.RenderResponse{}, err
 	}
 	return response, nil
+}
+
+// ServeRender handles one stateless framed render exchange.
+func ServeRender(input io.Reader, output io.Writer, renderer Renderer) error {
+	if renderer == nil {
+		return errors.New("component renderer is unavailable")
+	}
+	var request api.RenderRequest
+	if err := deploymentruntime.ReadFrame(input, &request); err != nil {
+		return err
+	}
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	assets := make(map[string][]byte, len(request.Files))
+	for _, file := range request.Files {
+		assets[file.Path] = append([]byte(nil), file.Data...)
+	}
+	response, err := renderer.Render(request, request.Profile, assets)
+	if err != nil {
+		return err
+	}
+	if response.ComponentID != request.ComponentID {
+		return errors.New("component render response identity mismatch")
+	}
+	return deploymentruntime.WriteFrame(output, response)
 }
 
 func decodeProfileTemplate(data []byte, value *Profile) error {
@@ -157,6 +198,144 @@ func localUsersFor(request api.RenderRequest) []string {
 		}
 	}
 	return result
+}
+
+func cloneAssets(assets map[string][]byte) map[string][]byte {
+	result := make(map[string][]byte, len(assets))
+	for name, data := range assets {
+		result[name] = append([]byte(nil), data...)
+	}
+	return result
+}
+
+func clientsForRender(request api.RenderRequest) []string {
+	var result []string
+	for _, connection := range request.Connections {
+		if slices.Contains(connection.Providers, request.ComponentID) {
+			result = append(result, connection.ClientID)
+		}
+	}
+	slices.Sort(result)
+	return result
+}
+
+func renderPolicyAssets(profile *Profile, assets map[string][]byte, clients []string) error {
+	paths := map[string]string{}
+	for _, managed := range profile.Files {
+		name := path.Base(managed.Source.Path)
+		paths[name] = managed.Source.Path
+		if name == "policy-manifest.json" || !strings.Contains(name, "policy") && name != "scope.json" {
+			continue
+		}
+		data, exists := assets[managed.Source.Path]
+		if !exists {
+			return fmt.Errorf("managed policy asset %q is unavailable", managed.Source.Path)
+		}
+		updated, err := rewriteClientArrays(data, clients)
+		if err != nil {
+			return fmt.Errorf("render policy asset %q: %w", managed.Source.Path, err)
+		}
+		assets[managed.Source.Path] = updated
+	}
+	manifestPath, profilePath, policyPath := paths["policy-manifest.json"], paths["policy-profile.json"], paths["scope.json"]
+	if manifestPath == "" || profilePath == "" || policyPath == "" {
+		return nil
+	}
+	manifestData, exists := assets[manifestPath]
+	if !exists {
+		return errors.New("policy manifest asset is unavailable")
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return err
+	}
+	manifest["profile_digest"] = renderDigest(assets[profilePath])
+	manifest["policy_digest"] = renderDigest(assets[policyPath])
+	updated, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	assets[manifestPath] = append(updated, '\n')
+	return nil
+}
+
+func rewriteClientArrays(data []byte, clients []string) ([]byte, error) {
+	var validated any
+	if err := json.Unmarshal(data, &validated); err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	result := make([]string, 0, len(lines)+len(clients))
+	replacements := 0
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
+		trimmedLine := strings.TrimSpace(line)
+		if strings.Contains(trimmedLine, `"clients": [`) && trimmedLine != `"clients": [` {
+			start := strings.Index(line, "[")
+			end := strings.LastIndex(line, "]")
+			if start < 0 || end < start {
+				return nil, errors.New("inline policy client list is not closed")
+			}
+			encoded := make([]string, len(clients))
+			for clientIndex, client := range clients {
+				value, err := json.Marshal(client)
+				if err != nil {
+					return nil, err
+				}
+				encoded[clientIndex] = string(value)
+			}
+			result = append(result, line[:start+1]+strings.Join(encoded, ", ")+line[end:])
+			replacements++
+			continue
+		}
+		if trimmedLine != `"clients": [` {
+			result = append(result, line)
+			continue
+		}
+		result = append(result, line)
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))] + "  "
+		closing := index + 1
+		for ; closing < len(lines); closing++ {
+			trimmed := strings.TrimSpace(lines[closing])
+			if trimmed == "]" || trimmed == "]," {
+				break
+			}
+		}
+		if closing == len(lines) {
+			return nil, errors.New("policy client list is not closed")
+		}
+		for clientIndex, client := range clients {
+			encoded, err := json.Marshal(client)
+			if err != nil {
+				return nil, err
+			}
+			suffix := ","
+			if clientIndex == len(clients)-1 {
+				suffix = ""
+			}
+			result = append(result, indent+string(encoded)+suffix)
+		}
+		result = append(result, lines[closing])
+		index, replacements = closing, replacements+1
+	}
+	if replacements == 0 {
+		return nil, errors.New("managed policy contains no client list")
+	}
+	return []byte(strings.Join(result, "\n")), nil
+}
+
+func bindRenderedAssetDigests(profile *Profile, assets map[string][]byte) {
+	for index := range profile.Files {
+		data, exists := assets[profile.Files[index].Source.Path]
+		if exists {
+			profile.Files[index].Source.SHA256 = renderDigest(data)
+		}
+	}
+}
+
+func renderDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return "sha256:" + hexEncode(sum[:])
 }
 
 func renderAssetFiles(assets map[string][]byte) []api.RenderFile {

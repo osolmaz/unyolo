@@ -64,32 +64,6 @@ func TestCompileDeploymentBindsInstallationAndTargets(t *testing.T) {
 	}
 }
 
-func TestRenderComponentBuildsAuthoritativeStoresAndLocalFiles(t *testing.T) {
-	t.Parallel()
-	value := component.Profile{
-		APIVersion: "unyolo.io/github-deployment/v1",
-		Groups:     []component.Group{{Name: "gh-broker-agent", Members: []string{"unyolo-agent"}}, {Name: "gh-broker-operator", Members: []string{"operator"}}},
-		Credentials: []component.Credential{
-			{Slot: "provider", Destination: "/etc/gh-broker/provider", Encoding: "raw"},
-			{Slot: "agent", Destination: "/etc/gh-broker/secrets", Mode: 0o600, Owner: "gh-broker", Group: "gh-broker", Encoding: "client_secret_file"},
-			{Slot: "operator", Destination: "/etc/gh-broker/operators", Mode: 0o600, Owner: "gh-broker", Group: "gh-broker", Encoding: "client_secret_file"},
-		},
-		Clients: []component.Client{{AgentID: "agent", BrokerName: "gh-broker", EnvPrefix: "GH_BROKER", SecretSlot: "agent", Endpoint: "unix:///run/unyolo/github/agent/broker.sock"}},
-	}
-	if err := renderComponent(&value, "github", compilerInstallation()); err != nil {
-		t.Fatal(err)
-	}
-	if len(value.SecretStores) != 2 || len(value.SecretStores[0].Entries) != 2 || len(value.SecretStores[1].Entries) != 1 {
-		t.Fatalf("secret stores = %#v", value.SecretStores)
-	}
-	if len(value.Clients) != 1 || value.Clients[0].AgentID != "bob" || !slices.Equal(value.Groups[0].Members, []string{"bob"}) {
-		t.Fatalf("local render = clients %#v groups %#v", value.Clients, value.Groups)
-	}
-	if len(value.Credentials) != 1 || value.Credentials[0].Slot != "provider" {
-		t.Fatalf("raw credentials = %#v", value.Credentials)
-	}
-}
-
 func TestCompileProducesDeterministicByteIdenticalOutput(t *testing.T) {
 	t.Parallel()
 	sourceSet := buildTestSourceSet(t)
@@ -139,7 +113,14 @@ func buildTestSourceSet(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
-	artifact := []byte("#!/bin/sh\nexit 0\n")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
 	artifactDigest := sha256.Sum256(artifact)
 	if err := os.WriteFile(filepath.Join(root, "artifacts", "gh-broker"), artifact, 0o700); err != nil {
 		t.Fatal(err)
@@ -210,6 +191,7 @@ func buildTestSourceSet(t *testing.T) string {
 	writeTestSourceFile(t, filepath.Join(providerRoot, "profile.json"), []byte(profileTemplate))
 	source := SourceProvider{
 		APIVersion: SourceProviderAPIVersion, ID: "github", Components: []string{"github"}, Profile: "profile.json",
+		RenderArguments: []string{"-test.run=TestCompilerRenderHelperProcess", "--", "setup-component-render-helper"},
 		Ownership: bundle.OwnershipEnvelope{
 			Paths: []string{"/etc/gh-broker"}, Services: []string{"gh-broker.service"},
 			Accounts: []string{"gh-broker"}, Groups: []string{"gh-broker", "gh-broker-agent", "gh-broker-operator"},
@@ -222,6 +204,17 @@ func buildTestSourceSet(t *testing.T) string {
 	sourceData = append(sourceData, '\n')
 	writeTestSourceFile(t, filepath.Join(providerRoot, "source.json"), sourceData)
 	return root
+}
+
+func TestCompilerRenderHelperProcess(t *testing.T) {
+	if !slices.Contains(os.Args, "setup-component-render-helper") {
+		return
+	}
+	if err := component.ServeRender(os.Stdin, os.Stdout, component.StandardRenderer{}); err != nil {
+		_, _ = os.Stderr.WriteString(err.Error() + "\n")
+		os.Exit(2)
+	}
+	os.Exit(0)
 }
 
 func writeTestSourceFile(t *testing.T, path string, data []byte) {
