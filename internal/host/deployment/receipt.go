@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,6 +59,7 @@ type Receipt struct {
 	Connections        []ConnectionReceipt `json:"connections,omitempty"`
 	Components         []ComponentReceipt  `json:"components,omitempty"`
 	Resources          []ResourceReceipt   `json:"resources,omitempty"`
+	RemovedResources   []string            `json:"removed_resources,omitempty"`
 }
 
 // AccountReceipt records one host account known to this installation.
@@ -141,7 +143,7 @@ func (value Receipt) Validate() error {
 	}
 	if len(value.Accounts) > maxReceiptAccounts || len(value.Groups) > maxReceiptGroups ||
 		len(value.Services) > maxReceiptServices || len(value.Connections) > maxReceiptConns ||
-		len(value.Components) > maxReceiptCompos || len(value.Resources) > maxReceiptResources {
+		len(value.Components) > maxReceiptCompos || len(value.Resources) > maxReceiptResources || len(value.RemovedResources) > maxReceiptResources {
 		return errors.New("ownership receipt exceeds collection limits")
 	}
 	seenAccounts := map[string]bool{}
@@ -196,6 +198,13 @@ func (value Receipt) Validate() error {
 			return errors.New("ownership receipt component plan digest is invalid")
 		}
 		seenComponents[component.ID] = true
+	}
+	seenRemoved := map[string]bool{}
+	for _, key := range value.RemovedResources {
+		if !receiptDigestPattern.MatchString(key) || seenRemoved[key] {
+			return errors.New("ownership receipt removed resource is invalid or duplicated")
+		}
+		seenRemoved[key] = true
 	}
 	seenResources := map[string]bool{}
 	for _, resource := range value.Resources {
@@ -259,6 +268,10 @@ func ReceiptFromPlanContext(ctx context.Context, planned Planned, installationNa
 	if err := populateReceiptResources(ctx, &receipt, planned, capturePostApply); err != nil {
 		return Receipt{}, err
 	}
+	for _, resource := range planned.StaleClients {
+		receipt.RemovedResources = append(receipt.RemovedResources, resourceReceiptKey(resource))
+	}
+	slices.Sort(receipt.RemovedResources)
 	if err := receipt.Validate(); err != nil {
 		return Receipt{}, err
 	}
@@ -345,7 +358,7 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 		stateDirs[runtimeComponent.Name] = runtimeComponent.StateDir
 	}
 	for _, response := range planned.Responses {
-		if response.ComponentID == "host-identity" {
+		if response.ComponentID == "host-identity" || response.ComponentID == "host-cleanup" {
 			continue
 		}
 		componentProfile := profiles[response.ComponentID]
@@ -357,7 +370,7 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			enrichResourceReceipt(&resource, componentProfile)
 			resource.Data = resourceContainsData(resource, stateDirs[response.ComponentID])
 			if capturePostApply {
-				includeContent := resource.Kind == "file" && !resource.Data
+				includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
 				resource.Fingerprint = componentprofile.ResourceFingerprint(ctx, action.Resource, includeContent)
 				if !receiptDigestPattern.MatchString(resource.Fingerprint) {
 					return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
@@ -430,6 +443,11 @@ func enrichResourceReceipt(receipt *ResourceReceipt, value componentprofile.Prof
 	}
 }
 
+func resourceReceiptKey(resource ResourceReceipt) string {
+	value := strings.Join([]string{resource.ComponentID, resource.ActionID, resource.Kind, resource.ID, resource.Path}, "\x00")
+	return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(value)))
+}
+
 func resourceContainsData(resource ResourceReceipt, stateDir string) bool {
 	if slices.Contains([]string{"credential", "secret_store", "account", "group"}, resource.Kind) {
 		return true
@@ -484,10 +502,17 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 			current.Groups = append(current.Groups, group)
 		}
 	}
+	removedResources := map[string]bool{}
+	for _, key := range current.RemovedResources {
+		removedResources[key] = true
+	}
 	priorResources := map[string]ResourceReceipt{}
 	for _, resource := range previous.Resources {
-		priorResources[resource.ComponentID+"\x00"+resource.ActionID] = resource
+		if !removedResources[resourceReceiptKey(resource)] {
+			priorResources[resource.ComponentID+"\x00"+resource.ActionID] = resource
+		}
 	}
+	current.RemovedResources = nil
 	for index := range current.Resources {
 		key := current.Resources[index].ComponentID + "\x00" + current.Resources[index].ActionID
 		if prior, exists := priorResources[key]; exists && prior.Created {
@@ -514,7 +539,7 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 func RefreshReceiptFingerprints(ctx context.Context, value Receipt) (Receipt, error) {
 	for index := range value.Resources {
 		resource := &value.Resources[index]
-		includeContent := resource.Kind == "file" && !resource.Data
+		includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
 		fingerprint := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
 		if !receiptDigestPattern.MatchString(fingerprint) {
 			return Receipt{}, fmt.Errorf("refresh fingerprint for %s resource %q", resource.Kind, resource.ID)

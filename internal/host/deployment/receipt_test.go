@@ -188,6 +188,48 @@ func TestMergeReceiptPreservesOriginalOwnership(t *testing.T) {
 	}
 }
 
+func TestMergeReceiptDropsCommittedStaleResources(t *testing.T) {
+	t.Parallel()
+	previous := sampleReceipt()
+	resource := ResourceReceipt{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: "/home/bob/.config/gh-broker/client.json", Created: true, Fingerprint: "sha256:" + strings.Repeat("1", 64)}
+	previous.Resources = []ResourceReceipt{resource}
+	current := sampleReceipt()
+	current.Resources = nil
+	current.RemovedResources = []string{resourceReceiptKey(resource)}
+	merged, err := MergeReceipt(previous, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(merged.Resources) != 0 || len(merged.RemovedResources) != 0 {
+		t.Fatalf("removed resource survived merge: %#v", merged)
+	}
+}
+
+func TestRefreshReceiptClientFingerprintIncludesContent(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "client.json")
+	if err := os.WriteFile(path, []byte(`{"shared_secret":"first"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	value := sampleReceipt()
+	value.Resources = []ResourceReceipt{{ComponentID: "github", ActionID: "client-bob", Kind: "client", ID: "bob", Path: path, Created: true}}
+	first, err := RefreshReceiptFingerprints(t.Context(), value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstFingerprint := first.Resources[0].Fingerprint
+	if err := os.WriteFile(path, []byte(`{"shared_secret":"second"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := RefreshReceiptFingerprints(t.Context(), value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstFingerprint == second.Resources[0].Fingerprint {
+		t.Fatal("client content change did not change its ownership fingerprint")
+	}
+}
+
 func TestReceiptFromPlanCollectsAgentsAndServices(t *testing.T) {
 	t.Parallel()
 	planned := Planned{
