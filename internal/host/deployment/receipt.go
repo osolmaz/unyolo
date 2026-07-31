@@ -379,7 +379,16 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			receipt.Resources = append(receipt.Resources, resource)
 		}
 	}
+	dataGroups := map[string]bool{}
+	for _, resource := range receipt.Resources {
+		if resource.Kind == "account" && resource.Data && resource.Group != "" {
+			dataGroups[resource.Group] = true
+		}
+	}
 	for index := range receipt.Resources {
+		if receipt.Resources[index].Kind == "group" && dataGroups[receipt.Resources[index].ID] {
+			receipt.Resources[index].Data = true
+		}
 		if receipt.Resources[index].Kind != "directory" || receipt.Resources[index].Path == "" {
 			continue
 		}
@@ -449,7 +458,7 @@ func resourceReceiptKey(resource ResourceReceipt) string {
 }
 
 func resourceContainsData(resource ResourceReceipt, stateDir string) bool {
-	if slices.Contains([]string{"credential", "secret_store", "account", "group"}, resource.Kind) {
+	if slices.Contains([]string{"credential", "secret_store", "account"}, resource.Kind) {
 		return true
 	}
 	return stateDir != "" && resource.Path != "" &&
