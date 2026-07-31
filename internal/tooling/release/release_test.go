@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 )
@@ -259,11 +258,11 @@ func TestRunBuildsSignedDeploymentTemplates(t *testing.T) {
 	names := archiveNames(t, asset)
 	for _, expected := range []string{
 		"deployment-kits/artifacts/test-provider",
-		"deployment-kits/templates/test/deployment.json",
-		"deployment-kits/templates/test/runtime/manifest.json",
-		"deployment-kits/templates/test/runtime/manifest.sig",
-		"deployment-kits/templates/test/runtime/release.pub",
-		"deployment-kits/templates/test/components/test.json",
+		"deployment-kits/runtime/manifest.json",
+		"deployment-kits/runtime/manifest.sig",
+		"deployment-kits/runtime/release.pub",
+		"deployment-kits/providers/test/source.json",
+		"deployment-kits/providers/test/profile.json",
 	} {
 		if !slices.Contains(names, expected) {
 			t.Fatalf("archive is missing %q: %v", expected, names)
@@ -272,22 +271,26 @@ func TestRunBuildsSignedDeploymentTemplates(t *testing.T) {
 	if slices.Contains(names, "test-provider") {
 		t.Fatalf("provider runtime binary escaped the deployment artifact tree: %v", names)
 	}
+	for _, forbidden := range []string{
+		"deployment-kits/templates/test/deployment.json",
+		"deployment-kits/templates/test+other/deployment.json",
+	} {
+		if slices.Contains(names, forbidden) {
+			t.Fatalf("archive retained a per-combination template %q", forbidden)
+		}
+	}
 	extracted := extractReleaseArchive(t, asset)
-	template := filepath.Join(extracted, "deployment-kits", "templates", "test")
-	snapshot, err := profile.Load(template)
+	manifestPath := filepath.Join(extracted, "deployment-kits", "runtime", "manifest.json")
+	manifestData, err := os.ReadFile(manifestPath) // #nosec G304 -- test-owned path.
 	if err != nil {
-		t.Fatalf("generated template: %v", err)
+		t.Fatalf("read source-set runtime manifest: %v", err)
 	}
-	parent := t.TempDir()
-	if err := os.Chmod(parent, 0o700); err != nil {
-		t.Fatal(err)
+	var manifest bundle.Manifest
+	if err := strictjson.Decode(manifestData, &manifest, true); err != nil {
+		t.Fatalf("decode source-set runtime manifest: %v", err)
 	}
-	generated, err := profile.MaterializeReleaseTemplate(snapshot, filepath.Join(extracted, "deployment-kits", "artifacts"), filepath.Join(parent, "host"), "host", "alice", []string{"test"})
-	if err != nil {
-		t.Fatalf("materialize generated template: %v", err)
-	}
-	if _, err := profile.Load(generated); err != nil {
-		t.Fatalf("load materialized template: %v", err)
+	if len(manifest.Components) != 1 || manifest.Components[0].Name != "test" {
+		t.Fatalf("runtime manifest components = %#v", manifest.Components)
 	}
 }
 

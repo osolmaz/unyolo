@@ -2,6 +2,7 @@
 package deployment
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -167,13 +168,6 @@ func (engine *Engine) compileInstallationSource(installationPath, profileRoot st
 	if err != nil {
 		return "", err
 	}
-	providers := append([]string(nil), source.CredentialService.Providers...)
-	slices.Sort(providers)
-	templateRoot := filepath.Join(sourceRoot, "templates", strings.Join(providers, "+"))
-	template, err := profile.Load(templateRoot)
-	if err != nil {
-		return "", err
-	}
 	verificationRoot, err := os.MkdirTemp(engine.options.Paths.StateDir, ".installation-verify-*")
 	if err != nil {
 		return "", err
@@ -182,17 +176,49 @@ func (engine *Engine) compileInstallationSource(installationPath, profileRoot st
 		return "", err
 	}
 	compiled, err := setupcompiler.Compile(setupcompiler.Options{
-		Installation: source, Template: template, ArtifactRoot: filepath.Join(sourceRoot, "artifacts"), Destination: verificationRoot,
+		Installation: source, SourceSet: sourceRoot, Destination: verificationRoot,
 	})
 	if err != nil {
 		_ = os.RemoveAll(verificationRoot)
 		return "", err
 	}
-	if compiled.Digest != candidate.Digest {
+	if err := compareCompiledBytes(candidate, compiled); err != nil {
 		_ = os.RemoveAll(verificationRoot)
-		return "", errors.New("generated deployment does not match root-attested compilation")
+		return "", err
 	}
 	return verificationRoot, nil
+}
+
+// compareCompiledBytes rejects any deployment pack whose generated files or
+// pack digest differ from the root recompilation.
+func compareCompiledBytes(candidate, compiled profile.Snapshot) error {
+	if candidate.Digest != compiled.Digest {
+		return errors.New("generated deployment digest does not match root-attested compilation")
+	}
+	if len(candidate.Files) != len(compiled.Files) {
+		return errors.New("generated deployment file count does not match root-attested compilation")
+	}
+	for path, file := range compiled.Files {
+		submitted, exists := candidate.Files[path]
+		if !exists {
+			return fmt.Errorf("generated deployment is missing file %q from root-attested compilation", path)
+		}
+		if submitted.SHA256 != file.SHA256 || !bytes.Equal(submitted.Data, file.Data) {
+			return fmt.Errorf("generated deployment file %q does not match root-attested compilation", path)
+		}
+	}
+	candidateDeployment, err := json.Marshal(candidate.Deployment)
+	if err != nil {
+		return err
+	}
+	compiledDeployment, err := json.Marshal(compiled.Deployment)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(candidateDeployment, compiledDeployment) {
+		return errors.New("generated deployment document does not match root-attested compilation")
+	}
+	return nil
 }
 
 // Plan computes one canonical host plan and stages root-owned adapter copies.

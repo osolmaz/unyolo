@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 
 	"github.com/osolmaz/unyolo/deployment/flow"
-	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
 	hostdeployment "github.com/osolmaz/unyolo/internal/host/deployment"
@@ -162,11 +161,7 @@ func runReconfigureOrRepair(ctx context.Context, stdout, stderr io.Writer, actio
 }
 
 func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, store installation.Store, desired installation.Installation, options setupOptions) error {
-	templatePath, artifacts, err := selectedReleaseTemplate(options, desired.CredentialService.Providers)
-	if err != nil {
-		return err
-	}
-	template, err := profile.Load(templatePath)
+	sourceSet, err := selectedReleaseSourceSet(options, desired.CredentialService.Providers)
 	if err != nil {
 		return err
 	}
@@ -180,7 +175,7 @@ func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, stor
 	destination := filepath.Join(installRoot, ".compiled-lifecycle")
 	_ = os.RemoveAll(destination)
 	compiled, err := setupcompiler.Compile(setupcompiler.Options{
-		Installation: desired, Template: template, ArtifactRoot: artifacts, Destination: destination,
+		Installation: desired, SourceSet: sourceSet, Destination: destination,
 	})
 	if err != nil {
 		return err
