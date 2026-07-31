@@ -9,6 +9,7 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/api"
 	componentprofile "github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 )
 
@@ -26,14 +27,14 @@ func TestPlanStaleClientsSelectsOnlyUnchangedGeneratedFiles(t *testing.T) {
 	if err := SaveReceipt(state, receipt); err != nil {
 		t.Fatal(err)
 	}
-	stale, response, err := engine.planStaleClients(t.Context(), nil)
+	stale, response, err := engine.planStaleClients(t.Context(), profile.Snapshot{})
 	if err != nil || len(stale) != 1 || response == nil || len(response.Actions) != 1 {
 		t.Fatalf("stale plan = %#v, %#v, %v", stale, response, err)
 	}
 	if err := os.WriteFile(path, []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	stale, response, err = engine.planStaleClients(t.Context(), nil)
+	stale, response, err = engine.planStaleClients(t.Context(), profile.Snapshot{})
 	if err != nil || len(stale) != 0 || response != nil {
 		t.Fatalf("changed client was selected: %#v, %#v, %v", stale, response, err)
 	}

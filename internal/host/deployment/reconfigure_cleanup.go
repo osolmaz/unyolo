@@ -10,23 +10,21 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/api"
 	componentprofile "github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/deployment/transaction"
+	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
 )
 
 const cleanupComponentID = "host-cleanup"
 
-func (engine *Engine) planStaleClients(ctx context.Context, responses []api.Response) ([]ResourceReceipt, *api.Response, error) {
+func (engine *Engine) planStaleClients(ctx context.Context, snapshot profile.Snapshot) ([]ResourceReceipt, *api.Response, error) {
 	previous, found, err := LoadReceipt(engine.options.Paths.StateDir)
 	if err != nil || !found {
 		return nil, nil, err
 	}
-	current := map[string]bool{}
-	for _, response := range responses {
-		for _, action := range response.Actions {
-			if action.Resource.Kind == "client" && action.Resource.Path != "" {
-				current[action.Resource.Path] = true
-			}
-		}
+	current, err := desiredClientPaths(snapshot)
+	if err != nil {
+		return nil, nil, err
 	}
 	var stale []ResourceReceipt
 	var actions []api.PlannedAction
@@ -65,6 +63,32 @@ func (engine *Engine) planStaleClients(ctx context.Context, responses []api.Resp
 		return nil, nil, err
 	}
 	return stale, response, nil
+}
+
+func desiredClientPaths(snapshot profile.Snapshot) (map[string]bool, error) {
+	agents := map[string]profile.Agent{}
+	for _, agent := range snapshot.Deployment.Agents {
+		agents[agent.ID] = agent
+	}
+	profiles, err := receiptComponentProfiles(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]bool{}
+	for _, component := range profiles {
+		for _, client := range component.Clients {
+			agent, exists := agents[client.AgentID]
+			if !exists || agent.Target.Kind != "local_account" {
+				continue
+			}
+			path, err := clientconfig.Path(agent.Target.Home, client.BrokerName)
+			if err != nil {
+				return nil, err
+			}
+			result[path] = true
+		}
+	}
+	return result, nil
 }
 
 func resourceReceiptKeyCompare(a, b ResourceReceipt) int {
