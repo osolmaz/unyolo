@@ -667,7 +667,7 @@ func rollback(ctx context.Context, config Config, handle string) error {
 			return err
 		}
 	}
-	if err := os.Remove(path); err != nil {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if backupAncestor != nil {

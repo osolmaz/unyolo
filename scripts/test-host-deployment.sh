@@ -28,7 +28,7 @@ EOF
       --development --profile /tmp/failure-deployment \
       --root /tmp/failure-runtime --state-dir /tmp/failure-state --json >/tmp/failure-plan.json
     failure_plan=$(awk -F\" '\''/"digest":/ {print $4; exit}'\'' /tmp/failure-plan.json)
-    : >/tmp/failure-secret
+    printf "%s" "rollback-secret-canary" >/tmp/failure-secret
     chmod 0600 /tmp/failure-secret
     if /tmp/unyolo system apply \
       --development --profile /tmp/failure-deployment \
@@ -43,6 +43,7 @@ EOF
     id -nG operator | grep -qw unyolo-e2e-agent
     test ! -e /var/lib/unyolo-agent
     test ! -e /var/lib/unyolo-e2e
+    test ! -e /etc/unyolo-e2e
     test ! -e /tmp/failure-state/deployment-transaction.json
 
     /tmp/unyolo system profile lock --check --profile /tmp/deployment
