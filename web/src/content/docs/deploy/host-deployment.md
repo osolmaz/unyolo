@@ -1,44 +1,35 @@
 ---
 title: Host deployment
-description: Provisioning a complete Linux agent host from one locked, non-secret deployment pack.
+description: The internal configuration and administrator commands used to install credential services.
 ---
 
-unYOLO can install or reconcile a complete Linux agent host from one locked, non-secret
-deployment pack. The same pack drives the guided setup wizard and the unattended commands, so what
-you review interactively is what an automated apply executes.
+Host deployment installs credential services, local endpoints, and their supporting accounts on one
+machine. It is the server-side part of unYOLO setup. Agent-connection-only and command-only setup do
+not need a host deployment.
 
-Darwin binaries remain available for existing-account and client workflows. Guided host
-provisioning on macOS fails closed until native launchd and account provisioning are implemented
-and tested.
+The current managed host engine supports Linux. macOS support requires native launchd and local-
+account management plus real installation and rollback tests, including removal. The presence of a macOS
+binary does not mean managed macOS setup is available.
 
-## Guided setup
+## Guided setup relationship
 
-Run the default command as the trusted operator, not as root:
+The target installer first asks whether the user wants credential services, an agent connection, or
+both. When local credential services are selected, it generates the locked configuration described
+below. Account choices such as an existing `bob` account or a newly created restricted account must
+flow into that configuration.
 
-```sh
-curl -fsSL https://unyolo.io/install.sh | sh
-```
+Version 0.6.3 still uses a fixed Linux host flow with client name `agent` and account
+`unyolo-agent`. See the
+[guided installation contract](https://github.com/osolmaz/unyolo/blob/main/docs/GUIDED_INSTALLATION.md)
+for the replacement flow and its platform requirements.
 
-The bootstrap resolves one exact release, verifies its checksum and GitHub build attestation, and
-runs the CLI from private staging. The first screen lets the operator select GitHub, Hugging Face,
-or both. Ctrl-C there removes staging and exits without an installation or setup session.
+The unprivileged installer shows a plain summary before any administrator work. After confirmation,
+a separately checked root process inspects the host, lists the exact changes, and asks for a second
+confirmation. Changed host state invalidates the reviewed plan before any write.
 
-Recommended and Custom setup filter the verified deployment kit to the selected providers and
-materialize its locked graph below `~/.config/unyolo/deployments/<deployment-name>/`. Pass an
-existing pack with `unyolo setup --profile <absolute-path>` to review or repair its bound provider
-set without replacing it.
+Credentials move through one-use anonymous pipes. They are never written to the saved setup answers
+or host configuration.
 
-Setup validates every signed component adapter and shows the deployment review. The next
-confirmation atomically activates the same verified CLI release before the root worker starts. The
-root phase independently verifies the release archive's GitHub attestation and stores its exact
-runtime templates in root-owned host state. Production validation and planning reject a runtime
-manifest, signature, or public key that differs from those templates, and the CLI refuses
-interactive root execution.
-
-Credential values move through one-use anonymous pipes. They are never written to the setup session
-or into the pack.
-
-Use `--accessible` for the screen-reader prompt path and `--no-open` on a remote terminal.
 Incomplete local sessions can be inspected and resumed:
 
 ```sh
@@ -46,7 +37,7 @@ unyolo setup status
 unyolo setup --resume <session-id>
 ```
 
-## The deployment pack
+## Deployment configuration
 
 `deployment.json` binds the runtime, the Unix identities, the components, and any optional
 integrations. Every other file is referenced by a relative path and an exact SHA-256 digest.
@@ -69,8 +60,8 @@ example shows the important fields with no credentials in it:
   ],
   "groups": [
     { "name": "gh-broker" },
-    { "name": "gh-broker-agent", "members": ["unyolo-agent"] },
-    { "name": "gh-broker-operator", "members": ["operator"] }
+    { "name": "gh-broker-agent", "members": ["bob"] },
+    { "name": "gh-broker-operator", "members": ["onur"] }
   ],
   "directories": [
     {
@@ -103,12 +94,12 @@ example shows the important fields with no credentials in it:
       "owner": "root",
       "group": "gh-broker",
       "encoding": "client_secret_file",
-      "client_id": "unyolo-agent"
+      "client_id": "bob"
     }
   ],
   "clients": [
     {
-      "agent_id": "agent",
+      "agent_id": "bob",
       "broker_name": "gh-broker",
       "env_prefix": "GH_BROKER",
       "secret_slot": "github-client-secret",
@@ -132,14 +123,14 @@ adapter cannot claim a path, account, group, or service outside that signed enve
 
 ## Declarative commands
 
-Lock the pack after editing any referenced file:
+Lock the configuration after editing any referenced file:
 
 ```sh
 unyolo system profile lock --profile "$PWD/deployment"
 unyolo system profile lock --check --profile "$PWD/deployment"
 ```
 
-Protected validation, planning, and apply use the same engine as guided setup. Invoke the
+Protected validation and planning use the same engine as guided setup, as does apply. Invoke the
 root-owned worker installed by the verified bootstrap. Never run a user-local binary with `sudo`:
 
 ```sh
@@ -172,13 +163,13 @@ as a drift check.
 
 Credentials are retained by default. Rotation is a deliberate three-step edit:
 
-1. Set the credential declaration's `action` to `rotate` and lock the pack.
+1. Set the credential declaration's `action` to `rotate` and lock the configuration.
 2. Review the resulting credential and client-file actions in the plan, then apply with the
    matching `--secret-file`.
-3. Return the declaration to `retain` and lock the pack again.
+3. Return the declaration to `retain` and lock the configuration again.
 
-Leaving it on `rotate` would mean every subsequent apply rotates the credential again, so the
-return step is part of the procedure rather than tidying up afterwards.
+Leaving it on `rotate` would make every subsequent apply rotate the credential again. Returning it
+to `retain` prevents that repeated rotation.
 
 See [credential lifecycle](/docs/guides/rotate-credentials) for what happens during the cutover and
 what gets retired.

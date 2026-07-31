@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Environment variables, file layout, the client config schema, and the deployment pack shape.
+description: Environment variables, file layout, client configuration, and host deployment configuration.
 ---
 
 Configuration reaches a broker through three places: environment variables (usually from a
