@@ -2,11 +2,33 @@ package sudopolicy
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
 )
+
+func TestShippedPoliciesRespectOperationBounds(t *testing.T) {
+	t.Parallel()
+	catalogData, err := os.ReadFile("../../deployment/files/sudo/catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := catalog.Parse(catalogData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"../../deployment/files/sudo/policy.json", "../../policy.example.json"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := corepolicy.Parse(data, Registry(snapshot)); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+	}
+}
 
 func TestRegistryAndRequest(t *testing.T) {
 	t.Parallel()

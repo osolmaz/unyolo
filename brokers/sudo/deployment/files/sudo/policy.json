@@ -10,7 +10,7 @@
       "grant_policy": {
         "mode": "window",
         "default_minutes": 60,
-        "max_minutes": 10080,
+        "max_minutes": 1440,
         "request_ttl_minutes": 10,
         "default_max_uses": 25,
         "max_uses": 1000000

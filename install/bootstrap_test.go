@@ -26,6 +26,16 @@ func TestRootBootstrapBindsReleaseToSourceCommit(t *testing.T) {
 	}
 }
 
+func TestRootBootstrapKeepsProviderAdaptersExecutable(t *testing.T) {
+	data, err := os.ReadFile("bootstrap-root.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `find "$verified_new/source-set/artifacts" -type f -exec chmod 0555 {} +`) {
+		t.Fatal("root bootstrap does not restore executable permissions on signed provider adapters")
+	}
+}
+
 func TestBootstrapStagesOnceAndRemovesStageAfterSetup(t *testing.T) {
 	requireLinuxBootstrap(t)
 	script, err := exec.LookPath("script")
