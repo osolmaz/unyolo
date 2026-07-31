@@ -3,6 +3,7 @@ package sudopolicy
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
@@ -11,6 +12,9 @@ import (
 
 func TestShippedPoliciesRespectOperationBounds(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("the shipped sudo catalog targets Linux systemd")
+	}
 	catalogData, err := os.ReadFile("../../deployment/files/sudo/catalog.json")
 	if err != nil {
 		t.Fatal(err)
