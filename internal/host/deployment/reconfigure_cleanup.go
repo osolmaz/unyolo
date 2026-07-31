@@ -9,7 +9,6 @@ import (
 	"slices"
 
 	"github.com/osolmaz/unyolo/deployment/api"
-	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/deployment/transaction"
 	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
@@ -22,6 +21,14 @@ func (engine *Engine) planStaleClients(ctx context.Context, snapshot profile.Sna
 	if err != nil || !found {
 		return nil, nil, err
 	}
+	fingerprintKey, keyFound, err := loadReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer clear(fingerprintKey)
+	if !keyFound {
+		return nil, nil, nil
+	}
 	current, err := desiredClientPaths(snapshot)
 	if err != nil {
 		return nil, nil, err
@@ -32,7 +39,7 @@ func (engine *Engine) planStaleClients(ctx context.Context, snapshot profile.Sna
 		if resource.Kind != "client" || !resource.Created || resource.Path == "" || current[resource.Path] || resource.Fingerprint == "" {
 			continue
 		}
-		actual := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: "client", ID: resource.ID, Path: resource.Path}, true)
+		actual := receiptResourceFingerprint(ctx, resource, fingerprintKey)
 		if actual != "missing" && actual != resource.Fingerprint {
 			continue
 		}

@@ -12,8 +12,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/osolmaz/unyolo/deployment/api"
-	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/internal/securefile"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"golang.org/x/sys/unix"
@@ -39,7 +37,15 @@ func (engine *Engine) quarantineStaleClient(_ context.Context, resource Resource
 	if err := ensureCleanupDirectory(filepath.Dir(metadataPath)); err != nil {
 		return "", err
 	}
-	actual := componentprofile.ResourceFingerprint(context.Background(), api.Resource{Kind: "client", ID: resource.ID, Path: resource.Path}, true)
+	fingerprintKey, found, err := loadReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return "", err
+	}
+	defer clear(fingerprintKey)
+	if !found {
+		return "", errors.New("ownership fingerprint key is missing")
+	}
+	actual := receiptResourceFingerprint(context.Background(), resource, fingerprintKey)
 	metadata := staleClientMetadata{Original: resource.Path, Fingerprint: resource.Fingerprint, Missing: actual == "missing"}
 	if metadata.Missing {
 		if err := writeStaleClientMetadata(metadataPath, metadata); err != nil {
@@ -75,7 +81,15 @@ func (engine *Engine) restoreStaleClient(_ context.Context, handle string) error
 	if metadata.Missing {
 		return removeCleanupMetadata(metadataPath)
 	}
-	actual := componentprofile.ResourceFingerprint(context.Background(), api.Resource{Kind: "client", ID: "backup", Path: metadata.Backup}, true)
+	fingerprintKey, keyFound, err := loadReceiptFingerprintKey(engine.options.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer clear(fingerprintKey)
+	if !keyFound {
+		return errors.New("ownership fingerprint key is missing")
+	}
+	actual := receiptResourceFingerprint(context.Background(), ResourceReceipt{Kind: "client", ID: "backup", Path: metadata.Backup}, fingerprintKey)
 	if actual != metadata.Fingerprint {
 		return errors.New("quarantined client configuration changed before rollback")
 	}

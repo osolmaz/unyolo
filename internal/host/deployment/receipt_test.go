@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -235,6 +236,55 @@ func TestRefreshReceiptClientFingerprintIncludesContent(t *testing.T) {
 	}
 	if firstFingerprint == second.Resources[0].Fingerprint {
 		t.Fatal("client content change did not change its ownership fingerprint")
+	}
+}
+
+func TestPopulateReceiptFingerprintsParentAfterDataPropagation(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	credentialPath := filepath.Join(configDir, "token")
+	if err := os.Mkdir(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credentialPath, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	component := componentprofile.Profile{
+		APIVersion:  "unyolo.io/test/v1",
+		Directories: []componentprofile.Directory{{ID: "config", Destination: configDir}},
+		Credentials: []componentprofile.Credential{{Slot: "token", Destination: credentialPath}},
+	}
+	componentData, err := json.Marshal(component)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned := Planned{
+		Snapshot: profile.Snapshot{
+			Deployment: profile.Deployment{Components: []profile.Component{{ID: "github", Profile: profile.Reference{Path: "github.json"}}}},
+			Manifest:   bundle.Manifest{Components: []bundle.Component{{Name: "github"}}},
+			Files:      map[string]profile.File{"github.json": {Path: "github.json", Data: componentData}},
+		},
+		Responses: []api.Response{{ComponentID: "github", Actions: []api.PlannedAction{
+			{ID: "directory-config", Resource: api.Resource{Kind: "directory", ID: "config", Path: configDir}, CurrentState: "missing"},
+			{ID: "credential-token", Resource: api.Resource{Kind: "credential", ID: "token", Path: credentialPath}, CurrentState: "missing"},
+		}}},
+	}
+	fingerprintKey := []byte(strings.Repeat("k", 32))
+	var receipt Receipt
+	if err := populateReceiptResources(t.Context(), &receipt, planned, true, fingerprintKey); err != nil {
+		t.Fatal(err)
+	}
+	index := slices.IndexFunc(receipt.Resources, func(resource ResourceReceipt) bool { return resource.Kind == "directory" })
+	if index < 0 {
+		t.Fatal("parent directory receipt is missing")
+	}
+	parent := receipt.Resources[index]
+	if !parent.Data {
+		t.Fatal("parent directory was not classified as data")
+	}
+	if want := dataTreeFingerprint(t.Context(), configDir, fingerprintKey); parent.Fingerprint != want {
+		t.Fatalf("parent fingerprint = %q, want keyed data-tree fingerprint %q", parent.Fingerprint, want)
 	}
 }
 
