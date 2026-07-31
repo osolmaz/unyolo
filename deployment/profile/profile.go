@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -43,9 +44,10 @@ type Reference struct {
 
 // Runtime references one signed runtime bundle.
 type Runtime struct {
-	Manifest  Reference `json:"manifest"`
-	Signature Reference `json:"signature"`
-	PublicKey Reference `json:"public_key"`
+	Manifest   Reference `json:"manifest"`
+	Signature  Reference `json:"signature"`
+	PublicKey  Reference `json:"public_key"`
+	Activation Reference `json:"activation"`
 }
 
 // Agent binds a unYOLO client identity to one local, container, or remote target.
@@ -112,11 +114,12 @@ type File struct {
 
 // Snapshot is a complete immutable deployment pack view.
 type Snapshot struct {
-	Root       string
-	Deployment Deployment
-	Files      map[string]File
-	Digest     string
-	Manifest   bundle.Manifest
+	Root          string
+	Deployment    Deployment
+	Files         map[string]File
+	Digest        string
+	Manifest      bundle.Manifest
+	TrustManifest bundle.Manifest
 }
 
 // Load validates and snapshots a deployment pack.
@@ -196,14 +199,21 @@ func load(root string, verifyDigests bool) (Snapshot, error) {
 		}
 	}
 	manifestFile := files[deployment.Runtime.Manifest.Path]
-	manifest, _, err := bundle.LoadBytes(
+	trustManifest, _, err := bundle.LoadBytes(
 		manifestFile.Data,
 		files[deployment.Runtime.Signature.Path].Data,
 		files[deployment.Runtime.PublicKey.Path].Data,
 		false,
 	)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("validate deployment runtime: %w", err)
+		return Snapshot{}, fmt.Errorf("validate deployment runtime trust: %w", err)
+	}
+	var manifest bundle.Manifest
+	if err := strictjson.Decode(files[deployment.Runtime.Activation.Path].Data, &manifest, true); err != nil {
+		return Snapshot{}, fmt.Errorf("decode deployment activation manifest: %w", err)
+	}
+	if err := validateActivationManifest(trustManifest, manifest); err != nil {
+		return Snapshot{}, err
 	}
 	if err := deployment.validateRuntimeComponents(manifest); err != nil {
 		return Snapshot{}, err
@@ -214,7 +224,7 @@ func load(root string, verifyDigests bool) (Snapshot, error) {
 	}
 	return Snapshot{
 		Root: absolute, Deployment: deployment, Files: files,
-		Digest: snapshotDigest(canonical, files), Manifest: manifest,
+		Digest: snapshotDigest(canonical, files), Manifest: manifest, TrustManifest: trustManifest,
 	}, nil
 }
 
@@ -326,6 +336,30 @@ func validateBindings(d Deployment) error {
 	return nil
 }
 
+func validateActivationManifest(trust, activation bundle.Manifest) error {
+	if err := activation.Validate(false); err != nil {
+		return fmt.Errorf("validate deployment activation manifest: %w", err)
+	}
+	if activation.BundleID == trust.BundleID || !strings.HasPrefix(activation.BundleID, trust.BundleID+"-") ||
+		activation.APIVersion != trust.APIVersion || activation.SourceCommit != trust.SourceCommit ||
+		activation.OperatingSystem != trust.OperatingSystem || activation.Architecture != trust.Architecture ||
+		activation.OperatorContractDigest != trust.OperatorContractDigest || activation.AgentContractDigest != trust.AgentContractDigest ||
+		!reflect.DeepEqual(activation.SetupCapabilities, trust.SetupCapabilities) {
+		return errors.New("deployment activation manifest is not derived from signed runtime trust")
+	}
+	available := make(map[string]bundle.Component, len(trust.Components))
+	for _, component := range trust.Components {
+		available[component.Name] = component
+	}
+	for _, component := range activation.Components {
+		trusted, exists := available[component.Name]
+		if !exists || !reflect.DeepEqual(component, trusted) {
+			return fmt.Errorf("activation component %q is not present unchanged in signed runtime trust", component.Name)
+		}
+	}
+	return nil
+}
+
 func (d Deployment) validateRuntimeComponents(manifest bundle.Manifest) error {
 	available := make(map[string]bundle.Component, len(manifest.Components))
 	for _, component := range manifest.Components {
@@ -350,7 +384,7 @@ func (d Deployment) validateRuntimeComponents(manifest bundle.Manifest) error {
 }
 
 func (d Deployment) references() []Reference {
-	result := []Reference{d.Runtime.Manifest, d.Runtime.Signature, d.Runtime.PublicKey}
+	result := []Reference{d.Runtime.Manifest, d.Runtime.Signature, d.Runtime.PublicKey, d.Runtime.Activation}
 	for _, component := range d.Components {
 		result = append(result, component.Profile)
 		if component.Metadata != nil {

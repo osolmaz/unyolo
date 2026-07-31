@@ -55,6 +55,9 @@ func main() {
 	must(os.WriteFile(filepath.Join(root, "runtime", "manifest.json"), manifestData, 0o600))
 	must(os.WriteFile(filepath.Join(root, "runtime", "manifest.sig"), []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, manifestData))+"\n"), 0o600))
 	must(os.WriteFile(filepath.Join(root, "runtime", "release.pub"), []byte(base64.StdEncoding.EncodeToString(publicKey)+"\n"), 0o600))
+	activation := manifest
+	activation.BundleID = manifest.BundleID + "-fake"
+	must(os.WriteFile(filepath.Join(root, "runtime", "activation.json"), marshal(activation), 0o600))
 
 	componentProfile := component.Profile{
 		APIVersion: "unyolo.io/fake-deployment/v1",
@@ -82,9 +85,8 @@ func main() {
 	deployment := profile.Deployment{
 		APIVersion: profile.APIVersion, Name: "e2e-host",
 		Runtime: profile.Runtime{
-			Manifest:  profile.Reference{Path: "runtime/manifest.json", SHA256: zeroDigest()},
-			Signature: profile.Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
-			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroDigest()},
+			Manifest: profile.Reference{Path: "runtime/manifest.json", SHA256: zeroDigest()}, Signature: profile.Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
+			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroDigest()}, Activation: profile.Reference{Path: "runtime/activation.json", SHA256: zeroDigest()},
 		},
 		Agents: []profile.Agent{{
 			ID: "agent", ClientID: "agent", UnixUser: "unyolo-agent", AccountMode: "managed",

@@ -213,38 +213,42 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		state.agents[agent.ID] = agent
 	}
 	for _, group := range profile.Groups {
-		state.fingerprints = append(state.fingerprints, "group:"+group.Name+":"+groupFingerprint(ctx, group))
+		fingerprint := groupFingerprint(ctx, group)
+		state.fingerprints = append(state.fingerprints, "group:"+group.Name+":"+fingerprint)
 		if !groupMatches(ctx, group) {
 			state.actions = append(state.actions, api.PlannedAction{
 				ID: "group-" + group.Name, Type: "reconcile", Risk: "high",
-				Resource:      api.Resource{Kind: "group", ID: group.Name},
+				Resource: api.Resource{Kind: "group", ID: group.Name}, CurrentState: resourceState(fingerprint),
 				DesiredDigest: digest([]byte(strings.Join(group.Members, "\x00"))),
 			})
 		}
 	}
 	for _, account := range profile.Accounts {
-		state.fingerprints = append(state.fingerprints, "account:"+account.Name+":"+accountFingerprint(ctx, account))
+		fingerprint := accountFingerprint(ctx, account)
+		state.fingerprints = append(state.fingerprints, "account:"+account.Name+":"+fingerprint)
 		if !accountMatches(ctx, account) {
 			state.actions = append(state.actions, api.PlannedAction{
 				ID: "account-" + account.Name, Type: "reconcile", Risk: "high",
-				Resource:      api.Resource{Kind: "account", ID: account.Name},
+				Resource: api.Resource{Kind: "account", ID: account.Name}, CurrentState: resourceState(fingerprint),
 				DesiredDigest: digest([]byte(account.Group + "\x00" + account.Home + "\x00" + account.Shell)),
 			})
 		}
 	}
 	for _, directory := range profile.Directories {
-		state.fingerprints = append(state.fingerprints, "directory:"+directory.ID+":"+pathFingerprint(directory.Destination))
+		fingerprint := pathFingerprint(directory.Destination)
+		state.fingerprints = append(state.fingerprints, "directory:"+directory.ID+":"+fingerprint)
 		if matchesDirectory(directory) {
 			continue
 		}
 		state.actions = append(state.actions, api.PlannedAction{
 			ID: "directory-" + directory.ID, Type: "reconcile", Risk: "medium",
-			Resource:      api.Resource{Kind: "directory", ID: directory.ID, Path: directory.Destination},
+			Resource: api.Resource{Kind: "directory", ID: directory.ID, Path: directory.Destination}, CurrentState: resourceState(fingerprint),
 			DesiredDigest: metadataDigest(directory.Mode, directory.Owner, directory.Group),
 		})
 	}
 	for _, managed := range profile.Files {
-		state.fingerprints = append(state.fingerprints, "file:"+managed.ID+":"+pathFingerprint(managed.Destination))
+		fingerprint := pathFingerprint(managed.Destination)
+		state.fingerprints = append(state.fingerprints, "file:"+managed.ID+":"+fingerprint)
 		source, exists := state.files[managed.Source.Path]
 		if !exists || source.SHA256 != managed.Source.SHA256 {
 			return inspected{}, fmt.Errorf("managed file %q source is unavailable", managed.ID)
@@ -255,12 +259,13 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		}
 		state.actions = append(state.actions, api.PlannedAction{
 			ID: "file-" + managed.ID, Type: "replace", Risk: "medium",
-			Resource:      api.Resource{Kind: "file", ID: managed.ID, Path: managed.Destination},
+			Resource: api.Resource{Kind: "file", ID: managed.ID, Path: managed.Destination}, CurrentState: resourceState(fingerprint),
 			CurrentDigest: current, DesiredDigest: managed.Source.SHA256, Restart: managed.Restart,
 		})
 	}
 	for _, credential := range profile.Credentials {
-		state.fingerprints = append(state.fingerprints, "credential:"+credential.Slot+":"+pathFingerprint(credential.Destination))
+		fingerprint := pathFingerprint(credential.Destination)
+		state.fingerprints = append(state.fingerprints, "credential:"+credential.Slot+":"+fingerprint)
 		action := "retain"
 		_, err := os.Lstat(credential.Destination)
 		if errors.Is(err, os.ErrNotExist) {
@@ -284,13 +289,14 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 			}
 			state.actions = append(state.actions, api.PlannedAction{
 				ID: "credential-" + credential.Slot, Type: actionType, Risk: "high",
-				Resource:      api.Resource{Kind: "credential", ID: credential.Slot, Path: credential.Destination},
+				Resource: api.Resource{Kind: "credential", ID: credential.Slot, Path: credential.Destination}, CurrentState: resourceState(fingerprint),
 				DesiredDigest: metadataDigest(credential.Mode, credential.Owner, credential.Group),
 			})
 		}
 	}
 	for _, store := range profile.SecretStores {
-		state.fingerprints = append(state.fingerprints, "secret-store:"+store.ID+":"+pathFingerprint(store.Destination))
+		fingerprint := pathFingerprint(store.Destination)
+		state.fingerprints = append(state.fingerprints, "secret-store:"+store.ID+":"+fingerprint)
 		current, readErr := readNamedStore(store.Destination)
 		if readErr != nil {
 			return inspected{}, readErr
@@ -321,7 +327,7 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		if changed || !matchesMetadata(store.Destination, store.Mode, store.Owner, store.Group) {
 			state.actions = append(state.actions, api.PlannedAction{
 				ID: "secret-store-" + store.ID, Type: "reconcile", Risk: "high",
-				Resource:      api.Resource{Kind: "secret_store", ID: store.ID, Path: store.Destination},
+				Resource: api.Resource{Kind: "secret_store", ID: store.ID, Path: store.Destination}, CurrentState: resourceState(fingerprint),
 				DesiredDigest: metadataDigest(store.Mode, store.Owner, store.Group), Restart: true,
 			})
 		}
@@ -332,7 +338,8 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		if err != nil {
 			return inspected{}, err
 		}
-		state.fingerprints = append(state.fingerprints, "client:"+client.AgentID+":"+pathFingerprint(path))
+		fingerprint := pathFingerprint(path)
+		state.fingerprints = append(state.fingerprints, "client:"+client.AgentID+":"+fingerprint)
 		var expected []byte
 		if credential, found := credentialBySlot(profile.Credentials, client.SecretSlot); found {
 			expected, _ = readInstalledCredential(credential)
@@ -349,7 +356,7 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 		}
 		state.actions = append(state.actions, api.PlannedAction{
 			ID: "client-" + client.AgentID, Type: "replace", Risk: "medium",
-			Resource:      api.Resource{Kind: "client", ID: client.AgentID, Path: path},
+			Resource: api.Resource{Kind: "client", ID: client.AgentID, Path: path}, CurrentState: resourceState(fingerprint),
 			DesiredDigest: metadataDigest(0o600, agent.UnixUser, agent.UnixUser),
 		})
 	}
@@ -534,7 +541,32 @@ func metadataDigest(mode uint32, owner, group string) string {
 	return digest([]byte(fmt.Sprintf("%04o:%s:%s", mode, owner, group)))
 }
 
-func pathFingerprint(path string) string {
+// ResourceFingerprint returns a secret-safe current identity for one adapter
+// resource. When includeContent is false, regular-file bytes are excluded.
+func ResourceFingerprint(ctx context.Context, resource api.Resource, includeContent bool) string {
+	switch resource.Kind {
+	case "account":
+		return accountFingerprint(ctx, Account{Name: resource.ID})
+	case "group":
+		return groupFingerprint(ctx, Group{Name: resource.ID})
+	default:
+		if resource.Path == "" {
+			return "unavailable"
+		}
+		return fingerprintPath(resource.Path, includeContent)
+	}
+}
+
+func resourceState(fingerprint string) string {
+	if fingerprint == "missing" {
+		return "missing"
+	}
+	return "present"
+}
+
+func pathFingerprint(path string) string { return fingerprintPath(path, true) }
+
+func fingerprintPath(path string, includeContent bool) string {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "missing"
@@ -548,7 +580,7 @@ func pathFingerprint(path string) string {
 	}
 	hash := sha256.New()
 	_, _ = fmt.Fprintf(hash, "%d:%d:%d:%d:%d", stat.Dev, stat.Ino, stat.Uid, stat.Gid, info.Mode())
-	if info.Mode().IsRegular() {
+	if info.Mode().IsRegular() && includeContent {
 		file, openErr := os.Open(path) // #nosec G304 -- provider-owned validated path.
 		if openErr != nil {
 			return "unavailable"

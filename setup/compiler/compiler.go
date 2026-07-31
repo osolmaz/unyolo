@@ -87,16 +87,23 @@ func Compile(options Options) (profile.Snapshot, error) {
 	if err != nil {
 		return profile.Snapshot{}, err
 	}
+	activationManifest, err := deriveActivationManifest(manifest, selectedProviders)
+	if err != nil {
+		return profile.Snapshot{}, err
+	}
 	if err := copyRuntimeTrust(options.SourceSet, staging); err != nil {
 		return profile.Snapshot{}, err
 	}
-	if err := copyRuntimeArtifacts(options.SourceSet, staging, manifest, selectedProviders); err != nil {
+	if err := copyRuntimeArtifacts(options.SourceSet, staging, activationManifest, selectedProviders); err != nil {
 		return profile.Snapshot{}, err
 	}
-	if err := renderProviderComponents(options.SourceSet, staging, options.Installation, manifest, selectedProviders); err != nil {
+	if err := writeJSON(filepath.Join(staging, "runtime", "activation.json"), activationManifest); err != nil {
 		return profile.Snapshot{}, err
 	}
-	deployment, err := compileDeployment(options.Installation, selectedProviders, manifest, sourceDigest)
+	if err := renderProviderComponents(options.SourceSet, staging, options.Installation, activationManifest, selectedProviders); err != nil {
+		return profile.Snapshot{}, err
+	}
+	deployment, err := compileDeployment(options.Installation, selectedProviders, activationManifest, sourceDigest)
 	if err != nil {
 		return profile.Snapshot{}, err
 	}
@@ -125,6 +132,34 @@ func loadSourceManifest(sourceSet string) (bundle.Manifest, error) {
 		false,
 	)
 	return manifest, err
+}
+
+func deriveActivationManifest(trust bundle.Manifest, providers []SourceProvider) (bundle.Manifest, error) {
+	needed := map[string]bool{}
+	providerIDs := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		providerIDs = append(providerIDs, provider.ID)
+		for _, component := range provider.Components {
+			needed[component] = true
+		}
+	}
+	slices.Sort(providerIDs)
+	activation := trust
+	activation.BundleID = trust.BundleID + "-" + strings.Join(providerIDs, "-")
+	activation.Components = nil
+	for _, component := range trust.Components {
+		if needed[component.Name] {
+			activation.Components = append(activation.Components, component)
+			delete(needed, component.Name)
+		}
+	}
+	if len(needed) != 0 {
+		return bundle.Manifest{}, errors.New("selected provider references an unknown runtime component")
+	}
+	if err := activation.Validate(false); err != nil {
+		return bundle.Manifest{}, err
+	}
+	return activation, nil
 }
 
 func loadSelectedProviders(sourceSet string, providers []string) ([]SourceProvider, error) {
@@ -218,9 +253,8 @@ func compileDeployment(source installation.Installation, providers []SourceProvi
 	deployment := profile.Deployment{
 		APIVersion: profile.APIVersion, Name: source.Name, InstallationDigest: digest, SourceSetDigest: sourceDigest,
 		Runtime: profile.Runtime{
-			Manifest:  profile.Reference{Path: "runtime/manifest.json", SHA256: zeroDigest()},
-			Signature: profile.Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
-			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroDigest()},
+			Manifest: profile.Reference{Path: "runtime/manifest.json", SHA256: zeroDigest()}, Signature: profile.Reference{Path: "runtime/manifest.sig", SHA256: zeroDigest()},
+			PublicKey: profile.Reference{Path: "runtime/release.pub", SHA256: zeroDigest()}, Activation: profile.Reference{Path: "runtime/activation.json", SHA256: zeroDigest()},
 		},
 		Operators: nil,
 		Agents:    nil,

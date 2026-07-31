@@ -89,6 +89,7 @@ type PlannedAction struct {
 	Type          string   `json:"type"`
 	Risk          string   `json:"risk"`
 	Resource      Resource `json:"resource"`
+	CurrentState  string   `json:"current_state,omitempty"`
 	CurrentDigest string   `json:"current_digest,omitempty"`
 	DesiredDigest string   `json:"desired_digest,omitempty"`
 	Restart       bool     `json:"restart,omitempty"`
@@ -197,6 +198,7 @@ func (response Response) Validate() error {
 	for _, action := range response.Actions {
 		if !identifierPattern.MatchString(action.ID) || seen[action.ID] || !validRisk(action.Risk) || strings.TrimSpace(action.Type) == "" ||
 			strings.TrimSpace(action.Resource.Kind) == "" || strings.TrimSpace(action.Resource.ID) == "" ||
+			!slices.Contains([]string{"", "missing", "present"}, action.CurrentState) ||
 			!validOptionalDigest(action.CurrentDigest) || !validOptionalDigest(action.DesiredDigest) {
 			return errors.New("setup-component planned action is invalid or duplicated")
 		}

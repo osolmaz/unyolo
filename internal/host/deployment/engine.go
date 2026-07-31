@@ -340,16 +340,24 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 		return Verification{}, err
 	}
 	recovery := Planned{Snapshot: snapshot}
-	if found {
-		if pending.DeploymentDigest != snapshot.Digest {
-			return Verification{}, errors.New("unfinished transaction requires its original locked deployment pack")
-		}
+	committedRecovery := found && pending.Phase == "committed"
+	if found && pending.DeploymentDigest != snapshot.Digest {
+		return Verification{}, errors.New("unfinished transaction requires its original locked deployment pack")
 	}
 	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(recovery)); err != nil {
 		return Verification{}, err
 	}
 	if err := coordinator.Recover(ctx, engine.recoveryHandlers(recovery)); err != nil {
 		return Verification{}, err
+	}
+	if found {
+		if committedRecovery {
+			if err := engine.commitPendingReceipt(ctx); err != nil {
+				return Verification{}, err
+			}
+		} else if err := DiscardPendingReceipt(engine.options.Paths.StateDir); err != nil {
+			return Verification{}, err
+		}
 	}
 	planned, err := engine.Plan(ctx, profileRoot)
 	if err != nil {
@@ -362,24 +370,33 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 		return Verification{}, errors.New("host deployment plan is blocked")
 	}
 	if planned.Plan.Kind == deploymentplan.KindNoop {
+		if err := engine.saveOwnershipReceipt(ctx, planned, false); err != nil {
+			return Verification{}, err
+		}
 		return engine.verifyPlanned(ctx, planned)
+	}
+	pendingReceipt, err := ReceiptFromPlanContext(ctx, planned, planned.Snapshot.Deployment.Name, engine.now(), false)
+	if err != nil {
+		return Verification{}, fmt.Errorf("prepare ownership receipt: %w", err)
+	}
+	if err := StagePendingReceipt(engine.options.Paths.StateDir, pendingReceipt); err != nil {
+		return Verification{}, fmt.Errorf("stage ownership receipt: %w", err)
 	}
 	steps, err := engine.steps(planned, secretFiles)
 	if err != nil {
-		return Verification{}, err
+		return Verification{}, errors.Join(err, DiscardPendingReceipt(engine.options.Paths.StateDir))
 	}
 	if err := coordinator.Run(ctx, planned.Snapshot.Digest, planned.Plan.Digest, planned.Snapshot.Manifest.BundleID, planned.ActiveBundleID, steps); err != nil {
-		return Verification{}, err
+		return Verification{}, errors.Join(err, DiscardPendingReceipt(engine.options.Paths.StateDir))
 	}
 	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(planned)); err != nil {
 		return Verification{}, err
 	}
-	receipt, err := ReceiptFromPlan(planned, planned.Snapshot.Deployment.Name, engine.now())
-	if err != nil {
-		return Verification{}, fmt.Errorf("record ownership receipt: %w", err)
+	if err := engine.saveOwnershipReceipt(ctx, planned, true); err != nil {
+		return Verification{}, err
 	}
-	if err := SaveReceipt(engine.options.Paths.StateDir, receipt); err != nil {
-		return Verification{}, fmt.Errorf("save ownership receipt: %w", err)
+	if err := DiscardPendingReceipt(engine.options.Paths.StateDir); err != nil {
+		return Verification{}, err
 	}
 	return engine.Verify(ctx, profileRoot)
 }
@@ -389,6 +406,55 @@ func (engine *Engine) now() time.Time {
 		return engine.options.Now()
 	}
 	return time.Now()
+}
+
+func (engine *Engine) saveOwnershipReceipt(ctx context.Context, planned Planned, capturePostApply bool) error {
+	current, err := ReceiptFromPlanContext(ctx, planned, planned.Snapshot.Deployment.Name, engine.now(), capturePostApply)
+	if err != nil {
+		return fmt.Errorf("record ownership receipt: %w", err)
+	}
+	previous, found, err := LoadReceipt(engine.options.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	if found {
+		current, err = MergeReceipt(previous, current)
+		if err != nil {
+			return err
+		}
+	}
+	if err := SaveReceipt(engine.options.Paths.StateDir, current); err != nil {
+		return fmt.Errorf("save ownership receipt: %w", err)
+	}
+	return nil
+}
+
+func (engine *Engine) commitPendingReceipt(ctx context.Context) error {
+	pending, found, err := LoadPendingReceipt(engine.options.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return errors.New("committed host transaction has no pending ownership receipt")
+	}
+	pending, err = RefreshReceiptFingerprints(ctx, pending)
+	if err != nil {
+		return err
+	}
+	previous, previousFound, err := LoadReceipt(engine.options.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	if previousFound {
+		pending, err = MergeReceipt(previous, pending)
+		if err != nil {
+			return err
+		}
+	}
+	if err := SaveReceipt(engine.options.Paths.StateDir, pending); err != nil {
+		return err
+	}
+	return DiscardPendingReceipt(engine.options.Paths.StateDir)
 }
 
 // Verify checks the active runtime and every real component adapter path.
@@ -502,7 +568,7 @@ func buildIdentityPlan(snapshot profile.Snapshot, accounts map[string]identity.A
 		}
 		response.Actions = append(response.Actions, api.PlannedAction{
 			ID: "account-" + agent.ID, Type: "create", Risk: "high",
-			Resource:      api.Resource{Kind: "account", ID: agent.Target.UnixUser},
+			Resource: api.Resource{Kind: "account", ID: agent.Target.UnixUser}, CurrentState: "missing",
 			DesiredDigest: digestText(agent.Target.UnixUser + "\x00" + agent.Target.Home + "\x00" + agent.Target.Shell),
 		})
 	}
@@ -742,7 +808,7 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 		steps = append(steps, transaction.Step{
 			ID: "runtime.activate", Kind: "runtime",
 			Apply: func(ctx context.Context) (string, error) {
-				manifestFile := planned.Snapshot.Files[planned.Snapshot.Deployment.Runtime.Manifest.Path]
+				manifestFile := planned.Snapshot.Files[planned.Snapshot.Deployment.Runtime.Activation.Path]
 				return "", engine.installer().Activate(ctx, planned.Snapshot.Manifest, manifestFile.Data, planned.Snapshot.Root)
 			},
 			Rollback: func(ctx context.Context, _ string) error {

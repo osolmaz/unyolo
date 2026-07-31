@@ -4,13 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/osolmaz/unyolo/deployment/api"
+	componentprofile "github.com/osolmaz/unyolo/deployment/component"
 )
 
 // RemovalAPIVersion identifies the removal-plan schema.
@@ -20,8 +25,10 @@ const RemovalAPIVersion = "unyolo.io/host-removal/v1"
 type RemovalActionKind string
 
 const (
-	RemovalActionDisableService  RemovalActionKind = "disable_service"
+	RemovalActionRemoveFile      RemovalActionKind = "remove_file"
+	RemovalActionRemoveDirectory RemovalActionKind = "remove_directory"
 	RemovalActionRemoveAccount   RemovalActionKind = "remove_account"
+	RemovalActionRemoveGroup     RemovalActionKind = "remove_group"
 	RemovalActionRemoveRuntime   RemovalActionKind = "remove_runtime"
 	RemovalActionDeleteReceipt   RemovalActionKind = "delete_receipt"
 	RemovalActionRemoveContainer RemovalActionKind = "remove_container"
@@ -41,6 +48,13 @@ const (
 type RemovalAction struct {
 	Kind        RemovalActionKind `json:"kind"`
 	ID          string            `json:"id"`
+	ComponentID string            `json:"component_id,omitempty"`
+	ResourceID  string            `json:"resource_id,omitempty"`
+	Path        string            `json:"path,omitempty"`
+	Home        string            `json:"home,omitempty"`
+	Shell       string            `json:"shell,omitempty"`
+	Group       string            `json:"group,omitempty"`
+	Fingerprint string            `json:"fingerprint,omitempty"`
 	Detail      string            `json:"detail,omitempty"`
 	Destructive bool              `json:"destructive"`
 }
@@ -92,37 +106,89 @@ func (engine *Engine) PlanRemoval(ctx context.Context, removeState bool) (Remova
 		DeploymentDigest:   receipt.DeploymentDigest,
 		RemoveState:        removeState,
 	}
-	planReceiptServices(&plan, receipt)
+	plan.Actions = append(plan.Actions, RemovalAction{
+		Kind: RemovalActionRemoveRuntime, ID: receipt.RuntimeBundleID, Detail: receipt.BaselineBundleID,
+	})
+	if err := planReceiptResources(ctx, &plan, receipt); err != nil {
+		return RemovalPlan{}, err
+	}
 	if err := planReceiptAccounts(ctx, &plan, receipt); err != nil {
 		return RemovalPlan{}, err
 	}
-	planReceiptRuntime(&plan, receipt)
-	if removeState {
-		plan.Actions = append(plan.Actions, RemovalAction{Kind: RemovalActionDeleteReceipt, ID: "receipt", Destructive: true})
-	} else {
-		plan.Actions = append(plan.Actions, RemovalAction{Kind: RemovalActionDeleteReceipt, ID: "receipt"})
+	planReceiptGroups(ctx, &plan, receipt)
+	if canDeleteRemovalReceipt(plan) {
+		plan.Actions = append(plan.Actions, RemovalAction{Kind: RemovalActionDeleteReceipt, ID: "receipt", Destructive: removeState})
 	}
-	return plan, nil
+	return FilterRemovalPlan(plan), nil
 }
 
-func planReceiptServices(plan *RemovalPlan, receipt Receipt) {
-	for _, service := range receipt.Services {
+func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receipt) error {
+	for _, resource := range receipt.Resources {
+		retention := RemovalRetention{Kind: resource.Kind, ID: resource.ComponentID + "." + resource.ID, Detail: resource.Path}
+		if !resource.Created {
+			retention.Reason = RemovalReasonPreexisting
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		if resource.Data && !plan.RemoveState {
+			retention.Reason = RemovalReasonInstallation
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		if resource.Fingerprint == "" {
+			retention.Reason = RemovalReasonUnknown
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		includeContent := resource.Kind == "file" && !resource.Data
+		current := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
+		if current != "missing" && current != resource.Fingerprint {
+			retention.Reason = RemovalReasonChanged
+			plan.Retained = append(plan.Retained, retention)
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s %q changed since apply; retaining it", resource.Kind, resource.ID))
+			continue
+		}
+		kind, ok := removalKindForResource(resource.Kind)
+		if !ok {
+			retention.Reason = RemovalReasonUnknown
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
 		plan.Actions = append(plan.Actions, RemovalAction{
-			Kind:   RemovalActionDisableService,
-			ID:     service.Name,
-			Detail: service.Component,
+			Kind: kind, ID: resource.ComponentID + "." + resource.ActionID, ComponentID: resource.ComponentID,
+			ResourceID: resource.ID, Path: resource.Path, Home: resource.Home, Shell: resource.Shell,
+			Group: resource.Group, Fingerprint: resource.Fingerprint, Destructive: resource.Data,
 		})
+	}
+	return nil
+}
+
+func removalKindForResource(kind string) (RemovalActionKind, bool) {
+	switch kind {
+	case "file", "credential", "secret_store", "client", "git_config":
+		return RemovalActionRemoveFile, true
+	case "directory":
+		return RemovalActionRemoveDirectory, true
+	case "account":
+		return RemovalActionRemoveAccount, true
+	case "group":
+		return RemovalActionRemoveGroup, true
+	default:
+		return "", false
 	}
 }
 
 func planReceiptAccounts(ctx context.Context, plan *RemovalPlan, receipt Receipt) error {
 	for _, account := range receipt.Accounts {
+		retention := RemovalRetention{Kind: "account", ID: account.ID, Detail: account.UnixUser}
 		if !account.Created {
-			plan.Retained = append(plan.Retained, RemovalRetention{
-				Kind: "account", ID: account.ID,
-				Reason: RemovalReasonPreexisting,
-				Detail: account.UnixUser,
-			})
+			retention.Reason = RemovalReasonPreexisting
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		if !plan.RemoveState {
+			retention.Reason = RemovalReasonInstallation
+			plan.Retained = append(plan.Retained, retention)
 			continue
 		}
 		matches, detail, err := accountIdentityMatches(ctx, account)
@@ -130,29 +196,55 @@ func planReceiptAccounts(ctx context.Context, plan *RemovalPlan, receipt Receipt
 			return err
 		}
 		if !matches {
-			plan.Retained = append(plan.Retained, RemovalRetention{
-				Kind: "account", ID: account.ID,
-				Reason: RemovalReasonChanged,
-				Detail: detail,
-			})
+			retention.Reason, retention.Detail = RemovalReasonChanged, detail
+			plan.Retained = append(plan.Retained, retention)
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf("managed account %q changed since apply; retaining it (%s)", account.UnixUser, detail))
 			continue
 		}
 		plan.Actions = append(plan.Actions, RemovalAction{
-			Kind: RemovalActionRemoveAccount, ID: account.UnixUser,
-			Detail: account.Home, Destructive: true,
+			Kind: RemovalActionRemoveAccount, ID: "agent." + account.ID, ResourceID: account.UnixUser,
+			Home: account.Home, Shell: account.Shell, Destructive: true,
 		})
 	}
 	return nil
 }
 
-func planReceiptRuntime(plan *RemovalPlan, receipt Receipt) {
-	if receipt.RuntimeBundleID == "" {
-		return
+func planReceiptGroups(ctx context.Context, plan *RemovalPlan, receipt Receipt) {
+	for _, group := range receipt.Groups {
+		retention := RemovalRetention{Kind: "group", ID: group.Name}
+		if !group.Created {
+			retention.Reason = RemovalReasonPreexisting
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		if !plan.RemoveState {
+			retention.Reason = RemovalReasonInstallation
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		fingerprint := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: "group", ID: group.Name}, false)
+		if fingerprint == "missing" {
+			continue
+		}
+		if !receiptDigestPattern.MatchString(fingerprint) {
+			retention.Reason = RemovalReasonUnknown
+			plan.Retained = append(plan.Retained, retention)
+			continue
+		}
+		plan.Actions = append(plan.Actions, RemovalAction{
+			Kind: RemovalActionRemoveGroup, ID: "agent-group." + group.Name, ResourceID: group.Name,
+			Fingerprint: fingerprint, Destructive: true,
+		})
 	}
-	plan.Actions = append(plan.Actions, RemovalAction{
-		Kind: RemovalActionRemoveRuntime, ID: receipt.RuntimeBundleID,
-	})
+}
+
+func canDeleteRemovalReceipt(plan RemovalPlan) bool {
+	for _, retained := range plan.Retained {
+		if retained.Reason != RemovalReasonPreexisting {
+			return false
+		}
+	}
+	return true
 }
 
 // accountIdentityMatches confirms that a recorded managed account still matches
@@ -210,16 +302,31 @@ func (engine *Engine) ApplyRemoval(ctx context.Context, plan RemovalPlan) (Remov
 		return RemovalReport{}, err
 	}
 	defer func() { _ = lock.close() }()
+	fresh, err := engine.PlanRemoval(ctx, plan.RemoveState)
+	if err != nil {
+		return RemovalReport{}, err
+	}
+	if !reflect.DeepEqual(FilterRemovalPlan(plan), FilterRemovalPlan(fresh)) {
+		return RemovalReport{}, errors.New("removal plan is stale")
+	}
 	report := RemovalReport{
 		APIVersion: RemovalAPIVersion, InstallationName: receipt.InstallationName,
 		InstallationDigest: receipt.InstallationDigest, DeploymentDigest: receipt.DeploymentDigest,
 		Retained: plan.Retained, RemoveState: plan.RemoveState,
 	}
-	for _, action := range plan.Actions {
+	deletedReceipt := false
+	for _, action := range FilterRemovalPlan(plan).Actions {
 		if err := engine.executeRemovalAction(ctx, action); err != nil {
 			return RemovalReport{}, fmt.Errorf("remove %s %q: %w", action.Kind, action.ID, err)
 		}
+		deletedReceipt = deletedReceipt || action.Kind == RemovalActionDeleteReceipt
 		report.RemovedActions = append(report.RemovedActions, action)
+	}
+	if !deletedReceipt {
+		pruneRemovedReceiptResources(&receipt, report.RemovedActions)
+		if err := SaveReceipt(engine.options.Paths.StateDir, receipt); err != nil {
+			return RemovalReport{}, err
+		}
 	}
 	return report, nil
 }
@@ -227,16 +334,24 @@ func (engine *Engine) ApplyRemoval(ctx context.Context, plan RemovalPlan) (Remov
 //nolint:cyclop // Removal execution dispatches over one closed action enumeration.
 func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAction) error {
 	switch action.Kind {
-	case RemovalActionDisableService:
-		manager := engine.options.Manager
-		if err := manager.Stop(ctx, action.ID); err != nil {
+	case RemovalActionRemoveFile:
+		return removeReceiptPath(ctx, action, false)
+	case RemovalActionRemoveDirectory:
+		return removeReceiptPath(ctx, action, true)
+	case RemovalActionRemoveAccount:
+		if action.Fingerprint != "" {
+			if err := verifyRemovalFingerprint(ctx, action); err != nil {
+				return err
+			}
+		}
+		return removeManagedAccount(ctx, action.ResourceID, action.Home, action.Shell)
+	case RemovalActionRemoveGroup:
+		if err := verifyRemovalFingerprint(ctx, action); err != nil {
 			return err
 		}
-		return manager.Disable(ctx, action.ID)
-	case RemovalActionRemoveAccount:
-		return removeManagedAccount(ctx, action.ID, action.Detail)
+		return removeManagedGroup(ctx, action.ResourceID)
 	case RemovalActionRemoveRuntime:
-		return engine.installer().Rollback(ctx)
+		return engine.installer().DeactivateCandidate(ctx, action.ID)
 	case RemovalActionDeleteReceipt:
 		return DeleteReceipt(engine.options.Paths.StateDir)
 	case RemovalActionRemoveContainer:
@@ -246,8 +361,106 @@ func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAc
 	}
 }
 
+func verifyRemovalFingerprint(ctx context.Context, action RemovalAction) error {
+	includeContent := action.Kind == RemovalActionRemoveFile && !action.Destructive
+	current := componentprofile.ResourceFingerprint(ctx, api.Resource{
+		Kind: removalResourceKind(action), ID: action.ResourceID, Path: action.Path,
+	}, includeContent)
+	if current == "missing" {
+		return nil
+	}
+	if action.Fingerprint == "" || current != action.Fingerprint {
+		return errors.New("resource changed after removal planning")
+	}
+	return nil
+}
+
+func removalResourceKind(action RemovalAction) string {
+	if action.Kind == RemovalActionRemoveDirectory {
+		return "directory"
+	}
+	if action.Kind == RemovalActionRemoveAccount {
+		return "account"
+	}
+	if action.Kind == RemovalActionRemoveGroup {
+		return "group"
+	}
+	return "file"
+}
+
+func removeReceiptPath(ctx context.Context, action RemovalAction, directory bool) error {
+	if err := verifyRemovalFingerprint(ctx, action); err != nil {
+		return err
+	}
+	info, err := os.Lstat(action.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("removal path is unavailable or unsafe")
+	}
+	if directory != info.IsDir() {
+		return errors.New("removal path type changed")
+	}
+	if err := os.Remove(action.Path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func removeManagedGroup(ctx context.Context, name string) error {
+	if _, err := user.LookupGroup(name); err != nil {
+		var unknown user.UnknownGroupError
+		if errors.As(err, &unknown) {
+			return nil
+		}
+		return err
+	}
+	output, err := exec.CommandContext(ctx, "groupdel", name).CombinedOutput() // #nosec G204 -- receipt-bound validated group name.
+	if err != nil {
+		return fmt.Errorf("remove managed group %q: %w: %s", name, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func pruneRemovedReceiptResources(receipt *Receipt, actions []RemovalAction) {
+	removedResources, removedAccounts, removedGroups := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, action := range actions {
+		if action.ComponentID != "" {
+			removedResources[action.ComponentID+"\x00"+strings.TrimPrefix(action.ID, action.ComponentID+".")] = true
+		}
+		if action.Kind == RemovalActionRemoveAccount && strings.HasPrefix(action.ID, "agent.") {
+			removedAccounts[strings.TrimPrefix(action.ID, "agent.")] = true
+		}
+		if action.Kind == RemovalActionRemoveGroup && strings.HasPrefix(action.ID, "agent-group.") {
+			removedGroups[action.ResourceID] = true
+		}
+	}
+	resources := receipt.Resources[:0]
+	for _, resource := range receipt.Resources {
+		if !removedResources[resource.ComponentID+"\x00"+resource.ActionID] {
+			resources = append(resources, resource)
+		}
+	}
+	receipt.Resources = resources
+	accounts := receipt.Accounts[:0]
+	for _, account := range receipt.Accounts {
+		if !removedAccounts[account.ID] {
+			accounts = append(accounts, account)
+		}
+	}
+	receipt.Accounts = accounts
+	groups := receipt.Groups[:0]
+	for _, group := range receipt.Groups {
+		if !removedGroups[group.Name] {
+			groups = append(groups, group)
+		}
+	}
+	receipt.Groups = groups
+}
+
 // removeManagedAccount fails closed unless the account still matches the receipt.
-func removeManagedAccount(ctx context.Context, name, home string) error {
+func removeManagedAccount(ctx context.Context, name, home, shell string) error {
 	entry, err := user.Lookup(name)
 	if err != nil {
 		var unknown user.UnknownUserError
@@ -261,6 +474,11 @@ func removeManagedAccount(ctx context.Context, name, home string) error {
 	}
 	if runtime.GOOS != "linux" {
 		return errors.New("managed account removal is supported only on Linux")
+	}
+	entryData, err := exec.CommandContext(ctx, "getent", "passwd", name).Output() // #nosec G204 -- validated receipt-bound account name.
+	fields := strings.Split(strings.TrimSpace(string(entryData)), ":")
+	if err != nil || len(fields) != 7 || filepath.Clean(fields[5]) != filepath.Clean(home) || shell != "" && filepath.Clean(fields[6]) != filepath.Clean(shell) {
+		return errors.New("managed account changed before removal")
 	}
 	output, err := exec.CommandContext(ctx, "userdel", "--remove", name).CombinedOutput() // #nosec G204 -- validated managed account name from receipt.
 	if err != nil {
@@ -277,8 +495,8 @@ func FilterRemovalPlan(plan RemovalPlan) RemovalPlan {
 		plan.APIVersion = RemovalAPIVersion
 	}
 	slices.SortFunc(plan.Actions, func(a, b RemovalAction) int {
-		if a.Kind != b.Kind {
-			return strings.Compare(string(a.Kind), string(b.Kind))
+		if removalActionRank(a.Kind) != removalActionRank(b.Kind) {
+			return removalActionRank(a.Kind) - removalActionRank(b.Kind)
 		}
 		return strings.Compare(a.ID, b.ID)
 	})
@@ -289,6 +507,25 @@ func FilterRemovalPlan(plan RemovalPlan) RemovalPlan {
 		return strings.Compare(a.ID, b.ID)
 	})
 	return plan
+}
+
+func removalActionRank(kind RemovalActionKind) int {
+	switch kind {
+	case RemovalActionRemoveRuntime:
+		return 0
+	case RemovalActionRemoveFile, RemovalActionRemoveContainer:
+		return 1
+	case RemovalActionRemoveAccount:
+		return 2
+	case RemovalActionRemoveGroup:
+		return 3
+	case RemovalActionRemoveDirectory:
+		return 4
+	case RemovalActionDeleteReceipt:
+		return 5
+	default:
+		return 99
+	}
 }
 
 // RemovalPlanSummary is a short human-readable projection used by CLI output.

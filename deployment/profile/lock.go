@@ -71,6 +71,7 @@ func Lock(root string, check bool) error {
 		&deployment.Runtime.Manifest,
 		&deployment.Runtime.Signature,
 		&deployment.Runtime.PublicKey,
+		&deployment.Runtime.Activation,
 	}
 	for index := range deployment.Components {
 		if deployment.Components[index].Metadata != nil {
