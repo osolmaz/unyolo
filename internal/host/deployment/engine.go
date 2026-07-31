@@ -267,7 +267,7 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 		return Planned{}, err
 	}
 	responses = append(responses, identityResponse)
-	staleClients, cleanupResponse, err := engine.planStaleClients(ctx, responses)
+	staleClients, cleanupResponse, err := engine.planStaleClients(ctx, snapshot)
 	if err != nil {
 		return Planned{}, err
 	}
