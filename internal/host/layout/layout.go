@@ -26,6 +26,12 @@ func LinuxRoot() string { return linuxRoot }
 // DarwinRoot returns the production bundle root used by launchd hosts.
 func DarwinRoot() string { return darwinRoot }
 
+// BootstrapRoot returns the root-owned bootstrap staging root for the current
+// operating system. Every root staging directory lives beneath this root as
+// `bootstrap/<build>` so shared privilege code does not embed Linux-only
+// literals.
+func BootstrapRoot() string { return filepath.Join(Root(), "bootstrap") }
+
 // ExecutablePath returns one stable path through the active release pointer.
 func ExecutablePath(destination string) string {
 	return filepath.Join(Root(), "current", destination)

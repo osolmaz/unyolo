@@ -13,6 +13,7 @@ import (
 
 	deploymentplan "github.com/osolmaz/unyolo/deployment/plan"
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/internal/host/layout"
 )
 
 type bufferCloser struct{ bytes.Buffer }
@@ -124,7 +125,8 @@ func TestRootCommandDoesNotForwardGitHubCredentials(t *testing.T) {
 	command := rootWorkerCommand(t.Context(), "/tmp/bootstrap", strings.Repeat("a", 64), gh, strings.Repeat("b", 64), "0.4.1", "unyolo/v0.4.1", sourceCommit)
 	arguments := strings.Join(command.Args, "\x00")
 	if strings.Contains(arguments, "GH_TOKEN") || !strings.Contains(arguments, sourceCommit) ||
-		!strings.Contains(arguments, `"$tag" "$source_commit"`) {
+		!strings.Contains(arguments, `"$tag" "$source_commit"`) ||
+		!strings.Contains(arguments, layout.BootstrapRoot()) {
 		t.Fatalf("sudo arguments = %#v", command.Args)
 	}
 	if command.Env != nil {

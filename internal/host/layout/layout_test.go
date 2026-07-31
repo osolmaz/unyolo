@@ -46,6 +46,12 @@ func TestSafeDestination(t *testing.T) {
 	}
 }
 
+func TestBootstrapRoot(t *testing.T) {
+	if got := BootstrapRoot(); got != filepath.Join(Root(), "bootstrap") {
+		t.Fatalf("BootstrapRoot() = %q", got)
+	}
+}
+
 func TestValidCurrentTarget(t *testing.T) {
 	if !ValidCurrentTarget(filepath.Join("releases", "bundle-one")) {
 		t.Fatal("valid current target was rejected")

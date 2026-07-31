@@ -82,8 +82,8 @@ done < "$temporary/archive.list"
 mkdir "$temporary/extracted"
 tar -xzf "$temporary/$asset" -C "$temporary/extracted"
 case "$os" in
-  linux) state=/var/lib/unyolo-host ;;
-  darwin) state='/Library/Application Support/unyolo' ;;
+  linux) state=/var/lib/unyolo-host; bootstrap_root=/opt/unyolo/bootstrap ;;
+  darwin) state='/Library/Application Support/unyolo'; bootstrap_root='/Library/Application Support/unyolo/bootstrap' ;;
 esac
 install -d -o root -g root -m 0700 "$state"
 verified_releases="$state/verified-releases"
@@ -100,7 +100,7 @@ if [ ! -e "$verified_release" ]; then
 fi
 cp "$temporary/extracted/unyolo" "$temporary/unyolo"
 build=${release#unyolo/}
-destination="/opt/unyolo/bootstrap/$build"
+destination="$bootstrap_root/$build"
 install -d -o root -g root -m 0755 "$destination"
 install -o root -g root -m 0755 "$temporary/unyolo" "$destination/unyolo.new"
 mv -f "$destination/unyolo.new" "$destination/unyolo"

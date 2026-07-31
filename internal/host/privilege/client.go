@@ -18,6 +18,7 @@ import (
 	"syscall"
 
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
+	"github.com/osolmaz/unyolo/internal/host/layout"
 )
 
 const githubAttestationsURL = "https://api.github.com/repos/osolmaz/unyolo/attestations"
@@ -109,8 +110,8 @@ func validGitHubCLIMetadata(info os.FileInfo) bool {
 }
 
 func rootWorkerCommand(ctx context.Context, bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit string) *exec.Cmd {
-	script := `set -eu; bootstrap=$1; bootstrap_digest=$2; verifier=$3; verifier_digest=$4; build=$5; tag=$6; source_commit=$7; destination="/opt/unyolo/bootstrap/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$bootstrap" "$destination/bootstrap-root.sh.new"; install -o root -g root -m 0500 "$verifier" "$destination/gh-attestation-verifier.new"; bootstrap_actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || bootstrap_actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); verifier_actual=$(sha256sum "$destination/gh-attestation-verifier.new" 2>/dev/null | awk '{print $1}') || verifier_actual=$(shasum -a 256 "$destination/gh-attestation-verifier.new" | awk '{print $1}'); [ "$bootstrap_actual" = "$bootstrap_digest" ]; [ "$verifier_actual" = "$verifier_digest" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; mv -f "$destination/gh-attestation-verifier.new" "$destination/gh-attestation-verifier"; UNYOLO_GH_VERIFIER="$destination/gh-attestation-verifier" exec "$destination/bootstrap-root.sh" "$tag" "$source_commit"`
-	return exec.CommandContext(ctx, "sudo", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit) // #nosec G204 -- fixed staging command with verified release-derived values.
+	script := `set -eu; bootstrap=$1; bootstrap_digest=$2; verifier=$3; verifier_digest=$4; build=$5; tag=$6; source_commit=$7; bootstrap_root=$8; destination="$bootstrap_root/$build"; install -d -o root -g root -m 0755 "$destination"; install -o root -g root -m 0500 "$bootstrap" "$destination/bootstrap-root.sh.new"; install -o root -g root -m 0500 "$verifier" "$destination/gh-attestation-verifier.new"; bootstrap_actual=$(sha256sum "$destination/bootstrap-root.sh.new" 2>/dev/null | awk '{print $1}') || bootstrap_actual=$(shasum -a 256 "$destination/bootstrap-root.sh.new" | awk '{print $1}'); verifier_actual=$(sha256sum "$destination/gh-attestation-verifier.new" 2>/dev/null | awk '{print $1}') || verifier_actual=$(shasum -a 256 "$destination/gh-attestation-verifier.new" | awk '{print $1}'); [ "$bootstrap_actual" = "$bootstrap_digest" ]; [ "$verifier_actual" = "$verifier_digest" ]; mv -f "$destination/bootstrap-root.sh.new" "$destination/bootstrap-root.sh"; mv -f "$destination/gh-attestation-verifier.new" "$destination/gh-attestation-verifier"; UNYOLO_GH_VERIFIER="$destination/gh-attestation-verifier" exec "$destination/bootstrap-root.sh" "$tag" "$source_commit"`
+	return exec.CommandContext(ctx, "sudo", "sh", "-c", script, "unyolo-root-stage", bootstrap, expected, githubCLI, verifierDigest, build, tag, sourceCommit, layout.BootstrapRoot()) // #nosec G204 -- fixed staging command with verified release-derived values.
 }
 
 func prepareRootBootstrap(ctx context.Context, release, sourceCommit, githubCLI string, stderr io.Writer) (string, string, string, error) {
