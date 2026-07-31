@@ -164,6 +164,16 @@ type NavigationError struct{ Direction string }
 
 func (e NavigationError) Error() string { return "setup navigate " + e.Direction }
 
+// BackSentinel is the reserved option value used by renderers to expose
+// "Go back" as an inline choice. When a Select or Confirm returns this
+// value, the caller receives [NavigationError] with Direction "back".
+const BackSentinel = "__setup_back__"
+
+// EditSentinel is the reserved option value used by review-style Confirm
+// prompts to expose "Edit". When a Confirm returns this value, the caller
+// receives [NavigationError] with Direction "edit".
+const EditSentinel = "__setup_edit__"
+
 // Validate verifies a closed setup-flow step.
 func (s Step) Validate() error {
 	if s.APIVersion != APIVersion {

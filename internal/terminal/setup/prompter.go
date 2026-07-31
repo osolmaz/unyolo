@@ -122,8 +122,12 @@ func (p *Prompter) Note(_ context.Context, message, title string) error {
 
 // Select asks for one value.
 func (p *Prompter) Select(ctx context.Context, prompt flow.SelectPrompt) (string, error) {
+	navigable := prompt.Options
+	if prompt.Navigation.CanGoBack {
+		navigable = append(append([]flow.Option{}, prompt.Options...), flow.Option{Value: flow.BackSentinel, Label: "← Go back"})
+	}
 	value := prompt.InitialValue
-	options := huhOptions(prompt.Options)
+	options := huhOptions(navigable)
 	description, height := p.selectionLayout(prompt.Description, prompt.Navigation, len(options))
 	field := huh.NewSelect[string]().
 		Title(safeText(prompt.Message)).
@@ -137,14 +141,30 @@ func (p *Prompter) Select(ctx context.Context, prompt flow.SelectPrompt) (string
 	if err := p.runForm(ctx, field); err != nil {
 		return "", err
 	}
+	if value == flow.BackSentinel {
+		return "", flow.NavigationError{Direction: "back"}
+	}
 	return value, nil
 }
 
 // MultiSelect asks for zero or more stable values.
+//
+// When [flow.SelectPrompt.Navigation] enables Back, a preceding Select
+// offers Continue or "← Go back" so the user can leave the multi-select
+// without submitting an empty answer.
 func (p *Prompter) MultiSelect(ctx context.Context, prompt flow.SelectPrompt) ([]string, error) {
+	if prompt.Navigation.CanGoBack {
+		proceed, err := p.textProceed(ctx, prompt.Message)
+		if err != nil {
+			return nil, err
+		}
+		if !proceed {
+			return nil, flow.NavigationError{Direction: "back"}
+		}
+	}
 	values := append([]string(nil), prompt.InitialValues...)
 	options := huhOptions(prompt.Options)
-	description, height := p.selectionLayout(prompt.Description, prompt.Navigation, len(options))
+	description, height := p.selectionLayout(prompt.Description, flow.Navigation{}, len(options))
 	field := huh.NewMultiSelect[string]().
 		Title(safeText(prompt.Message)).
 		Description(description).
@@ -169,7 +189,22 @@ func (p *Prompter) MultiSelect(ctx context.Context, prompt flow.SelectPrompt) ([
 }
 
 // Text asks for a validated nonsecret value.
+//
+// When [flow.Prompt.Navigation] enables Back, a preceding confirm-style
+// prompt with a "Go back" negative label is offered before the input. The
+// user chooses to continue or go back, then the value is captured. This
+// keeps the same tier-one keybindings (Ctrl+A/E/W/K/U, Backspace) active
+// on the input itself.
 func (p *Prompter) Text(ctx context.Context, prompt flow.Prompt) (string, error) {
+	if prompt.Navigation.CanGoBack {
+		proceed, err := p.textProceed(ctx, prompt.Message)
+		if err != nil {
+			return "", err
+		}
+		if !proceed {
+			return "", flow.NavigationError{Direction: "back"}
+		}
+	}
 	value := prompt.InitialValue
 	field := huh.NewInput().
 		Title(safeText(prompt.Message)).
@@ -180,6 +215,20 @@ func (p *Prompter) Text(ctx context.Context, prompt flow.Prompt) (string, error)
 		Validate(promptValidator(prompt))
 	if err := p.runForm(ctx, field); err != nil {
 		return "", err
+	}
+	return value, nil
+}
+
+func (p *Prompter) textProceed(ctx context.Context, message string) (bool, error) {
+	value := true
+	field := huh.NewConfirm().
+		Title(safeText(message)).
+		Affirmative("Continue").
+		Negative("← Go back").
+		Inline(false).
+		Value(&value)
+	if err := p.runForm(ctx, field); err != nil {
+		return false, err
 	}
 	return value, nil
 }
@@ -230,17 +279,43 @@ func (p *Prompter) Secret(ctx context.Context, prompt flow.Prompt) ([]byte, erro
 }
 
 // Confirm asks for an explicit safe-default confirmation.
+//
+// When [flow.ConfirmPrompt.Navigation] enables Back a three-way Select is
+// offered instead of a two-state Confirm so the user can either choose the
+// primary action, the negative action, or go back.
 func (p *Prompter) Confirm(ctx context.Context, prompt flow.ConfirmPrompt) (bool, error) {
-	value := prompt.Initial
-	if prompt.Safe {
-		value = false
-	}
 	affirmative, negative := prompt.Affirmative, prompt.Negative
 	if affirmative == "" {
 		affirmative = "Continue"
 	}
 	if negative == "" {
 		negative = "Cancel"
+	}
+	if prompt.Navigation.CanGoBack {
+		options := []flow.Option{
+			{Value: "yes", Label: safeText(affirmative)},
+			{Value: "no", Label: safeText(negative)},
+			{Value: flow.BackSentinel, Label: "← Go back"},
+		}
+		initial := "no"
+		if !prompt.Safe && prompt.Initial {
+			initial = "yes"
+		}
+		value, err := p.Select(ctx, flow.SelectPrompt{
+			Message:      safeText(prompt.Message),
+			Description:  safeText(prompt.Description),
+			Options:      options,
+			InitialValue: initial,
+			Navigation:   flow.Navigation{},
+		})
+		if err != nil {
+			return false, err
+		}
+		return value == "yes", nil
+	}
+	value := prompt.Initial
+	if prompt.Safe {
+		value = false
 	}
 	field := huh.NewConfirm().
 		Title(safeText(prompt.Message)).
@@ -490,13 +565,36 @@ func terminalHeight(output io.Writer) int {
 	return height
 }
 
+// selectionLayout computes the description and viewport height for one
+// selection menu.
+//
+// Reserved lines account for: 2 lines for the title (bordered box + title
+// row), the wrapped description, 1 line for validation errors, 1 line for
+// the footer keybinding help, and 1 line of padding before the option
+// viewport. Only the option viewport itself is capped so option lines are
+// never hidden by title or footer.
 func (p *Prompter) selectionLayout(description string, navigation flow.Navigation, count int) (string, int) {
 	text := p.description(description, navigation)
-	overhead := 6 + len(wrap(text, max(20, p.width-4)))
-	if count+overhead <= p.height {
+	descriptionLines := 0
+	if strings.TrimSpace(text) != "" {
+		descriptionLines = len(wrap(text, max(20, p.width-4)))
+	}
+	titleLines := 2
+	errorLines := 1
+	footerLines := 1
+	padding := 1
+	overhead := titleLines + descriptionLines + errorLines + footerLines + padding
+	availableHeight := p.height
+	if availableHeight <= 0 {
+		availableHeight = 24
+	}
+	if count+overhead <= availableHeight {
 		return text, 0
 	}
-	visible := max(3, p.height-overhead)
+	visible := availableHeight - overhead
+	if visible < 3 {
+		visible = 3
+	}
 	if visible >= count {
 		return text, 0
 	}
@@ -505,7 +603,11 @@ func (p *Prompter) selectionLayout(description string, navigation flow.Navigatio
 		text += "\n"
 	}
 	text += fmt.Sprintf("%d more options below", hidden)
-	return text, min(p.height-2, visible+overhead+1)
+	viewport := min(availableHeight-2, visible+overhead+1)
+	if viewport < visible {
+		viewport = visible + 1
+	}
+	return text, viewport
 }
 
 func safeText(value string) string {
