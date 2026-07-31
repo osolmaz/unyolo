@@ -144,8 +144,7 @@ func planReceiptResources(ctx context.Context, plan *RemovalPlan, receipt Receip
 			plan.Retained = append(plan.Retained, retention)
 			continue
 		}
-		includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
-		current := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
+		current := receiptResourceFingerprint(ctx, resource)
 		if current != "missing" && current != resource.Fingerprint {
 			retention.Reason = RemovalReasonChanged
 			plan.Retained = append(plan.Retained, retention)
@@ -352,13 +351,19 @@ func (engine *Engine) ApplyRemoval(ctx context.Context, plan RemovalPlan) (Remov
 		InstallationDigest: receipt.InstallationDigest, DeploymentDigest: receipt.DeploymentDigest,
 		Retained: plan.Retained, RemoveState: plan.RemoveState,
 	}
-	deletedReceipt := false
+	deletedReceipt, reloadServices := false, false
 	for _, action := range FilterRemovalPlan(plan).Actions {
 		if err := engine.executeRemovalAction(ctx, action); err != nil {
 			return RemovalReport{}, fmt.Errorf("remove %s %q: %w", action.Kind, action.ID, err)
 		}
 		deletedReceipt = deletedReceipt || action.Kind == RemovalActionDeleteReceipt
+		reloadServices = reloadServices || action.Path != "" && filepath.Dir(action.Path) == "/etc/systemd/system"
 		report.RemovedActions = append(report.RemovedActions, action)
+	}
+	if reloadServices {
+		if err := engine.options.Manager.Reload(ctx); err != nil {
+			return RemovalReport{}, fmt.Errorf("reload native service definitions: %w", err)
+		}
 	}
 	if !deletedReceipt {
 		pruneRemovedReceiptResources(&receipt, report.RemovedActions)
@@ -404,10 +409,9 @@ func (engine *Engine) executeRemovalAction(ctx context.Context, action RemovalAc
 }
 
 func verifyRemovalFingerprint(ctx context.Context, action RemovalAction) error {
-	includeContent := action.Kind == RemovalActionRemoveFile && !action.Destructive
-	current := componentprofile.ResourceFingerprint(ctx, api.Resource{
-		Kind: removalResourceKind(action), ID: action.ResourceID, Path: action.Path,
-	}, includeContent)
+	current := receiptResourceFingerprint(ctx, ResourceReceipt{
+		Kind: removalResourceKind(action), ID: action.ResourceID, Path: action.Path, Data: action.Destructive,
+	})
 	if current == "missing" {
 		return nil
 	}

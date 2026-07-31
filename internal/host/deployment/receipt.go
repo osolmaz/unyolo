@@ -370,8 +370,7 @@ func populateReceiptResources(ctx context.Context, receipt *Receipt, planned Pla
 			enrichResourceReceipt(&resource, componentProfile)
 			resource.Data = resourceContainsData(resource, stateDirs[response.ComponentID])
 			if capturePostApply {
-				includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
-				resource.Fingerprint = componentprofile.ResourceFingerprint(ctx, action.Resource, includeContent)
+				resource.Fingerprint = receiptResourceFingerprint(ctx, resource)
 				if !receiptDigestPattern.MatchString(resource.Fingerprint) {
 					return fmt.Errorf("capture post-apply fingerprint for %s resource %q", resource.Kind, resource.ID)
 				}
@@ -450,6 +449,23 @@ func enrichResourceReceipt(receipt *ResourceReceipt, value componentprofile.Prof
 			}
 		}
 	}
+}
+
+func receiptResourceFingerprint(ctx context.Context, resource ResourceReceipt) string {
+	if resource.Kind == "directory" && resource.Data {
+		if _, err := os.Lstat(resource.Path); errors.Is(err, os.ErrNotExist) {
+			return "missing"
+		} else if err != nil {
+			return "unavailable"
+		}
+		value, err := sourceset.Digest(resource.Path)
+		if err != nil {
+			return "unavailable"
+		}
+		return value
+	}
+	includeContent := slices.Contains([]string{"client", "credential", "secret_store", "git_config"}, resource.Kind) || resource.Kind == "file" && !resource.Data
+	return componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
 }
 
 func resourceReceiptKey(resource ResourceReceipt) string {
@@ -548,8 +564,7 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 func RefreshReceiptFingerprints(ctx context.Context, value Receipt) (Receipt, error) {
 	for index := range value.Resources {
 		resource := &value.Resources[index]
-		includeContent := resource.Kind == "client" || resource.Kind == "file" && !resource.Data
-		fingerprint := componentprofile.ResourceFingerprint(ctx, api.Resource{Kind: resource.Kind, ID: resource.ID, Path: resource.Path}, includeContent)
+		fingerprint := receiptResourceFingerprint(ctx, *resource)
 		if !receiptDigestPattern.MatchString(fingerprint) {
 			return Receipt{}, fmt.Errorf("refresh fingerprint for %s resource %q", resource.Kind, resource.ID)
 		}
