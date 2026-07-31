@@ -530,7 +530,17 @@ func removeManagedAccount(ctx context.Context, name, home, shell, expectedHomeFi
 	}
 	output, err := exec.CommandContext(ctx, "userdel", "--remove", name).CombinedOutput() // #nosec G204 -- validated managed account name from receipt.
 	if err != nil {
-		return fmt.Errorf("remove managed account %q: %w: %s", name, err, strings.TrimSpace(string(output)))
+		if _, lookupErr := user.Lookup(name); lookupErr == nil {
+			return fmt.Errorf("remove managed account %q: %w: %s", name, err, strings.TrimSpace(string(output)))
+		} else {
+			var unknown user.UnknownUserError
+			if !errors.As(lookupErr, &unknown) {
+				return errors.Join(err, lookupErr)
+			}
+		}
+	}
+	if err := os.RemoveAll(home); err != nil {
+		return fmt.Errorf("remove managed account home %q: %w", home, err)
 	}
 	return nil
 }
