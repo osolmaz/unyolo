@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
 	"github.com/osolmaz/unyolo/operator/client"
 )
 
@@ -76,11 +77,17 @@ func readOperatorToken(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read operator token: %w", err)
 	}
-	token := strings.TrimSpace(string(data))
-	if token == "" {
-		return "", errors.New("operator token is empty")
+	values, err := secretfile.ParseBytes(data)
+	clear(data)
+	if err != nil || len(values) == 0 {
+		return "", errors.New("operator credential store is invalid or empty")
 	}
-	return token, nil
+	identities := make([]string, 0, len(values))
+	for identity := range values {
+		identities = append(identities, identity)
+	}
+	sort.Strings(identities)
+	return strings.TrimSpace(values[identities[0]]), nil
 }
 
 func (i Installer) startAndVerify(ctx context.Context, manifest Manifest) error {
