@@ -136,7 +136,12 @@ type githubDependencies struct {
 
 func newAdmissionDependencies(cfg config.Config, core coreDependencies) (*agentops.Store, *admission.Controller, error) {
 	operationStore := agentops.New(core.database)
-	controller, err := admission.NewConfigured([]string{cfg.ClientID}, cfg.Admission, operationStore.AdmissionUsage)
+	clientSecrets := cfg.EffectiveClientSecrets()
+	clientIDs := make([]string, 0, len(clientSecrets))
+	for identity := range clientSecrets {
+		clientIDs = append(clientIDs, identity)
+	}
+	controller, err := admission.NewConfigured(clientIDs, cfg.Admission, operationStore.AdmissionUsage)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -160,7 +165,7 @@ func newServerSkeleton(
 		githubClient: github.client, githubGitClient: github.gitClient,
 		githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: github.receivePackLimit,
-		operatorConfigured: cfg.OperatorSecret != "",
+		operatorConfigured: len(cfg.EffectiveOperatorSecrets()) > 0,
 		lfsActions:         map[string]githubLFSAction{},
 	}
 }
@@ -402,13 +407,9 @@ func githubCredentialMode(cfg config.Config) string {
 }
 
 func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *unyoloaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
-	operatorSecrets := map[string]string{}
-	if cfg.OperatorSecret != "" {
-		operatorSecrets[cfg.OperatorID] = cfg.OperatorSecret
-	}
 	control, err := controlplane.New(controlplane.Options{
 		Broker: "gh-broker", ApprovalBroker: "GitHub", Store: grantStore,
-		ClientSecrets: map[string]string{cfg.ClientID: cfg.SharedSecret}, OperatorSecrets: operatorSecrets,
+		ClientSecrets: cfg.EffectiveClientSecrets(), OperatorSecrets: cfg.EffectiveOperatorSecrets(),
 		Presenter: approval.Presenter{}, ActivationValidator: planValidator, Audit: auditWriter, State: grantStore.Database(),
 	})
 	if err != nil {

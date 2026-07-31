@@ -260,7 +260,7 @@ func loadServeInputs(opts serveOptions) (serveInputs, error) {
 	if err != nil {
 		return serveInputs{}, err
 	}
-	clients, err := secretfile.Parse(opts.secretsPath)
+	clients, err := secretfile.ParseWithOptions(opts.secretsPath, secretfile.ParseOptions{AllowEmpty: true})
 	if err != nil {
 		return serveInputs{}, err
 	}

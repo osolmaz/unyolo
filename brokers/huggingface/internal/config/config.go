@@ -383,7 +383,7 @@ func loadClients(getenv func(string) string) ([]Client, error) {
 		}
 		clients = append(clients, fromFile...)
 	}
-	if len(clients) == 0 {
+	if len(clients) == 0 && brokerEnv(getenv, "SECRETS_FILE") == "" {
 		return nil, fmt.Errorf("%s or %s is required", brokerEnvName("SHARED_SECRET"), brokerEnvName("SECRETS_FILE"))
 	}
 	return validateClients(clients)
@@ -452,11 +452,12 @@ func validateClients(clients []Client) ([]Client, error) {
 // parseSecretsFile reads `name = secret` lines. Blank lines and lines
 // starting with # are ignored.
 func parseSecretsFile(path string) ([]Client, error) {
-	return parseNamedSecretsFile(path, "SECRETS_FILE")
+	return parseNamedSecretsFile(path, "SECRETS_FILE", true)
 }
 
-func parseNamedSecretsFile(path string, envSuffix string) ([]Client, error) {
-	secrets, err := secretfile.Parse(path)
+func parseNamedSecretsFile(path string, envSuffix string, allowEmpty ...bool) ([]Client, error) {
+	options := secretfile.ParseOptions{AllowEmpty: len(allowEmpty) == 1 && allowEmpty[0]}
+	secrets, err := secretfile.ParseWithOptions(path, options)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", brokerEnvName(envSuffix), err)
 	}

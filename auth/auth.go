@@ -25,6 +25,8 @@ var (
 type Options struct {
 	// MinSecretBytes is the minimum accepted client secret length.
 	MinSecretBytes int
+	// AllowEmpty permits an explicitly configured server with no agent clients.
+	AllowEmpty bool
 }
 
 // Authenticator resolves Authorization headers to named clients.
@@ -37,7 +39,13 @@ func New(secrets map[string]string, opts Options) (*Authenticator, error) {
 	if opts.MinSecretBytes <= 0 {
 		opts.MinSecretBytes = MinimumSecretBytes
 	}
-	clients, err := secretset.New("client", secrets, opts.MinSecretBytes, nil)
+	var clients *secretset.Set
+	var err error
+	if opts.AllowEmpty {
+		clients, err = secretset.NewAllowEmpty("client", secrets, opts.MinSecretBytes, nil)
+	} else {
+		clients, err = secretset.New("client", secrets, opts.MinSecretBytes, nil)
+	}
 	if err != nil {
 		return nil, err
 	}

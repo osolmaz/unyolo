@@ -68,6 +68,13 @@ func TestBuildServerAssemblesUnyoloRuntime(t *testing.T) {
 	operatorsPath := write("operators", "onur = "+strings.Repeat("o", 32)+"\n")
 	opts := serveOptions{policyPath: policyPath, catalogPath: catalogPath, secretsPath: secretsPath, operatorSecrets: operatorsPath,
 		stateDirectory: filepath.Join(directory, "state"), helperSocket: filepath.Join(directory, "helper.sock")}
+	emptySecrets := write("empty-secrets", "# no clients yet\n")
+	emptyOptions := opts
+	emptyOptions.secretsPath = emptySecrets
+	inputs, err := loadServeInputs(emptyOptions)
+	if err != nil || len(inputs.clients) != 0 {
+		t.Fatalf("empty client store = %#v, %v", inputs.clients, err)
+	}
 	server, err := buildServerWithValidator(opts, &bytes.Buffer{}, func(string) error { return nil })
 	if err != nil || server.Handler() == nil || server.OperatorHandler() == nil {
 		t.Fatalf("buildServerWithValidator() = %+v, %v", server, err)

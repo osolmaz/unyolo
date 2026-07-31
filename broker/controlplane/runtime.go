@@ -70,7 +70,7 @@ func New(options Options) (*Runtime, error) {
 	if options.Audit == nil {
 		return nil, errors.New("audit recorder is required")
 	}
-	clients, err := auth.New(options.ClientSecrets, auth.Options{})
+	clients, err := auth.New(options.ClientSecrets, auth.Options{AllowEmpty: true})
 	if err != nil {
 		return nil, err
 	}

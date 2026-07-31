@@ -29,14 +29,22 @@ var (
 
 // Manifest pins one complete platform-specific unYOLO host release.
 type Manifest struct {
-	APIVersion             string      `json:"api_version"`
-	BundleID               string      `json:"bundle_id"`
-	SourceCommit           string      `json:"source_commit"`
-	OperatingSystem        string      `json:"operating_system"`
-	Architecture           string      `json:"architecture"`
-	OperatorContractDigest string      `json:"operator_contract_digest"`
-	AgentContractDigest    string      `json:"agent_contract_digest"`
-	Components             []Component `json:"components"`
+	APIVersion             string            `json:"api_version"`
+	BundleID               string            `json:"bundle_id"`
+	SourceCommit           string            `json:"source_commit"`
+	OperatingSystem        string            `json:"operating_system"`
+	Architecture           string            `json:"architecture"`
+	OperatorContractDigest string            `json:"operator_contract_digest"`
+	AgentContractDigest    string            `json:"agent_contract_digest"`
+	Components             []Component       `json:"components"`
+	SetupCapabilities      SetupCapabilities `json:"setup_capabilities,omitempty"`
+}
+
+// SetupCapabilities declares completed installer paths in this signed release.
+type SetupCapabilities struct {
+	NativeServiceBackend string   `json:"native_service_backend,omitempty"`
+	Features             []string `json:"features,omitempty"`
+	Integrations         []string `json:"integrations,omitempty"`
 }
 
 // Component is one separately released process or companion executable.
@@ -137,6 +145,9 @@ func (m Manifest) Validate(development bool) error {
 	if err := m.validateContracts(); err != nil {
 		return err
 	}
+	if err := m.validateSetupCapabilities(); err != nil {
+		return err
+	}
 	return m.validateComponents(development)
 }
 
@@ -160,6 +171,24 @@ func (m Manifest) validatePlatform() error {
 func (m Manifest) validateContracts() error {
 	if m.OperatorContractDigest != contract.OperatorV1Digest || m.AgentContractDigest != contract.AgentV1Digest {
 		return errors.New("runtime bundle protocol contract does not match this host command")
+	}
+	return nil
+}
+
+func (m Manifest) validateSetupCapabilities() error {
+	capabilities := m.SetupCapabilities
+	if capabilities.NativeServiceBackend != "" && !slices.Contains([]string{"systemd", "launchd"}, capabilities.NativeServiceBackend) {
+		return errors.New("setup native service backend is invalid")
+	}
+	if len(capabilities.Features) > 32 || len(capabilities.Integrations) > 32 {
+		return errors.New("setup capability collection exceeds limits")
+	}
+	seen := map[string]bool{}
+	for _, value := range append(append([]string(nil), capabilities.Features...), capabilities.Integrations...) {
+		if !identifierPattern.MatchString(value) || seen[value] {
+			return errors.New("setup capability is invalid or duplicated")
+		}
+		seen[value] = true
 	}
 	return nil
 }

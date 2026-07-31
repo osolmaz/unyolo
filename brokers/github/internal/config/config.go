@@ -12,6 +12,7 @@ import (
 	"github.com/osolmaz/unyolo/auth"
 	"github.com/osolmaz/unyolo/authorization/admission"
 	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/config/secretfile"
 	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
@@ -25,9 +26,11 @@ type Config struct {
 	ClientID                  string
 	SharedSecret              string
 	SecretsFile               string
+	ClientSecrets             map[string]string
 	OperatorID                string
 	OperatorSecret            string
 	OperatorSecretsFile       string
+	OperatorSecrets           map[string]string
 	OperatorEndpoint          *endpoint.Endpoint
 	GitHubToken               string
 	GitHubTokenFile           string
@@ -73,6 +76,9 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 	if err := cfg.loadCredentialFiles(); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.loadIdentityStores(); err != nil {
 		return Config{}, err
 	}
 	if err := cfg.Validate(); err != nil {
@@ -162,7 +168,11 @@ func loadOperatorEndpoint(env environment, cfg *Config, development, networkExpo
 
 func loadAdmissionConfig(env environment, cfg *Config) error {
 	admissionPath := env.value("GH_BROKER_ADMISSION_CONFIG", "")
-	loaded, err := admission.LoadFile(admissionPath, []string{cfg.ClientID})
+	clients := make([]string, 0, len(cfg.ClientSecrets))
+	for identity := range cfg.ClientSecrets {
+		clients = append(clients, identity)
+	}
+	loaded, err := admission.LoadFile(admissionPath, clients)
 	if err != nil {
 		return fmt.Errorf("GH_BROKER_ADMISSION_CONFIG: %w", err)
 	}
@@ -269,7 +279,7 @@ func (e environment) duration(name string, fallback time.Duration, allowZero boo
 func (c *Config) loadCredentialFiles() error {
 	loaders := []func() error{
 		c.loadGitHubTokenFile, c.loadGitHubAppFiles, c.loadGitHubAppClientFiles, c.loadGitHubWebhookSecretFile,
-		c.loadBrokerSecretFile, c.loadOperatorSecretFile, c.loadTelegramBotTokenFile,
+		c.loadTelegramBotTokenFile,
 	}
 	for _, load := range loaders {
 		if err := load(); err != nil {
@@ -336,31 +346,74 @@ func (c *Config) loadGitHubWebhookSecretFile() error {
 	return loadOptionalSecretFile(&c.GitHubWebhookSecret, c.GitHubWebhookSecretFile, "github webhook secret file")
 }
 
-func (c *Config) loadBrokerSecretFile() error {
-	return loadNamedSecret(&c.SharedSecret, c.SecretsFile, c.ClientID, "broker")
-}
-
-func (c *Config) loadOperatorSecretFile() error {
-	return loadNamedSecret(&c.OperatorSecret, c.OperatorSecretsFile, c.OperatorID, "operator")
-}
-
-func loadNamedSecret(target *string, path string, identity string, label string) error {
-	if *target != "" || path == "" {
-		return nil
-	}
-	secret, err := clientconfig.SecretFromFile(path, identity)
+func (c *Config) loadIdentityStores() error {
+	clients, err := collectIdentityStore(c.ClientID, c.SharedSecret, c.SecretsFile, true, "broker")
 	if err != nil {
-		return fmt.Errorf("read %s secret file: %w", label, err)
+		return err
 	}
-	*target = secret
+	operators, err := collectIdentityStore(c.OperatorID, c.OperatorSecret, c.OperatorSecretsFile, false, "operator")
+	if err != nil {
+		return err
+	}
+	c.ClientSecrets, c.OperatorSecrets = clients, operators
+	if c.SharedSecret == "" && c.ClientID != "" {
+		c.SharedSecret = clients[c.ClientID]
+	}
+	if c.OperatorSecret == "" && c.OperatorID != "" {
+		c.OperatorSecret = operators[c.OperatorID]
+	}
 	return nil
+}
+
+func collectIdentityStore(identity, inline, path string, allowEmpty bool, label string) (map[string]string, error) {
+	values := map[string]string{}
+	if inline != "" {
+		if identity == "" {
+			variable := map[string]string{"broker": "CLIENT", "operator": "OPERATOR"}[label]
+			return nil, fmt.Errorf("GH_BROKER_%s_ID is required with an inline secret", variable)
+		}
+		values[identity] = inline
+	}
+	if path != "" {
+		fromFile, err := secretfile.ParseWithOptions(path, secretfile.ParseOptions{AllowEmpty: allowEmpty})
+		if err != nil {
+			return nil, fmt.Errorf("read %s secret file: %w", label, err)
+		}
+		for name, secret := range fromFile {
+			if _, exists := values[name]; exists {
+				return nil, fmt.Errorf("duplicate %s identity %q", label, name)
+			}
+			values[name] = secret
+		}
+	}
+	return values, nil
+}
+
+// EffectiveClientSecrets returns an isolated client credential map.
+func (c Config) EffectiveClientSecrets() map[string]string {
+	return effectiveIdentityStore(c.ClientSecrets, c.ClientID, c.SharedSecret)
+}
+
+// EffectiveOperatorSecrets returns an isolated approver credential map.
+func (c Config) EffectiveOperatorSecrets() map[string]string {
+	return effectiveIdentityStore(c.OperatorSecrets, c.OperatorID, c.OperatorSecret)
+}
+
+func effectiveIdentityStore(values map[string]string, identity, inline string) map[string]string {
+	result := make(map[string]string, len(values)+1)
+	for name, secret := range values {
+		result[name] = secret
+	}
+	if identity != "" && inline != "" {
+		result[identity] = inline
+	}
+	return result
 }
 
 func (c Config) Validate() error {
 	return firstError(
 		initializedEndpoint(c.AgentEndpoint, "GH_BROKER_AGENT_ENDPOINT is required"),
-		required(c.ClientID, "GH_BROKER_CLIENT_ID is required"),
-		minimumBytes(c.SharedSecret, minimumSharedSecretBytes, "GH_BROKER_SHARED_SECRET"),
+		identityStores(c),
 		operatorConfig(c),
 		githubCredential(c),
 		required(c.ScopeFile, "GH_BROKER_SCOPE_FILE is required"),
@@ -384,24 +437,33 @@ func upstreamOrigins(c Config) error {
 	return nil
 }
 
-func operatorConfig(c Config) error {
-	if c.OperatorSecret == "" {
-		return nil
+func identityStores(c Config) error {
+	if len(c.EffectiveClientSecrets()) == 0 && c.SecretsFile == "" {
+		return errors.New("GH_BROKER_SECRETS_FILE is required when no clients are configured")
 	}
-	return firstError(operatorCredentials(c), operatorListener(c))
-}
-
-func operatorCredentials(c Config) error {
-	if err := clientconfig.ValidateClientName(c.OperatorID); err != nil {
-		return fmt.Errorf("GH_BROKER_OPERATOR_ID: %w", err)
-	}
-	if err := minimumBytes(c.OperatorSecret, minimumSharedSecretBytes, "GH_BROKER_OPERATOR_SHARED_SECRET"); err != nil {
-		return err
-	}
-	if c.OperatorSecret == c.SharedSecret {
-		return errors.New("operator secret must differ from the client secret")
+	allSecrets := map[string]string{}
+	for kind, values := range map[string]map[string]string{"client": c.EffectiveClientSecrets(), "operator": c.EffectiveOperatorSecrets()} {
+		for identity, secret := range values {
+			if err := clientconfig.ValidateClientName(identity); err != nil {
+				return fmt.Errorf("%s identity %q: %w", kind, identity, err)
+			}
+			if err := minimumBytes(secret, minimumSharedSecretBytes, kind+" secret"); err != nil {
+				return err
+			}
+			if previous, exists := allSecrets[secret]; exists {
+				return fmt.Errorf("%s identity %q secret must differ from %s", kind, identity, previous)
+			}
+			allSecrets[secret] = kind + " " + identity
+		}
 	}
 	return nil
+}
+
+func operatorConfig(c Config) error {
+	if len(c.EffectiveOperatorSecrets()) == 0 {
+		return nil
+	}
+	return operatorListener(c)
 }
 
 func operatorListener(c Config) error {

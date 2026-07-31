@@ -137,8 +137,10 @@ func TestLoadReadsNamedClientAndOperatorSecrets(t *testing.T) {
 	dir := t.TempDir()
 	clientSecret := strings.Repeat("c", minimumSharedSecretBytes)
 	operatorSecret := strings.Repeat("o", minimumSharedSecretBytes)
-	clients := writeFile(t, dir, "clients", "agent-a = "+clientSecret+"\n")
-	operators := writeFile(t, dir, "operators", "operator-a = "+operatorSecret+"\n")
+	secondClientSecret := strings.Repeat("d", minimumSharedSecretBytes)
+	secondOperatorSecret := strings.Repeat("p", minimumSharedSecretBytes)
+	clients := writeFile(t, dir, "clients", "agent-a = "+clientSecret+"\nagent-b = "+secondClientSecret+"\n")
+	operators := writeFile(t, dir, "operators", "operator-a = "+operatorSecret+"\noperator-b = "+secondOperatorSecret+"\n")
 	values := developmentValues()
 	delete(values, "GH_BROKER_SHARED_SECRET")
 	values["GH_BROKER_SECRETS_FILE"] = clients
@@ -146,7 +148,8 @@ func TestLoadReadsNamedClientAndOperatorSecrets(t *testing.T) {
 	values["GH_BROKER_OPERATOR_SECRETS_FILE"] = operators
 	values["GH_BROKER_OPERATOR_ENDPOINT"] = "tcp://127.0.0.1:32192"
 	cfg, err := LoadFromLookup(mapLookup(values))
-	if err != nil || cfg.SharedSecret != clientSecret || cfg.OperatorSecret != operatorSecret || cfg.OperatorEndpoint == nil {
+	if err != nil || cfg.SharedSecret != clientSecret || cfg.OperatorSecret != operatorSecret || cfg.OperatorEndpoint == nil ||
+		len(cfg.ClientSecrets) != 2 || len(cfg.OperatorSecrets) != 2 || cfg.ClientSecrets["agent-b"] != secondClientSecret || cfg.OperatorSecrets["operator-b"] != secondOperatorSecret {
 		t.Fatalf("named credentials = %+v, %v", cfg, err)
 	}
 	if err := os.WriteFile(operators, []byte("operator-a = "+clientSecret+"\n"), 0o600); err != nil {
@@ -154,6 +157,18 @@ func TestLoadReadsNamedClientAndOperatorSecrets(t *testing.T) {
 	}
 	if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), "must differ") || strings.Contains(err.Error(), clientSecret) {
 		t.Fatalf("reused operator secret error = %v", err)
+	}
+}
+
+func TestLoadAllowsExplicitEmptyClientStore(t *testing.T) {
+	dir := t.TempDir()
+	values := developmentValues()
+	delete(values, "GH_BROKER_CLIENT_ID")
+	delete(values, "GH_BROKER_SHARED_SECRET")
+	values["GH_BROKER_SECRETS_FILE"] = writeFile(t, dir, "clients", "# no clients yet\n")
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil || len(cfg.ClientSecrets) != 0 {
+		t.Fatalf("empty client store = %#v, %v", cfg.ClientSecrets, err)
 	}
 }
 
