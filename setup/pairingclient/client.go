@@ -28,6 +28,7 @@ type Result struct {
 	Invitation pairingv1.Invitation
 	Bundle     pairingv1.Bundle
 	CAPath     string
+	backups    []backup
 }
 
 // ErrCancelled reports that the pairing was cancelled or expired before the
@@ -66,8 +67,12 @@ func Claim(ctx context.Context, encoded, home string) (Result, error) {
 	if err := transition(ctx, client, invitation.Endpoint, invitation.PairingID, bundle.ClaimSecret, "ready"); err != nil {
 		return Result{}, errors.Join(err, restore(backups))
 	}
-	return Result{Invitation: invitation, Bundle: bundle, CAPath: caPath}, nil
+	return Result{Invitation: invitation, Bundle: bundle, CAPath: caPath, backups: backups}, nil
 }
+
+// Rollback restores client files captured before a pairing claim that did not
+// reach verified activation.
+func Rollback(result Result) error { return restore(result.backups) }
 
 func WaitForActive(ctx context.Context, result Result) error {
 	client, err := invitationClient(result.Invitation)

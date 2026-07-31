@@ -729,6 +729,12 @@ func runClientOnly(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err != nil {
 		return err
 	}
+	activated := false
+	defer func() {
+		if !activated {
+			_ = pairingclient.Rollback(result)
+		}
+	}()
 	if err := pairingclient.WaitForActive(ctx, result); err != nil {
 		return err
 	}
@@ -738,6 +744,7 @@ func runClientOnly(ctx context.Context, prompter flow.SetupPrompter, store sessi
 	if err := pairingclient.MarkVerified(ctx, result); err != nil {
 		return err
 	}
+	activated = true
 	setupSession.Phase = session.PhaseComplete
 	if err := store.Save(*setupSession); err != nil {
 		return err
