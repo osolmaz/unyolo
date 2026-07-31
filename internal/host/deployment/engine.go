@@ -55,6 +55,7 @@ type Planned struct {
 	Accounts       map[string]identity.Account
 	ActiveBundleID string
 	Commands       map[string]adapterruntime.Command
+	StaleClients   []ResourceReceipt
 }
 
 // SecretSource binds one logical slot to a protected file for this invocation.
@@ -266,6 +267,13 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 		return Planned{}, err
 	}
 	responses = append(responses, identityResponse)
+	staleClients, cleanupResponse, err := engine.planStaleClients(ctx, responses)
+	if err != nil {
+		return Planned{}, err
+	}
+	if cleanupResponse != nil {
+		responses = append(responses, *cleanupResponse)
+	}
 	if err := validateCredentialOwnership(responses); err != nil {
 		return Planned{}, err
 	}
@@ -277,7 +285,7 @@ func (engine *Engine) Plan(ctx context.Context, profileRoot string) (Planned, er
 	if err != nil {
 		return Planned{}, err
 	}
-	return Planned{Plan: value, Snapshot: snapshot, Responses: responses, Accounts: accounts, ActiveBundleID: active, Commands: commands}, nil
+	return Planned{Plan: value, Snapshot: snapshot, Responses: responses, Accounts: accounts, ActiveBundleID: active, Commands: commands, StaleClients: staleClients}, nil
 }
 
 // ApplyInstallation rechecks root compilation before executing a generated installation.
@@ -843,6 +851,7 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 		Rollback:        func(context.Context, string) error { return nil },
 		RollbackRunning: func(context.Context) error { return nil },
 	})
+	steps = append(steps, engine.staleClientSteps(planned)...)
 	return steps, nil
 }
 
@@ -933,6 +942,9 @@ func (engine *Engine) finalizationHandlers(planned Planned) map[string]func(cont
 	for _, service := range recoveryServices(planned) {
 		handlers["service:"+service] = func(context.Context, string) error { return nil }
 	}
+	for kind, handler := range engine.cleanupHandlers() {
+		handlers[kind] = handler
+	}
 	return handlers
 }
 
@@ -967,6 +979,9 @@ func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.
 	for _, service := range recoveryServices(planned) {
 		service := service
 		handlers["service:"+service] = func(ctx context.Context, _ string) error { return engine.options.Manager.Start(ctx, service) }
+	}
+	for kind := range engine.cleanupHandlers() {
+		handlers[kind] = engine.restoreStaleClient
 	}
 	return handlers
 }
