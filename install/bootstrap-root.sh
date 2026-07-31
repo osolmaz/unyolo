@@ -96,6 +96,7 @@ if [ ! -e "$verified_release" ]; then
   chown -R root:root "$verified_new"
   find "$verified_new" -type d -exec chmod 0755 {} +
   find "$verified_new" -type f -exec chmod 0644 {} +
+  find "$verified_new/source-set/artifacts" -type f -exec chmod 0555 {} +
   mv "$verified_new" "$verified_release"
 fi
 cp "$temporary/extracted/unyolo" "$temporary/unyolo"
