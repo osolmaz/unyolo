@@ -196,6 +196,34 @@ func TestWaitForActiveReportsRevocation(t *testing.T) {
 	}
 }
 
+func TestRollbackRemovesFilesWhenActivationDoesNotComplete(t *testing.T) {
+	t.Parallel()
+	env := newPairingTestEnv(t)
+	invitation, err := env.store.Create(pairingstore.InvitationOptions{
+		ID: "pair-a", Endpoint: env.pairingURL, CACertificate: env.caCert, ServerName: "127.0.0.1",
+		ExpiresAt: env.now.Add(10 * time.Minute), Bundle: env.bundleTemplate(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Claim(t.Context(), invitation, env.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientPath, err := clientconfig.Path(env.home, "gh-broker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Rollback(result); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{clientPath, result.CAPath} {
+		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("pairing file %q survived rollback: %v", path, err)
+		}
+	}
+}
+
 func TestClaimRestoresPreexistingClientFilesOnFailure(t *testing.T) {
 	t.Parallel()
 	env := newPairingTestEnv(t)
