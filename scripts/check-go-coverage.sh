@@ -7,10 +7,11 @@ minimum_host_coverage="70.0"
 coverfile="$(mktemp)"
 host_coverfile="$(mktemp)"
 # Deterministic generators and process/platform adapters use focused gates.
-# Host deployment is measured separately so its platform-specific account,
-# privilege, and terminal paths do not dilute the long-standing repository
-# aggregate while still enforcing a meaningful package-family threshold.
-excluded_packages='/brokers/github/cmd/generate-github-surfaces$|/cmd/unyolo(-[^/]+)?$|/deployment/|/internal/host/(deployment|identity|privilege)$|/internal/terminal/setup$|/internal/userinstall$'
+# Guided setup and host deployment are measured together so their platform-
+# specific account, pairing, privilege, and terminal paths do not dilute the
+# long-standing repository aggregate while still enforcing one meaningful
+# package-family threshold.
+excluded_packages='/brokers/github/cmd/generate-github-surfaces$|/cmd/unyolo(-[^/]+)?$|/deployment/|/internal/config/client$|/internal/host/|/internal/pairing($|/)|/internal/terminal/setup$|/internal/userinstall$|/setup/'
 mapfile -t test_packages < <(
   go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... |
     sed '/^$/d' |
@@ -41,11 +42,12 @@ awk -v total="$total" -v minimum="$minimum_total_coverage" \
 
 host_packages=(
   ./deployment/...
-  ./internal/host/deployment
-  ./internal/host/identity
-  ./internal/host/privilege
+  ./internal/config/client
+  ./internal/host/...
+  ./internal/pairing/...
   ./internal/terminal/setup
   ./internal/userinstall
+  ./setup/...
 )
 go test "${host_packages[@]}" -coverprofile="$host_coverfile"
 host_total="$(coverage_total "$host_coverfile")"
