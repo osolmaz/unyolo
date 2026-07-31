@@ -22,6 +22,37 @@ func TestGoalChoicesHideIncompletePaths(t *testing.T) {
 	}
 }
 
+func TestServiceLocationChoicesHideIncompletePaths(t *testing.T) {
+	t.Parallel()
+	native := capability.Snapshot{Features: []capability.Feature{capability.FeatureNativeService}}
+	if choices := ServiceLocationChoices(native); len(choices) != 1 || choices[0].Value != "native" {
+		t.Fatalf("native-only service location choices = %#v", choices)
+	}
+	dockerOnly := capability.Snapshot{Features: []capability.Feature{capability.FeatureDockerServices}}
+	if choices := ServiceLocationChoices(dockerOnly); len(choices) != 1 || choices[0].Value != "docker" {
+		t.Fatalf("docker-only service location choices = %#v", choices)
+	}
+	both := capability.Snapshot{Features: []capability.Feature{capability.FeatureNativeService, capability.FeatureDockerServices}}
+	if choices := ServiceLocationChoices(both); !HasChoice(choices, "native") || !HasChoice(choices, "docker") {
+		t.Fatalf("both service locations should be offered, got %#v", choices)
+	}
+	if choices := ServiceLocationChoices(capability.Snapshot{}); len(choices) != 0 {
+		t.Fatalf("service location choices with no capabilities = %#v", choices)
+	}
+}
+
+func TestAgentLocationChoicesHideContainerWithoutDockerAgent(t *testing.T) {
+	t.Parallel()
+	local := capability.Snapshot{Features: []capability.Feature{capability.FeatureLocalAccounts}}
+	if HasChoice(AgentLocationChoices(local), "container") {
+		t.Fatal("container choice must be hidden without docker_agent capability")
+	}
+	withDocker := capability.Snapshot{Features: []capability.Feature{capability.FeatureLocalAccounts, capability.FeatureDockerAgent}}
+	if !HasChoice(AgentLocationChoices(withDocker), "container") {
+		t.Fatal("container choice must be offered when docker_agent capability is present")
+	}
+}
+
 func TestRemotePairingChoiceHiddenWithoutCapability(t *testing.T) {
 	t.Parallel()
 	nativeOnly := capability.Snapshot{Features: []capability.Feature{capability.FeatureNativeService, capability.FeatureLocalSocket, capability.FeatureLocalAccounts}}
