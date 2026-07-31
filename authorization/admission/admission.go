@@ -118,7 +118,7 @@ func newController(clients []string, limits Limits, usage UsageFunc, now func() 
 func newConfiguredController(clients []string, config Config, usage UsageFunc, now func() time.Time) (*Controller, error) {
 	config = normalizedConfig(config)
 	if !validControllerDependencies(clients, config, usage, now) {
-		return nil, errors.New("admission clients, limits, usage reader, and clock are required")
+		return nil, errors.New("admission limits, usage reader, and clock are required")
 	}
 	states, err := clientStates(clients)
 	if err != nil {
@@ -139,7 +139,7 @@ func normalizedConfig(config Config) Config {
 }
 
 func validControllerDependencies(clients []string, config Config, usage UsageFunc, now func() time.Time) bool {
-	return usage != nil && now != nil && len(clients) > 0 && validLimits(config.Default)
+	return usage != nil && now != nil && validLimits(config.Default)
 }
 
 func configuredClientLimits(states map[string]*clientState, config Config) (map[string]ClientLimits, error) {

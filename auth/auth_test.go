@@ -79,6 +79,16 @@ func TestAuthenticateRequest(t *testing.T) {
 	}
 }
 
+func TestEmptyAuthenticatorRejectsEveryCredential(t *testing.T) {
+	authenticator, err := New(nil, Options{AllowEmpty: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := authenticator.AuthenticateHeader("Bearer " + agentSecret); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("AuthenticateHeader() error = %v", err)
+	}
+}
+
 func TestNewValidatesClients(t *testing.T) {
 	if _, err := New(nil, Options{}); err == nil {
 		t.Fatal("New(nil) error = nil, want error")

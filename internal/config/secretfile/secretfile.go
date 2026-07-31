@@ -15,8 +15,18 @@ const maxBytes = 1024 * 1024
 
 var identityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$`)
 
+// ParseOptions controls whether an intentionally empty store is valid.
+type ParseOptions struct {
+	AllowEmpty bool
+}
+
 // Parse reads `name = secret` records from path.
 func Parse(path string) (map[string]string, error) {
+	return ParseWithOptions(path, ParseOptions{})
+}
+
+// ParseWithOptions reads a named-secret store with an explicit empty-store policy.
+func ParseWithOptions(path string, options ParseOptions) (map[string]string, error) {
 	file, err := os.Open(path) // #nosec G304 -- operator-configured credential path.
 	if err != nil {
 		return nil, fmt.Errorf("open named secrets: %w", err)
@@ -29,11 +39,16 @@ func Parse(path string) (map[string]string, error) {
 	if closeErr != nil {
 		return nil, fmt.Errorf("close named secrets: %w", closeErr)
 	}
-	return ParseBytes(data)
+	return ParseBytesWithOptions(data, options)
 }
 
 // ParseBytes parses deterministic named-secret records.
 func ParseBytes(data []byte) (map[string]string, error) {
+	return ParseBytesWithOptions(data, ParseOptions{})
+}
+
+// ParseBytesWithOptions parses records with an explicit empty-store policy.
+func ParseBytesWithOptions(data []byte, options ParseOptions) (map[string]string, error) {
 	if len(data) > maxBytes {
 		return nil, fmt.Errorf("named secrets exceed %d bytes", maxBytes)
 	}
@@ -51,7 +66,7 @@ func ParseBytes(data []byte) (map[string]string, error) {
 		}
 		secrets[name] = secret
 	}
-	if len(secrets) == 0 {
+	if len(secrets) == 0 && !options.AllowEmpty {
 		return nil, errors.New("named secrets contain no identities")
 	}
 	return secrets, nil
@@ -71,7 +86,12 @@ func parseLine(line string) (string, string, bool) {
 
 // Render returns sorted `name = secret` records.
 func Render(secrets map[string]string) ([]byte, error) {
-	if len(secrets) == 0 {
+	return RenderWithOptions(secrets, ParseOptions{})
+}
+
+// RenderWithOptions renders a store with an explicit empty-store policy.
+func RenderWithOptions(secrets map[string]string, options ParseOptions) ([]byte, error) {
+	if len(secrets) == 0 && !options.AllowEmpty {
 		return nil, errors.New("named secrets contain no identities")
 	}
 	names := make([]string, 0, len(secrets))

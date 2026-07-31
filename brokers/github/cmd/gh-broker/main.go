@@ -169,7 +169,7 @@ func buildServers(ctx context.Context, cfg config.Config) ([]serverhttp.Binding,
 		_ = api.Close()
 		return nil, err
 	}
-	servers, err := newGitHubServers(api, listeners, cfg.OperatorSecret != "")
+	servers, err := newGitHubServers(api, listeners, len(cfg.EffectiveOperatorSecrets()) > 0)
 	if err != nil {
 		_ = endpoint.CloseSet(listeners)
 		_ = api.Close()
@@ -197,7 +197,7 @@ func newGitHubAPI(ctx context.Context, cfg config.Config) (*httpapi.Server, erro
 
 func listenGitHubEndpoints(cfg config.Config) (map[string]net.Listener, error) {
 	listenerSpecs := []endpoint.Named{{Name: "agent", Endpoint: cfg.AgentEndpoint}}
-	if cfg.OperatorSecret != "" {
+	if len(cfg.EffectiveOperatorSecrets()) > 0 {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *cfg.OperatorEndpoint})
 	}
 	if cfg.GitEndpoint != nil {

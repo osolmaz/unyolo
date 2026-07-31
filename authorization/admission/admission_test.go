@@ -138,8 +138,12 @@ func TestControllerSerializesConcurrentReservations(t *testing.T) {
 }
 
 func TestControllerRejectsInvalidConfigurationAndUsageFailure(t *testing.T) {
-	if _, err := New(nil, DefaultLimits(), func(context.Context, string) (Usage, error) { return Usage{}, nil }); err == nil {
-		t.Fatal("empty client set accepted")
+	empty, err := New(nil, DefaultLimits(), func(context.Context, string) (Usage, error) { return Usage{}, nil })
+	if err != nil {
+		t.Fatalf("empty server admission: %v", err)
+	}
+	if _, err := empty.Admit(t.Context(), "agent"); err == nil {
+		t.Fatal("empty server admitted an unknown client")
 	}
 	controller, err := New([]string{"agent"}, DefaultLimits(), func(context.Context, string) (Usage, error) {
 		return Usage{}, errors.New("offline")

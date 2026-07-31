@@ -36,6 +36,20 @@ func TestLoadRequiresRuntimeAndAppliesTuningDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadAllowsExplicitEmptyClientStore(t *testing.T) {
+	dir := t.TempDir()
+	secrets := filepath.Join(dir, "secrets")
+	if err := os.WriteFile(secrets, []byte("# no clients yet\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(testGetenv(map[string]string{
+		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SECRETS_FILE": secrets,
+	}))
+	if err != nil || len(cfg.Clients) != 0 {
+		t.Fatalf("Load() clients = %#v, %v", cfg.Clients, err)
+	}
+}
+
 func TestLoadReadsAndValidatesGitEndpoint(t *testing.T) {
 	env := map[string]string{
 		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",

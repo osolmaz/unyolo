@@ -52,3 +52,18 @@ func TestRenderRejectsMultilineSecrets(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 }
+
+func TestExplicitEmptyStore(t *testing.T) {
+	options := ParseOptions{AllowEmpty: true}
+	parsed, err := ParseBytesWithOptions([]byte("# no clients yet\n"), options)
+	if err != nil || len(parsed) != 0 {
+		t.Fatalf("ParseBytesWithOptions() = %#v, %v", parsed, err)
+	}
+	rendered, err := RenderWithOptions(map[string]string{}, options)
+	if err != nil || len(rendered) != 0 {
+		t.Fatalf("RenderWithOptions() = %q, %v", rendered, err)
+	}
+	if _, err := ParseBytes(nil); err == nil {
+		t.Fatal("default parser accepted empty store")
+	}
+}

@@ -22,7 +22,16 @@ type Set struct {
 
 // New validates unique names and secrets, rejecting hashes in forbidden.
 func New(kind string, secrets map[string]string, minBytes int, forbidden map[[sha256.Size]byte]struct{}) (*Set, error) {
-	if len(secrets) == 0 {
+	return newSet(kind, secrets, minBytes, forbidden, false)
+}
+
+// NewAllowEmpty validates a store that intentionally starts without identities.
+func NewAllowEmpty(kind string, secrets map[string]string, minBytes int, forbidden map[[sha256.Size]byte]struct{}) (*Set, error) {
+	return newSet(kind, secrets, minBytes, forbidden, true)
+}
+
+func newSet(kind string, secrets map[string]string, minBytes int, forbidden map[[sha256.Size]byte]struct{}, allowEmpty bool) (*Set, error) {
+	if len(secrets) == 0 && !allowEmpty {
 		return nil, fmt.Errorf("at least one %s secret is required", kind)
 	}
 	seenIDs := make(map[string]struct{}, len(secrets))
