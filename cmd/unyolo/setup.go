@@ -853,22 +853,47 @@ func chooseSession(ctx context.Context, prompter flow.SetupPrompter, store sessi
 		return store.Load(options.ResumeID)
 	}
 	if !options.New {
-		if existing, found, err := store.NewestIncomplete(build); err != nil {
-			return session.Session{}, err
-		} else if found {
-			resume, confirmErr := prompter.Confirm(ctx, flow.ConfirmPrompt{
-				Message:     setupcopy.Screens[setupcopy.ScreenResumeChoice].Question,
-				Description: setupcopy.Screens[setupcopy.ScreenResumeChoice].Reason,
-				Affirmative: setupcopy.Screens[setupcopy.ScreenResumeChoice].Primary,
-				Negative:    setupcopy.Screens[setupcopy.ScreenResumeChoice].Secondary,
-				Initial:     true,
-			})
-			if confirmErr != nil {
-				return session.Session{}, confirmErr
+		for {
+			existing, found, err := store.NewestIncomplete(build)
+			if err != nil {
+				var unreadable *session.UnreadableSessionsError
+				if !errors.As(err, &unreadable) {
+					return session.Session{}, err
+				}
+				discard, confirmErr := prompter.Confirm(ctx, flow.ConfirmPrompt{
+					Message:     setupcopy.Screens[setupcopy.ScreenDiscardProgress].Question,
+					Description: setupcopy.Screens[setupcopy.ScreenDiscardProgress].Reason,
+					Affirmative: setupcopy.Screens[setupcopy.ScreenDiscardProgress].Primary,
+					Negative:    setupcopy.Screens[setupcopy.ScreenDiscardProgress].Secondary,
+					Safe:        true,
+				})
+				if confirmErr != nil {
+					return session.Session{}, confirmErr
+				}
+				if !discard {
+					return session.Session{}, flow.CancelledError{}
+				}
+				if err := store.DiscardUnreadable(unreadable.SessionIDs()); err != nil {
+					return session.Session{}, err
+				}
+				continue
 			}
-			if resume {
-				return existing, nil
+			if found {
+				resume, confirmErr := prompter.Confirm(ctx, flow.ConfirmPrompt{
+					Message:     setupcopy.Screens[setupcopy.ScreenResumeChoice].Question,
+					Description: setupcopy.Screens[setupcopy.ScreenResumeChoice].Reason,
+					Affirmative: setupcopy.Screens[setupcopy.ScreenResumeChoice].Primary,
+					Negative:    setupcopy.Screens[setupcopy.ScreenResumeChoice].Secondary,
+					Initial:     true,
+				})
+				if confirmErr != nil {
+					return session.Session{}, confirmErr
+				}
+				if resume {
+					return existing, nil
+				}
 			}
+			break
 		}
 	}
 	created, err := session.New(build, time.Now())

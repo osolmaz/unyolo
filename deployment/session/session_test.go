@@ -1,8 +1,10 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +49,43 @@ func TestSessionRoundTripAndResume(t *testing.T) {
 	}
 	if err := store.Cancel(value.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUnreadableSessionRequiresExplicitDiscard(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "state")
+	store := Store{Directory: directory}
+	valid, err := New("build", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(valid); err != nil {
+		t.Fatal(err)
+	}
+	oldID := strings.Repeat("a", 32)
+	old := `{"api_version":"unyolo.io/setup-session/v1","id":"` + oldID + `","build_id":"v0.6.3","deployment":"default"}`
+	if err := os.WriteFile(filepath.Join(directory, oldID+".json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.NewestIncomplete("build"); err == nil {
+		t.Fatal("unreadable setup progress was ignored")
+	} else {
+		var unreadable *UnreadableSessionsError
+		if !errors.As(err, &unreadable) || !slices.Equal(unreadable.SessionIDs(), []string{oldID}) {
+			t.Fatalf("NewestIncomplete() error = %T %v", err, err)
+		}
+		if err := store.DiscardUnreadable(unreadable.SessionIDs()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(directory, oldID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("old setup progress still exists: %v", err)
+	}
+	if loaded, err := store.Load(valid.ID); err != nil || loaded.ID != valid.ID {
+		t.Fatalf("valid setup progress changed: %#v, %v", loaded, err)
+	}
+	if err := store.DiscardUnreadable([]string{valid.ID}); err == nil {
+		t.Fatal("readable setup progress was discarded")
 	}
 }
 
