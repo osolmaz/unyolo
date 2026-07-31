@@ -30,6 +30,10 @@ type Result struct {
 	CAPath     string
 }
 
+// ErrCancelled reports that the pairing was cancelled or expired before the
+// server activated the reviewed connection.
+var ErrCancelled = errors.New("pairing was cancelled before activation")
+
 type backup struct {
 	path   string
 	data   []byte
@@ -77,8 +81,8 @@ func WaitForActive(ctx context.Context, result Result) error {
 		if requestErr == nil && state == "active" {
 			return nil
 		}
-		if requestErr == nil && (state == "expired" || state == "revoked") {
-			return errors.New("pairing was cancelled before activation")
+		if errors.Is(requestErr, ErrCancelled) || (requestErr == nil && (state == "expired" || state == "revoked")) {
+			return ErrCancelled
 		}
 		select {
 		case <-ctx.Done():
@@ -200,6 +204,9 @@ func status(ctx context.Context, client *http.Client, endpoint, id, secret strin
 		return "", err
 	}
 	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode == http.StatusGone {
+		return "", ErrCancelled
+	}
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("pairing status returned HTTP %d", response.StatusCode)
 	}
@@ -234,7 +241,7 @@ func publish(home string, bundle pairingv1.Bundle) (string, []backup, error) {
 		return "", nil, err
 	}
 	if err := store.WriteFileAtomic(caPath, certificate, 0o600); err != nil {
-		return "", nil, err
+		return "", nil, errors.Join(err, restore(backups))
 	}
 	for _, connection := range bundle.Connections {
 		_, err = clientconfig.Write(clientconfig.Config{
