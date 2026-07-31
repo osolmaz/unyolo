@@ -17,9 +17,12 @@ import (
 )
 
 type fakeDeploymentEngine struct {
-	planned hostdeployment.Planned
-	report  hostdeployment.Verification
-	secret  string
+	planned       hostdeployment.Planned
+	report        hostdeployment.Verification
+	secret        string
+	removalPlan   hostdeployment.RemovalPlan
+	removalReport hostdeployment.RemovalReport
+	removalErr    error
 }
 
 func (engine *fakeDeploymentEngine) Plan(context.Context, string) (hostdeployment.Planned, error) {
@@ -43,6 +46,14 @@ func (engine *fakeDeploymentEngine) ApplyDescriptors(_ context.Context, _ string
 
 func (engine *fakeDeploymentEngine) ApplyInstallationDescriptors(ctx context.Context, _ string, profile, digest string, files map[string]*os.File) (hostdeployment.Verification, error) {
 	return engine.ApplyDescriptors(ctx, profile, digest, files)
+}
+
+func (engine *fakeDeploymentEngine) PlanRemoval(context.Context, bool) (hostdeployment.RemovalPlan, error) {
+	return engine.removalPlan, engine.removalErr
+}
+
+func (engine *fakeDeploymentEngine) ApplyRemoval(context.Context, hostdeployment.RemovalPlan) (hostdeployment.RemovalReport, error) {
+	return engine.removalReport, engine.removalErr
 }
 
 func TestWorkerServeCancelAndApply(t *testing.T) {

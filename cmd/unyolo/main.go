@@ -69,7 +69,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 func systemUsageError() error {
-	return errors.New("usage: unyolo setup | unyolo system <profile|validate|plan|apply|verify|export|install|upgrade|status|doctor|rollback>")
+	return errors.New("usage: unyolo setup [status|cancel|discard|repair|reconfigure|remove] | unyolo system <profile|validate|plan|apply|verify|export|install|upgrade|status|doctor|rollback>")
 }
 
 func runSetupWorker(ctx context.Context, args []string, stdout, stderr io.Writer) error {

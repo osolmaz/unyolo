@@ -40,6 +40,7 @@ type Options struct {
 	Development    bool
 	AdapterTimeout time.Duration
 	Identity       identity.Inspector
+	Now            func() time.Time
 }
 
 // Engine plans, applies, and verifies deployment packs.
@@ -347,7 +348,21 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(planned)); err != nil {
 		return Verification{}, err
 	}
+	receipt, err := ReceiptFromPlan(planned, planned.Snapshot.Deployment.Name, engine.now())
+	if err != nil {
+		return Verification{}, fmt.Errorf("record ownership receipt: %w", err)
+	}
+	if err := SaveReceipt(engine.options.Paths.StateDir, receipt); err != nil {
+		return Verification{}, fmt.Errorf("save ownership receipt: %w", err)
+	}
 	return engine.Verify(ctx, profileRoot)
+}
+
+func (engine *Engine) now() time.Time {
+	if engine.options.Now != nil {
+		return engine.options.Now()
+	}
+	return time.Now()
 }
 
 // Verify checks the active runtime and every real component adapter path.

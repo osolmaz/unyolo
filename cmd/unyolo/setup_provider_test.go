@@ -119,7 +119,13 @@ func (*fakeProtectedWorker) Plan(string) (privilege.Response, error) {
 func (*fakeProtectedWorker) PlanInstallation(string, string) (privilege.Response, error) {
 	return privilege.Response{}, nil
 }
+func (*fakeProtectedWorker) PlanRemoval(bool) (privilege.Response, error) {
+	return privilege.Response{}, nil
+}
 func (*fakeProtectedWorker) Apply(string, map[string][]byte) (privilege.Result, error) {
+	return privilege.Result{}, nil
+}
+func (*fakeProtectedWorker) ApplyRemoval() (privilege.Result, error) {
 	return privilege.Result{}, nil
 }
 func (*fakeProtectedWorker) Cancel() error { return nil }

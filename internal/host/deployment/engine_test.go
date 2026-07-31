@@ -86,6 +86,10 @@ func TestEnginePlanApplyVerifyNoop(t *testing.T) {
 	if !report.Healthy || report.RuntimeBundleID != "engine-test" {
 		t.Fatalf("report = %#v", report)
 	}
+	if receipt, found, receiptErr := LoadReceipt(state); receiptErr != nil || !found ||
+		receipt.RuntimeBundleID != "engine-test" || receipt.DeploymentName != "engine-host" {
+		t.Fatalf("ownership receipt = %#v, found=%v, err=%v", receipt, found, receiptErr)
+	}
 	exported, err := engine.ExportObserved(t.Context(), pack)
 	if err != nil || exported.DeploymentName != "engine-host" || len(exported.Components) != 1 {
 		t.Fatalf("ExportObserved() = %#v, %v", exported, err)

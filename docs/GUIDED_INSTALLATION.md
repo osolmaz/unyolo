@@ -356,6 +356,43 @@ A credential-services-only installation starts with zero agent connections. Addi
 removing a connection updates the same installation record. A client-only setup on another machine
 stores only its local client configuration and connection receipt.
 
+The installation is paired with a durable, root-owned ownership receipt
+(`unyolo.io/ownership-receipt/v1`) under the host state directory. The receipt records the
+installation and deployment digests, the runtime bundle identity, every enabled native service, and
+each managed connection. It marks accounts as `created` when unYOLO's setup added them so removal
+can distinguish installation-owned resources from preexisting host state.
+
+## Lifecycle commands
+
+The default flow supports these lifecycle actions after the first apply:
+
+- `unyolo setup` again — recompiles the recorded installation and shows a diff before applying
+  changes. This path is used to add, rotate, or remove providers, approvers, connections, or
+  integrations.
+- `unyolo setup reconfigure` — same recovery-safe transaction as `unyolo setup`, but skips the
+  first-run introduction.
+- `unyolo setup repair` — recompiles the same installation, replans, and reapplies unchanged. It
+  never widens policy, rotates retained credentials, or rewrites resources unless the reviewed plan
+  names that action.
+- `unyolo setup remove` — reads the ownership receipt, plans a safe removal, and prompts for two
+  confirmations. The first removes services, managed accounts, and installation-owned resources.
+  The second confirmation, gated behind `--remove-state`, additionally deletes the receipt and
+  optionally listed data paths.
+- `unyolo setup discard --confirm <session-id>` (or `--all`) — removes uncommitted local setup
+  session state without touching host services.
+
+Removal always fails closed. A managed account whose identity or home changed since the receipt
+was recorded is retained and reported. Preexisting accounts are never deleted. Provider credentials
+and broker state directories remain unless the destructive confirmation names them explicitly.
+
+Interrupted publications are recoverable. The installation store writes a marker before renaming
+directories and updates its phase at each safe boundary. On resume, `publishing` and `applying`
+phases restore the previous installation source; the `committed` phase finishes the transaction by
+cleaning up backups while keeping the new source.
+
+The user CLI (`unyolo`) remains installed after `remove` completes. Removing the command itself is
+a separate, opt-in step.
+
 ## Navigation and saved progress
 
 Every choice screen must support Back and Continue as well as Cancel. The final review must provide Edit links

@@ -252,12 +252,17 @@ func checksumFor(path, name string) (string, error) {
 
 // Plan asks the worker to inspect protected state and return one plan.
 func (client *Client) Plan(profile string) (Response, error) {
-	return client.plan(Request{APIVersion: APIVersion, InputKind: "profile", Profile: profile})
+	return client.plan(Request{APIVersion: APIVersion, InputKind: InputKindProfile, Profile: profile})
 }
 
 // PlanInstallation asks root to recompile and compare a generated installation.
 func (client *Client) PlanInstallation(installation, profile string) (Response, error) {
-	return client.plan(Request{APIVersion: APIVersion, InputKind: "installation", Installation: installation, Profile: profile})
+	return client.plan(Request{APIVersion: APIVersion, InputKind: InputKindInstallation, Installation: installation, Profile: profile})
+}
+
+// PlanRemoval asks the worker to project a safe removal plan.
+func (client *Client) PlanRemoval(removeState bool) (Response, error) {
+	return client.planRemoval(Request{APIVersion: APIVersion, InputKind: InputKindRemoval, RemoveState: removeState})
 }
 
 func (client *Client) plan(request Request) (Response, error) {
@@ -272,6 +277,44 @@ func (client *Client) plan(request Request) (Response, error) {
 		return Response{}, errors.New("setup worker returned an invalid plan")
 	}
 	return response, nil
+}
+
+func (client *Client) planRemoval(request Request) (Response, error) {
+	if err := deploymentruntime.WriteFrame(client.input, request); err != nil {
+		return Response{}, err
+	}
+	var response Response
+	if err := deploymentruntime.ReadFrame(client.output, &response); err != nil {
+		return Response{}, err
+	}
+	if response.APIVersion != APIVersion || response.RemovalPlan.APIVersion == "" {
+		return Response{}, errors.New("setup worker returned an invalid removal plan")
+	}
+	return response, nil
+}
+
+// ApplyRemoval commits a reviewed removal plan through the same worker.
+func (client *Client) ApplyRemoval() (Result, error) {
+	decision := Decision{APIVersion: APIVersion, Action: "apply"}
+	if err := deploymentruntime.WriteFrame(client.input, decision); err != nil {
+		return Result{}, err
+	}
+	if err := client.input.Close(); err != nil {
+		return Result{}, err
+	}
+	var result Result
+	if err := deploymentruntime.ReadFrame(client.output, &result); err != nil {
+		return Result{}, err
+	}
+	if err := client.command.Wait(); err != nil {
+		client.cleanup()
+		return Result{}, fmt.Errorf("setup worker failed: %w", err)
+	}
+	client.cleanup()
+	if result.APIVersion != APIVersion || result.Status != "succeeded" {
+		return Result{}, errors.New("setup worker did not succeed")
+	}
+	return result, nil
 }
 
 // Apply binds the exact plan and streams transient secret frames.

@@ -12,7 +12,14 @@ import (
 	files "github.com/osolmaz/unyolo/internal/storage/files"
 )
 
-const EntryFilename = "installation.json"
+const (
+	EntryFilename = "installation.json"
+
+	// Phase values persisted by the recoverable publication transaction.
+	phasePublishing = "publishing"
+	phaseApplying   = "applying"
+	phaseCommitted  = "committed"
+)
 
 type Store struct {
 	Root string
@@ -83,7 +90,7 @@ func (store Store) Publish(value Installation, generatedRoot string, apply func(
 		return err
 	}
 	backup := ""
-	state := marker{APIVersion: APIVersion, Name: value.Name, Phase: "publishing"}
+	state := marker{APIVersion: APIVersion, Name: value.Name, Phase: phasePublishing}
 	markerPath := filepath.Join(store.Root, ".transaction.json")
 	if _, statErr := os.Lstat(current); statErr == nil {
 		backup = current + fmt.Sprintf(".backup-%d", time.Now().UnixNano())
@@ -103,7 +110,7 @@ func (store Store) Publish(value Installation, generatedRoot string, apply func(
 		_ = os.Remove(markerPath)
 		return err
 	}
-	state.Phase = "applying"
+	state.Phase = phaseApplying
 	if err := files.WriteJSONAtomic(markerPath, state, 0o600); err != nil {
 		_ = restoreDirectory(current, backup)
 		return err
@@ -111,13 +118,20 @@ func (store Store) Publish(value Installation, generatedRoot string, apply func(
 	if err := apply(filepath.Join(current, "generated")); err != nil {
 		return errors.Join(err, restoreDirectory(current, backup), os.Remove(markerPath))
 	}
+	state.Phase = phaseCommitted
+	if err := files.WriteJSONAtomic(markerPath, state, 0o600); err != nil {
+		// Apply completed. Downgrading the marker would falsely trigger rollback on resume.
+		return err
+	}
 	if backup != "" {
 		_ = os.RemoveAll(backup)
 	}
 	return os.Remove(markerPath)
 }
 
-// Recover restores an interrupted publication before another setup starts.
+// Recover finishes or rolls back an interrupted publication safely.
+//
+//nolint:cyclop // Recovery dispatches on one closed phase enumeration for the durable transaction.
 func (store Store) Recover() error {
 	markerPath := filepath.Join(store.Root, ".transaction.json")
 	data, err := os.ReadFile(markerPath) // #nosec G304 -- fixed path below validated root.
@@ -131,14 +145,43 @@ func (store Store) Recover() error {
 	if err := json.Unmarshal(data, &state); err != nil || state.APIVersion != APIVersion || !validName(state.Name) {
 		return errors.New("installation transaction marker is invalid")
 	}
+	if state.Backup != "" && (!filepath.IsAbs(state.Backup) || filepath.Clean(state.Backup) != state.Backup) {
+		return errors.New("installation transaction backup path is invalid")
+	}
 	current, err := store.Directory(state.Name)
 	if err != nil {
 		return err
 	}
-	if err := restoreDirectory(current, state.Backup); err != nil {
-		return err
+	switch state.Phase {
+	case phasePublishing, phaseApplying:
+		if err := restoreDirectory(current, state.Backup); err != nil {
+			return err
+		}
+	case phaseCommitted:
+		// Apply completed before the marker could be cleared. Finish by
+		// discarding the backup while keeping the new installation source.
+		if state.Backup != "" {
+			if err := os.RemoveAll(state.Backup); err != nil {
+				return err
+			}
+		}
+	default:
+		return errors.New("installation transaction marker phase is invalid")
 	}
 	return os.Remove(markerPath)
+}
+
+// Discard removes one installation source entirely without touching root state.
+// It is used by removal and cleanup after a successful host uninstall.
+func (store Store) Discard(name string) error {
+	directory, err := store.Directory(name)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(directory); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func restoreDirectory(current, backup string) error {
