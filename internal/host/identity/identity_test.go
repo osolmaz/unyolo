@@ -43,6 +43,24 @@ func TestInspectDeploymentAcceptsSeparatedAccounts(t *testing.T) {
 	}
 }
 
+func TestInspectDeploymentAcceptsReducedSharedAccount(t *testing.T) {
+	shared := &user.User{Username: "onur", Uid: "1001", Gid: "1001", HomeDir: "/home/onur"}
+	inspector := fakeInspector(map[string]*user.User{"onur": shared}, map[string][]string{"onur": {"1001", "27"}})
+	deployment := profile.Deployment{
+		Agents: []profile.Agent{{ID: "onur", Target: profile.AgentTarget{
+			Kind: "local_account", Isolation: "reduced", UnixUser: "onur", AccountMode: "current", Home: "/home/onur", Shell: "/bin/false",
+		}}},
+		Operators: []profile.Operator{{ID: "onur", UnixUser: "onur"}},
+	}
+	accounts, err := inspector.InspectDeployment(context.Background(), deployment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accounts["agent:onur"].UID != accounts["operator:onur"].UID {
+		t.Fatalf("shared account = %#v", accounts)
+	}
+}
+
 func TestInspectDeploymentFailureModes(t *testing.T) {
 	baseUsers := map[string]*user.User{
 		"agent":    {Username: "agent", Uid: "1001", Gid: "1001", HomeDir: "/home/agent"},

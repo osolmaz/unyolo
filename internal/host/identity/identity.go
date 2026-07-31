@@ -59,6 +59,7 @@ func (inspector Inspector) InspectDeployment(ctx context.Context, deployment pro
 	}
 	result := map[string]Account{}
 	usedUIDs := map[int]string{}
+	reducedUIDs := map[int]bool{}
 	for _, agent := range deployment.Agents {
 		if agent.Target.Kind != "local_account" {
 			continue
@@ -79,6 +80,7 @@ func (inspector Inspector) InspectDeployment(ctx context.Context, deployment pro
 			return nil, fmt.Errorf("agent %q shares UID with %s", agent.ID, previous)
 		}
 		usedUIDs[account.UID] = "agent " + agent.ID
+		reducedUIDs[account.UID] = agent.Target.Isolation == "reduced"
 		result["agent:"+agent.ID] = account
 	}
 	for _, operator := range deployment.Operators {
@@ -89,7 +91,7 @@ func (inspector Inspector) InspectDeployment(ctx context.Context, deployment pro
 		if account.UID == 0 {
 			return nil, fmt.Errorf("operator %q must not bind root directly", operator.ID)
 		}
-		if previous := usedUIDs[account.UID]; previous != "" {
+		if previous := usedUIDs[account.UID]; previous != "" && !reducedUIDs[account.UID] {
 			return nil, fmt.Errorf("operator %q shares UID with %s", operator.ID, previous)
 		}
 		usedUIDs[account.UID] = "operator " + operator.ID
