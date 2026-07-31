@@ -507,18 +507,7 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan deploymentplan.Plan) (map[string][]byte, error) {
 	secrets := map[string][]byte{}
 	for _, slot := range privilege.RequiredSecretSlots(plan) {
-		if strings.Contains(slot, "-client-") || strings.Contains(slot, "-approver-") {
-			value := make([]byte, 32)
-			if _, err := rand.Read(value); err != nil {
-				clearSetupSecrets(secrets)
-				return nil, err
-			}
-			secrets[slot] = []byte(base64.RawURLEncoding.EncodeToString(value))
-			clear(value)
-			continue
-		}
-		label := friendlyCredentialLabel(slot)
-		value, err := prompter.Secret(ctx, flow.Prompt{Message: label, Description: "This is sent once to the selected credential service and is not saved in setup progress.", Required: true})
+		value, err := collectPlanSecret(ctx, prompter, slot)
 		if err != nil {
 			clearSetupSecrets(secrets)
 			return nil, err
@@ -526,6 +515,49 @@ func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan d
 		secrets[slot] = value
 	}
 	return secrets, validateSetupSecretPairs(secrets)
+}
+
+func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot string) ([]byte, error) {
+	if strings.Contains(slot, "-client-") || strings.Contains(slot, "-approver-") {
+		value := make([]byte, 32)
+		if _, err := rand.Read(value); err != nil {
+			return nil, err
+		}
+		encoded := []byte(base64.RawURLEncoding.EncodeToString(value))
+		clear(value)
+		return encoded, nil
+	}
+	if strings.Contains(slot, "github-app-private-key") {
+		path, err := prompter.Text(ctx, flow.Prompt{Message: "Path to the GitHub App private key", Description: "unYOLO reads the selected PEM file once and sends it directly to the GitHub service.", Required: true})
+		if err != nil {
+			return nil, err
+		}
+		return readSetupCredentialFile(path)
+	}
+	if strings.Contains(slot, "github-app-id") {
+		value, err := prompter.Text(ctx, flow.Prompt{Message: "GitHub App ID", Description: "Use the numeric App ID shown in the GitHub App settings.", Required: true})
+		return []byte(value), err
+	}
+	return prompter.Secret(ctx, flow.Prompt{Message: friendlyCredentialLabel(slot), Description: "This is sent once to the selected credential service and is not saved in setup progress.", Required: true})
+}
+
+func readSetupCredentialFile(path string) ([]byte, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, errors.New("credential file path must be absolute and clean")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() == 0 || info.Size() > 1024*1024 {
+		return nil, errors.New("credential file must be a nonempty regular file without symbolic links")
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- explicit validated user-selected credential file.
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(string(data), "-----BEGIN") || !strings.Contains(string(data), "PRIVATE KEY-----") {
+		clear(data)
+		return nil, errors.New("GitHub App private key file is not PEM encoded")
+	}
+	return data, nil
 }
 
 func friendlyCredentialLabel(slot string) string {
