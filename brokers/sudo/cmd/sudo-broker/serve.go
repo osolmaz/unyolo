@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -42,6 +43,9 @@ type serveOptions struct {
 	telegramToken    string
 	telegramChatID   int64
 	admissionConfig  string
+	tlsCertificate   string
+	tlsPrivateKey    string
+	networkExposure  bool
 	development      bool
 }
 
@@ -106,7 +110,11 @@ func listenServeBindings(opts serveOptions, server *routes.Server) ([]serverhttp
 	if server.OperatorHandler() != nil {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "operator", Endpoint: *opts.operatorEndpoint})
 	}
-	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: opts.development})
+	tlsConfig, err := sudoServerTLSConfig(opts)
+	if err != nil {
+		return nil, err
+	}
+	listeners, err := endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: opts.development, TLSConfig: tlsConfig})
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +156,10 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	flags.StringVar(&opts.telegramToken, "telegram-token-file", "", "private Telegram bot token file")
 	flags.Int64Var(&opts.telegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
 	flags.StringVar(&opts.admissionConfig, "admission-config", "", "absolute admission limits JSON")
+	flags.StringVar(&opts.tlsCertificate, "tls-cert-file", "", "TLS server certificate")
+	flags.StringVar(&opts.tlsPrivateKey, "tls-key-file", "", "TLS server private key")
+	var networkExposure string
+	flags.StringVar(&networkExposure, "network-exposure", "", "set to allow for reviewed network listeners")
 	flags.BoolVar(&opts.development, "development", false, "enable foreground development path rules")
 	if err := flags.Parse(args); err != nil {
 		return serveOptions{}, err
@@ -155,12 +167,17 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	if err := validateServeRequiredFlags(flags.NArg(), opts, agentEndpoint); err != nil {
 		return serveOptions{}, err
 	}
-	parsedAgent, err := endpoint.Parse(agentEndpoint, endpoint.ParseOptions{})
+	if networkExposure != "" && networkExposure != "allow" {
+		return serveOptions{}, errors.New("--network-exposure must be allow when set")
+	}
+	opts.networkExposure = networkExposure == "allow"
+	parseOptions := endpoint.ParseOptions{AllowNetworkTCP: opts.networkExposure, AllowNetworkTLS: opts.networkExposure}
+	parsedAgent, err := endpoint.Parse(agentEndpoint, parseOptions)
 	if err != nil {
 		return serveOptions{}, fmt.Errorf("agent endpoint: %w", err)
 	}
 	opts.agentEndpoint = parsedAgent
-	if err := parseServeOperatorEndpoint(&opts, operatorEndpoint, parsedAgent); err != nil {
+	if err := parseServeOperatorEndpoint(&opts, operatorEndpoint, parsedAgent, parseOptions); err != nil {
 		return serveOptions{}, err
 	}
 	if err := validateServeSecurityOptions(opts); err != nil {
@@ -177,11 +194,11 @@ func validateServeRequiredFlags(extraArgs int, opts serveOptions, agentEndpoint 
 	return nil
 }
 
-func parseServeOperatorEndpoint(opts *serveOptions, operatorEndpoint string, agent endpoint.Endpoint) error {
+func parseServeOperatorEndpoint(opts *serveOptions, operatorEndpoint string, agent endpoint.Endpoint, parseOptions endpoint.ParseOptions) error {
 	if opts.operatorSecrets == "" {
 		return nil
 	}
-	parsedOperator, err := endpoint.Parse(operatorEndpoint, endpoint.ParseOptions{})
+	parsedOperator, err := endpoint.Parse(operatorEndpoint, parseOptions)
 	if err != nil {
 		return fmt.Errorf("operator endpoint: %w", err)
 	}
@@ -190,6 +207,13 @@ func parseServeOperatorEndpoint(opts *serveOptions, operatorEndpoint string, age
 	}
 	opts.operatorEndpoint = &parsedOperator
 	return nil
+}
+
+func sudoServerTLSConfig(opts serveOptions) (*tls.Config, error) {
+	if opts.tlsCertificate == "" {
+		return nil, nil
+	}
+	return endpoint.ServerTLSConfig(opts.tlsCertificate, opts.tlsPrivateKey)
 }
 
 func validateServeSecurityOptions(opts serveOptions) error {
@@ -201,6 +225,15 @@ func validateServeSecurityOptions(opts serveOptions) error {
 	}
 	if opts.operatorSecrets == "" && opts.telegramToken == "" {
 		return errors.New("an operator credential or Telegram approval channel is required")
+	}
+	needsTLS := opts.agentEndpoint.Scheme() == endpoint.SchemeTLS || opts.operatorEndpoint != nil && opts.operatorEndpoint.Scheme() == endpoint.SchemeTLS
+	if needsTLS != (opts.tlsCertificate != "" && opts.tlsPrivateKey != "") {
+		return errors.New("--tls-cert-file and --tls-key-file are required exactly for TLS listeners")
+	}
+	if needsTLS {
+		if _, err := sudoServerTLSConfig(opts); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -276,7 +309,7 @@ func loadServeInputs(opts serveOptions) (serveInputs, error) {
 }
 
 func validateServeInputFiles(opts serveOptions, validateRootFile func(string) error) error {
-	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken, opts.admissionConfig} {
+	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken, opts.admissionConfig, opts.tlsCertificate, opts.tlsPrivateKey} {
 		if path == "" {
 			continue
 		}

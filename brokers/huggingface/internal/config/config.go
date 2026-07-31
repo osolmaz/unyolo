@@ -49,25 +49,27 @@ type Client struct {
 
 // Config is the validated broker configuration.
 type Config struct {
-	HFToken           string
-	HFTokenFile       string
-	Clients           []Client
-	Operators         []Client
-	AgentEndpoint     endpoint.Endpoint
-	GitEndpoint       *endpoint.Endpoint
-	OperatorEndpoint  *endpoint.Endpoint
-	Development       bool
-	ScopeFile         string
-	StateDir          string
-	MaxPackBytes      int64
-	HFTimeout         time.Duration
-	UpstreamHubURL    string
-	UpstreamRouterURL string
-	XetPython         string
-	TelegramBotToken  string
-	TelegramAPIBase   string
-	TelegramChatID    int64
-	Admission         admission.Config
+	HFToken            string
+	HFTokenFile        string
+	Clients            []Client
+	Operators          []Client
+	AgentEndpoint      endpoint.Endpoint
+	GitEndpoint        *endpoint.Endpoint
+	OperatorEndpoint   *endpoint.Endpoint
+	TLSCertificateFile string
+	TLSPrivateKeyFile  string
+	Development        bool
+	ScopeFile          string
+	StateDir           string
+	MaxPackBytes       int64
+	HFTimeout          time.Duration
+	UpstreamHubURL     string
+	UpstreamRouterURL  string
+	XetPython          string
+	TelegramBotToken   string
+	TelegramAPIBase    string
+	TelegramChatID     int64
+	Admission          admission.Config
 }
 
 // Load reads and validates configuration from getenv (normally
@@ -89,13 +91,15 @@ func loadBaseConfig(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		HFToken:           hfToken,
-		HFTokenFile:       strings.TrimSpace(brokerEnv(getenv, "HF_TOKEN_FILE")),
-		ScopeFile:         brokerEnv(getenv, "SCOPE_FILE"),
-		StateDir:          brokerEnv(getenv, "STATE_DIR"),
-		UpstreamHubURL:    stringOr(brokerEnv(getenv, "UPSTREAM_HUB_URL"), DefaultUpstreamHubURL),
-		UpstreamRouterURL: stringOr(brokerEnv(getenv, "UPSTREAM_ROUTER_URL"), DefaultUpstreamRouterURL),
-		XetPython:         stringOr(brokerEnv(getenv, "XET_PYTHON"), "python3"),
+		HFToken:            hfToken,
+		HFTokenFile:        strings.TrimSpace(brokerEnv(getenv, "HF_TOKEN_FILE")),
+		ScopeFile:          brokerEnv(getenv, "SCOPE_FILE"),
+		StateDir:           brokerEnv(getenv, "STATE_DIR"),
+		UpstreamHubURL:     stringOr(brokerEnv(getenv, "UPSTREAM_HUB_URL"), DefaultUpstreamHubURL),
+		UpstreamRouterURL:  stringOr(brokerEnv(getenv, "UPSTREAM_ROUTER_URL"), DefaultUpstreamRouterURL),
+		XetPython:          stringOr(brokerEnv(getenv, "XET_PYTHON"), "python3"),
+		TLSCertificateFile: strings.TrimSpace(brokerEnv(getenv, "TLS_CERT_FILE")),
+		TLSPrivateKeyFile:  strings.TrimSpace(brokerEnv(getenv, "TLS_KEY_FILE")),
 	}
 	if cfg.HFToken == "" {
 		return Config{}, fmt.Errorf("%s or %s is required", brokerEnvName("HF_TOKEN"), brokerEnvName("HF_TOKEN_FILE"))
@@ -141,11 +145,14 @@ func loadRuntime(getenv func(string) string, cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	parseOptions := endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: allowNetwork}
+	parseOptions := endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: allowNetwork, AllowNetworkTLS: allowNetwork}
 	if err := loadRuntimeEndpoints(getenv, cfg, parseOptions); err != nil {
 		return err
 	}
 	if err := validateRuntimePaths(cfg.ScopeFile, cfg.StateDir, development); err != nil {
+		return err
+	}
+	if err := validateTLSFiles(cfg); err != nil {
 		return err
 	}
 	return validateRuntimeOrigins(cfg.UpstreamHubURL, cfg.UpstreamRouterURL, development)
@@ -179,13 +186,27 @@ func loadGitEndpoint(getenv func(string) string, cfg *Config, parseOptions endpo
 	if err != nil {
 		return fmt.Errorf("%s: %w", brokerEnvName("GIT_ENDPOINT"), err)
 	}
-	if gitEndpoint.Scheme() != endpoint.SchemeTCP {
-		return fmt.Errorf("%s must use tcp", brokerEnvName("GIT_ENDPOINT"))
+	if gitEndpoint.Scheme() != endpoint.SchemeTCP && gitEndpoint.Scheme() != endpoint.SchemeTLS {
+		return fmt.Errorf("%s must use tcp or tls", brokerEnvName("GIT_ENDPOINT"))
 	}
 	if !gitEndpoint.Ephemeral() && (gitEndpoint.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && gitEndpoint.String() == cfg.OperatorEndpoint.String()) {
 		return errors.New("git, agent, and operator endpoints must differ")
 	}
 	cfg.GitEndpoint = &gitEndpoint
+	return nil
+}
+
+func validateTLSFiles(cfg *Config) error {
+	needsTLS := cfg.AgentEndpoint.Scheme() == endpoint.SchemeTLS || cfg.OperatorEndpoint != nil && cfg.OperatorEndpoint.Scheme() == endpoint.SchemeTLS ||
+		cfg.GitEndpoint != nil && cfg.GitEndpoint.Scheme() == endpoint.SchemeTLS
+	if needsTLS != (cfg.TLSCertificateFile != "" && cfg.TLSPrivateKeyFile != "") {
+		return fmt.Errorf("%s and %s are required exactly for TLS listeners", brokerEnvName("TLS_CERT_FILE"), brokerEnvName("TLS_KEY_FILE"))
+	}
+	if needsTLS {
+		if _, err := endpoint.ServerTLSConfig(cfg.TLSCertificateFile, cfg.TLSPrivateKeyFile); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

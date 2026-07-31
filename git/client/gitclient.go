@@ -55,6 +55,7 @@ type Status struct {
 	Provider  string `json:"provider"`
 	Mode      Mode   `json:"mode,omitempty"`
 	Origin    string `json:"origin,omitempty"`
+	CAFile    string `json:"ca_file,omitempty"`
 	Installed bool   `json:"installed"`
 }
 
@@ -87,6 +88,12 @@ func Install(ctx context.Context, provider Provider, opts Options) (Status, erro
 	if err != nil {
 		return Status{}, err
 	}
+	if opts.HTTP == nil {
+		opts.HTTP, err = client.HTTPClient()
+		if err != nil {
+			return Status{}, err
+		}
+	}
 	if err := checkIdentity(ctx, opts.HTTP, origin, client.SharedSecret, provider.ID); err != nil {
 		return Status{}, err
 	}
@@ -94,7 +101,7 @@ func Install(ctx context.Context, provider Provider, opts Options) (Status, erro
 	if err != nil {
 		return Status{}, err
 	}
-	if err := validateReplacement(current, origin, opts); err != nil {
+	if err := validateReplacement(current, origin, client.CAFile, opts); err != nil {
 		return Status{}, err
 	}
 	if err := validateInstallState(ctx, provider, current, runner); err != nil {
@@ -103,7 +110,7 @@ func Install(ctx context.Context, provider Provider, opts Options) (Status, erro
 	if err := rejectConflicts(ctx, provider, origin, current, runner); err != nil {
 		return Status{}, err
 	}
-	return replaceInstallation(ctx, provider, current, origin, opts.Mode, runner)
+	return replaceInstallation(ctx, provider, current, origin, client.CAFile, opts.Mode, runner)
 }
 
 func validateInstallState(ctx context.Context, provider Provider, current Status, runner Runner) error {
@@ -116,25 +123,25 @@ func validateInstallState(ctx context.Context, provider Provider, current Status
 	return nil
 }
 
-func validateReplacement(current Status, origin string, opts Options) error {
-	if current.Installed && (current.Origin != origin || current.Mode != opts.Mode) && !opts.Replace {
+func validateReplacement(current Status, origin, caFile string, opts Options) error {
+	if current.Installed && (current.Origin != origin || current.Mode != opts.Mode || current.CAFile != caFile) && !opts.Replace {
 		return errors.New("unYOLO Git routing already exists with different settings; rerun with --replace")
 	}
 	return nil
 }
 
-func replaceInstallation(ctx context.Context, provider Provider, current Status, origin string, mode Mode, runner Runner) (Status, error) {
+func replaceInstallation(ctx context.Context, provider Provider, current Status, origin, caFile string, mode Mode, runner Runner) (Status, error) {
 	if current.Installed {
 		if err := remove(ctx, provider, current, runner); err != nil {
 			return Status{}, err
 		}
 	}
-	if err := writeConfig(ctx, provider, origin, mode, runner); err != nil {
+	if err := writeConfig(ctx, provider, origin, caFile, mode, runner); err != nil {
 		return Status{}, rollbackReplacement(ctx, provider, current, Status{
-			Provider: provider.ID, Mode: mode, Origin: origin, Installed: true,
+			Provider: provider.ID, Mode: mode, Origin: origin, CAFile: caFile, Installed: true,
 		}, runner, err)
 	}
-	return Status{Provider: provider.ID, Mode: mode, Origin: origin, Installed: true}, nil
+	return Status{Provider: provider.ID, Mode: mode, Origin: origin, CAFile: caFile, Installed: true}, nil
 }
 
 func rollbackReplacement(
@@ -152,7 +159,7 @@ func rollbackReplacement(
 		errs = append(errs, fmt.Errorf("clean up partial unYOLO Git installation: %w", err))
 	}
 	if previous.Installed && previous.Origin == partial.Origin {
-		if err := writeConfig(rollbackCtx, provider, previous.Origin, previous.Mode, runner); err != nil {
+		if err := writeConfig(rollbackCtx, provider, previous.Origin, previous.CAFile, previous.Mode, runner); err != nil {
 			errs = append(errs, fmt.Errorf("restore previous unYOLO Git installation: %w", err))
 		}
 	}
@@ -194,11 +201,17 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 	if err != nil {
 		return Status{}, err
 	}
-	if err := validateDoctorInstallation(ctx, provider, status, origin, runner); err != nil {
+	if err := validateDoctorInstallation(ctx, provider, status, origin, client.CAFile, runner); err != nil {
 		return Status{}, err
 	}
 	if err := verifyRepository(ctx, provider, origin, opts, runner); err != nil {
 		return Status{}, err
+	}
+	if opts.HTTP == nil {
+		opts.HTTP, err = client.HTTPClient()
+		if err != nil {
+			return Status{}, err
+		}
 	}
 	if err := checkIdentity(ctx, opts.HTTP, origin, client.SharedSecret, provider.ID); err != nil {
 		return Status{}, err
@@ -206,8 +219,8 @@ func Doctor(ctx context.Context, provider Provider, opts Options) (Status, error
 	return status, nil
 }
 
-func validateDoctorInstallation(ctx context.Context, provider Provider, status Status, origin string, runner Runner) error {
-	if !status.Installed || status.Origin != origin {
+func validateDoctorInstallation(ctx context.Context, provider Provider, status Status, origin, caFile string, runner Runner) error {
+	if !status.Installed || status.Origin != origin || status.CAFile != caFile {
 		return errors.New("unYOLO Git routing is not installed for the configured listener")
 	}
 	if err := rejectConflicts(ctx, provider, origin, status, runner); err != nil {
@@ -298,9 +311,15 @@ func validCanonicalPrefix(prefix string) bool {
 }
 
 func gitOrigin(raw string) (string, error) {
-	parsed, err := endpoint.Parse(raw, endpoint.ParseOptions{})
-	if err != nil || parsed.Scheme() != endpoint.SchemeTCP || parsed.Exposure() != endpoint.ExposureLoopback {
-		return "", errors.New("git listener must be a loopback tcp endpoint")
+	parsed, err := endpoint.Parse(raw, endpoint.ParseOptions{AllowNetworkTLS: true})
+	if err != nil {
+		return "", errors.New("git listener endpoint is invalid")
+	}
+	if parsed.Scheme() == endpoint.SchemeTLS {
+		return "https://" + parsed.Address(), nil
+	}
+	if parsed.Scheme() != endpoint.SchemeTCP || parsed.Exposure() != endpoint.ExposureLoopback {
+		return "", errors.New("git listener must use loopback TCP or TLS")
 	}
 	return "http://" + parsed.Address(), nil
 }
@@ -336,7 +355,7 @@ func checkIdentity(ctx context.Context, client *http.Client, origin, secret, pro
 	return nil
 }
 
-func writeConfig(ctx context.Context, provider Provider, origin string, mode Mode, runner Runner) error {
+func writeConfig(ctx context.Context, provider Provider, origin, caFile string, mode Mode, runner Runner) error {
 	rewriteKey := "url." + origin + "/.insteadOf"
 	for _, prefix := range provider.CanonicalPrefixes {
 		if _, err := runner.Run(ctx, "config", "--global", "--add", rewriteKey, prefix); err != nil {
@@ -352,6 +371,16 @@ func writeConfig(ctx context.Context, provider Provider, origin string, mode Mod
 		{"config", "--global", statusKey(provider, "origin"), origin},
 		{"config", "--global", statusKey(provider, "mode"), string(mode)},
 	}
+	if strings.HasPrefix(origin, "https://") {
+		if !normalizedAbsolutePath(caFile) {
+			return errors.New("TLS Git listener requires an absolute CA file")
+		}
+		commands = append(commands,
+			[]string{"config", "--global", "http." + origin + ".sslCAInfo", caFile},
+			[]string{"config", "--global", "http." + origin + ".sslVerify", "true"},
+			[]string{"config", "--global", statusKey(provider, "caFile"), caFile},
+		)
+	}
 	for _, command := range commands {
 		if _, err := runner.Run(ctx, command...); err != nil {
 			return fmt.Errorf("write unYOLO Git configuration: %w", err)
@@ -365,6 +394,13 @@ func remove(ctx context.Context, provider Provider, status Status, runner Runner
 	for _, prefix := range provider.CanonicalPrefixes {
 		if _, err := runner.Run(ctx, "config", "--global", "--fixed-value", "--unset-all", key, prefix); err != nil && !isMissingConfig(err) {
 			return fmt.Errorf("remove Git URL routing: %w", err)
+		}
+	}
+	if status.CAFile != "" || strings.HasPrefix(status.Origin, "https://") {
+		for _, suffix := range []string{"sslCAInfo", "sslVerify"} {
+			if _, err := runner.Run(ctx, "config", "--global", "--unset-all", "http."+status.Origin+"."+suffix); err != nil && !isMissingConfig(err) {
+				return fmt.Errorf("remove unYOLO Git TLS configuration: %w", err)
+			}
 		}
 	}
 	for _, section := range []string{"credential." + status.Origin, "unyolo.git." + provider.ID} {
@@ -395,7 +431,15 @@ func readStatus(ctx context.Context, provider Provider, runner Runner) (Status, 
 	if mode != ModeAll {
 		return Status{}, errors.New("unYOLO Git ownership metadata has an invalid mode")
 	}
-	return Status{Provider: provider.ID, Origin: origin, Mode: mode, Installed: true}, nil
+	caFile, caErr := configValue(ctx, runner, statusKey(provider, "caFile"))
+	if strings.HasPrefix(origin, "https://") {
+		if caErr != nil || !normalizedAbsolutePath(caFile) {
+			return Status{}, errors.New("unYOLO Git TLS ownership metadata is incomplete")
+		}
+	} else if caErr != nil && !isMissingConfig(caErr) {
+		return Status{}, caErr
+	}
+	return Status{Provider: provider.ID, Origin: origin, Mode: mode, CAFile: caFile, Installed: true}, nil
 }
 
 func rejectConflicts(ctx context.Context, provider Provider, origin string, current Status, runner Runner) error {
@@ -679,6 +723,7 @@ func verifyInstallation(ctx context.Context, provider Provider, status Status, r
 		func() error { return verifyCredentialConfiguration(ctx, provider, status, runner) },
 		func() error { return verifyCredentialPathIsolation(ctx, status, runner) },
 		func() error { return verifyConfiguredProxyIsolation(ctx, status, runner) },
+		func() error { return verifyTLSConfiguration(ctx, status, runner) },
 		func() error { return verifyCredentialHelper(ctx, provider, runner) },
 	)
 }
@@ -711,6 +756,18 @@ func verifyCredentialPathIsolation(ctx context.Context, status Status, runner Ru
 func verifyConfiguredProxyIsolation(ctx context.Context, status Status, runner Runner) error {
 	proxy, err := configValue(ctx, runner, "http."+status.Origin+".proxy")
 	return verifyProxyIsolation(proxy, err)
+}
+
+func verifyTLSConfiguration(ctx context.Context, status Status, runner Runner) error {
+	if !strings.HasPrefix(status.Origin, "https://") {
+		return nil
+	}
+	caFile, caErr := configValue(ctx, runner, "http."+status.Origin+".sslCAInfo")
+	verify, verifyErr := configValue(ctx, runner, "http."+status.Origin+".sslVerify")
+	if caErr != nil || verifyErr != nil || caFile != status.CAFile || verify != "true" {
+		return errors.New("unYOLO Git TLS configuration is incomplete or modified")
+	}
+	return nil
 }
 
 func verifyCredentialHelper(ctx context.Context, provider Provider, runner Runner) error {

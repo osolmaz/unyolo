@@ -32,6 +32,8 @@ type Config struct {
 	OperatorSecretsFile       string
 	OperatorSecrets           map[string]string
 	OperatorEndpoint          *endpoint.Endpoint
+	TLSCertificateFile        string
+	TLSPrivateKeyFile         string
 	GitHubToken               string
 	GitHubTokenFile           string
 	GitHubUserID              int64
@@ -95,12 +97,12 @@ func loadGitEndpoint(env environment, cfg *Config, development, networkExposure 
 	if value == "" {
 		return nil
 	}
-	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: networkExposure})
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: networkExposure, AllowNetworkTLS: networkExposure})
 	if err != nil {
 		return fmt.Errorf("GH_BROKER_GIT_ENDPOINT: %w", err)
 	}
-	if parsed.Scheme() != endpoint.SchemeTCP {
-		return errors.New("GH_BROKER_GIT_ENDPOINT must use tcp")
+	if parsed.Scheme() != endpoint.SchemeTCP && parsed.Scheme() != endpoint.SchemeTLS {
+		return errors.New("GH_BROKER_GIT_ENDPOINT must use tcp or tls")
 	}
 	if !parsed.Ephemeral() && (parsed.String() == cfg.AgentEndpoint.String() || cfg.OperatorEndpoint != nil && parsed.String() == cfg.OperatorEndpoint.String()) {
 		return errors.New("git, agent, and operator endpoints must differ")
@@ -147,6 +149,8 @@ func loadBaseConfig(env environment) (Config, bool, bool, error) {
 		GitHubWebBaseURL:          env.value("GH_BROKER_GITHUB_WEB_URL", "https://github.com/"),
 		ScopeFile:                 env.value("GH_BROKER_SCOPE_FILE", ""),
 		StateDir:                  env.value("GH_BROKER_STATE_DIR", ""),
+		TLSCertificateFile:        env.value("GH_BROKER_TLS_CERT_FILE", ""),
+		TLSPrivateKeyFile:         env.value("GH_BROKER_TLS_KEY_FILE", ""),
 		TelegramBotTokenFile:      env.value("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", ""),
 	}
 	if err := loadNumericEnvironment(env, &cfg); err != nil {
@@ -219,7 +223,7 @@ func loadEndpoint(env environment, name string, development, network bool) (endp
 	if value == "" {
 		return endpoint.Endpoint{}, fmt.Errorf("%s is required", name)
 	}
-	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: network})
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowEphemeralTCP: development, AllowNetworkTCP: network, AllowNetworkTLS: network})
 	if err != nil {
 		return endpoint.Endpoint{}, fmt.Errorf("%s: %w", name, err)
 	}
@@ -419,6 +423,7 @@ func (c Config) Validate() error {
 		required(c.ScopeFile, "GH_BROKER_SCOPE_FILE is required"),
 		required(c.StateDir, "GH_BROKER_STATE_DIR is required"),
 		productionPaths(c),
+		tlsFiles(c),
 		upstreamOrigins(c),
 		telegramPair(c.TelegramBotToken, c.TelegramChatID),
 		positiveDuration(c.GitHubHTTPTimeout, "GH_BROKER_GITHUB_HTTP_TIMEOUT must be positive"),
@@ -483,11 +488,29 @@ func initializedEndpoint(value endpoint.Endpoint, message string) error {
 	return nil
 }
 
+func tlsFiles(c Config) error {
+	needsTLS := c.AgentEndpoint.Scheme() == endpoint.SchemeTLS || c.OperatorEndpoint != nil && c.OperatorEndpoint.Scheme() == endpoint.SchemeTLS ||
+		c.GitEndpoint != nil && c.GitEndpoint.Scheme() == endpoint.SchemeTLS
+	if needsTLS != (c.TLSCertificateFile != "" && c.TLSPrivateKeyFile != "") {
+		return errors.New("GH_BROKER_TLS_CERT_FILE and GH_BROKER_TLS_KEY_FILE are required exactly for TLS listeners")
+	}
+	if needsTLS {
+		if _, err := endpoint.ServerTLSConfig(c.TLSCertificateFile, c.TLSPrivateKeyFile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func productionPaths(c Config) error {
 	if c.Development {
 		return nil
 	}
-	for name, value := range map[string]string{"GH_BROKER_SCOPE_FILE": c.ScopeFile, "GH_BROKER_STATE_DIR": c.StateDir} {
+	paths := map[string]string{"GH_BROKER_SCOPE_FILE": c.ScopeFile, "GH_BROKER_STATE_DIR": c.StateDir}
+	if c.TLSCertificateFile != "" {
+		paths["GH_BROKER_TLS_CERT_FILE"], paths["GH_BROKER_TLS_KEY_FILE"] = c.TLSCertificateFile, c.TLSPrivateKeyFile
+	}
+	for name, value := range paths {
 		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 			return fmt.Errorf("%s must be an absolute normalized production path", name)
 		}

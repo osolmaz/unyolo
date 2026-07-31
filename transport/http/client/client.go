@@ -2,6 +2,7 @@
 package clienthttp
 
 import (
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -34,7 +35,7 @@ func validBaseURL(parsed *url.URL) bool {
 
 // ForEndpoint constructs a secure HTTP client and synthetic base URL for one endpoint URI.
 func ForEndpoint(value string, client *http.Client) (string, *http.Client, error) {
-	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{})
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowNetworkTLS: true})
 	if err != nil {
 		return "", nil, err
 	}
@@ -50,7 +51,11 @@ func ForEndpoint(value string, client *http.Client) (string, *http.Client, error
 		}
 		transport = configured
 	}
-	transport, err = endpoint.HTTPTransport(parsed, transport)
+	var tlsConfig *tls.Config
+	if transport != nil {
+		tlsConfig = transport.TLSClientConfig
+	}
+	transport, err = endpoint.HTTPTransportWithOptions(parsed, endpoint.TransportOptions{Base: transport, TLSConfig: tlsConfig})
 	if err != nil {
 		return "", nil, err
 	}

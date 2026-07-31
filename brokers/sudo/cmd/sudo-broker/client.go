@@ -139,7 +139,11 @@ func loadAgentClient() (*agentclient.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret})
+	httpClient, err := configured.HTTPClient()
+	if err != nil {
+		return nil, err
+	}
+	return agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret, HTTPClient: httpClient})
 }
 
 func addCommandFlags(flags *flag.FlagSet, values *commandFlags) {

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/transport/endpoint"
 )
 
 const maxClientConfigBytes = 64 * 1024
@@ -20,6 +21,8 @@ type Client struct {
 	AgentEndpoint string
 	GitEndpoint   string
 	SharedSecret  string
+	CAFile        string
+	ServerName    string
 }
 
 // Read loads the default generated client.json without shell evaluation.
@@ -82,6 +85,8 @@ func Resolve(homeDir, brokerName, envPrefix string, getenv func(string) string) 
 		AgentEndpoint: strings.TrimSpace(getenv(prefix + "_AGENT_ENDPOINT")),
 		GitEndpoint:   strings.TrimSpace(getenv(prefix + "_GIT_ENDPOINT")),
 		SharedSecret:  strings.TrimSpace(getenv(prefix + "_SHARED_SECRET")),
+		CAFile:        strings.TrimSpace(getenv(prefix + "_CA_FILE")),
+		ServerName:    strings.TrimSpace(getenv(prefix + "_SERVER_NAME")),
 	}
 	secretFile := strings.TrimSpace(getenv(prefix + "_SHARED_SECRET_FILE"))
 	if secretFile != "" {
@@ -94,7 +99,8 @@ func Resolve(homeDir, brokerName, envPrefix string, getenv func(string) string) 
 		}
 		environment.SharedSecret = strings.TrimSpace(string(data))
 	}
-	hasEnvironment := environment.ClientID != "" || environment.AgentEndpoint != "" || environment.GitEndpoint != "" || environment.SharedSecret != "" || secretFile != ""
+	hasEnvironment := environment.ClientID != "" || environment.AgentEndpoint != "" || environment.GitEndpoint != "" || environment.SharedSecret != "" ||
+		secretFile != "" || environment.CAFile != "" || environment.ServerName != ""
 	if fileExists && hasEnvironment {
 		return Client{}, errors.New("broker client file and environment configuration conflict")
 	}
@@ -134,9 +140,13 @@ func validateDocument(value document) (Client, error) {
 	if value.APIVersion != APIVersion {
 		return Client{}, errors.New("broker client configuration has an unsupported API")
 	}
+	secret, err := resolveDocumentSecret(value)
+	if err != nil {
+		return Client{}, err
+	}
 	return validateClient(Client{
 		ClientID: value.ClientID, AgentEndpoint: value.AgentEndpoint,
-		GitEndpoint: value.GitEndpoint, SharedSecret: value.SharedSecret,
+		GitEndpoint: value.GitEndpoint, SharedSecret: secret, CAFile: value.CAFile, ServerName: value.ServerName,
 	})
 }
 
@@ -155,5 +165,41 @@ func validateClient(client Client) (Client, error) {
 			return Client{}, errors.New("broker client configuration has an invalid git endpoint")
 		}
 	}
+	parsed, err := endpoint.Parse(client.AgentEndpoint, endpoint.ParseOptions{AllowNetworkTLS: true})
+	if err != nil {
+		return Client{}, errors.New("broker client configuration has an invalid agent endpoint")
+	}
+	if parsed.Scheme() == endpoint.SchemeTLS {
+		if !cleanAbsoluteFile(client.CAFile) || client.ServerName == "" {
+			return Client{}, errors.New("broker TLS client configuration is incomplete")
+		}
+	} else if client.CAFile != "" || client.ServerName != "" {
+		return Client{}, errors.New("local broker client contains TLS settings")
+	}
 	return client, nil
+}
+
+func resolveDocumentSecret(value document) (string, error) {
+	if (value.SharedSecret == "") == (value.SharedSecretFile == "") {
+		return "", errors.New("broker client configuration must contain exactly one credential source")
+	}
+	if value.SharedSecret != "" {
+		return value.SharedSecret, nil
+	}
+	if !cleanAbsoluteFile(value.SharedSecretFile) {
+		return "", errors.New("broker client secret file path is invalid")
+	}
+	info, err := os.Lstat(value.SharedSecretFile)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return "", errors.New("broker client secret file is unsafe")
+	}
+	data, err := os.ReadFile(value.SharedSecretFile) // #nosec G304 -- absolute owner-only path from validated client config.
+	if err != nil || len(data) == 0 || len(data) > maxClientConfigBytes {
+		return "", errors.New("broker client secret file could not be read")
+	}
+	secret := strings.TrimSpace(string(data))
+	if secret == "" || strings.ContainsAny(secret, "\r\n") {
+		return "", errors.New("broker client secret file is invalid")
+	}
+	return secret, nil
 }

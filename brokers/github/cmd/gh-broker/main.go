@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -203,7 +204,18 @@ func listenGitHubEndpoints(cfg config.Config) (map[string]net.Listener, error) {
 	if cfg.GitEndpoint != nil {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "git", Endpoint: *cfg.GitEndpoint})
 	}
-	return endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development})
+	tlsConfig, err := githubServerTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return endpoint.ListenSet(listenerSpecs, endpoint.ListenOptions{Development: cfg.Development, TLSConfig: tlsConfig})
+}
+
+func githubServerTLSConfig(cfg config.Config) (*tls.Config, error) {
+	if cfg.TLSCertificateFile == "" {
+		return nil, nil
+	}
+	return endpoint.ServerTLSConfig(cfg.TLSCertificateFile, cfg.TLSPrivateKeyFile)
 }
 
 func newGitHubServers(api *httpapi.Server, listeners map[string]net.Listener, operatorEnabled bool) ([]serverhttp.Binding, error) {
