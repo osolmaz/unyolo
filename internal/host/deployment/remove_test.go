@@ -210,7 +210,7 @@ func TestRemoveManagedAccountRefusesWhenAccountChanged(t *testing.T) {
 		t.Skipf("no current user available: %v", err)
 	}
 	// Removing an existing user with a mismatched home should fail closed before invoking any command.
-	err = removeManagedAccount(t.Context(), current.Username, "/nonexistent/home/for/receipt-test", "")
+	err = removeManagedAccount(t.Context(), current.Username, "/nonexistent/home/for/receipt-test", "", "")
 	if err == nil {
 		t.Fatal("expected failure due to home mismatch")
 	}
@@ -222,7 +222,7 @@ func TestRemoveManagedAccountRefusesWhenAccountChanged(t *testing.T) {
 func TestRemoveManagedAccountIgnoresUnknownUser(t *testing.T) {
 	t.Parallel()
 	// A user that doesn't exist is a noop, not an error, so the plan can safely re-run.
-	err := removeManagedAccount(t.Context(), "unyolo-nonexistent-user-for-tests", "/nowhere", "")
+	err := removeManagedAccount(t.Context(), "unyolo-nonexistent-user-for-tests", "/nowhere", "", "")
 	if err != nil {
 		var unknown user.UnknownUserError
 		if errors.As(err, &unknown) {

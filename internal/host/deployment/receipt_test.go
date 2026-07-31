@@ -23,6 +23,7 @@ func sampleReceipt() Receipt {
 		DeploymentName:     "default",
 		DeploymentDigest:   "sha256:" + strings.Repeat("b", 64),
 		RuntimeBundleID:    "engine-test",
+		RuntimeBundleIDs:   []string{"engine-test"},
 		RecordedAt:         time.Now().UTC(),
 		Accounts: []AccountReceipt{
 			{ID: "bob", UnixUser: "bob", Mode: "existing", Home: "/home/bob", Shell: "/bin/bash", Created: false},

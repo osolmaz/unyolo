@@ -21,6 +21,37 @@ func installationWithProviders() installation.Installation {
 	}
 }
 
+func TestIntentFromInstallationPreservesEditableChoices(t *testing.T) {
+	t.Parallel()
+	value := installationWithProviders()
+	value.Connections = []installation.Connection{{
+		ID: "bob", ClientID: "bob", Providers: []string{"github", "huggingface"}, Integrations: []string{"openclaw"},
+		Target: installation.Target{Kind: installation.TargetLocalAccount, Isolation: "separate", AccountMode: setupintent.AccountExisting, Account: "bob", Home: "/home/bob", Shell: "/bin/bash", UID: 1001, GID: 1001},
+	}}
+	intent, err := intentFromInstallation(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intent.Goal != setupintent.GoalCompleteLocal || intent.Agent == nil || intent.Agent.Account == nil ||
+		intent.Agent.Account.Name != "bob" || len(intent.Integrations) != 1 || len(intent.CredentialService.Providers) != 2 {
+		t.Fatalf("reconfigure intent = %#v", intent)
+	}
+}
+
+func TestIntentFromInstallationRejectsAmbiguousMultiConnectionEdit(t *testing.T) {
+	t.Parallel()
+	value := installationWithProviders()
+	connection := installation.Connection{
+		ID: "bob", ClientID: "bob", Providers: []string{"github"},
+		Target: installation.Target{Kind: installation.TargetLocalAccount, Isolation: "separate", AccountMode: setupintent.AccountExisting, Account: "bob", Home: "/home/bob", Shell: "/bin/bash", UID: 1001, GID: 1001},
+	}
+	value.Connections = []installation.Connection{connection, connection}
+	value.Connections[1].ID, value.Connections[1].ClientID = "alice", "alice"
+	if _, err := intentFromInstallation(value); err == nil {
+		t.Fatal("multi-connection reconfigure was accepted by a single-connection editor")
+	}
+}
+
 func TestSetupDiscardRequiresConfirm(t *testing.T) {
 	t.Parallel()
 	if err := runSetupDiscard(nil, &bytes.Buffer{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "--confirm") {

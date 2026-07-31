@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/unyolo/deployment/profile"
 	"github.com/osolmaz/unyolo/internal/host/identity"
 	"github.com/osolmaz/unyolo/internal/strictjson"
+	"github.com/osolmaz/unyolo/setup/sourceset"
 )
 
 // ReceiptAPIVersion identifies the ownership receipt schema.
@@ -48,6 +49,7 @@ type Receipt struct {
 	DeploymentName     string              `json:"deployment_name"`
 	DeploymentDigest   string              `json:"deployment_digest"`
 	RuntimeBundleID    string              `json:"runtime_bundle_id"`
+	RuntimeBundleIDs   []string            `json:"runtime_bundle_ids"`
 	BaselineBundleID   string              `json:"baseline_bundle_id,omitempty"`
 	RecordedAt         time.Time           `json:"recorded_at"`
 	Accounts           []AccountReceipt    `json:"accounts,omitempty"`
@@ -60,12 +62,13 @@ type Receipt struct {
 
 // AccountReceipt records one host account known to this installation.
 type AccountReceipt struct {
-	ID       string `json:"id"`
-	UnixUser string `json:"unix_user"`
-	Mode     string `json:"mode"`
-	Home     string `json:"home,omitempty"`
-	Shell    string `json:"shell,omitempty"`
-	Created  bool   `json:"created"`
+	ID              string `json:"id"`
+	UnixUser        string `json:"unix_user"`
+	Mode            string `json:"mode"`
+	Home            string `json:"home,omitempty"`
+	Shell           string `json:"shell,omitempty"`
+	Created         bool   `json:"created"`
+	HomeFingerprint string `json:"home_fingerprint,omitempty"`
 }
 
 // GroupReceipt records one host group known to this installation.
@@ -120,6 +123,19 @@ func (value Receipt) Validate() error {
 		value.BaselineBundleID != "" && !receiptBundlePattern.MatchString(value.BaselineBundleID) {
 		return errors.New("ownership receipt digest identity is invalid")
 	}
+	if len(value.RuntimeBundleIDs) == 0 || len(value.RuntimeBundleIDs) > 64 {
+		return errors.New("ownership receipt runtime history is invalid")
+	}
+	seenBundles := map[string]bool{}
+	for _, bundleID := range value.RuntimeBundleIDs {
+		if !receiptBundlePattern.MatchString(bundleID) || seenBundles[bundleID] {
+			return errors.New("ownership receipt runtime history is invalid or duplicated")
+		}
+		seenBundles[bundleID] = true
+	}
+	if !seenBundles[value.RuntimeBundleID] {
+		return errors.New("ownership receipt active runtime is absent from its history")
+	}
 	if value.RecordedAt.IsZero() {
 		return errors.New("ownership receipt is missing a recorded time")
 	}
@@ -142,6 +158,9 @@ func (value Receipt) Validate() error {
 		}
 		if account.Shell != "" && (!filepath.IsAbs(account.Shell) || filepath.Clean(account.Shell) != account.Shell) {
 			return errors.New("ownership receipt account shell is invalid")
+		}
+		if account.HomeFingerprint != "" && !receiptDigestPattern.MatchString(account.HomeFingerprint) {
+			return errors.New("ownership receipt account home fingerprint is invalid")
 		}
 		seenAccounts[account.ID] = true
 	}
@@ -219,6 +238,7 @@ func ReceiptFromPlanContext(ctx context.Context, planned Planned, installationNa
 		DeploymentName:     planned.Snapshot.Deployment.Name,
 		DeploymentDigest:   planned.Snapshot.Digest,
 		RuntimeBundleID:    planned.Snapshot.Manifest.BundleID,
+		RuntimeBundleIDs:   []string{planned.Snapshot.Manifest.BundleID},
 		RecordedAt:         recorded.UTC(),
 	}
 	if planned.ActiveBundleID != planned.Snapshot.Manifest.BundleID {
@@ -231,7 +251,9 @@ func ReceiptFromPlanContext(ctx context.Context, planned Planned, installationNa
 			receipt.InstallationName = planned.Snapshot.Deployment.Name
 		}
 	}
-	populateReceiptAgents(&receipt, planned.Snapshot, planned.Accounts)
+	if err := populateReceiptAgents(ctx, &receipt, planned.Snapshot, planned.Accounts, capturePostApply); err != nil {
+		return Receipt{}, err
+	}
 	populateReceiptServices(&receipt, planned.Snapshot)
 	populateReceiptComponents(&receipt, planned)
 	if err := populateReceiptResources(ctx, &receipt, planned, capturePostApply); err != nil {
@@ -243,7 +265,7 @@ func ReceiptFromPlanContext(ctx context.Context, planned Planned, installationNa
 	return receipt, nil
 }
 
-func populateReceiptAgents(receipt *Receipt, snapshot profile.Snapshot, accounts map[string]identity.Account) {
+func populateReceiptAgents(ctx context.Context, receipt *Receipt, snapshot profile.Snapshot, accounts map[string]identity.Account, capturePostApply bool) error {
 	seenGroups := map[string]bool{}
 	for _, agent := range snapshot.Deployment.Agents {
 		if agent.Target.Kind != "local_account" {
@@ -258,6 +280,13 @@ func populateReceiptAgents(receipt *Receipt, snapshot profile.Snapshot, accounts
 		// A managed account is created by unYOLO when the identity inspector reports it missing.
 		// An existing or current account is never created.
 		entry.Created = agent.Target.AccountMode == "managed" && account.Missing
+		if entry.Created && capturePostApply {
+			fingerprint, err := sourceset.Digest(entry.Home)
+			if err != nil {
+				return fmt.Errorf("fingerprint managed account home %q: %w", entry.UnixUser, err)
+			}
+			entry.HomeFingerprint = fingerprint
+		}
 		receipt.Accounts = append(receipt.Accounts, entry)
 		receipt.Connections = append(receipt.Connections, ConnectionReceipt{ID: agent.ID, ClientID: agent.ClientID})
 	}
@@ -276,6 +305,7 @@ func populateReceiptAgents(receipt *Receipt, snapshot profile.Snapshot, accounts
 		receipt.Groups = append(receipt.Groups, GroupReceipt{Name: account.UnixUser, Created: true})
 	}
 	slices.SortFunc(receipt.Groups, func(a, b GroupReceipt) int { return strings.Compare(a.Name, b.Name) })
+	return nil
 }
 
 func populateReceiptServices(receipt *Receipt, snapshot profile.Snapshot) {
@@ -401,7 +431,7 @@ func enrichResourceReceipt(receipt *ResourceReceipt, value componentprofile.Prof
 }
 
 func resourceContainsData(resource ResourceReceipt, stateDir string) bool {
-	if slices.Contains([]string{"credential", "secret_store", "client", "git_config", "account", "group"}, resource.Kind) {
+	if slices.Contains([]string{"credential", "secret_store", "account", "group"}, resource.Kind) {
 		return true
 	}
 	return stateDir != "" && resource.Path != "" &&
@@ -421,6 +451,14 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 		return Receipt{}, errors.New("ownership receipt belongs to another installation")
 	}
 	current.BaselineBundleID = previous.BaselineBundleID
+	seenBundles := map[string]bool{}
+	current.RuntimeBundleIDs = nil
+	for _, bundleID := range append(append([]string(nil), previous.RuntimeBundleIDs...), current.RuntimeBundleID) {
+		if !seenBundles[bundleID] {
+			current.RuntimeBundleIDs = append(current.RuntimeBundleIDs, bundleID)
+			seenBundles[bundleID] = true
+		}
+	}
 	priorAccounts := map[string]AccountReceipt{}
 	for _, account := range previous.Accounts {
 		priorAccounts[account.ID] = account
@@ -428,6 +466,9 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 	for index := range current.Accounts {
 		if prior, exists := priorAccounts[current.Accounts[index].ID]; exists && prior.Created {
 			current.Accounts[index].Created = true
+			if current.Accounts[index].HomeFingerprint == "" {
+				current.Accounts[index].HomeFingerprint = prior.HomeFingerprint
+			}
 		}
 		delete(priorAccounts, current.Accounts[index].ID)
 	}
