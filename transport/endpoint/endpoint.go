@@ -18,6 +18,7 @@ type Scheme string
 const (
 	SchemeUnix       Scheme = "unix"
 	SchemeTCP        Scheme = "tcp"
+	SchemeTLS        Scheme = "tls"
 	SchemeActivation Scheme = "activation"
 	SchemeFD         Scheme = "fd"
 )
@@ -35,6 +36,7 @@ const (
 type ParseOptions struct {
 	AllowEphemeralTCP bool
 	AllowNetworkTCP   bool
+	AllowNetworkTLS   bool
 }
 
 // Endpoint is one validated canonical listener or client endpoint.
@@ -67,6 +69,7 @@ func Parse(value string, options ParseOptions) (Endpoint, error) {
 var endpointParsers = map[Scheme]func(*url.URL, ParseOptions) (Endpoint, error){
 	SchemeUnix:       func(value *url.URL, _ ParseOptions) (Endpoint, error) { return parseUnix(value) },
 	SchemeTCP:        parseTCP,
+	SchemeTLS:        parseTLS,
 	SchemeActivation: func(value *url.URL, _ ParseOptions) (Endpoint, error) { return parseActivation(value) },
 	SchemeFD:         func(value *url.URL, _ ParseOptions) (Endpoint, error) { return parseFD(value) },
 }
@@ -99,6 +102,60 @@ func parseTCP(parsed *url.URL, options ParseOptions) (Endpoint, error) {
 		return Endpoint{}, err
 	}
 	return Endpoint{scheme: SchemeTCP, host: ip.String(), port: port, exposure: exposure}, nil
+}
+
+func parseTLS(parsed *url.URL, options ParseOptions) (Endpoint, error) {
+	if parsed.Path != "" || parsed.Opaque != "" || parsed.Host == "" {
+		return Endpoint{}, errors.New("tls endpoint must contain only an explicit host and port")
+	}
+	host, rawPort, err := splitTCPHostPort(parsed.Host)
+	if err != nil {
+		return Endpoint{}, err
+	}
+	port, err := parseTCPPort(rawPort, false)
+	if err != nil {
+		return Endpoint{}, err
+	}
+	normalized, exposure, err := classifyTLSHost(host, options.AllowNetworkTLS)
+	if err != nil {
+		return Endpoint{}, err
+	}
+	return Endpoint{scheme: SchemeTLS, host: normalized, port: port, exposure: exposure}, nil
+}
+
+func classifyTLSHost(host string, allowNetwork bool) (string, Exposure, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		exposure, err := classifyTCP(ip, allowNetwork)
+		return ip.String(), exposure, err
+	}
+	normalized := strings.ToLower(strings.TrimSuffix(host, "."))
+	if normalized == "localhost" {
+		return normalized, ExposureLoopback, nil
+	}
+	if !validDNSName(normalized) {
+		return "", "", errors.New("tls endpoint host must be a valid DNS name or IP address")
+	}
+	if !allowNetwork {
+		return "", "", errors.New("network tls endpoint requires explicit network exposure approval")
+	}
+	return normalized, ExposureNetwork, nil
+}
+
+func validDNSName(value string) bool {
+	if value == "" || len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func splitTCPHostPort(address string) (string, string, error) {
@@ -163,6 +220,8 @@ func (e Endpoint) String() string {
 		return "unix://" + e.path
 	case SchemeTCP:
 		return "tcp://" + net.JoinHostPort(e.host, strconv.Itoa(e.port))
+	case SchemeTLS:
+		return "tls://" + net.JoinHostPort(e.host, strconv.Itoa(e.port))
 	case SchemeActivation:
 		return "activation://" + e.name
 	case SchemeFD:
@@ -175,19 +234,22 @@ func (e Endpoint) String() string {
 func (e Endpoint) Scheme() Scheme         { return e.scheme }
 func (e Endpoint) Exposure() Exposure     { return e.exposure }
 func (e Endpoint) Path() string           { return e.path }
+func (e Endpoint) Host() string           { return e.host }
 func (e Endpoint) ActivationName() string { return e.name }
 func (e Endpoint) Descriptor() int        { return e.fd }
 
 // Address returns the concrete TCP address. Other schemes return an empty string.
 func (e Endpoint) Address() string {
-	if e.scheme != SchemeTCP {
+	if e.scheme != SchemeTCP && e.scheme != SchemeTLS {
 		return ""
 	}
 	return net.JoinHostPort(e.host, strconv.Itoa(e.port))
 }
 
 // ClientCapable reports whether clients can dial the endpoint directly.
-func (e Endpoint) ClientCapable() bool { return e.scheme == SchemeUnix || e.scheme == SchemeTCP }
+func (e Endpoint) ClientCapable() bool {
+	return e.scheme == SchemeUnix || e.scheme == SchemeTCP || e.scheme == SchemeTLS
+}
 
 // Ephemeral reports whether e asks the operating system to allocate a TCP port.
 func (e Endpoint) Ephemeral() bool { return e.scheme == SchemeTCP && e.port == 0 }

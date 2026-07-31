@@ -330,16 +330,27 @@ func loadHFGrantClient(getenv func(string) string) (*hfGrantClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newHFGrantClient(configured.AgentEndpoint, configured.SharedSecret)
+	httpClient, err := configured.HTTPClient()
+	if err != nil {
+		return nil, err
+	}
+	return newHFGrantClientWithHTTP(configured.AgentEndpoint, configured.SharedSecret, httpClient)
 }
 
 func newHFGrantClient(endpointURI, secret string) (*hfGrantClient, error) {
+	return newHFGrantClientWithHTTP(endpointURI, secret, nil)
+}
+
+func newHFGrantClientWithHTTP(endpointURI, secret string, provided *http.Client) (*hfGrantClient, error) {
+	if provided == nil {
+		provided = &http.Client{}
+	}
+	provided.Timeout = 35 * time.Second
+	provided.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return grantclient.New(grantclient.Options[hfClientGrant]{
 		Endpoint: endpointURI, Credential: secret,
-		HTTPClient: &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		}},
-		Decode: decodeHFClientGrant,
+		HTTPClient: provided,
+		Decode:     decodeHFClientGrant,
 		Terminal: func(grant hfClientGrant) bool {
 			return grant.Status != string(grants.StatusPending)
 		},

@@ -99,11 +99,15 @@ func loadAgentClient(getenv func(string) string) (*agentClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	operations, err := agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret})
+	httpClient, err := configured.HTTPClient()
 	if err != nil {
 		return nil, err
 	}
-	grantClient, err := newHFGrantClient(configured.AgentEndpoint, configured.SharedSecret)
+	operations, err := agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret, HTTPClient: httpClient})
+	if err != nil {
+		return nil, err
+	}
+	grantClient, err := newHFGrantClientWithHTTP(configured.AgentEndpoint, configured.SharedSecret, httpClient)
 	if err != nil {
 		return nil, err
 	}

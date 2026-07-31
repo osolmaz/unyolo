@@ -1,6 +1,7 @@
 package clientconfig
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,36 @@ func TestReadGeneratedClientConfiguration(t *testing.T) {
 	}
 	if _, err := Read(home, "gh-broker", "GH_BROKER"); err == nil {
 		t.Fatal("Read accepted a group-readable client file")
+	}
+}
+
+func TestReadTLSClientWithMountedSecret(t *testing.T) {
+	home := t.TempDir()
+	secretPath := filepath.Join(home, "mounted-secret")
+	if err := os.WriteFile(secretPath, []byte(strings.Repeat("s", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	caPath := filepath.Join(home, "ca.pem")
+	if err := os.WriteFile(caPath, []byte("not-a-certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, err := Path(home, "test-broker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	document := fmt.Sprintf(`{"api_version":"%s","client_id":"agent","agent_endpoint":"tls://broker.example:443","shared_secret_file":%q,"ca_file":%q,"server_name":"broker.example"}`, APIVersion, secretPath, caPath)
+	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client, err := ReadPath(path, home)
+	if err != nil || client.SharedSecret != strings.Repeat("s", 32) || client.CAFile != caPath {
+		t.Fatalf("ReadPath() = %+v, %v", client, err)
+	}
+	if _, err := client.TLSConfig(); err == nil {
+		t.Fatal("invalid CA was accepted")
 	}
 }
 

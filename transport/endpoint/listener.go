@@ -2,6 +2,7 @@ package endpoint
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +17,7 @@ import (
 type ListenOptions struct {
 	Development bool
 	SocketMode  os.FileMode
+	TLSConfig   *tls.Config
 }
 
 // Named identifies one logical server listener.
@@ -125,6 +127,15 @@ func listenWith(value Endpoint, options ListenOptions, activate func([]string) (
 	switch value.scheme {
 	case SchemeTCP:
 		return (&net.ListenConfig{}).Listen(context.Background(), "tcp", value.Address())
+	case SchemeTLS:
+		if options.TLSConfig == nil || options.TLSConfig.MinVersion < tls.VersionTLS13 || len(options.TLSConfig.Certificates) == 0 {
+			return nil, errors.New("tls listener requires a TLS 1.3 certificate configuration")
+		}
+		listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", value.Address())
+		if err != nil {
+			return nil, err
+		}
+		return tls.NewListener(listener, options.TLSConfig.Clone()), nil
 	case SchemeUnix:
 		return listenUnix(value.path, options)
 	case SchemeFD:

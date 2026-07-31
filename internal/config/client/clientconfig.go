@@ -34,15 +34,21 @@ type Config struct {
 	Endpoint    string
 	GitEndpoint string
 	Secret      string
+	SecretFile  string
+	CAFile      string
+	ServerName  string
 	HomeDir     string
 }
 
 type document struct {
-	APIVersion    string `json:"api_version"`
-	ClientID      string `json:"client_id"`
-	AgentEndpoint string `json:"agent_endpoint"`
-	GitEndpoint   string `json:"git_endpoint,omitempty"`
-	SharedSecret  string `json:"shared_secret"`
+	APIVersion       string `json:"api_version"`
+	ClientID         string `json:"client_id"`
+	AgentEndpoint    string `json:"agent_endpoint"`
+	GitEndpoint      string `json:"git_endpoint,omitempty"`
+	SharedSecret     string `json:"shared_secret,omitempty"`
+	SharedSecretFile string `json:"shared_secret_file,omitempty"`
+	CAFile           string `json:"ca_file,omitempty"`
+	ServerName       string `json:"server_name,omitempty"`
 }
 
 // SecretFromFile reads path and returns the configured secret for client.
@@ -124,7 +130,8 @@ func Render(cfg Config) ([]byte, error) {
 	}
 	data, err := json.MarshalIndent(document{
 		APIVersion: APIVersion, ClientID: cfg.ClientID, AgentEndpoint: cfg.Endpoint,
-		GitEndpoint: cfg.GitEndpoint, SharedSecret: cfg.Secret,
+		GitEndpoint: cfg.GitEndpoint, SharedSecret: cfg.Secret, SharedSecretFile: cfg.SecretFile,
+		CAFile: cfg.CAFile, ServerName: cfg.ServerName,
 	}, "", "  ")
 	return append(data, '\n'), err
 }
@@ -239,8 +246,22 @@ func (cfg Config) validate() error {
 			return err
 		}
 	}
-	if strings.TrimSpace(cfg.Secret) == "" {
-		return errors.New("client secret is required")
+	if (strings.TrimSpace(cfg.Secret) == "") == (strings.TrimSpace(cfg.SecretFile) == "") {
+		return errors.New("exactly one client secret source is required")
+	}
+	if cfg.SecretFile != "" && (!filepath.IsAbs(cfg.SecretFile) || filepath.Clean(cfg.SecretFile) != cfg.SecretFile) {
+		return errors.New("client secret file must be absolute and clean")
+	}
+	parsed, err := endpoint.Parse(cfg.Endpoint, endpoint.ParseOptions{AllowNetworkTLS: true})
+	if err != nil {
+		return errors.New("client endpoint is invalid")
+	}
+	if parsed.Scheme() == endpoint.SchemeTLS {
+		if !cleanAbsoluteFile(cfg.CAFile) || strings.TrimSpace(cfg.ServerName) == "" || strings.ContainsAny(cfg.ServerName, "\x00\r\n/") {
+			return errors.New("TLS client requires a pinned CA file and server name")
+		}
+	} else if cfg.CAFile != "" || cfg.ServerName != "" {
+		return errors.New("local client cannot contain TLS settings")
 	}
 	return nil
 }
@@ -248,23 +269,28 @@ func (cfg Config) validate() error {
 // ValidateGitEndpoint accepts directly dialable loopback TCP endpoints. Git's
 // smart HTTP client cannot connect to Unix sockets directly.
 func ValidateGitEndpoint(value string) error {
-	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{})
-	if err != nil || parsed.Scheme() != endpoint.SchemeTCP || parsed.Exposure() != endpoint.ExposureLoopback {
-		return errors.New("git endpoint must be a loopback tcp endpoint")
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowNetworkTLS: true})
+	if err != nil || parsed.Scheme() != endpoint.SchemeTCP && parsed.Scheme() != endpoint.SchemeTLS ||
+		parsed.Scheme() == endpoint.SchemeTCP && parsed.Exposure() != endpoint.ExposureLoopback {
+		return errors.New("git endpoint must be loopback TCP or TLS")
 	}
 	return nil
 }
 
 // ValidateEndpoint accepts only directly dialable local or loopback broker endpoints.
 func ValidateEndpoint(value string) error {
-	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{})
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowNetworkTLS: true})
 	if err != nil || !parsed.ClientCapable() {
 		return errors.New("client endpoint is invalid or not directly dialable")
 	}
-	if parsed.Scheme() != endpoint.SchemeUnix && parsed.Exposure() != endpoint.ExposureLoopback {
-		return errors.New("client endpoint must be local or loopback")
+	if parsed.Scheme() != endpoint.SchemeUnix && parsed.Scheme() != endpoint.SchemeTLS && parsed.Exposure() != endpoint.ExposureLoopback {
+		return errors.New("client endpoint must be local, loopback, or TLS")
 	}
 	return nil
+}
+
+func cleanAbsoluteFile(value string) bool {
+	return filepath.IsAbs(value) && filepath.Clean(value) == value
 }
 
 func validateBrokerName(value string) error {

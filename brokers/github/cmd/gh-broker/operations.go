@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -371,8 +372,9 @@ func loadOperationClient(getenv func(string) string) (*agentclient.Client, error
 }
 
 type operationConnection struct {
-	endpoint string
-	secret   string
+	endpoint   string
+	secret     string
+	httpClient *http.Client
 }
 
 func loadOperationConnection(getenv func(string) string) (operationConnection, error) {
@@ -388,14 +390,18 @@ func loadOperationConnection(getenv func(string) string) (operationConnection, e
 	if err != nil {
 		return operationConnection{}, err
 	}
-	if _, err := agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret}); err != nil {
+	httpClient, err := configured.HTTPClient()
+	if err != nil {
 		return operationConnection{}, err
 	}
-	return operationConnection{endpoint: configured.AgentEndpoint, secret: configured.SharedSecret}, nil
+	if _, err := agentclient.New(agentclient.Options{Endpoint: configured.AgentEndpoint, Credential: configured.SharedSecret, HTTPClient: httpClient}); err != nil {
+		return operationConnection{}, err
+	}
+	return operationConnection{endpoint: configured.AgentEndpoint, secret: configured.SharedSecret, httpClient: httpClient}, nil
 }
 
 func (connection operationConnection) client() (*agentclient.Client, error) {
-	return agentclient.New(agentclient.Options{Endpoint: connection.endpoint, Credential: connection.secret})
+	return agentclient.New(agentclient.Options{Endpoint: connection.endpoint, Credential: connection.secret, HTTPClient: connection.httpClient})
 }
 
 func validateOperationInput(descriptor opcatalog.Descriptor, target, public json.RawMessage, sealedFile, credentialSlot, streamFile, streamMediaType string) error {
