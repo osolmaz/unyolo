@@ -32,7 +32,11 @@ func TestRunVersionUsageAndBundlePlan(t *testing.T) {
 	if err := run(t.Context(), []string{"version"}, &stdout, &stderr); err != nil || strings.TrimSpace(stdout.String()) != version {
 		t.Fatalf("version output=%q err=%v", stdout.String(), err)
 	}
-	for _, args := range [][]string{{}, {"bad"}, {"system", "bad"}} {
+	stdout.Reset()
+	if err := run(t.Context(), nil, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), "Usage:") {
+		t.Fatalf("root help=%q err=%v", stdout.String(), err)
+	}
+	for _, args := range [][]string{{"bad"}, {"system", "bad"}} {
 		if err := run(t.Context(), args, &stdout, &stderr); err == nil {
 			t.Fatalf("run(%v) error=nil", args)
 		}

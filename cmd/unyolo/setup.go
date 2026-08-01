@@ -24,6 +24,7 @@ import (
 	"github.com/osolmaz/unyolo/deployment/provider"
 	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
+	unyolocli "github.com/osolmaz/unyolo/internal/cli"
 	hostaccount "github.com/osolmaz/unyolo/internal/host/account"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
@@ -56,43 +57,51 @@ var startSetupWorker setupWorkerStarter = func(ctx context.Context, release, sou
 	return privilege.Start(ctx, release, sourceCommit, githubCLI, stderr)
 }
 
-//nolint:cyclop // Setup dispatch owns terminal, release, session, and cancellation boundaries.
-func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	if len(args) > 0 {
-		switch args[0] {
-		case "status":
-			return runSetupStatus(args[1:], stdout, stderr)
-		case "cancel":
-			return runSetupCancel(args[1:], stdout, stderr)
-		case "discard":
-			return runSetupDiscard(args[1:], stdout, stderr)
-		case "repair":
-			return runSetupRepair(ctx, args[1:], stdout, stderr)
-		case "reconfigure":
-			return runSetupReconfigure(ctx, args[1:], stdout, stderr)
-		case "remove":
-			return runSetupRemove(ctx, args[1:], stdout, stderr)
-		}
-	}
+type setupCLIFlags struct {
+	profilePath    string
+	accessible     bool
+	noOpen         bool
+	resumeID       string
+	newSession     bool
+	planOnly       bool
+	bootstrapStage string
+}
+
+func bindSetupFlags(output io.Writer) (*flag.FlagSet, *setupCLIFlags) {
 	flags := flag.NewFlagSet("unyolo setup", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	profilePath := flags.String("profile", "", "review or repair an advanced locked configuration")
-	accessible := flags.Bool("accessible", false, "use screen-reader-friendly prompts")
-	noOpen := flags.Bool("no-open", false, "print browser URLs instead of opening them")
-	resumeID := flags.String("resume", "", "resume one setup session")
-	newSession := flags.Bool("new", false, "start a new setup session")
-	planOnly := flags.Bool("plan-only", false, "prepare configuration without administrator changes")
-	bootstrapStage := flags.String("bootstrap-stage", "", "activate one verified bootstrap stage before administrator planning")
-	if err := flags.Parse(args); err != nil {
+	flags.SetOutput(output)
+	values := &setupCLIFlags{}
+	flags.StringVar(&values.profilePath, "profile", "", "review or repair an advanced locked configuration at `DIR`")
+	flags.BoolVar(&values.accessible, "accessible", false, "use screen-reader-friendly prompts")
+	flags.BoolVar(&values.noOpen, "no-open", false, "print browser URLs instead of opening them")
+	flags.StringVar(&values.resumeID, "resume", "", "resume setup session `ID`")
+	flags.BoolVar(&values.newSession, "new", false, "start a new setup session")
+	flags.BoolVar(&values.planOnly, "plan-only", false, "prepare configuration without administrator changes")
+	flags.StringVar(&values.bootstrapStage, "bootstrap-stage", "", "activate verified bootstrap stage `DIR` before administrator planning")
+	return flags, values
+}
+
+func newSetupFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindSetupFlags(output)
+	return flags
+}
+
+//nolint:cyclop // Setup owns terminal, release, session, and cancellation boundaries.
+func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags, values := bindSetupFlags(stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || *resumeID != "" && *newSession {
-		return errors.New("setup does not accept positional arguments and --resume conflicts with --new")
+	if flags.NArg() != 0 {
+		return unyolocli.Usage(errors.New("setup does not accept positional arguments"))
+	}
+	if values.resumeID != "" && values.newSession {
+		return unyolocli.Usage(errors.New("--resume and --new cannot be used together"))
 	}
 	if os.Geteuid() == 0 {
 		return errors.New("interactive setup must run as a normal account, not root")
 	}
-	if !*accessible && !hasInteractiveTTY() {
+	if !values.accessible && !hasInteractiveTTY() {
 		return errors.New("setup requires an interactive TTY; use --accessible for line prompts")
 	}
 	current, err := user.Current()
@@ -100,10 +109,10 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 		return errors.New("resolve the current account")
 	}
 	options := setupOptions{
-		Profile: *profilePath, ResumeID: *resumeID, New: *newSession, PlanOnly: *planOnly,
+		Profile: values.profilePath, ResumeID: values.resumeID, New: values.newSession, PlanOnly: values.planOnly,
 		Operator: current.Username, OperatorHome: current.HomeDir, SourceCommit: buildinfo.SourceCommit,
 	}
-	if err := configureSetupRelease(*bootstrapStage, &options); err != nil {
+	if err := configureSetupRelease(values.bootstrapStage, &options); err != nil {
 		return err
 	}
 	if err := validateGitHubCLI(options.GitHubCLI); err != nil {
@@ -115,7 +124,7 @@ func runGuidedSetup(ctx context.Context, args []string, stdout, stderr io.Writer
 			return err
 		}
 	}
-	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
+	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: values.accessible, NoOpen: values.noOpen})
 	defer func() { _ = prompter.Close() }()
 	if options.Profile != "" {
 		return runAdvancedSetup(ctx, prompter, options)
@@ -316,7 +325,7 @@ func addLocalConnection(ctx context.Context, prompter flow.SetupPrompter, sessio
 	}
 	for _, existing := range current.Connections {
 		if existing.ID == addition.Connections[0].ID || existing.ClientID == addition.Connections[0].ClientID {
-			return errors.New("that connection already exists; use setup reconfigure to change it")
+			return errors.New("that connection already exists; use unyolo reconfigure to change it")
 		}
 	}
 	current.Connections = append(current.Connections, addition.Connections[0])
@@ -1016,21 +1025,32 @@ func privilegedReleaseVersion(value string) string {
 	return "v" + value
 }
 
-func runSetupStatus(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo setup status", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+func bindSetupStatusFlags(name string, output io.Writer) (*flag.FlagSet, *bool) {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.SetOutput(output)
 	jsonOutput := flags.Bool("json", false, "write closed JSON output")
-	if err := flags.Parse(args); err != nil {
+	return flags, jsonOutput
+}
+
+func newSetupStatusFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindSetupStatusFlags("unyolo status", output)
+	return flags
+}
+
+func newSessionListFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindSetupStatusFlags("unyolo session list", output)
+	return flags
+}
+
+func runSetupStatus(args []string, stdout, stderr io.Writer) error {
+	flags, jsonOutput := bindSetupStatusFlags("unyolo status", stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("setup status does not accept positional arguments")
+		return unyolocli.Usage(errors.New("status does not accept positional arguments"))
 	}
-	store, err := setupSessionStore()
-	if err != nil {
-		return err
-	}
-	values, err := store.List()
+	values, err := loadSetupSessions()
 	if err != nil {
 		return err
 	}
@@ -1056,8 +1076,41 @@ func runSetupStatus(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+	return writeSessionList(stdout, values)
+}
+
+func runSessionList(args []string, stdout, stderr io.Writer) error {
+	flags, jsonOutput := bindSetupStatusFlags("unyolo session list", stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return unyolocli.Usage(errors.New("session list does not accept positional arguments"))
+	}
+	values, err := loadSetupSessions()
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return json.NewEncoder(stdout).Encode(struct {
+			APIVersion string            `json:"api_version"`
+			Sessions   []session.Session `json:"sessions"`
+		}{session.APIVersion, values})
+	}
+	return writeSessionList(stdout, values)
+}
+
+func loadSetupSessions() ([]session.Session, error) {
+	store, err := setupSessionStore()
+	if err != nil {
+		return nil, err
+	}
+	return store.List()
+}
+
+func writeSessionList(stdout io.Writer, values []session.Session) error {
 	if len(values) == 0 {
-		_, err = fmt.Fprintln(stdout, "No setup sessions")
+		_, err := fmt.Fprintln(stdout, "No setup sessions")
 		return err
 	}
 	for _, value := range values {
@@ -1066,27 +1119,6 @@ func runSetupStatus(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	return nil
-}
-
-func runSetupCancel(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo setup cancel", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	confirmed := flags.Bool("confirm", false, "confirm local session removal")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() != 1 || !*confirmed {
-		return errors.New("usage: unyolo setup cancel --confirm <session-id>")
-	}
-	store, err := setupSessionStore()
-	if err != nil {
-		return err
-	}
-	if err := store.Cancel(flags.Arg(0)); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(stdout, "Discarded the setup session")
-	return err
 }
 
 func setupSessionStore() (session.Store, error) {

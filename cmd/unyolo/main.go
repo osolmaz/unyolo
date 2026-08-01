@@ -15,6 +15,7 @@ import (
 
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
+	unyolocli "github.com/osolmaz/unyolo/internal/cli"
 	"github.com/osolmaz/unyolo/internal/host/bundle"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 )
@@ -26,61 +27,55 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		var cancelled flow.CancelledError
-		if errors.As(err, &cancelled) {
-			os.Exit(130)
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		var usage *unyolocli.UsageError
+		if errors.As(err, &usage) {
+			path := usage.CommandPath
+			if path == "" {
+				path = "unyolo"
+			}
+			_, _ = fmt.Fprintf(os.Stderr, "Run %q for help.\n", path+" --help")
 		}
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+func exitCode(err error) int {
+	var cancelled flow.CancelledError
+	if errors.As(err, &cancelled) {
+		return 130
+	}
+	var usage *unyolocli.UsageError
+	if errors.As(err, &usage) {
+		return 2
+	}
+	return 1
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	if len(args) == 1 && (args[0] == "version" || args[0] == "--version") {
-		_, err := fmt.Fprintln(stdout, version)
-		return err
-	}
 	buildinfo.Version = version
-	if len(args) > 0 && args[0] == "setup" {
-		return runGuidedSetup(ctx, args[1:], stdout, stderr)
-	}
-	if len(args) < 2 || args[0] != "system" {
-		return systemUsageError()
-	}
-	handlers := map[string]func() error{
-		"profile":      func() error { return runProfileCommand(args[2:], stdout, stderr) },
-		"validate":     func() error { return runDeploymentValidate(ctx, args[2:], stdout, stderr) },
-		"plan":         func() error { return runDeploymentPlan(ctx, args[2:], stdout, stderr) },
-		"apply":        func() error { return runDeploymentApply(ctx, args[2:], stdout, stderr) },
-		"verify":       func() error { return runDeploymentVerify(ctx, args[2:], stdout, stderr) },
-		"export":       func() error { return runDeploymentExport(ctx, args[2:], stdout, stderr) },
-		"setup-worker": func() error { return runSetupWorker(ctx, args[2:], stdout, stderr) },
-		"install":      func() error { return runActivation(ctx, "install", args[2:], stdout, stderr) },
-		"upgrade":      func() error { return runActivation(ctx, "upgrade", args[2:], stdout, stderr) },
-		"status":       func() error { return runStatus(ctx, "status", args[2:], stdout, stderr) },
-		"doctor":       func() error { return runStatus(ctx, "doctor", args[2:], stdout, stderr) },
-		"rollback":     func() error { return runRollback(ctx, args[2:], stdout, stderr) },
-	}
-	handler, ok := handlers[args[1]]
-	if !ok {
-		return systemUsageError()
-	}
-	return handler()
+	return newCLIApplication().Run(ctx, args, stdout, stderr)
 }
 
-func systemUsageError() error {
-	return errors.New("usage: unyolo setup [status|cancel|discard|repair|reconfigure|remove] | unyolo system <profile|validate|plan|apply|verify|export|install|upgrade|status|doctor|rollback>")
+func bindSetupWorkerFlags(output io.Writer) (*flag.FlagSet, *bool) {
+	flags := flag.NewFlagSet("unyolo system setup-worker", flag.ContinueOnError)
+	flags.SetOutput(output)
+	protocolStdio := flags.Bool("protocol-stdio", false, "serve the bounded setup worker protocol")
+	return flags, protocolStdio
+}
+
+func newSetupWorkerFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindSetupWorkerFlags(output)
+	return flags
 }
 
 func runSetupWorker(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo system setup-worker", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	protocolStdio := flags.Bool("protocol-stdio", false, "serve the bounded setup worker protocol")
-	if err := flags.Parse(args); err != nil {
+	flags, protocolStdio := bindSetupWorkerFlags(stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || !*protocolStdio {
-		return errors.New("setup-worker requires --protocol-stdio")
+		return unyolocli.Usage(errors.New("setup-worker requires --protocol-stdio"))
 	}
 	engine, err := privilege.NewProductionEngine()
 	if err != nil {
@@ -98,8 +93,8 @@ type hostFlags struct {
 
 func bindHostFlags(flags *flag.FlagSet, values *hostFlags) {
 	defaults := bundle.DefaultPaths()
-	flags.StringVar(&values.root, "root", defaults.Root, "immutable unYOLO release root")
-	flags.StringVar(&values.state, "state-dir", defaults.StateDir, "unYOLO host state directory")
+	flags.StringVar(&values.root, "root", defaults.Root, "immutable unYOLO release `DIR`")
+	flags.StringVar(&values.state, "state-dir", defaults.StateDir, "unYOLO host state `DIR`")
 	flags.BoolVar(&values.json, "json", false, "write closed JSON output")
 }
 
@@ -148,29 +143,44 @@ func activateBundle(ctx context.Context, stdout io.Writer, options activationOpt
 	return err
 }
 
-func parseActivationOptions(action string, args []string, stderr io.Writer) (activationOptions, error) {
+func bindActivationFlags(action string, output io.Writer) (*flag.FlagSet, *activationOptions) {
 	flags := flag.NewFlagSet("unyolo system "+action, flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	var options activationOptions
+	flags.SetOutput(output)
+	options := &activationOptions{}
 	bindHostFlags(flags, &options.host)
-	flags.StringVar(&options.manifestPath, "manifest", "", "signed runtime bundle manifest")
-	flags.StringVar(&options.artifacts, "artifacts", "", "directory containing pinned component artifacts")
-	flags.StringVar(&options.signature, "signature", "", "detached base64 Ed25519 signature")
-	flags.StringVar(&options.publicKey, "public-key", "", "base64 Ed25519 public key")
+	flags.StringVar(&options.manifestPath, "manifest", "", "signed runtime bundle manifest `FILE`")
+	flags.StringVar(&options.artifacts, "artifacts", "", "directory `DIR` containing pinned component artifacts")
+	flags.StringVar(&options.signature, "signature", "", "detached base64 Ed25519 signature `FILE`; required outside development")
+	flags.StringVar(&options.publicKey, "public-key", "", "base64 Ed25519 public key `FILE`")
 	flags.BoolVar(&options.development, "development", false, "allow an unsigned development bundle")
-	if err := flags.Parse(args); err != nil {
+	return flags, options
+}
+
+func newActivationFlagSetFactory(action string) unyolocli.FlagSetFactory {
+	return func(output io.Writer) *flag.FlagSet {
+		flags, _ := bindActivationFlags(action, output)
+		return flags
+	}
+}
+
+func parseActivationOptions(action string, args []string, stderr io.Writer) (activationOptions, error) {
+	flags, options := bindActivationFlags(action, stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return activationOptions{}, err
 	}
 	if flags.NArg() != 0 || options.manifestPath == "" {
-		return activationOptions{}, errors.New("--manifest is required and positional arguments are not accepted")
+		return activationOptions{}, unyolocli.Usage(errors.New("--manifest is required and positional arguments are not accepted"))
+	}
+	if !options.development && options.signature == "" {
+		return activationOptions{}, unyolocli.Usage(errors.New("--signature is required outside development"))
 	}
 	if err := validateActivationMode(action, options.host, options.development); err != nil {
-		return activationOptions{}, err
+		return activationOptions{}, unyolocli.Usage(err)
 	}
 	if options.artifacts == "" {
 		options.artifacts = filepath.Dir(options.manifestPath)
 	}
-	return options, nil
+	return *options, nil
 }
 
 func loadActivationBundle(options activationOptions) (bundle.Manifest, []byte, bool, error) {
@@ -253,18 +263,30 @@ func runStatus(ctx context.Context, action string, args []string, stdout, stderr
 	return nil
 }
 
-func parseHostOptions(name string, args []string, stderr io.Writer, positionalLabel string) (hostFlags, error) {
+func bindHostFlagSet(name string, output io.Writer) (*flag.FlagSet, *hostFlags) {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	var host hostFlags
-	bindHostFlags(flags, &host)
-	if err := flags.Parse(args); err != nil {
+	flags.SetOutput(output)
+	host := &hostFlags{}
+	bindHostFlags(flags, host)
+	return flags, host
+}
+
+func newHostFlagSetFactory(name string) unyolocli.FlagSetFactory {
+	return func(output io.Writer) *flag.FlagSet {
+		flags, _ := bindHostFlagSet(name, output)
+		return flags
+	}
+}
+
+func parseHostOptions(name string, args []string, stderr io.Writer, positionalLabel string) (hostFlags, error) {
+	flags, host := bindHostFlagSet(name, stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return hostFlags{}, err
 	}
 	if flags.NArg() != 0 {
-		return hostFlags{}, fmt.Errorf("%s does not accept positional arguments", positionalLabel)
+		return hostFlags{}, unyolocli.Usage(fmt.Errorf("%s does not accept positional arguments", positionalLabel))
 	}
-	return host, nil
+	return *host, nil
 }
 
 func writeStatus(stdout io.Writer, asJSON bool, report bundle.Report) error {

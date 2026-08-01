@@ -1,0 +1,28 @@
+unYOLO gives agents controlled access to your credentials.
+
+Set up credential services, connect agents, and review every privileged change before it
+is applied.
+
+Usage:
+  unyolo <command>
+
+Commands:
+  reconfigure  Change the current installation
+  remove       Safely remove an installation
+  repair       Repair the current installation
+  session      Manage unfinished setup sessions
+  setup        Set up unYOLO on this computer
+  status       Show installation and setup status
+
+Utilities:
+  completion  Generate shell completion
+  version     Print the installed version
+
+Advanced:
+  system  Run low-level host operations
+
+Options:
+  -h, --help     show help
+  -v, --version  print the installed version
+
+Run "unyolo help <command>" for more information.

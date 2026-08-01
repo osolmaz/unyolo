@@ -911,10 +911,11 @@ inspection and mutation. `--profile <directory>` starts from an existing pack
 and asks only for missing guided choices or credential slots. `--accessible`
 selects the screen-reader renderer for the complete session.
 
-`unyolo setup status` reports incomplete and completed local sessions without
-reading host secrets. `unyolo setup cancel <session-id>` removes an
-uncommitted local session after confirming that no host transaction is active.
-It never cancels or rolls back a committed host deployment.
+`unyolo status` reports the installation and local sessions without reading
+host secrets. `unyolo session list` reports only sessions, and
+`unyolo session discard --confirm <session-id>` removes an uncommitted local
+session after confirming that no host transaction is active. It never cancels
+or rolls back a committed host deployment.
 
 ### `system profile lock`
 

@@ -33,7 +33,8 @@ or host configuration.
 Incomplete local sessions can be inspected and resumed:
 
 ```sh
-unyolo setup status
+unyolo status
+unyolo session list
 unyolo setup --resume <session-id>
 ```
 

@@ -23,10 +23,14 @@ func TestSetupSessionStatusAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	if err := runSetupStatus(nil, &output, &output); err != nil || !strings.Contains(output.String(), value.ID+"\tdefault") {
+	if err := run(t.Context(), []string{"status"}, &output, &output); err != nil || !strings.Contains(output.String(), value.ID+"\tdefault") {
 		t.Fatalf("status = %q, %v", output.String(), err)
 	}
-	if err := runSetupCancel([]string{"--confirm", value.ID}, &output, &output); err != nil {
+	output.Reset()
+	if err := run(t.Context(), []string{"session", "list", "--json"}, &output, &output); err != nil || !strings.Contains(output.String(), value.ID) {
+		t.Fatalf("session list = %q, %v", output.String(), err)
+	}
+	if err := run(t.Context(), []string{"session", "discard", "--confirm", value.ID}, &output, &output); err != nil {
 		t.Fatal(err)
 	}
 }

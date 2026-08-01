@@ -39,7 +39,8 @@ move through one-use anonymous pipes and are never written to the setup session 
 Incomplete sessions can be inspected or resumed:
 
 ```sh
-unyolo setup status
+unyolo status
+unyolo session list
 unyolo setup --resume <session-id>
 ```
 
