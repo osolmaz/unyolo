@@ -15,6 +15,7 @@ import (
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/deployment/session"
 	"github.com/osolmaz/unyolo/internal/buildinfo"
+	unyolocli "github.com/osolmaz/unyolo/internal/cli"
 	hostdeployment "github.com/osolmaz/unyolo/internal/host/deployment"
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
@@ -24,27 +25,46 @@ import (
 	"github.com/osolmaz/unyolo/setup/wizard"
 )
 
+type sessionDiscardFlags struct {
+	confirmed bool
+	all       bool
+}
+
+func bindSessionDiscardFlags(output io.Writer) (*flag.FlagSet, *sessionDiscardFlags) {
+	flags := flag.NewFlagSet("unyolo session discard", flag.ContinueOnError)
+	flags.SetOutput(output)
+	values := &sessionDiscardFlags{}
+	flags.BoolVar(&values.confirmed, "confirm", false, "confirm local session removal")
+	flags.BoolVar(&values.all, "all", false, "discard every incomplete local session")
+	return flags, values
+}
+
+func newSessionDiscardFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindSessionDiscardFlags(output)
+	return flags
+}
+
 // runSetupDiscard removes one uncommitted local setup session by ID.
 func runSetupDiscard(args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo setup discard", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	confirmed := flags.Bool("confirm", false, "confirm local session removal")
-	all := flags.Bool("all", false, "discard every incomplete local session")
-	if err := flags.Parse(args); err != nil {
+	flags, values := bindSessionDiscardFlags(stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return err
 	}
-	if !*confirmed {
-		return errors.New("usage: unyolo setup discard --confirm [--all | <session-id>]")
+	if !values.confirmed {
+		return unyolocli.Usage(errors.New("--confirm is required"))
 	}
 	store, err := setupSessionStore()
 	if err != nil {
 		return err
 	}
-	if *all {
+	if values.all {
+		if flags.NArg() != 0 {
+			return unyolocli.Usage(errors.New("--all does not accept a session ID"))
+		}
 		return discardAllIncompleteSessions(store, stdout)
 	}
 	if flags.NArg() != 1 {
-		return errors.New("usage: unyolo setup discard --confirm <session-id>")
+		return unyolocli.Usage(errors.New("provide one session ID or use --all"))
 	}
 	if err := store.Cancel(flags.Arg(0)); err != nil {
 		return err
@@ -72,36 +92,51 @@ func discardAllIncompleteSessions(store session.Store, stdout io.Writer) error {
 	return err
 }
 
+type lifecycleCLIFlags struct {
+	accessible     bool
+	noOpen         bool
+	bootstrapStage string
+}
+
+func bindLifecycleFlags(name string, output io.Writer) (*flag.FlagSet, *lifecycleCLIFlags) {
+	flags := flag.NewFlagSet("unyolo "+name, flag.ContinueOnError)
+	flags.SetOutput(output)
+	values := &lifecycleCLIFlags{}
+	flags.BoolVar(&values.accessible, "accessible", false, "use screen-reader-friendly prompts")
+	flags.BoolVar(&values.noOpen, "no-open", false, "print browser URLs instead of opening them")
+	flags.StringVar(&values.bootstrapStage, "bootstrap-stage", "", "activate verified bootstrap stage `DIR` before administrator planning")
+	return flags, values
+}
+
+func newRepairFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindLifecycleFlags("repair", output)
+	return flags
+}
+
+func newReconfigureFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindLifecycleFlags("reconfigure", output)
+	return flags
+}
+
 // runSetupRepair replans and reapplies the recorded installation without changes.
 func runSetupRepair(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo setup repair", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	accessible := flags.Bool("accessible", false, "use screen-reader-friendly prompts")
-	noOpen := flags.Bool("no-open", false, "print browser URLs instead of opening them")
-	bootstrapStage := flags.String("bootstrap-stage", "", "activate one verified bootstrap stage before administrator planning")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 {
-		return errors.New("setup repair does not accept positional arguments")
-	}
-	return runReconfigureOrRepair(ctx, stdout, stderr, "repair", *accessible, *noOpen, *bootstrapStage)
+	return runLifecycleCommand(ctx, "repair", args, stdout, stderr)
 }
 
 // runSetupReconfigure loads the current installation, applies staged edits and re-runs the transaction.
 func runSetupReconfigure(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo setup reconfigure", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	accessible := flags.Bool("accessible", false, "use screen-reader-friendly prompts")
-	noOpen := flags.Bool("no-open", false, "print browser URLs instead of opening them")
-	bootstrapStage := flags.String("bootstrap-stage", "", "activate one verified bootstrap stage before administrator planning")
-	if err := flags.Parse(args); err != nil {
+	return runLifecycleCommand(ctx, "reconfigure", args, stdout, stderr)
+}
+
+func runLifecycleCommand(ctx context.Context, action string, args []string, stdout, stderr io.Writer) error {
+	flags, values := bindLifecycleFlags(action, stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("setup reconfigure does not accept positional arguments")
+		return unyolocli.Usage(fmt.Errorf("%s does not accept positional arguments", action))
 	}
-	return runReconfigureOrRepair(ctx, stdout, stderr, "reconfigure", *accessible, *noOpen, *bootstrapStage)
+	return runReconfigureOrRepair(ctx, stdout, stderr, action, values.accessible, values.noOpen, values.bootstrapStage)
 }
 
 //nolint:cyclop // Lifecycle dispatch owns release resolution, session store, worker start, and cancellation.
@@ -430,40 +465,56 @@ func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, stor
 	})
 }
 
+type removeCLIFlags struct {
+	lifecycleCLIFlags
+	removeState bool
+}
+
+func bindRemoveFlags(output io.Writer) (*flag.FlagSet, *removeCLIFlags) {
+	flags := flag.NewFlagSet("unyolo remove", flag.ContinueOnError)
+	flags.SetOutput(output)
+	values := &removeCLIFlags{}
+	flags.BoolVar(&values.accessible, "accessible", false, "use screen-reader-friendly prompts")
+	flags.BoolVar(&values.noOpen, "no-open", false, "print browser URLs instead of opening them")
+	flags.StringVar(&values.bootstrapStage, "bootstrap-stage", "", "activate verified bootstrap stage `DIR` before removal")
+	flags.BoolVar(&values.removeState, "remove-state", false, "also remove installation-owned credentials and data")
+	return flags, values
+}
+
+func newRemoveFlagSet(output io.Writer) *flag.FlagSet {
+	flags, _ := bindRemoveFlags(output)
+	return flags
+}
+
 // runSetupRemove reads the ownership receipt and prompts for safe uninstall.
 //
 //nolint:cyclop // Removal orchestrates release resolution, worker start, review, and safe cleanup.
 func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	flags := flag.NewFlagSet("unyolo setup remove", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	accessible := flags.Bool("accessible", false, "use screen-reader-friendly prompts")
-	noOpen := flags.Bool("no-open", false, "print browser URLs instead of opening them")
-	bootstrapStage := flags.String("bootstrap-stage", "", "activate one verified bootstrap stage before removal")
-	removeState := flags.Bool("remove-state", false, "also remove installation-owned credentials and data")
-	if err := flags.Parse(args); err != nil {
+	flags, values := bindRemoveFlags(stderr)
+	if err := unyolocli.Parse(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("setup remove does not accept positional arguments")
+		return unyolocli.Usage(errors.New("remove does not accept positional arguments"))
 	}
 	if os.Geteuid() == 0 {
 		return errors.New("interactive removal must run as a normal account, not root")
 	}
-	if !*accessible && !hasInteractiveTTY() {
-		return errors.New("setup remove requires an interactive TTY; use --accessible for line prompts")
+	if !values.accessible && !hasInteractiveTTY() {
+		return errors.New("remove requires an interactive TTY; use --accessible for line prompts")
 	}
 	current, err := user.Current()
 	if err != nil || current.Username == "" || current.HomeDir == "" {
 		return errors.New("resolve the current account")
 	}
 	options := setupOptions{Operator: current.Username, OperatorHome: current.HomeDir, SourceCommit: buildinfo.SourceCommit}
-	if err := configureSetupRelease(*bootstrapStage, &options); err != nil {
+	if err := configureSetupRelease(values.bootstrapStage, &options); err != nil {
 		return err
 	}
 	if err := validateGitHubCLI(options.GitHubCLI); err != nil {
 		return err
 	}
-	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: *accessible, NoOpen: *noOpen})
+	prompter := terminalsetup.New(terminalsetup.Options{Input: os.Stdin, Output: stdout, Accessible: values.accessible, NoOpen: values.noOpen})
 	defer func() { _ = prompter.Close() }()
 	if err := prompter.Intro(ctx, "Remove unYOLO"); err != nil {
 		return err
@@ -474,7 +525,7 @@ func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	defer func() { _ = worker.Close() }()
 	progress := prompter.Progress("Preparing the removal plan")
-	response, err := worker.PlanRemoval(*removeState)
+	response, err := worker.PlanRemoval(values.removeState)
 	if err != nil {
 		progress.Fail("Could not prepare the removal plan")
 		return err
@@ -496,7 +547,7 @@ func runSetupRemove(ctx context.Context, args []string, stdout, stderr io.Writer
 		}
 		return flow.CancelledError{}
 	}
-	if *removeState {
+	if values.removeState {
 		if err := confirmDestructiveDataRemoval(ctx, prompter, filtered); err != nil {
 			_ = worker.Cancel()
 			return err

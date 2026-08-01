@@ -155,13 +155,19 @@ not invoked directly.
 
 ```sh
 unyolo setup [--accessible] [--no-open]
-unyolo setup status
 unyolo setup --resume <session-id>
-unyolo setup reconfigure [--accessible] [--no-open]
-unyolo setup repair [--accessible] [--no-open]
-unyolo setup remove [--remove-state] [--accessible]
-unyolo setup discard --confirm <session-id>
-unyolo setup discard --confirm --all
+unyolo status [--json]
+unyolo repair [--accessible] [--no-open]
+unyolo reconfigure [--accessible] [--no-open]
+unyolo remove [--remove-state] [--accessible]
+unyolo session list [--json]
+unyolo session discard --confirm <session-id>
+unyolo session discard --confirm --all
+unyolo version
+
+unyolo completion bash
+unyolo completion zsh
+unyolo completion fish
 
 unyolo system profile lock          --profile /path/to/deployment
 unyolo system profile lock --check  --profile /path/to/deployment
@@ -174,13 +180,16 @@ unyolo system apply    --profile /path/to/deployment \
 unyolo system verify   --profile /path/to/deployment
 unyolo system export   --profile /path/to/deployment --json
 
-unyolo system plan     --manifest manifest.json --signature manifest.sig --public-key release.pub
 unyolo system install  --manifest manifest.json --signature manifest.sig --public-key release.pub
 unyolo system upgrade  --manifest manifest.json --signature manifest.sig --public-key release.pub
 unyolo system status [--json]
 unyolo system doctor [--json]
 unyolo system rollback
 ```
+
+Run `unyolo --help` for the normal workflow, `unyolo help <command>` for one command, and
+`unyolo system --help` for low-level host operations. Help exits successfully and invalid command
+syntax exits with status 2. Misspelled command names suggest a close match without executing it.
 
 Run `system` commands through the root-owned worker the verified bootstrap installed at
 `/opt/unyolo/bootstrap/v<version>/unyolo`. Never run a user-local binary with `sudo`. The CLI

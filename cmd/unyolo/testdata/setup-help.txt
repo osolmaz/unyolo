@@ -1,0 +1,20 @@
+Set up unYOLO on this computer
+
+Choose what to install, review the plan, and apply it with explicit approval.
+
+Usage:
+  unyolo setup [flags]
+
+Options:
+  -h, --help     show help
+  --accessible   use screen-reader-friendly prompts
+  --new          start a new setup session
+  --no-open      print browser URLs instead of opening them
+  --plan-only    prepare configuration without administrator changes
+  --profile DIR  review or repair an advanced locked configuration at DIR
+  --resume ID    resume setup session ID
+
+Examples:
+  unyolo setup
+  unyolo setup --accessible
+  unyolo setup --new

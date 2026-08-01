@@ -160,13 +160,6 @@ func TestSetupDiscardAllRemovesIncomplete(t *testing.T) {
 	}
 }
 
-func TestSetupLifecycleUsageError(t *testing.T) {
-	usage := systemUsageError()
-	if !strings.Contains(usage.Error(), "reconfigure") || !strings.Contains(usage.Error(), "remove") || !strings.Contains(usage.Error(), "repair") || !strings.Contains(usage.Error(), "discard") {
-		t.Fatalf("usage error missing lifecycle verbs: %q", usage.Error())
-	}
-}
-
 func TestJoinProvidersRenders(t *testing.T) {
 	t.Parallel()
 	if got := joinProviders(installationWithProviders()); got != "github, huggingface" {

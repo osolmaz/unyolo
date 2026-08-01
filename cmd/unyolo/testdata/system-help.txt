@@ -1,0 +1,25 @@
+Run low-level host operations
+
+Validate, plan, apply, verify, and inspect signed host deployment data. These commands
+are intended for release tooling and administrators.
+
+Usage:
+  unyolo system <command>
+
+Commands:
+  apply     Apply an exact reviewed deployment plan
+  doctor    Diagnose low-level host runtime problems
+  export    Export observed deployment state
+  install   Install a signed host runtime
+  plan      Create a reviewed deployment plan
+  profile   Manage locked deployment profiles
+  rollback  Roll back the active host runtime
+  status    Show low-level host runtime status
+  upgrade   Upgrade the signed host runtime
+  validate  Validate a deployment profile
+  verify    Verify the active deployment
+
+Options:
+  -h, --help  show help
+
+Run "unyolo help system <command>" for more information.

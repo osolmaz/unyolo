@@ -40,8 +40,8 @@ unYOLO inspects the host and lists the exact administrator changes. Provider cre
 collected only after that plan is approved and are never stored in setup progress.
 
 Run `unyolo setup` again to review or change the default installation. The explicit lifecycle
-commands are `unyolo setup reconfigure`, `unyolo setup repair`, and `unyolo setup remove`. Removal
-first deletes unchanged services, generated connections, and managed agent accounts. The separate
+commands are `unyolo reconfigure`, `unyolo repair`, and `unyolo remove`. Removal first deletes
+unchanged services, generated connections, and managed agent accounts. The separate
 `--remove-state` confirmation is required before provider credentials, broker state, and provider
 accounts can be deleted. Changed or ambiguous resources are retained and reported.
 

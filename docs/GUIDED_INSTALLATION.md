@@ -370,17 +370,17 @@ The default flow supports these lifecycle actions after the first apply:
 - `unyolo setup` again: recompiles the recorded installation and shows a diff before applying
   changes. This path is used to add, rotate, or remove providers, approvers, connections, or
   integrations.
-- `unyolo setup reconfigure`: same recovery-safe transaction as `unyolo setup`, but skips the
+- `unyolo reconfigure`: runs the same recovery-safe transaction as `unyolo setup`, but skips the
   first-run introduction.
-- `unyolo setup repair`: recompiles the same installation, replans, and reapplies unchanged. It
-  never widens policy, rotates retained credentials, or rewrites resources unless the reviewed plan
-  names that action.
-- `unyolo setup remove`: reads the ownership receipt, plans a safe removal, and prompts for two
+- `unyolo repair`: recompiles the same installation, replans, and reapplies unchanged. It never
+  widens policy, rotates retained credentials, or rewrites resources unless the reviewed plan names
+  that action.
+- `unyolo remove`: reads the ownership receipt, plans a safe removal, and prompts for two
   confirmations. The first removes unchanged services, generated connections, managed agent
   accounts, and other non-data resources. The second confirmation, gated behind `--remove-state`,
   additionally permits removal of unchanged provider credentials, broker state, provider accounts,
   and the receipt.
-- `unyolo setup discard --confirm <session-id>` (or `--all`): removes uncommitted local setup
+- `unyolo session discard --confirm <session-id>` (or `--all`): removes uncommitted local setup
   session state without touching host services.
 
 Removal always fails closed. A managed account whose identity or home changed since the receipt
