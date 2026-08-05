@@ -2,14 +2,14 @@
   "version": 1,
   "provider": "huggingface",
   "preset": "request-all-agent-operations",
-  "catalog_digest": "sha256:69419dac8e027d431291252e04702237af9351980876d17e5338f39372b66fa5",
+  "catalog_digest": "sha256:87d2c20617068fea3383f711d7c574fb53c3dca2d9fe541200a00fffd265aaa9",
   "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
-  "policy_digest": "sha256:f1f1d00a3299708531351b4e3b27f775a2043a8571cdf26e6928aa6bbf0829cc",
+  "policy_digest": "sha256:7314cff6d1315264c363906f485b71902b6f1fbfa965ba1466080156fcd0f4f5",
   "operation_counts": {
     "total": 258,
-    "allow": 8,
+    "allow": 10,
     "request": 141,
-    "deny": 109
+    "deny": 107
   },
   "operations": [
     {
@@ -456,9 +456,9 @@
     {
       "name": "inference.chat.complete",
       "operation_revision": 1,
-      "default_effect": "deny",
+      "default_effect": "allow",
       "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
-      "effect": "deny"
+      "effect": "allow"
     },
     {
       "name": "inference.document_question_answer",
@@ -533,9 +533,9 @@
     {
       "name": "inference.models.list",
       "operation_revision": 1,
-      "default_effect": "deny",
+      "default_effect": "allow",
       "authorization_digest": "sha256:367d5083f46304ca3f60d416a90ec745046a452b968dcdf87525bdf9c3e32499",
-      "effect": "deny"
+      "effect": "allow"
     },
     {
       "name": "inference.object.detect",

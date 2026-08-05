@@ -1447,7 +1447,7 @@
     },
     {
       "id": "preset-inference-chat-complete",
-      "effect": "deny",
+      "effect": "allow",
       "clients": [
         "agent"
       ],
@@ -1645,7 +1645,7 @@
     },
     {
       "id": "preset-inference-models-list",
-      "effect": "deny",
+      "effect": "allow",
       "clients": [
         "agent"
       ],
