@@ -22,11 +22,11 @@ The catalog stores an explicit `default_policy_effect` for each operation:
 These effects are data in the reviewed provider catalog. The renderer never
 guesses from an operation name or risk label. An operation marked
 `blocked-upstream` is rendered as deny even if its future target effect
-would otherwise be allow or request, except for the OpenAI-compatible
-inference operations implemented by the broker's dedicated HTTP forwarder
-(`inference.models.list` and `inference.chat.complete`); those keep their
-catalog default effect because the generic operation executor is not the
-surface that serves them. Catalog validation also prevents high-risk,
+would otherwise be allow or request. Operations that are implemented on a
+provider-native data plane, such as git smart HTTP or the OpenAI-compatible
+inference HTTP surface, use the `native-protocol` executor binding and keep
+their catalog default effect; they are not advertised as bounded agent
+operation executions. Catalog validation also prevents high-risk,
 critical, provider-executed, explicit-only, or sealed operations from
 defaulting to `allow`.
 

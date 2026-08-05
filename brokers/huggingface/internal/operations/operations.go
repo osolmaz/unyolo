@@ -180,7 +180,8 @@ func NewRegistry(adapters ...Adapter) (*Registry, error) {
 
 // AgentRuntimeBound reports whether the catalog explicitly binds an operation
 // to an Agent Operations executor. Native protocol bindings remain on their
-// provider data plane and are not advertised as bounded MCP executions.
+// provider-native data planes (git smart HTTP and the OpenAI-compatible
+// inference HTTP surface) and are not advertised as bounded MCP executions.
 func AgentRuntimeBound(descriptor opcatalog.Descriptor) bool {
 	return descriptor.Implementation == opcatalog.StatusImplemented &&
 		(descriptor.ExecutorKind == "inline" || descriptor.ExecutorKind == "credential" || descriptor.ExecutorKind == "bounded-stream")

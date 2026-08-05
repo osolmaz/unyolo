@@ -1564,7 +1564,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "blocked-upstream",
+    "implementation_status": "implemented",
     "risk": "medium",
     "target_kind": "inference",
     "max_uses": 1000000,
@@ -1574,7 +1574,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_inference_chat_complete",
     "cli_command": "inference chat complete",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "inference.document_question_answer",
@@ -1828,7 +1829,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "blocked-upstream",
+    "implementation_status": "implemented",
     "risk": "medium",
     "target_kind": "inference",
     "max_uses": 1000000,
@@ -1838,7 +1839,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_inference_models_list",
     "cli_command": "inference models list",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "inference.object.detect",
