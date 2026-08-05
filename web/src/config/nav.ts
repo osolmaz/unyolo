@@ -128,5 +128,5 @@ export function sectionOf(slug: string): string | undefined {
 
 export const GITHUB_REPO = "https://github.com/osolmaz/unyolo";
 // Swap for a personal site if you would rather the credit point there.
-export const AUTHOR_URL = "https://github.com/osolmaz";
+export const AUTHOR_URL = "https://x.com/onusoz";
 export const GITHUB_EDIT_BASE = `${GITHUB_REPO}/edit/main/web/src/content/docs`;
