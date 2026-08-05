@@ -21,10 +21,14 @@ The catalog stores an explicit `default_policy_effect` for each operation:
 
 These effects are data in the reviewed provider catalog. The renderer never
 guesses from an operation name or risk label. An operation marked
-`blocked-upstream` is always rendered as deny even if its future target effect
-would otherwise be allow or request. Catalog validation also prevents
-high-risk, critical, provider-executed, explicit-only, or sealed operations
-from defaulting to `allow`.
+`blocked-upstream` is rendered as deny even if its future target effect
+would otherwise be allow or request, except for the OpenAI-compatible
+inference operations implemented by the broker's dedicated HTTP forwarder
+(`inference.models.list` and `inference.chat.complete`); those keep their
+catalog default effect because the generic operation executor is not the
+surface that serves them. Catalog validation also prevents high-risk,
+critical, provider-executed, explicit-only, or sealed operations from
+defaulting to `allow`.
 
 Window grants in this preset default to their catalog ceiling. Routine
 repository and bucket operations allow up to `1000000` uses for up to seven

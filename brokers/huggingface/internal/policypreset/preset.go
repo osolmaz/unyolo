@@ -13,6 +13,16 @@ import (
 
 const RequestAllAgentOperations = "request-all-agent-operations"
 
+// openAICompatibleInferenceOperations are served by the dedicated HTTP inference
+// forwarder in internal/httpapi. The generic operation executor still marks
+// them blocked-upstream because they are not available through the agent
+// operation runtime; do not let that executor status deny the implemented
+// OpenAI-compatible HTTP surface.
+var openAICompatibleInferenceOperations = map[string]struct{}{
+	"inference.models.list":   {},
+	"inference.chat.complete": {},
+}
+
 const (
 	ProfileVersion  = shared.ProfileVersion
 	ManifestVersion = shared.ManifestVersion
@@ -126,7 +136,7 @@ func (renderer) Operations() ([]shared.Operation, error) {
 			return nil, fmt.Errorf("fingerprint operation %s: %w", descriptor.Name, err)
 		}
 		defaultEffect := descriptor.DefaultPolicyEffect
-		if descriptor.Implementation == opcatalog.StatusBlockedUpstream {
+		if descriptor.Implementation == opcatalog.StatusBlockedUpstream && !isOpenAICompatibleInferenceOperation(descriptor.Name) {
 			defaultEffect = opcatalog.DefaultEffectDeny
 		}
 		operations = append(operations, shared.Operation{
@@ -160,6 +170,11 @@ func (renderer) RenderPolicy(profile shared.Profile, operations []shared.Effecti
 func (renderer) ValidatePolicy(data []byte) error {
 	_, err := policy.Parse(data)
 	return err
+}
+
+func isOpenAICompatibleInferenceOperation(name string) bool {
+	_, ok := openAICompatibleInferenceOperations[name]
+	return ok
 }
 
 func NewProfile(clients, deniedOperations []string) Profile {
