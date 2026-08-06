@@ -88,15 +88,16 @@ func (s *Server) runAuthorizedGitTransfer(c echo.Context, request policy.Request
 }
 
 // prepareGitTransferGrantRequest builds the idempotent grant request for one
-// fetch or LFS approval. The request ID digests only the target and rule IDs
-// so discovery, upload-pack, and LFS requests share one pending approval.
+// fetch or LFS approval. The request ID digests the operation, target, and
+// rule IDs so discovery, upload-pack, and LFS download share one pending
+// approval while git.lfs.write gets its own when a combined rule covers both.
 func (s *Server) prepareGitTransferGrantRequest(request policy.Request, decision policy.Decision) (grants.Request, error) {
 	duration, pending, mode, maxUses, err := gitTransferApprovalBounds(decision)
 	if err != nil {
 		return grants.Request{}, echo.NewHTTPError(http.StatusForbidden, err.Error())
 	}
 	target := policy.CoreTarget(request.Target)
-	attrs := map[string][]string{}
+	attrs := map[string][]string{"operation": {string(request.Operation)}}
 	requestID, err := s.gitTransactionRequestID(request.Client, target, attrs, decision.MatchedRuleIDs)
 	if err != nil {
 		return grants.Request{}, err
