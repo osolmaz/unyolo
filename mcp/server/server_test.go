@@ -71,6 +71,83 @@ func TestServeProtocolAndToolResults(t *testing.T) {
 	}
 }
 
+func TestHandleAcceptsRequestMetadata(t *testing.T) {
+	var toolMeta map[string]json.RawMessage
+	var resourceMeta map[string]json.RawMessage
+	server, err := New(Config{
+		Name:    "test",
+		Version: "1",
+		Tools:   func(context.Context) ([]map[string]any, error) { return nil, nil },
+		Call: func(_ context.Context, call ToolCall) (any, error) {
+			toolMeta = call.Meta
+			return map[string]any{"name": call.Name}, nil
+		},
+		Resources: func(context.Context) ([]map[string]any, error) { return nil, nil },
+		ReadResource: func(_ context.Context, input ResourceRead) (any, error) {
+			resourceMeta = input.Meta
+			return map[string]any{"uri": input.URI}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	toolResponse := server.Handle(t.Context(), Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/call",
+		Params:  json.RawMessage(`{"name":"ok","arguments":{},"_meta":{"threadId":"thread-123"}}`),
+	})
+	if toolResponse.Error != nil {
+		t.Fatalf("tools/call rejected request metadata: %#v", toolResponse.Error)
+	}
+	if got := string(toolMeta["threadId"]); got != `"thread-123"` {
+		t.Fatalf("tool metadata threadId = %s, want %q", got, "thread-123")
+	}
+
+	resourceResponse := server.Handle(t.Context(), Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`2`),
+		Method:  "resources/read",
+		Params:  json.RawMessage(`{"uri":"test://catalog","_meta":{"progressToken":7}}`),
+	})
+	if resourceResponse.Error != nil {
+		t.Fatalf("resources/read rejected request metadata: %#v", resourceResponse.Error)
+	}
+	if got := string(resourceMeta["progressToken"]); got != "7" {
+		t.Fatalf("resource metadata progressToken = %s, want 7", got)
+	}
+}
+
+func TestHandleRejectsInvalidRequestMetadata(t *testing.T) {
+	server := testServer(t, func(context.Context) ([]map[string]any, error) { return nil, nil })
+	for _, request := range []Request{
+		{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage(`1`),
+			Method:  "tools/call",
+			Params:  json.RawMessage(`{"name":"ok","arguments":{},"_meta":[]}`),
+		},
+		{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage(`2`),
+			Method:  "tools/call",
+			Params:  json.RawMessage(`{"name":"ok","arguments":{},"unexpected":true}`),
+		},
+		{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage(`3`),
+			Method:  "resources/read",
+			Params:  json.RawMessage(`{"uri":"test://catalog","_meta":"invalid"}`),
+		},
+	} {
+		response := server.Handle(t.Context(), request)
+		if response.Error == nil || response.Error.Code != -32602 {
+			t.Fatalf("%s accepted invalid metadata: %#v", request.Method, response)
+		}
+	}
+}
+
 func TestHandleReportsHandlerAndResourceFailures(t *testing.T) {
 	want := errors.New("handler failed")
 	server, err := New(Config{

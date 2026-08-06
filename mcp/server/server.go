@@ -36,12 +36,14 @@ type Error struct {
 }
 
 type ToolCall struct {
-	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
+	Name      string                     `json:"name"`
+	Arguments json.RawMessage            `json:"arguments"`
+	Meta      map[string]json.RawMessage `json:"_meta,omitempty"`
 }
 
 type ResourceRead struct {
-	URI string `json:"uri"`
+	URI  string                     `json:"uri"`
+	Meta map[string]json.RawMessage `json:"_meta,omitempty"`
 }
 
 type Config struct {
