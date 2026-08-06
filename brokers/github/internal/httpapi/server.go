@@ -595,12 +595,13 @@ func (s *Server) gitInfoRefs(c echo.Context) error {
 	proxy := s.proxyGit
 	if c.QueryParam("service") == "git-receive-pack" {
 		proxy = s.proxyReceivePackAdvertisement
+		return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), proxy)
 	}
-	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), proxy)
+	return s.authorizeGitTransfer(c, s.repoRequest(c, operation, nil), proxy)
 }
 
 func (s *Server) gitUploadPack(c echo.Context) error {
-	return s.authorizeBrokerRequest(c, s.repoRequest(c, policy.OperationGitFetch, nil), s.proxyGit)
+	return s.authorizeGitTransfer(c, s.repoRequest(c, policy.OperationGitFetch, nil), s.proxyGit)
 }
 
 func (s *Server) gitReceivePack(c echo.Context) error {

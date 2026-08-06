@@ -361,16 +361,20 @@ listeners into one broad router and try to hide routes with middleware.
 
 ### Fetch
 
-Fetch remains a direct smart-HTTP operation:
+Fetch is a direct smart-HTTP operation with an approval path:
 
 1. Git asks for upload-pack discovery.
 2. The broker authenticates the client and canonicalizes the repository.
 3. Policy evaluates `git.fetch`.
 4. An allow proxies discovery and upload-pack with the provider credential.
-5. A deny returns a stable Git-readable error without an upstream call.
+5. A request creates one idempotent operator approval, waits while holding
+   the Git connection, and proxies after approval. One window grant covers
+   discovery, upload-pack, and LFS transfers for the approved repository.
+6. A deny returns a stable Git-readable error without an upstream call.
 
-Fetch is not requestable by default. A deployment may define stricter policy,
-but the client integration must not invent a bypass or provider fallback.
+Fetch was not requestable until 2026-08-06; see
+`docs/2026-08-06-git-fetch-approval-plan.md`. The client integration must not
+invent a bypass or provider fallback.
 
 ### Push advertisement
 

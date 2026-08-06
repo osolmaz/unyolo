@@ -19,7 +19,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artifacts.Manifest.OperationCounts != (OperationCounts{Total: 258, Allow: 10, Request: 141, Deny: 107}) {
+	if artifacts.Manifest.OperationCounts != (OperationCounts{Total: 258, Allow: 10, Request: 142, Deny: 106}) {
 		t.Fatalf("operation counts = %+v", artifacts.Manifest.OperationCounts)
 	}
 	rendered, err := policy.Parse(artifacts.PolicyJSON)
@@ -29,6 +29,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.contents.read", "allow")
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.create", "request")
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.delete", "request")
+	assertRuleEffect(t, artifacts.PolicyJSON, "git.fetch", "request")
 	assertRuleEffect(t, artifacts.PolicyJSON, "git.push.append", "request")
 	assertRuleEffect(t, artifacts.PolicyJSON, "service_account.token.create", "deny")
 	assertRuleEffect(t, artifacts.PolicyJSON, "sandbox.port.proxy", "deny")
@@ -87,7 +88,7 @@ func TestRenderIsDeterministicAndNormalizesInputs(t *testing.T) {
 	if !bytes.Equal(first.ProfileJSON, second.ProfileJSON) || !bytes.Equal(first.PolicyJSON, second.PolicyJSON) || !bytes.Equal(first.ManifestJSON, second.ManifestJSON) {
 		t.Fatal("equivalent profiles produced different artifacts")
 	}
-	if first.Manifest.OperationCounts.Request != 139 || first.Manifest.OperationCounts.Deny != 109 {
+	if first.Manifest.OperationCounts.Request != 140 || first.Manifest.OperationCounts.Deny != 108 {
 		t.Fatalf("override counts = %+v", first.Manifest.OperationCounts)
 	}
 	assertRuleEffect(t, first.PolicyJSON, "repo.create", "deny")

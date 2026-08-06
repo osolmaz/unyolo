@@ -1344,7 +1344,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "blocked-upstream",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "repo",
     "max_uses": 1000000,
@@ -1354,7 +1354,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_git_fetch",
     "cli_command": "git fetch",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "request",
+    "executor_kind": "native-protocol"
   },
   {
     "name": "git.push.append",

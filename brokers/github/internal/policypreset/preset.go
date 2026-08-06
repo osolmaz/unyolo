@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	usebudget "github.com/osolmaz/unyolo/authorization/budget"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	shared "github.com/osolmaz/unyolo/authorization/preset"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
@@ -119,10 +121,38 @@ func (renderer) RenderPolicy(profile shared.Profile, operations []shared.Effecti
 			Targets: []policy.Target{wildcardTarget(descriptor.TargetKind)},
 		})
 	}
+	scope.Rules = append(scope.Rules, transportRequestRules(profile.Clients)...)
 	if _, err := policy.New(scope); err != nil {
 		return nil, err
 	}
 	return shared.MarshalCanonical(scope)
+}
+
+// transportRequestOperations are the Git smart-HTTP operations every preset
+// deployment exposes as requestable. The catalog covers typed API operations
+// only, so transport rules are appended directly.
+var transportRequestOperations = []policy.Operation{policy.OperationGitFetch, policy.OperationGitLFSWrite}
+
+func transportRequestRules(clients []string) []policy.Rule {
+	rules := make([]policy.Rule, 0, len(transportRequestOperations))
+	for _, operation := range transportRequestOperations {
+		rules = append(rules, policy.Rule{
+			ID: "preset-" + strings.ReplaceAll(string(operation), ".", "-"), Effect: policy.EffectRequest,
+			Clients: clients, Operations: []policy.Operation{operation},
+			Targets: []policy.Target{wildcardTarget("repo")}, GrantPolicy: transportGrantPolicy(),
+		})
+	}
+	return rules
+}
+
+// transportGrantPolicy bounds one fetch or LFS approval to a one-hour session
+// window with a fifteen-minute approval wait, generous enough for clone,
+// fetch, and LFS transfers for the approved repository.
+func transportGrantPolicy() *corepolicy.GrantPolicy {
+	return &corepolicy.GrantPolicy{
+		Mode: string(corepolicy.GrantModeWindow), DefaultMinutes: 60, MaxMinutes: 10080, RequestTTLMinutes: 15,
+		DefaultMaxUses: usebudget.MaxFiniteUses, MaxUses: usebudget.MaxFiniteUses,
+	}
 }
 
 func wildcardTarget(kind string) policy.Target {

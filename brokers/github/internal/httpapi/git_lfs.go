@@ -60,7 +60,7 @@ func (s *Server) gitLFSBatch(c echo.Context) error {
 	}
 	c.Request().Body = io.NopCloser(bytes.NewReader(body))
 	c.Request().ContentLength = int64(len(body))
-	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), func(c echo.Context) error {
+	return s.authorizeGitTransfer(c, s.repoRequest(c, operation, nil), func(c echo.Context) error {
 		return s.proxyGitLFSBatch(c, operation)
 	})
 }
@@ -231,7 +231,7 @@ func (s *Server) gitLFSAction(c echo.Context) error {
 	if !ok {
 		return echo.NewHTTPError(http.StatusForbidden, "Git LFS action is invalid or expired")
 	}
-	return s.authorizeBrokerRequest(c, s.repoRequest(c, action.operation, nil), func(c echo.Context) error {
+	return s.authorizeGitTransfer(c, s.repoRequest(c, action.operation, nil), func(c echo.Context) error {
 		return s.proxyGitHubLFSAction(c, action)
 	})
 }
@@ -262,7 +262,7 @@ func (s *Server) proxyGitHubLFSAction(c echo.Context, action githubLFSAction) er
 
 func (s *Server) gitLFSDirect(c echo.Context) error {
 	operation := gitLFSDirectOperation(c.Request().Method, c.Request().URL.Path)
-	return s.authorizeBrokerRequest(c, s.repoRequest(c, operation, nil), s.proxyGit)
+	return s.authorizeGitTransfer(c, s.repoRequest(c, operation, nil), s.proxyGit)
 }
 
 func gitLFSDirectOperation(method, path string) policy.Operation {

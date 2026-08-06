@@ -49,7 +49,7 @@ func (s *Server) authorizeReceivePackTransaction(
 	if err != nil {
 		return nil, nil, err
 	}
-	result, err := s.requestReceivePackGrant(request)
+	result, err := s.requestGitGrant(request)
 	if err != nil {
 		return nil, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not create Git push approval")
 	}
@@ -57,7 +57,7 @@ func (s *Server) authorizeReceivePackTransaction(
 	if err := s.notifyReceivePackApproval(c, plan, result.Grant.ID, requestable); err != nil {
 		return nil, nil, err
 	}
-	approved, err := s.waitForReceivePackApproval(c.Request().Context(), result.Grant.ID)
+	approved, err := s.waitForGitGrantDecision(c.Request().Context(), result.Grant.ID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -81,7 +81,7 @@ func (s *Server) notifyReceivePackApproval(c echo.Context, plan grantCreatePlan,
 	return nil
 }
 
-func (s *Server) waitForReceivePackApproval(ctx context.Context, grantID string) (grants.Grant, error) {
+func (s *Server) waitForGitGrantDecision(ctx context.Context, grantID string) (grants.Grant, error) {
 	approved, err := s.grants.WaitForDecision(ctx, grantID)
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return approved, err
@@ -101,7 +101,7 @@ func applyReceivePackGrant(authorized []authorizedReceivePackRequest, grantID st
 	}
 }
 
-func (s *Server) requestReceivePackGrant(request grants.Request) (grants.RequestResult, error) {
+func (s *Server) requestGitGrant(request grants.Request) (grants.RequestResult, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		result, _, err := s.requestGrant(request)
 		if !errors.Is(err, grants.ErrIdempotencyConflict) {

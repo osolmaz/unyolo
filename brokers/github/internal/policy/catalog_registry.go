@@ -103,8 +103,8 @@ func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
 
 func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 	return map[Operation]corepolicy.OperationSpec{
-		OperationGitFetch:             {TargetKinds: []string{"repo"}},
-		OperationGitLFSWrite:          {TargetKinds: []string{"repo"}},
+		OperationGitFetch:             reusableProtocolOperation(),
+		OperationGitLFSWrite:          reusableProtocolOperation(),
 		OperationGitPushAdvertise:     {TargetKinds: []string{"repo"}},
 		OperationGitPushBranchCreate:  reusableProtocolOperation("ref"),
 		OperationGitPushFastForward:   reusableProtocolOperation("ref"),
