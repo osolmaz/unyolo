@@ -2,14 +2,14 @@
   "version": 1,
   "provider": "huggingface",
   "preset": "request-all-agent-operations",
-  "catalog_digest": "sha256:87d2c20617068fea3383f711d7c574fb53c3dca2d9fe541200a00fffd265aaa9",
+  "catalog_digest": "sha256:8d302990599e52b9c559d0c583d0ef3e676edc543d6e5cae2993008f32870bfe",
   "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
-  "policy_digest": "sha256:7314cff6d1315264c363906f485b71902b6f1fbfa965ba1466080156fcd0f4f5",
+  "policy_digest": "sha256:94be3809285681be18d633d21a3b585d0f53e97feaecda251cd55e6344c32ec3",
   "operation_counts": {
     "total": 258,
     "allow": 10,
-    "request": 141,
-    "deny": 107
+    "request": 142,
+    "deny": 106
   },
   "operations": [
     {
@@ -393,9 +393,9 @@
     {
       "name": "git.fetch",
       "operation_revision": 1,
-      "default_effect": "deny",
+      "default_effect": "request",
       "authorization_digest": "sha256:ea5acf6b4da90e72e19ba3fc9b1726453b4b1cd309dd91bb517b37214e1698d6",
-      "effect": "deny"
+      "effect": "request"
     },
     {
       "name": "git.push.append",

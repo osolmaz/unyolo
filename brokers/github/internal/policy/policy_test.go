@@ -598,8 +598,13 @@ func TestRegistryDeclaresGitHubPolicyCapabilities(t *testing.T) {
 			t.Fatalf("%s spec = %+v, want grantable pull_request", operation, spec)
 		}
 	}
-	if registry.Operations[string(OperationGitFetch)].Grantable {
-		t.Fatal("git.fetch Grantable = true, want false")
+	for _, operation := range []Operation{OperationGitFetch, OperationGitLFSWrite} {
+		if !registry.Operations[string(operation)].Grantable {
+			t.Fatalf("%s Grantable = false, want true", operation)
+		}
+	}
+	if registry.Operations[string(OperationGitPushAdvertise)].Grantable {
+		t.Fatal("git.push.advertise Grantable = true, want false")
 	}
 }
 

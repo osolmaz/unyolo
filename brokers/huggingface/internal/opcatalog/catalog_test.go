@@ -152,7 +152,7 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			t.Fatalf("%s executor = %q", value.Name, value.ExecutorKind)
 		}
 	}
-	if bound != 149 || native != 6 {
+	if bound != 149 || native != 7 {
 		t.Fatalf("agent bound = %d, native = %d", bound, native)
 	}
 }
@@ -177,7 +177,7 @@ func TestCatalogHasNoUnresolvedProtocolPlaceholders(t *testing.T) {
 			t.Fatalf("agent-facing operation %s has unresolved binding: %+v", descriptor.Name, descriptor)
 		}
 	}
-	if bound != 149 || native != 6 || blocked != 102 {
+	if bound != 149 || native != 7 || blocked != 101 {
 		t.Fatalf("catalog bindings = bound:%d native:%d blocked:%d", bound, native, blocked)
 	}
 }
@@ -186,6 +186,16 @@ func TestGitPushAppendUsesNativeProtocolBinding(t *testing.T) {
 	descriptor, found := ByName("git.push.append")
 	if !found || descriptor.Implementation != StatusImplemented || descriptor.ExecutorKind != "native-protocol" {
 		t.Fatalf("git.push.append descriptor = %+v, found = %t", descriptor, found)
+	}
+}
+
+func TestGitFetchUsesNativeProtocolBinding(t *testing.T) {
+	descriptor, found := ByName("git.fetch")
+	if !found || descriptor.Implementation != StatusImplemented || descriptor.ExecutorKind != "native-protocol" {
+		t.Fatalf("git.fetch descriptor = %+v, found = %t", descriptor, found)
+	}
+	if descriptor.DefaultPolicyEffect != DefaultEffectRequest {
+		t.Fatalf("git.fetch default policy effect = %q, want request", descriptor.DefaultPolicyEffect)
 	}
 }
 
