@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/credentialauth"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/httpapi"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	hfbrokerskill "github.com/osolmaz/unyolo/brokers/huggingface/skills/hf-broker"
 	"github.com/osolmaz/unyolo/credential/provider"
 	"github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/internal/storage/command"
@@ -70,7 +71,7 @@ func runWithArgs(ctx context.Context, getenv func(string) string, stdout, stderr
 func runCommandInput(ctx context.Context, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	run, found := commandRunners[args[0]]
 	if !found {
-		return exitError{code: 64, message: "usage: hf-broker [--version|version|credential|doctor|setup|git|policy|client|mcp|state]"}
+		return exitError{code: 64, message: "usage: hf-broker [--version|version|skill|credential|doctor|setup|git|policy|client|mcp|state]"}
 	}
 	return run(commandContext{ctx: ctx, getenv: getenv, stdin: stdin, stdout: stdout, stderr: stderr}, args[1:])
 }
@@ -85,6 +86,8 @@ type commandContext struct {
 var commandRunners = map[string]func(commandContext, []string) error{
 	"--version":                runVersionCommand,
 	"version":                  runVersionCommand,
+	"--skill":                  runSkillCommand,
+	"skill":                    runSkillCommand,
 	"credential":               runCredentialCommand,
 	"doctor":                   runDoctorCommand,
 	"setup":                    runSetupCommand,
@@ -97,6 +100,11 @@ var commandRunners = map[string]func(commandContext, []string) error{
 	"setup-component-render":   runSetupComponentRenderCommand,
 	"setup-component-probe":    runSetupComponentProbeCommand,
 	"__doctor-isolation-probe": runIsolationProbeCommand,
+}
+
+func runSkillCommand(command commandContext, _ []string) error {
+	_, err := command.stdout.Write(hfbrokerskill.SKILLMD)
+	return err
 }
 
 func runVersionCommand(command commandContext, _ []string) error {

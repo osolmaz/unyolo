@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/github/internal/githubsurface"
 	"github.com/osolmaz/unyolo/brokers/github/internal/httpapi"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	ghbrokerskill "github.com/osolmaz/unyolo/brokers/github/skills/gh-broker"
 	"github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/internal/storage/command"
 	"github.com/osolmaz/unyolo/transport/endpoint"
@@ -50,7 +51,12 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 	if found, err := runGeneratedCLI(ctx, stdout, args); found {
 		return err
 	}
-	return fmt.Errorf("usage: gh-broker [--version|version|doctor|setup|git|policy|operations|operation|stream|mcp|state]")
+	return fmt.Errorf("usage: gh-broker [--version|version|skill|doctor|setup|git|policy|operations|operation|stream|mcp|state]")
+}
+
+func runSkillCommand(_ context.Context, _ []string, stdout io.Writer, _ io.Writer) error {
+	_, err := stdout.Write(ghbrokerskill.SKILLMD)
+	return err
 }
 
 func runNamedCommand(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) (error, bool) {
@@ -65,6 +71,8 @@ func namedCommands() map[string]cliCommand {
 	commands := map[string]cliCommand{
 		"--version": runVersionCommand,
 		"version":   runVersionCommand,
+		"--skill":   runSkillCommand,
+		"skill":     runSkillCommand,
 		"setup": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 			return runSetupWithContext(ctx, stdout, stderr, args)
 		},

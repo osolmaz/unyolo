@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	sudobrokerskill "github.com/osolmaz/unyolo/brokers/sudo/skills/sudo-broker"
 	"github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/internal/storage/command"
 )
@@ -40,7 +41,7 @@ func reportMainError(err error, stderr io.Writer) int {
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: sudo-broker <serve|run|setup|state|version>")
+		return errors.New("usage: sudo-broker <serve|run|setup|state|version|skill>")
 	}
 	return runSubcommand(ctx, args[0], args[1:], stdout, stderr)
 }
@@ -57,11 +58,18 @@ func runSubcommand(ctx context.Context, name string, args []string, stdout io.Wr
 		"setup-component-render": runSetupComponentRender,
 		"version":                printVersion,
 		"--version":              printVersion,
+		"skill":                  printSkill,
+		"--skill":                printSkill,
 	}[name]
 	if command == nil {
 		return fmt.Errorf("unknown command %q", name)
 	}
 	return command(ctx, args, stdout, stderr)
+}
+
+func printSkill(_ context.Context, _ []string, stdout io.Writer, _ io.Writer) error {
+	_, err := stdout.Write(sudobrokerskill.SKILLMD)
+	return err
 }
 
 func runSetupComponentProbe(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
