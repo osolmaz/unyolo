@@ -142,6 +142,48 @@ func TestGitFetchRetriesSharePendingApproval(t *testing.T) {
 	}
 }
 
+func TestGitLFSWriteCreatesSeparateApprovalFromFetch(t *testing.T) {
+	t.Parallel()
+	server := newTestServerWithPolicyAndHandler(t, requestFetchPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
+		_, _ = w.Write([]byte(`{"objects":[]}`))
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+
+	fetchResponses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		fetchResponses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
+	}()
+	fetchGrant, fetchToken := waitForGitApproval(t, server, notifier, 1)
+
+	// A combined fetch+LFS-write rule must not collide the LFS write request
+	// with the pending fetch approval.
+	lfsResponses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		lfsResponses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(),
+			[]byte(`{"operation":"upload","objects":[]}`))
+	}()
+	lfsGrant, lfsToken := waitForGitApproval(t, server, notifier, 2)
+	if lfsGrant.ID == fetchGrant.ID || lfsGrant.Operation != "git.lfs.write" {
+		t.Fatalf("LFS write approval = %+v, want its own grant", lfsGrant)
+	}
+	if _, err := server.grants.Approve(lfsGrant.ID, lfsToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	lfsResponse := <-lfsResponses
+	if lfsResponse.Code != http.StatusOK {
+		t.Fatalf("LFS write status = %d, body = %q", lfsResponse.Code, lfsResponse.Body.String())
+	}
+	if _, err := server.grants.Approve(fetchGrant.ID, fetchToken, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	fetchResponse := <-fetchResponses
+	if fetchResponse.Code != http.StatusOK {
+		t.Fatalf("fetch status = %d, body = %q", fetchResponse.Code, fetchResponse.Body.String())
+	}
+}
+
 func TestGitFetchApprovalRequiresChannel(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestFetchPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
