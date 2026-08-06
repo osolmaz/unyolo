@@ -30,6 +30,31 @@ func TestHFMCPSHelperProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestMCPSubprocessAcceptsRequestMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet && request.URL.Path == "/.well-known/unyolo-agent" {
+			writeAgentJSON(writer, agentv1.Descriptor{
+				APIVersion:     agentv1.APIVersion,
+				ContractDigest: contract.AgentV1Digest,
+				BuildID:        "test",
+				Credential: agentv1.CredentialDescriptor{
+					Ready: true, Provider: "huggingface", CredentialKind: "fine_grained_user_token",
+					Generation: 1, VerificationState: "valid",
+				},
+			})
+			return
+		}
+		http.NotFound(writer, request)
+	}))
+	defer server.Close()
+
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"unknown","arguments":{},"_meta":{"threadId":"thread-123"}}}`
+	output := runHFMCPSProcess(t, server.URL, input)
+	if strings.Contains(output, `"code":-32602`) || !strings.Contains(output, `"isError":true`) {
+		t.Fatalf("request metadata response = %s", output)
+	}
+}
+
 func TestMCPSubprocessRecoversLostSubmissionAcrossRestarts(t *testing.T) {
 	operation := testAgentOperation(agentv1.StatePending)
 	operation.IdempotencyKey = "lost-response"
