@@ -21,9 +21,12 @@ stays the default until the operator clicks approve.
 
 ## Scope
 
-- gh-broker: make `git.fetch` (upload-pack discovery and upload-pack) and
-  `git.lfs.write` (LFS upload batch) honor `request` decisions with a
-  server-side approval transaction that mirrors the receive-pack flow.
+- gh-broker: make `git.fetch` (upload-pack discovery and upload-pack),
+  `git.lfs.write` (LFS upload batch), and `git.push.advertise` (push
+  discovery) honor `request` decisions with a server-side approval
+  transaction that mirrors the receive-pack flow. Advertise was added after
+  review showed pushes to unlisted repositories dead-end at discovery before
+  ever reaching the requestable push operations.
 - hf-broker: make `git.fetch` honor `request` decisions the same way.
 - Both presets: emit default `request` rules with grant bounds for these
   operations so new deployments get requestable fetch out of the box.
@@ -32,8 +35,10 @@ stays the default until the operator clicks approve.
 
 ## Non-goals
 
-- `git.push.advertise` stays allow-or-deny; Git needs discovery before it can
-  compute a pack, so a request there adds a click with no information.
+- hf-broker receive-pack discovery stays allow-or-deny for now. It is
+  evaluated as `git.push.append` itself, so an approval there would silently
+  widen into the push; it needs its own design decision, tracked as a
+  follow-up.
 - sudo-broker stays catalog-only.
 - Force push and ref deletion stay hard-denied for agent clients by explicit
   deny rules.
@@ -68,14 +73,17 @@ the same grant request instead of creating duplicates.
 
 ## Steps
 
-1. gh-broker: add a shared fetch-approval path and wire it into upload-pack
-   discovery, upload-pack, and the LFS batch/verify routes (download rides on
-   `git.fetch`, upload on `git.lfs.write`).
-2. hf-broker: add the same approval path for `git.fetch` in the forwarding
-   flow.
-3. Presets: append transport request rules (`git.fetch`, `git.lfs.write` for
-   GitHub; `git.fetch` for Hugging Face) with grant bounds to the rendered
-   default policy, and refresh shipped scope artifacts and fingerprints.
+1. gh-broker: add a shared transfer-approval path and wire it into
+   upload-pack discovery, upload-pack, receive-pack advertisement, and the
+   LFS batch/action/direct routes (download rides on `git.fetch`, upload on
+   `git.lfs.write`, push discovery on `git.push.advertise`).
+2. hf-broker: no core change needed; its forward flow already creates
+   durable approvals. The stale `git.fetch` catalog entry moves to
+   `implemented` + `native-protocol` + `request`, matching the push entries.
+3. Presets: append transport request rules (`git.fetch`, `git.lfs.write`,
+   `git.push.advertise` for GitHub; `git.fetch` for Hugging Face via the
+   catalog effect) with grant bounds to the rendered default policy, and
+   refresh shipped scope artifacts and fingerprints.
 4. Docs: update `docs/2026-07-19-native-git-client-integration-plan.md` and
    any broker policy docs that state fetch is not requestable.
 5. Tests: approval granted, approval denied, expiry, no approval channel,

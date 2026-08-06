@@ -10,13 +10,14 @@ import (
 	usebudget "github.com/osolmaz/unyolo/authorization/budget"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
+	gitx "github.com/osolmaz/unyolo/git/protocol"
 )
 
 func requestFetchPolicy(t *testing.T) *policy.Policy {
 	t.Helper()
 	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{{
 		ID: "request-fetch", Effect: policy.EffectRequest, Clients: []string{"bob"},
-		Operations: []policy.Operation{policy.OperationGitFetch, policy.OperationGitLFSWrite},
+		Operations: []policy.Operation{policy.OperationGitFetch, policy.OperationGitLFSWrite, policy.OperationGitPushAdvertise},
 		Targets:    []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
 		GrantPolicy: &corepolicy.GrantPolicy{
 			Mode: "window", DefaultMinutes: 60, MaxMinutes: 120, RequestTTLMinutes: 15,
@@ -220,6 +221,43 @@ func TestGitLFSWriteBatchApprovalProxiesAfterApproval(t *testing.T) {
 	response := <-responses
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestGitPushAdvertiseApprovalProxiesAfterApproval(t *testing.T) {
+	t.Parallel()
+	var upstreamCalls int
+	server := newTestServerWithPolicyAndHandler(t, requestFetchPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		advertisement, err := gitx.AppendPktLineString(nil, "# service=git-receive-pack\n")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advertisement = gitx.AppendFlushPkt(advertisement)
+		advertisement, err = gitx.AppendPktLineString(advertisement, strings.Repeat("1", 40)+" refs/heads/main\x00report-status ofs-delta\n")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advertisement = gitx.AppendFlushPkt(advertisement)
+		_, _ = w.Write(advertisement)
+	})
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+
+	responses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		responses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
+	}()
+	grant, token := waitForGitApproval(t, server, notifier, 1)
+	if grant.Operation != "git.push.advertise" || grant.Reason != "Git push discovery requires approval" {
+		t.Fatalf("grant = %+v", grant)
+	}
+	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+	response := <-responses
+	if response.Code != http.StatusOK || upstreamCalls != 1 {
+		t.Fatalf("status = %d, upstream calls = %d, body = %q", response.Code, upstreamCalls, response.Body.String())
 	}
 }
 

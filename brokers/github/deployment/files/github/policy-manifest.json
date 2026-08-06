@@ -4,7 +4,7 @@
   "preset": "request-all-agent-operations",
   "catalog_digest": "sha256:1ff04fd084f558fe103de97c97465d8ff845411842831e6646aba847820814bb",
   "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
-  "policy_digest": "sha256:b0b80b557838c64ccc93a664a3b4ac788da78c2a9ef82ed1b5bc0008d33cf986",
+  "policy_digest": "sha256:778bfcef0b9888b3fa2697e33c584003734bff44ef0fe566a7277ed568208e73",
   "operation_counts": {
     "total": 1436,
     "allow": 611,

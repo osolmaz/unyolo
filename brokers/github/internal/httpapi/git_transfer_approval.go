@@ -129,8 +129,12 @@ func gitTransferApprovalBounds(decision policy.Decision) (time.Duration, time.Du
 }
 
 func gitTransferApprovalReason(operation policy.Operation) string {
-	if operation == policy.OperationGitLFSWrite {
+	switch operation {
+	case policy.OperationGitLFSWrite:
 		return "Git LFS write requires approval"
+	case policy.OperationGitPushAdvertise:
+		return "Git push discovery requires approval"
+	default:
+		return "Git fetch requires approval"
 	}
-	return "Git fetch requires approval"
 }
