@@ -131,7 +131,7 @@ func (renderer) RenderPolicy(profile shared.Profile, operations []shared.Effecti
 // transportRequestOperations are the Git smart-HTTP operations every preset
 // deployment exposes as requestable. The catalog covers typed API operations
 // only, so transport rules are appended directly.
-var transportRequestOperations = []policy.Operation{policy.OperationGitFetch, policy.OperationGitLFSWrite}
+var transportRequestOperations = []policy.Operation{policy.OperationGitFetch, policy.OperationGitLFSWrite, policy.OperationGitPushAdvertise}
 
 func transportRequestRules(clients []string) []policy.Rule {
 	rules := make([]policy.Rule, 0, len(transportRequestOperations))

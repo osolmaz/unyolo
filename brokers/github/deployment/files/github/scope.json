@@ -22497,6 +22497,31 @@
         "default_max_uses": 1000000,
         "max_uses": 1000000
       }
+    },
+    {
+      "id": "preset-git-push-advertise",
+      "effect": "request",
+      "clients": [
+        "agent"
+      ],
+      "operations": [
+        "git.push.advertise"
+      ],
+      "targets": [
+        {
+          "kind": "repo",
+          "owner": "*",
+          "name": "*"
+        }
+      ],
+      "grant_policy": {
+        "mode": "window",
+        "default_minutes": 60,
+        "max_minutes": 10080,
+        "request_ttl_minutes": 15,
+        "default_max_uses": 1000000,
+        "max_uses": 1000000
+      }
     }
   ]
 }

@@ -105,7 +105,7 @@ func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 	return map[Operation]corepolicy.OperationSpec{
 		OperationGitFetch:             reusableProtocolOperation(),
 		OperationGitLFSWrite:          reusableProtocolOperation(),
-		OperationGitPushAdvertise:     {TargetKinds: []string{"repo"}},
+		OperationGitPushAdvertise:     reusableProtocolOperation(),
 		OperationGitPushBranchCreate:  reusableProtocolOperation("ref"),
 		OperationGitPushFastForward:   reusableProtocolOperation("ref"),
 		OperationGitPushForce:         reusableProtocolOperation("ref"),

@@ -86,7 +86,7 @@ func (s *Server) waitForGitGrantDecision(ctx context.Context, grantID string) (g
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return approved, err
 	}
-	return grants.Grant{}, echo.NewHTTPError(http.StatusInternalServerError, "could not wait for Git push approval")
+	return grants.Grant{}, echo.NewHTTPError(http.StatusInternalServerError, "could not wait for Git approval")
 }
 
 func applyReceivePackGrant(authorized []authorizedReceivePackRequest, grantID string) {
