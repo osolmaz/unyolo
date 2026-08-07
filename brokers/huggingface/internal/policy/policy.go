@@ -503,7 +503,10 @@ func validatePolicyRequestTarget(req Request) error {
 		return validateRepoListTarget(req.Target)
 	}
 	if isWildcardBucketList(req) {
-		return validateBucketListTarget(req.Target)
+		return validateOwnerListTarget(req.Target, "bucket")
+	}
+	if isWildcardJobList(req) {
+		return validateOwnerListTarget(req.Target, "job")
 	}
 	return validateRequestTarget(req.Target)
 }
@@ -515,9 +518,9 @@ func validateRepoListTarget(target Target) error {
 	return nil
 }
 
-func validateBucketListTarget(target Target) error {
+func validateOwnerListTarget(target Target, kind string) error {
 	if !validRequestSegment(target.Owner) {
-		return errors.New("invalid bucket list target")
+		return fmt.Errorf("invalid %s list target", kind)
 	}
 	return nil
 }
@@ -528,6 +531,10 @@ func isWildcardRepoList(req Request) bool {
 
 func isWildcardBucketList(req Request) bool {
 	return req.Operation == Operation("bucket.list") && req.Target.Kind == KindBucket && req.Target.Name == "*"
+}
+
+func isWildcardJobList(req Request) bool {
+	return req.Operation == Operation("job.list") && req.Target.Kind == TargetKind("job") && req.Target.Name == "*"
 }
 
 func validateExactTargetConstraints(target Target) error {
@@ -1455,6 +1462,23 @@ func assignInt(target *int, value *int) {
 // Rules returns a copy of parsed rules for tests and diagnostics.
 func (p Policy) Rules() []Rule {
 	return slices.Clone(p.rules)
+}
+
+// ExposesOperation reports whether policy names an operation for an authenticated client.
+// It filters discovery only; normal target and attribute authorization still applies.
+func (p Policy) ExposesOperation(client string, operation Operation) bool {
+	for _, rule := range p.rules {
+		if rule.Effect != EffectAllow && rule.Effect != EffectRequest {
+			continue
+		}
+		if !slices.Contains(rule.Clients, client) && !slices.Contains(rule.Clients, "*") {
+			continue
+		}
+		if slices.Contains(rule.Operations, operation) {
+			return true
+		}
+	}
+	return false
 }
 
 // Decide evaluates req against static rules and generated grants.

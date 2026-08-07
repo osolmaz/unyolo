@@ -88,7 +88,11 @@ func TestScopedCredentialAllowsReusableGrantActivation(t *testing.T) {
 }
 
 func TestCredentialDiscoveryFiltersUnavailableOperations(t *testing.T) {
-	server := &Server{credential: testCredentialCeiling(t, "alice/private"), now: func() time.Time { return time.Now().UTC() }}
+	pol, err := hfpolicy.Parse([]byte(`{"rules":[{"id":"catalog","effect":"allow","clients":["agent"],"operations":["repo.contents.read","repo.delete"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"private"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{credential: testCredentialCeiling(t, "alice/private"), policy: pol, now: func() time.Time { return time.Now().UTC() }}
 	discovery := server.discoverAgent("agent")
 	if !discovery.Credential.Ready || discovery.Credential.Provider != "huggingface" {
 		t.Fatalf("credential discovery = %+v", discovery.Credential)

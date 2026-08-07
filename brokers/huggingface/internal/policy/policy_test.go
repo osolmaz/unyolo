@@ -13,6 +13,25 @@ import (
 	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
+func TestPolicyOperationDiscoveryIsClientScopedAndNotAuthorization(t *testing.T) {
+	pol, err := Parse([]byte(`{"rules":[
+		{"id":"alice-read","effect":"allow","clients":["alice"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}]},
+		{"id":"bob-request","effect":"request","clients":["bob"],"operations":["repo.delete"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}],"grant_policy":{}},
+		{"id":"deny-alice","effect":"deny","clients":["alice"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}]}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pol.ExposesOperation("alice", OpRepoContentsRead) || pol.ExposesOperation("alice", Operation("repo.delete")) ||
+		!pol.ExposesOperation("bob", Operation("repo.delete")) || pol.ExposesOperation("mallory", OpRepoContentsRead) {
+		t.Fatal("operation discovery did not follow client allow/request names")
+	}
+	decision := pol.Decide(repoReq("alice", OpRepoContentsRead, "dataset", "acme", "private", "README.md"), nil, time.Now(), false)
+	if decision.Effect != EffectDeny {
+		t.Fatalf("visibility granted authority: %+v", decision)
+	}
+}
+
 func TestParseRejectsLegacyScopeFormat(t *testing.T) {
 	_, err := Parse([]byte(`{"repos":[{"id":"acme/repo","type":"dataset"}]}`))
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
@@ -103,11 +122,13 @@ func TestWildcardListTargetValidation(t *testing.T) {
 	if err := validateRepoListTarget(Target{Type: TypeAny, Owner: "*"}); err == nil {
 		t.Fatal("invalid repository list target succeeded")
 	}
-	if err := validateBucketListTarget(Target{Owner: "acme"}); err != nil {
-		t.Fatalf("valid bucket list target = %v", err)
-	}
-	if err := validateBucketListTarget(Target{Owner: "*"}); err == nil {
-		t.Fatal("invalid bucket list target succeeded")
+	for _, kind := range []string{"bucket", "job"} {
+		if err := validateOwnerListTarget(Target{Owner: "acme"}, kind); err != nil {
+			t.Fatalf("valid %s list target = %v", kind, err)
+		}
+		if err := validateOwnerListTarget(Target{Owner: "*"}, kind); err == nil {
+			t.Fatalf("invalid %s list target succeeded", kind)
+		}
 	}
 }
 

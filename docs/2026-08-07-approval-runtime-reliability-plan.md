@@ -493,9 +493,32 @@ API or official SDK surface that removes the block, and update the catalog,
 bindings, generated tools, and implementation status together.
 
 `job.list` must use bounded pagination and filters. `job.read` must require one
-exact Job ID. Results should expose only the safe fields needed to state
-whether a Job is pending, running, completed, failed, canceled, or unknown.
-They must include the observed timestamp and provider response identity.
+exact Job ID. The upstream block is removed by the pinned Hub
+`GET /api/jobs/{namespace}` and `GET /api/jobs/{namespace}/{jobId}` routes,
+which are also exposed by the official SDK's `list_jobs` and `inspect_job`
+methods.
+
+Keep the existing operation names and revision 1. Their closed interfaces are:
+
+- both targets contain `kind: "job"` and one exact `owner` namespace;
+- `job.list` requires `name: "*"` and accepts only the closed `stages`,
+  `labels`, and opaque `cursor` arguments;
+- `job.read` requires one exact Job ID in `name` and accepts no arguments;
+- one list page contains at most 100 Jobs and an optional same-origin
+  continuation cursor;
+- each result contains `identity` with provider `huggingface`, namespace, and
+  Job ID; normalized `state`; bounded upstream `provider_stage`; creation,
+  start, and finish timestamps; hardware flavor; and `observed_at`;
+- list results also contain the namespace, page observation time, and optional
+  next cursor.
+
+Normalize `SCHEDULING`, `RUNNING`, `COMPLETED`, `ERROR`, and
+`CANCELED`/`DELETED` to `pending`, `running`, `completed`, `failed`, and
+`canceled`. Map an unfamiliar bounded provider stage to `unknown`. Exclude
+commands, arguments, environment values, secret names, token metadata, logs,
+metrics, and exposed URLs. Reject oversized pages, malformed timestamps,
+namespace or Job ID mismatches, and untrusted pagination links as invalid
+provider responses.
 
 Allow each deployment to list and read Jobs only in the owner scope granted by
 its policy. Keep `job.run`, `job.cancel`, and other mutations approval-gated. A

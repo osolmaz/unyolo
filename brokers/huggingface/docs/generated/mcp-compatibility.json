@@ -2,8 +2,8 @@
   "api_version": "unyolo.io/mcp-compatibility-manifest/v1",
   "provider": "huggingface",
   "host_profiles": ["openclaw@2026.7.1"],
-  "agent_facing_operations": 149,
-  "operation_tools": 149,
+  "agent_facing_operations": 151,
+  "operation_tools": 151,
   "utility_tools": 5,
   "projected_operations": [
     "repo.duplicate",
@@ -13,6 +13,6 @@
     "space.variable.set",
     "sql_embed.create"
   ],
-  "projected_window_operations": 10,
+  "projected_window_operations": 12,
   "unresolved_collisions": 0
 }

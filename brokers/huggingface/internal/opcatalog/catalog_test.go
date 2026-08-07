@@ -152,7 +152,7 @@ func TestImplementedOperationsHaveExplicitExecutorBindings(t *testing.T) {
 			t.Fatalf("%s executor = %q", value.Name, value.ExecutorKind)
 		}
 	}
-	if bound != 149 || native != 7 {
+	if bound != 151 || native != 7 {
 		t.Fatalf("agent bound = %d, native = %d", bound, native)
 	}
 }
@@ -177,7 +177,7 @@ func TestCatalogHasNoUnresolvedProtocolPlaceholders(t *testing.T) {
 			t.Fatalf("agent-facing operation %s has unresolved binding: %+v", descriptor.Name, descriptor)
 		}
 	}
-	if bound != 149 || native != 7 || blocked != 101 {
+	if bound != 151 || native != 7 || blocked != 99 {
 		t.Fatalf("catalog bindings = bound:%d native:%d blocked:%d", bound, native, blocked)
 	}
 }

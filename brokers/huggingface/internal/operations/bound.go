@@ -50,13 +50,22 @@ func NewBoundAdapters(client boundClient) ([]Adapter, error) {
 	}
 	adapters := make([]Adapter, 0, len(bindings))
 	for _, binding := range bindings {
-		descriptor, found := opcatalog.ByName(binding.Operation)
-		if !found || !descriptor.HasExecutionDisposition() || descriptor.Sealed {
+		descriptor, found := generatedBoundDescriptor(binding.Operation)
+		if !found {
 			continue
 		}
 		adapters = append(adapters, &boundAdapter{descriptor: descriptor, binding: binding, client: client})
 	}
 	return adapters, nil
+}
+
+func generatedBoundDescriptor(operation string) (opcatalog.Descriptor, bool) {
+	descriptor, found := opcatalog.ByName(operation)
+	_, hasCustomAdapter := CustomInputSchemas(operation)
+	if !found || !descriptor.HasExecutionDisposition() || descriptor.Sealed || hasCustomAdapter {
+		return opcatalog.Descriptor{}, false
+	}
+	return descriptor, true
 }
 
 func (a *boundAdapter) Descriptor() opcatalog.Descriptor { return a.descriptor }

@@ -448,6 +448,32 @@ func TestMCPToolsAdvertiseLifecycleForAvailableOperations(t *testing.T) {
 	}
 }
 
+func TestMCPToolsExposeTypedJobReadSchemas(t *testing.T) {
+	tools := mcpTools([]string{"job.list", "job.read"})
+	byName := make(map[string]map[string]any, len(tools))
+	for _, tool := range tools {
+		name, _ := tool["name"].(string)
+		byName[name] = tool
+	}
+	for _, name := range []string{"hf_job_list", "hf_job_read"} {
+		if byName[name] == nil {
+			t.Fatalf("job discovery omitted %q: %v", name, byName)
+		}
+	}
+	listSchema := byName["hf_job_list"]["inputSchema"].(map[string]any)
+	properties := listSchema["properties"].(map[string]any)
+	target := properties["target"].(map[string]any)["properties"].(map[string]any)
+	arguments := properties["arguments"].(map[string]any)["properties"].(map[string]any)
+	if target["name"].(map[string]any)["const"] != "*" || arguments["stages"] == nil || arguments["cursor"] == nil {
+		t.Fatalf("job.list input schema = %#v", listSchema)
+	}
+	readSchema := byName["hf_job_read"]["inputSchema"].(map[string]any)
+	readTarget := readSchema["properties"].(map[string]any)["target"].(map[string]any)["properties"].(map[string]any)
+	if readTarget["name"].(map[string]any)["pattern"] == "" {
+		t.Fatalf("job.read target schema = %#v", readTarget)
+	}
+}
+
 func TestLoadAgentClientRejectsMissingCredential(t *testing.T) {
 	_, err := loadAgentClient(func(name string) string {
 		if name == "HF_BROKER_AGENT_ENDPOINT" {
