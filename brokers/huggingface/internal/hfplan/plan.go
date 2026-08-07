@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -408,12 +409,16 @@ func planGrantIdentityMatches(plan Plan, grant grants.Grant) bool {
 
 func planGrantAuthorizationMatches(plan Plan, grant grants.Grant, duration time.Duration, maxUses usebudget.Limit) bool {
 	return plan.Authorization.Target.Kind == grant.Target.Kind &&
-		reflect.DeepEqual(plan.Authorization.Target.Fields, grant.Target.Fields) &&
-		reflect.DeepEqual(plan.Authorization.Attributes, grant.Attrs) &&
+		equalValues(plan.Authorization.Target.Fields, grant.Target.Fields) &&
+		equalValues(plan.Authorization.Attributes, grant.Attrs) &&
 		plan.Authorization.Mode == grant.Metadata[grants.MetadataMode] &&
 		plan.Authorization.RequestedDurationSeconds == int64(duration.Seconds()) &&
 		plan.Authorization.RequestedMaxUses == maxUses &&
 		plan.Authorization.RequestedMaxUsesDefaulted == grant.RequestedMaxUsesDefaulted
+}
+
+func equalValues(left, right map[string][]string) bool {
+	return maps.EqualFunc(left, right, slices.Equal)
 }
 
 func encode(plan Plan) ([]byte, error) {
