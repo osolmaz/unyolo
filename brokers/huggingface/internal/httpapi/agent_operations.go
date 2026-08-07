@@ -345,7 +345,7 @@ func operationCredentialTarget(operation string, raw json.RawMessage) (providerc
 	return target, nil
 }
 
-func (s *Server) discoverAgent(_ string) agentv1.Descriptor {
+func (s *Server) discoverAgent(client string) agentv1.Descriptor {
 	descriptor := agentv1.Descriptor{APIVersion: agentv1.APIVersion, Operations: []string{}}
 	if s.credential == nil {
 		return descriptor
@@ -359,15 +359,20 @@ func (s *Server) discoverAgent(_ string) agentv1.Descriptor {
 		VerificationState: string(snapshot.VerificationState)}
 	adapter := credentialauth.Adapter{}
 	for _, operation := range opcatalog.MustAll() {
-		if !operation.AgentFacing || !operations.AgentRuntimeBound(operation) {
-			continue
-		}
-		requirement, found := adapter.Requirement(operation.Name)
-		if found && s.credential.CanSatisfy(requirement, s.utcNow()) {
+		if s.exposesAgentOperation(client, operation, adapter) {
 			descriptor.Operations = append(descriptor.Operations, operation.Name)
 		}
 	}
 	return descriptor
+}
+
+func (s *Server) exposesAgentOperation(client string, operation opcatalog.Descriptor, adapter credentialauth.Adapter) bool {
+	if !operation.AgentFacing || !operations.AgentRuntimeBound(operation) ||
+		!s.policy.ExposesOperation(client, policy.Operation(operation.Name)) {
+		return false
+	}
+	requirement, found := adapter.Requirement(operation.Name)
+	return found && s.credential.CanSatisfy(requirement, s.utcNow())
 }
 
 func (s *Server) cancelAgentOperation(ctx context.Context, client, id string) (agentv1.Operation, error) {

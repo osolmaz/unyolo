@@ -114,14 +114,15 @@ func validBaseOrigin(parsed *url.URL) bool {
 // callSpec is an internal, fully broker-owned request description. Paths are
 // composed only from static literals and validated, escaped identifiers.
 type callSpec struct {
-	method      string
-	path        string
-	origin      string
-	query       url.Values
-	body        any
-	rawBody     []byte
-	contentType string
-	out         any
+	method        string
+	path          string
+	origin        string
+	query         url.Values
+	body          any
+	rawBody       []byte
+	contentType   string
+	out           any
+	captureHeader *http.Header
 }
 
 func (c *Client) call(ctx context.Context, spec callSpec) error {
@@ -142,6 +143,9 @@ func (c *Client) call(ctx context.Context, spec callSpec) error {
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return statusError(response.StatusCode, response.Header)
+	}
+	if spec.captureHeader != nil {
+		*spec.captureHeader = response.Header.Clone()
 	}
 	return classifyDecodedResponse(spec.method, response.StatusCode, decodeResponse(payload, spec.out, c.maxResponseBytes, response.StatusCode))
 }

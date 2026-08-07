@@ -50,6 +50,8 @@ var customInputSchemaExamples = map[string]inputSchemaExamples{
 	"bucket.object.write":     {bucketTarget{}, bucketObjectWritePublic{}, nil},
 	"bucket.sync.apply":       {bucketTarget{}, bucketBatchArguments{}, nil},
 	"bucket.move":             {bucketTarget{}, bucketMoveArguments{}, nil},
+	"job.list":                {jobTarget{}, jobListArguments{}, nil},
+	"job.read":                {jobTarget{}, emptyArguments{}, nil},
 	"bucket.object.delete":    {bucketTarget{}, bucketDeleteArguments{}, nil},
 	"space.restart":           {spaceTarget{}, restartArguments{}, nil},
 	"space.hardware.update":   {spaceTarget{}, hardwareArguments{}, nil},

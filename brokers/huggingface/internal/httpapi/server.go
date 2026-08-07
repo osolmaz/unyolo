@@ -495,6 +495,7 @@ func newOperationRegistry(hub *hubclient.Client, upstream string, sealed *sealed
 func providerAdapters(hub *hubclient.Client, upstream string, sealed *sealedstore.Store, streams *streamstore.Store, credentialSlots *credentialstore.Store, uploader *xetuploader.Uploader, authorize operations.RepositoryAuthorization) ([]operations.Adapter, error) {
 	factories := []func() ([]operations.Adapter, error){
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryReadAdapters(hub, authorize) },
+		func() ([]operations.Adapter, error) { return operations.NewJobReadAdapters(hub, time.Now) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositoryAdapters(hub, upstream) },
 		func() ([]operations.Adapter, error) { return operations.NewRepositorySettingsAdapters(hub) },
 		func() ([]operations.Adapter, error) { return operations.NewRefsAdapters(hub) },

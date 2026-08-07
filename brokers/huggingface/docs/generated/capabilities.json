@@ -2362,7 +2362,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "blocked-upstream",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "job",
     "max_uses": 1000000,
@@ -2372,7 +2372,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_list",
     "cli_command": "job list",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "job.logs.read",
@@ -2434,7 +2435,7 @@
     "explicit_only": false,
     "sealed": false,
     "internal": false,
-    "implementation_status": "blocked-upstream",
+    "implementation_status": "implemented",
     "risk": "low",
     "target_kind": "job",
     "max_uses": 1000000,
@@ -2444,7 +2445,8 @@
     "agent_facing": true,
     "mcp_tool": "hf_job_read",
     "cli_command": "job read",
-    "default_policy_effect": "allow"
+    "default_policy_effect": "allow",
+    "executor_kind": "inline"
   },
   {
     "name": "job.run",

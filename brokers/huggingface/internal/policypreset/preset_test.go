@@ -19,7 +19,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artifacts.Manifest.OperationCounts != (OperationCounts{Total: 258, Allow: 10, Request: 142, Deny: 106}) {
+	if artifacts.Manifest.OperationCounts != (OperationCounts{Total: 258, Allow: 12, Request: 142, Deny: 104}) {
 		t.Fatalf("operation counts = %+v", artifacts.Manifest.OperationCounts)
 	}
 	rendered, err := policy.Parse(artifacts.PolicyJSON)
@@ -36,6 +36,8 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	assertRuleEffect(t, artifacts.PolicyJSON, "auth.permission.check", "deny")
 	assertRuleEffect(t, artifacts.PolicyJSON, "inference.models.list", "allow")
 	assertRuleEffect(t, artifacts.PolicyJSON, "inference.chat.complete", "allow")
+	assertRuleEffect(t, artifacts.PolicyJSON, "job.list", "allow")
+	assertRuleEffect(t, artifacts.PolicyJSON, "job.read", "allow")
 	bucketWrite := policy.Request{Client: "agent", Operation: policy.OpBucketObjectWrite,
 		Target: policy.Target{Kind: policy.KindBucket, Owner: "acme", Name: "artifacts", Keys: []string{"runs/one"}}}
 	decision := rendered.Decide(bucketWrite, nil, time.Now(), true)
@@ -88,7 +90,7 @@ func TestRenderIsDeterministicAndNormalizesInputs(t *testing.T) {
 	if !bytes.Equal(first.ProfileJSON, second.ProfileJSON) || !bytes.Equal(first.PolicyJSON, second.PolicyJSON) || !bytes.Equal(first.ManifestJSON, second.ManifestJSON) {
 		t.Fatal("equivalent profiles produced different artifacts")
 	}
-	if first.Manifest.OperationCounts.Request != 140 || first.Manifest.OperationCounts.Deny != 108 {
+	if first.Manifest.OperationCounts.Allow != 12 || first.Manifest.OperationCounts.Request != 140 || first.Manifest.OperationCounts.Deny != 106 {
 		t.Fatalf("override counts = %+v", first.Manifest.OperationCounts)
 	}
 	assertRuleEffect(t, first.PolicyJSON, "repo.create", "deny")

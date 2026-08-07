@@ -37,7 +37,7 @@ var inferenceTopLevelFields = map[string]bool{
 
 var inferenceMessageFields = map[string]bool{
 	"role": true, "content": true, "name": true, "tool_call_id": true, "tool_calls": true, "function_call": true,
-	"audio": true, "refusal": true,
+	"audio": true, "refusal": true, "reasoning_content": true,
 }
 
 func isInferencePath(path string) bool {
@@ -270,17 +270,37 @@ func validInferenceMessage(raw json.RawMessage) bool {
 		return false
 	}
 	var role string
-	if json.Unmarshal(message["role"], &role) != nil || !validInferenceRole(role) {
+	if json.Unmarshal(message["role"], &role) != nil || !validInferenceRole(role) || !validReasoningContent(message, role) {
 		return false
 	}
 	return inferenceMessageHasContent(message)
+}
+
+func validReasoningContent(message map[string]json.RawMessage, role string) bool {
+	raw, found := message["reasoning_content"]
+	if !found {
+		return true
+	}
+	if role != "assistant" {
+		return false
+	}
+	if string(raw) == "null" {
+		return true
+	}
+	var value string
+	return json.Unmarshal(raw, &value) == nil
 }
 
 func inferenceMessageHasContent(message map[string]json.RawMessage) bool {
 	content, hasContent := message["content"]
 	_, hasToolCalls := message["tool_calls"]
 	_, hasFunctionCall := message["function_call"]
-	return hasContent && len(content) > 0 && string(content) != "null" || hasToolCalls || hasFunctionCall
+	return hasContent && len(content) > 0 && string(content) != "null" || nonEmptyReasoningContent(message["reasoning_content"]) || hasToolCalls || hasFunctionCall
+}
+
+func nonEmptyReasoningContent(raw json.RawMessage) bool {
+	var value string
+	return len(raw) > 0 && json.Unmarshal(raw, &value) == nil && value != ""
 }
 
 func validInferenceRole(role string) bool {

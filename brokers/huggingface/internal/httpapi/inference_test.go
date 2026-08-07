@@ -106,6 +106,36 @@ func TestInferenceChatPreservesTypedPayloadAndStreaming(t *testing.T) {
 	}
 }
 
+func TestInferenceAcceptsKimiReasoningAcrossTurns(t *testing.T) {
+	var requests atomic.Int32
+	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		turn := requests.Add(1)
+		if turn == 2 && !strings.Contains(string(body), `"reasoning_content":"private reasoning"`) {
+			t.Errorf("second turn lost reasoning_content: %s", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":null,"reasoning_content":"private reasoning"}}]}`)
+	}))
+	defer router.Close()
+	broker, _ := newInferenceBroker(t, router.URL, 2*time.Second)
+	defer broker.Close()
+
+	first := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"user","content":"hello"}]}`)
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first turn status = %d", first.StatusCode)
+	}
+	_ = first.Body.Close()
+	second := inferenceRequestToBroker(t, broker, `{"model":"acme/model","messages":[{"role":"assistant","content":null,"reasoning_content":"private reasoning"},{"role":"user","content":"continue"}]}`)
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("second turn status = %d", second.StatusCode)
+	}
+	_ = second.Body.Close()
+	if requests.Load() != 2 {
+		t.Fatalf("upstream requests = %d", requests.Load())
+	}
+}
+
 func TestInferenceValidationFailsBeforeUpstream(t *testing.T) {
 	var hits atomic.Int32
 	router := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
@@ -132,6 +162,9 @@ func TestInferenceValidationFailsBeforeUpstream(t *testing.T) {
 		{name: "chat duplicate model", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","model":"other/model","messages":[{"role":"user","content":"hello"}]}`, want: http.StatusBadRequest},
 		{name: "chat unknown field", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","messages":[{"role":"user","content":"hello"}],"proxy_url":"https://other.test"}`, want: http.StatusBadRequest},
 		{name: "chat unsafe model", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"https://other.test/model"}`, want: http.StatusBadRequest},
+		{name: "reasoning on user", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","messages":[{"role":"user","content":"hello","reasoning_content":"no"}]}`, want: http.StatusBadRequest},
+		{name: "reasoning wrong type", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","messages":[{"role":"assistant","content":"hello","reasoning_content":{}}]}`, want: http.StatusBadRequest},
+		{name: "null reasoning without content", method: http.MethodPost, path: "/v1/chat/completions", contentType: "application/json", body: `{"model":"acme/model","messages":[{"role":"assistant","content":null,"reasoning_content":null}]}`, want: http.StatusBadRequest},
 		{name: "unknown typed route", method: http.MethodPost, path: "/v1/embeddings", contentType: "application/json", body: `{"model":"acme/model"}`, want: http.StatusNotFound},
 	}
 	for _, tc := range tests {

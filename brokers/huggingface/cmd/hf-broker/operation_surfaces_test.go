@@ -28,7 +28,7 @@ import (
 
 func TestCatalogSurfacesCoverEveryAgentFacingDescriptor(t *testing.T) {
 	descriptors := agentFacingDescriptors()
-	if len(descriptors) != 149 {
+	if len(descriptors) != 151 {
 		t.Fatalf("descriptors=%d", len(descriptors))
 	}
 	for _, descriptor := range descriptors {
