@@ -26,7 +26,7 @@ const (
 	// CurrentSchemaVersion is the only state format accepted by maintenance
 	// operations in this pre-release cutover.
 	CurrentSchemaVersion  int64 = 1
-	currentSchemaContract       = "unyolo-state-v1-grant-uses"
+	currentSchemaContract       = "unyolo-state-v1-terminal-grant-failures"
 )
 
 //go:embed migrations/*.sql

@@ -1,10 +1,10 @@
 -- +goose Up
 CREATE TABLE state_contract (
     singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-    contract TEXT NOT NULL CHECK(contract = 'unyolo-state-v1-grant-uses')
+    contract TEXT NOT NULL CHECK(contract = 'unyolo-state-v1-terminal-grant-failures')
 ) STRICT;
 
-INSERT INTO state_contract (singleton, contract) VALUES (1, 'unyolo-state-v1-grant-uses');
+INSERT INTO state_contract (singleton, contract) VALUES (1, 'unyolo-state-v1-terminal-grant-failures');
 
 CREATE TABLE plans (
     digest TEXT PRIMARY KEY CHECK(length(digest) = 64),

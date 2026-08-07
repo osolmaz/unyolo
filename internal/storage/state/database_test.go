@@ -66,7 +66,14 @@ func TestOpenRejectsSupersededVersionOneContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.SQL().ExecContext(t.Context(), "DROP TABLE state_contract"); err != nil {
+	if _, err := database.SQL().ExecContext(t.Context(), `
+DROP TABLE state_contract;
+CREATE TABLE state_contract (
+    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+    contract TEXT NOT NULL
+) STRICT;
+INSERT INTO state_contract (singleton, contract) VALUES (1, 'unyolo-state-v1-grant-uses');
+`); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Close(); err != nil {
