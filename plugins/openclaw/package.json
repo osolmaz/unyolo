@@ -1,6 +1,6 @@
 {
   "name": "openclaw-unyolo",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Provider-neutral unYOLO approvals for OpenClaw",
   "repository": {
     "type": "git",
