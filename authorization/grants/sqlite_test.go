@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/internal/storage/state"
@@ -83,6 +84,45 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	}
 	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 || outboxCount != 1 || outboxStatus != "delivered" || outboxAttempts != 1 {
 		t.Fatalf("SQLite rows = grants %d events %d decisions %d outbox %d/%s/%d", grantsCount, eventsCount, decisionsCount, outboxCount, outboxStatus, outboxAttempts)
+	}
+}
+
+func TestSQLiteStorePersistsAndReplaysTerminalActivationFailure(t *testing.T) {
+	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	now := time.Date(2026, 8, 7, 4, 0, 0, 0, time.UTC)
+	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant", "token")})
+	created, _, err := store.Request(Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "update", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := OperatorDecision{ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "failed-decision", CorrelationID: "correlation-1"}
+	result, err := store.ApplyOperatorDecision(t.Context(), command, func(context.Context, Grant, ApprovalConstraints) error {
+		return activation.New(activation.CodeCredentialChanged, errors.New("private credential detail"))
+	})
+	failure, ok := activation.As(err)
+	if !ok || failure.Code != activation.CodeCredentialChanged || result.Grant.Status != StatusFailed {
+		t.Fatalf("failed decision = %+v, %v", result, err)
+	}
+
+	restarted := NewDatabase(database, Options{Now: func() time.Time { return now }})
+	stored, err := restarted.Get(created.Grant.ID)
+	if err != nil || stored.Status != StatusFailed || stored.FailureCode != string(activation.CodeCredentialChanged) ||
+		stored.FailureReference != "correlation-1" || stored.FailedAt.IsZero() {
+		t.Fatalf("restarted Get() = %+v, %v", stored, err)
+	}
+	replay, err := restarted.ApplyOperatorDecision(t.Context(), command, func(context.Context, Grant, ApprovalConstraints) error {
+		t.Fatal("validator called during failed replay")
+		return nil
+	})
+	replayedFailure, ok := activation.As(err)
+	if !ok || replayedFailure.Code != activation.CodeCredentialChanged || !replay.Replay || replay.Grant.Status != StatusFailed {
+		t.Fatalf("failed replay = %+v, %v", replay, err)
 	}
 }
 

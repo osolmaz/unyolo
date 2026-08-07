@@ -3,6 +3,7 @@ package telegram
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -56,6 +57,32 @@ func TestInboxPersistsEncryptedCallbackAndClearsAuthority(t *testing.T) {
 	}
 	if nonce != nil || ciphertext != nil {
 		t.Fatal("terminal callback retained decision authority")
+	}
+}
+
+func TestInboxRejectsPreviousCallbackSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "callbacks.db")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(t.Context(), `PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = OpenInbox(t.Context(), path, bytes.Repeat([]byte{7}, 32))
+	if err == nil || !strings.Contains(err.Error(), "unsupported telegram inbox format 1") {
+		t.Fatalf("OpenInbox() error = %v", err)
 	}
 }
 

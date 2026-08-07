@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/grants"
 )
 
@@ -51,6 +52,7 @@ func TestHandleDecisionFailures(t *testing.T) {
 	}{
 		{name: "not found", err: grants.ErrNotFound, want: notify.AnswerNotFound, wantMessageStatus: true},
 		{name: "invalid token", err: grants.ErrInvalidDecisionToken, want: notify.AnswerSuperseded},
+		{name: "retryable activation failure", err: activation.New(activation.CodeStorageUnavailable, errors.New("disk")), retry: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			decision := notify.Decision{Action: notify.ActionApprove}
@@ -62,6 +64,16 @@ func TestHandleDecisionFailures(t *testing.T) {
 	}
 }
 
+func TestHandleDecisionRendersCommittedActivationFailure(t *testing.T) {
+	decision := notify.Decision{Action: notify.ActionApprove}
+	failure := activation.New(activation.CodeCredentialChanged, errors.New("private credential detail"))
+	grant := grants.Grant{Status: grants.StatusFailed, FailureCode: string(activation.CodeCredentialChanged), FailureReference: "correlation-1"}
+	got := HandleDecision(t.Context(), fakeDecider{grant: grant, approveErr: failure}, decision)
+	if got.Answer != notify.AnswerFailed || got.MessageStatus.Kind != notify.StatusFailed || got.Retry {
+		t.Fatalf("HandleDecision() = %+v", got)
+	}
+}
+
 func TestTerminalResult(t *testing.T) {
 	tests := []struct {
 		status grants.Status
@@ -69,6 +81,7 @@ func TestTerminalResult(t *testing.T) {
 	}{
 		{grants.StatusActive, notify.AnswerAlreadyApproved},
 		{grants.StatusDenied, notify.AnswerAlreadyDenied},
+		{grants.StatusFailed, notify.AnswerFailed},
 		{grants.StatusExpired, notify.AnswerAlreadyExpired},
 		{grants.StatusConsumed, notify.AnswerAlreadyConsumed},
 		{grants.StatusRevoked, notify.AnswerAlreadyRevoked},

@@ -26,6 +26,8 @@ type GrantRecord struct {
 	Duration, RequestedDuration, PendingTimeout                   time.Duration
 	DecidedAt                                                     time.Time
 	DecidedBy, DecidedOnBehalfOf                                  string
+	FailureCode, FailureReference                                 string
+	FailedAt                                                      time.Time
 	UsedAt                                                        time.Time
 	UsedCount, UseRevision, ReservedCount                         int
 	ReservedAt                                                    time.Time
@@ -544,6 +546,7 @@ func decodeGrantRecord(row dbsql.Grant) (GrantRecord, error) {
 		MetadataJSON: []byte(row.MetadataJson), PlanDigest: row.PlanDigest.String, Reason: row.Reason, Status: row.Status, Revision: row.Revision,
 		Duration: time.Duration(row.DurationNs), RequestedDuration: time.Duration(row.RequestedDurationNs), PendingTimeout: time.Duration(row.PendingTimeoutNs),
 		DecidedBy: row.DecidedBy, DecidedOnBehalfOf: row.DecidedOnBehalfOf,
+		FailureCode: row.FailureCode, FailureReference: row.FailureReference,
 		UsedCount: int(row.UsedCount), UseRevision: int(row.UseRevision), ReservedCount: int(row.ReservedCount),
 		ReservationRetained: row.ReservationRetained == 1, ReservationRevision: int(row.ReservationRevision), MaxUses: intPointer(row.MaxUses),
 		RequestedMaxUses: intPointer(row.RequestedMaxUses), RequestedMaxUsesDefaulted: row.RequestedMaxUsesDefaulted == 1,
@@ -557,7 +560,7 @@ func decodeGrantRecord(row dbsql.Grant) (GrantRecord, error) {
 		}
 	}
 	for target, value := range map[*time.Time]sql.NullString{&record.ExpiresAt: row.ExpiresAt, &record.DecidedAt: row.DecidedAt,
-		&record.UsedAt: row.UsedAt, &record.ReservedAt: row.ReservedAt, &record.NotificationClaimedAt: row.NotificationClaimedAt,
+		&record.FailedAt: row.FailedAt, &record.UsedAt: row.UsedAt, &record.ReservedAt: row.ReservedAt, &record.NotificationClaimedAt: row.NotificationClaimedAt,
 		&record.NotificationClaimUntil: row.NotificationClaimUntil} {
 		*target, err = parseNullTime(value)
 		if err != nil {
@@ -574,6 +577,7 @@ func insertGrantParams(record GrantRecord) dbsql.InsertGrantParams {
 		CreatedAt: formatTime(record.CreatedAt), PendingExpiresAt: formatTime(record.PendingExpiresAt), ExpiresAt: nullTime(record.ExpiresAt),
 		DurationNs: int64(record.Duration), RequestedDurationNs: int64(record.RequestedDuration), PendingTimeoutNs: int64(record.PendingTimeout),
 		DecidedAt: nullTime(record.DecidedAt), DecidedBy: record.DecidedBy, DecidedOnBehalfOf: record.DecidedOnBehalfOf,
+		FailureCode: record.FailureCode, FailureReference: record.FailureReference, FailedAt: nullTime(record.FailedAt),
 		UsedAt: nullTime(record.UsedAt), UsedCount: int64(record.UsedCount), UseRevision: int64(record.UseRevision),
 		ReservedCount: int64(record.ReservedCount), ReservedAt: nullTime(record.ReservedAt), ReservationRetained: boolInt(record.ReservationRetained),
 		ReservationRevision: int64(record.ReservationRevision), MaxUses: nullableInt(record.MaxUses), RequestedMaxUses: nullableInt(record.RequestedMaxUses),
@@ -591,6 +595,7 @@ func updateGrantParams(record GrantRecord, previousRevision int64) dbsql.UpdateG
 		PendingExpiresAt: insert.PendingExpiresAt, ExpiresAt: insert.ExpiresAt, DurationNs: insert.DurationNs,
 		RequestedDurationNs: insert.RequestedDurationNs, PendingTimeoutNs: insert.PendingTimeoutNs, DecidedAt: insert.DecidedAt,
 		DecidedBy: insert.DecidedBy, DecidedOnBehalfOf: insert.DecidedOnBehalfOf,
+		FailureCode: insert.FailureCode, FailureReference: insert.FailureReference, FailedAt: insert.FailedAt,
 		UsedAt: insert.UsedAt, UsedCount: insert.UsedCount, UseRevision: insert.UseRevision, ReservedCount: insert.ReservedCount,
 		ReservedAt: insert.ReservedAt, ReservationRetained: insert.ReservationRetained, ReservationRevision: insert.ReservationRevision,
 		MaxUses: insert.MaxUses, RequestedMaxUses: insert.RequestedMaxUses,

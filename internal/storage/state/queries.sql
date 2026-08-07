@@ -31,14 +31,15 @@ INSERT INTO grants (
     target_json, attrs_json, metadata_json, plan_digest, reason, status,
     revision, created_at, pending_expires_at, expires_at, duration_ns,
     requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
-    decided_on_behalf_of, used_at, used_count, use_revision,
-    reserved_count, reserved_at, reservation_retained, reservation_revision,
+    decided_on_behalf_of, failure_code, failure_reference, failed_at,
+    used_at, used_count, use_revision, reserved_count, reserved_at,
+    reservation_retained, reservation_revision,
 	max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json,
     notification_status, notification_claimed_at, notification_claim_until,
     notification_delivery_unresolved
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-	?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+	?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 );
 
 -- name: UpdateGrant :execrows
@@ -47,8 +48,9 @@ UPDATE grants SET
     target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
     status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
     duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
-    decided_by = ?, decided_on_behalf_of = ?, used_at = ?,
-    used_count = ?, use_revision = ?, reserved_count = ?, reserved_at = ?,
+    decided_by = ?, decided_on_behalf_of = ?, failure_code = ?,
+    failure_reference = ?, failed_at = ?, used_at = ?, used_count = ?,
+    use_revision = ?, reserved_count = ?, reserved_at = ?,
     reservation_retained = ?, reservation_revision = ?, max_uses = ?,
 	requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?, notification_json = ?,
     notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
