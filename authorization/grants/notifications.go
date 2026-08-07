@@ -326,6 +326,10 @@ func validateMessageRefShape(ref MessageRef) error {
 	if err := validatePresentationSnapshotShape(ref); err != nil {
 		return err
 	}
+	return validateMessageRefChannelShape(ref)
+}
+
+func validateMessageRefChannelShape(ref MessageRef) error {
 	if ref.RenderedDigest != "" && !validDigest(ref.RenderedDigest) {
 		return errors.New("notification rendered digest is invalid")
 	}

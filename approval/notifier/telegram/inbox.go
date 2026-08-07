@@ -226,6 +226,11 @@ func (i *Inbox) insertDecision(ctx context.Context, tx *sql.Tx, updateID int64, 
 		return persistResult{}, err
 	}
 	defer clearBytes(ciphertext)
+	return i.storeSealedDecision(ctx, tx, updateID, decision, nonce, ciphertext)
+}
+
+func (i *Inbox) storeSealedDecision(ctx context.Context, tx *sql.Tx, updateID int64, decision notify.Decision,
+	nonce, ciphertext []byte) (persistResult, error) {
 	now := i.now().UTC()
 	key := logicalDecisionKey(decision)
 	inserted, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO callbacks
@@ -236,9 +241,16 @@ func (i *Inbox) insertDecision(ctx context.Context, tx *sql.Tx, updateID int64, 
 		return persistResult{}, fmt.Errorf("persist telegram callback: %w", err)
 	}
 	rows, err := inserted.RowsAffected()
-	if err != nil || rows > 0 {
+	if err != nil {
 		return persistResult{}, err
 	}
+	if rows > 0 {
+		return persistResult{}, nil
+	}
+	return duplicatePersistResult(ctx, tx, key)
+}
+
+func duplicatePersistResult(ctx context.Context, tx *sql.Tx, key string) (persistResult, error) {
 	var state, answer string
 	if err := tx.QueryRowContext(ctx, `SELECT state, terminal_answer FROM callbacks WHERE decision_key = ?`, key).Scan(&state, &answer); err != nil {
 		return persistResult{}, err

@@ -303,27 +303,36 @@ var terminalStatusText = map[notify.StatusKind]string{
 }
 
 func renderStatus(status notify.Status) string {
-	if status.Kind == notify.StatusFailed {
-		message := "⚠️ Approval failed because the request is no longer valid. Create a new request."
-		if status.FailureCode == "invalid_notification" {
-			message = "⚠️ Approval message could not be verified. Create a new request."
+	switch status.Kind {
+	case notify.StatusFailed:
+		return renderFailedStatus(status)
+	case notify.StatusUsedActive:
+		return renderUsedActiveStatus(status)
+	default:
+		if text := terminalStatusText[status.Kind]; text != "" {
+			return text
 		}
-		if status.FailureReference != "" {
-			message += " Reference: " + html.EscapeString(status.FailureReference)
-		}
-		return message
+		return "🚫 Closed. The approval request is no longer pending."
 	}
-	if status.Kind == notify.StatusUsedActive {
-		remaining, finite := status.MaxUses.Remaining(status.UsedCount, status.ReservedCount)
-		if !finite {
-			return "✅ Used. Access remains active until expiry."
-		}
-		return fmt.Sprintf("✅ Used %d time(s). %d use(s) remain.", status.UsedCount, remaining)
+}
+
+func renderFailedStatus(status notify.Status) string {
+	message := "⚠️ Approval failed because the request is no longer valid. Create a new request."
+	if status.FailureCode == "invalid_notification" {
+		message = "⚠️ Approval message could not be verified. Create a new request."
 	}
-	if text := terminalStatusText[status.Kind]; text != "" {
-		return text
+	if status.FailureReference != "" {
+		message += " Reference: " + html.EscapeString(status.FailureReference)
 	}
-	return "🚫 Closed. The approval request is no longer pending."
+	return message
+}
+
+func renderUsedActiveStatus(status notify.Status) string {
+	remaining, finite := status.MaxUses.Remaining(status.UsedCount, status.ReservedCount)
+	if !finite {
+		return "✅ Used. Access remains active until expiry."
+	}
+	return fmt.Sprintf("✅ Used %d time(s). %d use(s) remain.", status.UsedCount, remaining)
 }
 
 func answerText(answer notify.Answer) string {

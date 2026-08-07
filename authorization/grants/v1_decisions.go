@@ -80,37 +80,55 @@ func (s *Store) ApplyOperatorDecision(ctx context.Context, command OperatorDecis
 	if err != nil {
 		return OperatorDecisionResult{}, err
 	}
-	hash := hashOperatorDecision(command)
-	scope := decisionScope(command)
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	data, before, eventSequence, lifecycleChanged, err := s.prepareOperatorDecision()
 	if err != nil {
 		return OperatorDecisionResult{}, err
 	}
+	return s.applyPreparedOperatorDecision(ctx, data, before, eventSequence, lifecycleChanged, command, validate)
+}
+
+func (s *Store) applyPreparedOperatorDecision(ctx context.Context, data fileData, before map[string]Grant,
+	eventSequence uint64, lifecycleChanged bool, command OperatorDecision, validate ActivationCheck) (OperatorDecisionResult, error) {
+	hash := hashOperatorDecision(command)
+	scope := decisionScope(command)
 	if replay, found, replayErr := replayOperatorDecision(data.DecisionRecords, scope, hash); found {
 		return replay, s.saveDecisionError(data, eventSequence, lifecycleChanged, replayErr)
 	}
-	index, current, err := findGrant(data.Grants, command.ID)
+	index, current, err := resolveOperatorDecisionGrant(data.Grants, command)
 	if err != nil {
-		return OperatorDecisionResult{}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
+		result := OperatorDecisionResult{Grant: current, Previous: current}
+		return result, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
+	}
+	return s.commitOperatorDecision(ctx, data, before, eventSequence, lifecycleChanged, index, current, command, scope, hash, validate)
+}
+
+func resolveOperatorDecisionGrant(values []Grant, command OperatorDecision) (int, Grant, error) {
+	index, current, err := findGrant(values, command.ID)
+	if err != nil {
+		return 0, Grant{}, err
 	}
 	if command.ExpectedRevision != current.Revision {
-		err := &RevisionConflictError{Current: current}
-		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
+		return index, current, &RevisionConflictError{Current: current}
 	}
+	return index, current, nil
+}
+
+func (s *Store) commitOperatorDecision(ctx context.Context, data fileData, before map[string]Grant,
+	eventSequence uint64, lifecycleChanged bool, index int, current Grant, command OperatorDecision,
+	scope, hash string, validate ActivationCheck) (OperatorDecisionResult, error) {
 	updated, decisionErr := s.applyDecisionMutation(ctx, current, command, validate)
 	if decisionErr != nil && updated.Status != StatusFailed {
-		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, decisionErr)
+		result := OperatorDecisionResult{Grant: current, Previous: current}
+		return result, s.saveDecisionError(data, eventSequence, lifecycleChanged, decisionErr)
 	}
 	data.Grants[index] = updated
 	s.reconcileOperatorMutation(&data, before, current, lifecycleChanged)
 	result := data.Grants[index]
 	eventCursor := currentEventCursor(data)
-	record := decisionRecord{
-		Scope: scope, CommandHash: hash, Result: result, Previous: current, EventCursor: eventCursor, CommittedAt: s.opts.Now().UTC(),
-	}
+	record := decisionRecord{Scope: scope, CommandHash: hash, Result: result, Previous: current,
+		EventCursor: eventCursor, CommittedAt: s.opts.Now().UTC()}
 	if failure, ok := activation.As(decisionErr); ok {
 		record.FailureCode = string(failure.Code)
 		record.FailureReference = result.FailureReference

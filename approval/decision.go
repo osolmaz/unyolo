@@ -106,33 +106,33 @@ func terminalResult(grant grants.Grant) notify.DecisionResult {
 	}
 }
 
+var grantStatusKinds = map[grants.Status]notify.StatusKind{
+	grants.StatusActive:   notify.StatusActive,
+	grants.StatusDenied:   notify.StatusDenied,
+	grants.StatusFailed:   notify.StatusFailed,
+	grants.StatusConsumed: notify.StatusConsumed,
+	grants.StatusRevoked:  notify.StatusRevoked,
+	grants.StatusCanceled: notify.StatusCanceled,
+}
+
 // StatusForGrant maps a canonical grant onto a channel-neutral presentation state.
 func StatusForGrant(grant grants.Grant) notify.Status {
 	status := notify.Status{UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount, MaxUses: grant.MaxUses,
-		FailureCode: grant.FailureCode, FailureReference: grant.FailureReference}
-	switch grant.Status {
-	case grants.StatusActive:
-		status.Kind = notify.StatusActive
-	case grants.StatusDenied:
-		status.Kind = notify.StatusDenied
-	case grants.StatusFailed:
-		status.Kind = notify.StatusFailed
-	case grants.StatusExpired:
-		if grant.ExpiredFrom == grants.StatusPending {
-			status.Kind = notify.StatusPendingExpired
-		} else {
-			status.Kind = notify.StatusActiveExpired
-		}
-	case grants.StatusConsumed:
-		status.Kind = notify.StatusConsumed
-	case grants.StatusRevoked:
-		status.Kind = notify.StatusRevoked
-	case grants.StatusCanceled:
-		status.Kind = notify.StatusCanceled
-	default:
+		FailureCode: grant.FailureCode, FailureReference: grant.FailureReference, Kind: grantStatusKinds[grant.Status]}
+	if status.Kind == "" {
 		status.Kind = notify.StatusClosed
 	}
+	if grant.Status == grants.StatusExpired {
+		status.Kind = expiredStatusKind(grant.ExpiredFrom)
+	}
 	return status
+}
+
+func expiredStatusKind(expiredFrom grants.Status) notify.StatusKind {
+	if expiredFrom == grants.StatusPending {
+		return notify.StatusPendingExpired
+	}
+	return notify.StatusActiveExpired
 }
 
 // StatusForUpdate maps a durable notification update onto a presentation state.

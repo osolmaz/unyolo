@@ -695,30 +695,45 @@ func (r *Runtime[I, P, A]) operationApproval(values []grants.Grant, operation ag
 	return grants.Grant{}, false
 }
 
+type approvalFailure struct {
+	state   agentv1.State
+	code    string
+	message string
+}
+
+var approvalFailures = map[grants.Status]approvalFailure{
+	grants.StatusDenied:   {state: agentv1.StateDenied, code: "operation_approval_denied", message: "Approval was denied"},
+	grants.StatusExpired:  {state: agentv1.StateExpired, code: "operation_approval_expired", message: "Approval request expired"},
+	grants.StatusCanceled: {state: agentv1.StateCanceled, code: "operation_canceled", message: "Request was canceled"},
+	grants.StatusRevoked:  {state: agentv1.StateCanceled, code: "operation_canceled", message: "Request was canceled"},
+}
+
 func (r *Runtime[I, P, A]) syncApproval(operation agentv1.Operation) agentv1.Operation {
 	grant, err := r.options.Grants.Get(operation.ApprovalID)
 	if err != nil {
 		return operation
 	}
-	switch grant.Status {
-	case grants.StatusActive:
+	if grant.Status == grants.StatusActive {
 		updated, _ := r.options.Operations.Transition(operation.ID, agentv1.StateApproved)
 		return updated
-	case grants.StatusDenied:
-		return r.fail(operation.ID, agentv1.StateDenied, "operation_approval_denied", "Approval was denied")
-	case grants.StatusFailed:
-		code := grant.FailureCode
-		if !activation.Known(activation.Code(code)) {
-			code = "approval_activation_failed"
-		}
-		return r.fail(operation.ID, agentv1.StateFailed, code, "Approval activation failed")
-	case grants.StatusExpired:
-		return r.fail(operation.ID, agentv1.StateExpired, "operation_approval_expired", "Approval request expired")
-	case grants.StatusCanceled, grants.StatusRevoked:
-		return r.fail(operation.ID, agentv1.StateCanceled, "operation_canceled", "Request was canceled")
-	default:
+	}
+	failure, failed := operationApprovalFailure(grant)
+	if !failed {
 		return operation
 	}
+	return r.fail(operation.ID, failure.state, failure.code, failure.message)
+}
+
+func operationApprovalFailure(grant grants.Grant) (approvalFailure, bool) {
+	if grant.Status != grants.StatusFailed {
+		failure, found := approvalFailures[grant.Status]
+		return failure, found
+	}
+	code := grant.FailureCode
+	if !activation.Known(activation.Code(code)) {
+		code = "approval_activation_failed"
+	}
+	return approvalFailure{state: agentv1.StateFailed, code: code, message: "Approval activation failed"}, true
 }
 
 // Execute consumes authority, executes once, and reconciles ambiguity.

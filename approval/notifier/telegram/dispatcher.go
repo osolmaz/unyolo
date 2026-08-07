@@ -204,26 +204,40 @@ func logicalDecisionKey(decision notify.Decision) string {
 	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
+var terminalDispatcherFailureCodes = map[string]struct{}{
+	"invalid_notification": {}, "plan_unavailable": {}, "plan_mismatch": {},
+	"credential_changed": {}, "credential_insufficient": {},
+}
+
+var closedDispatcherFailureCodes = map[string]struct{}{
+	"idempotency_conflict": {}, "invalid_transition": {},
+}
+
 func dispatcherErrorResult(err error) notify.DecisionResult {
 	var apiError *operatorclient.Error
-	if errors.As(err, &apiError) {
-		if apiError.Current != nil && apiError.Current.Status != grants.StatusPending {
-			return completedDecisionResult(*apiError.Current)
-		}
-		if apiError.Status == 404 {
-			return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
-		}
-		if apiError.Code == "invalid_decision_token" {
-			return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
-		}
-		switch apiError.Code {
-		case "invalid_notification", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
-			return notify.DecisionResult{Answer: notify.AnswerFailed, MessageStatus: notify.Status{
-				Kind: notify.StatusFailed, FailureCode: apiError.Code, FailureReference: apiError.CorrelationID,
-			}}
-		case "idempotency_conflict", "invalid_transition":
-			return notify.DecisionResult{Answer: notify.AnswerClosed, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
-		}
+	if !errors.As(err, &apiError) {
+		return notify.DecisionResult{Answer: notify.AnswerUnavailable}
+	}
+	return dispatcherAPIErrorResult(apiError)
+}
+
+func dispatcherAPIErrorResult(apiError *operatorclient.Error) notify.DecisionResult {
+	if apiError.Current != nil && apiError.Current.Status != grants.StatusPending {
+		return completedDecisionResult(*apiError.Current)
+	}
+	if apiError.Status == 404 {
+		return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
+	}
+	if apiError.Code == "invalid_decision_token" {
+		return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
+	}
+	if _, terminal := terminalDispatcherFailureCodes[apiError.Code]; terminal {
+		return notify.DecisionResult{Answer: notify.AnswerFailed, MessageStatus: notify.Status{
+			Kind: notify.StatusFailed, FailureCode: apiError.Code, FailureReference: apiError.CorrelationID,
+		}}
+	}
+	if _, closed := closedDispatcherFailureCodes[apiError.Code]; closed {
+		return notify.DecisionResult{Answer: notify.AnswerClosed, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
 	}
 	return notify.DecisionResult{Answer: notify.AnswerUnavailable}
 }
