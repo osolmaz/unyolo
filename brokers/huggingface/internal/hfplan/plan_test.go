@@ -61,7 +61,7 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	}
 }
 
-func TestValidatorTreatsAbsentAndEmptyAttributesAsEquivalent(t *testing.T) {
+func TestValidatorMatchesNormalizedStoredGrant(t *testing.T) {
 	t.Parallel()
 	fixedNow := time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC)
 	plans := newTestPlanStore(t, func() time.Time { return fixedNow })
@@ -69,22 +69,22 @@ func TestValidatorTreatsAbsentAndEmptyAttributesAsEquivalent(t *testing.T) {
 		Client: "default", ClientRequestID: "two-file-write", Operation: "bucket.object.write",
 		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
 			"kind": {"bucket"}, "owner": {"osolmaz"}, "name": {"jobs-artifacts"},
-			"keys": {"goept/bundle.json", "goept/manifest.json"},
+			"keys": {"goept/manifest.json", "goept/bundle.json"},
 		}},
 		Attrs: map[string][]string{}, Metadata: map[string]string{grants.MetadataMode: "window"},
 		Reason: "replace two verified bundle files", Duration: 30 * time.Minute, MaxUses: 2,
 	}
-	if err := plans.Bind(&request); err != nil {
+	prepared, err := plans.PrepareBindAt(&request, fixedNow)
+	if err != nil {
 		t.Fatal(err)
 	}
-	grant := grants.Grant{
-		Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation,
-		Target: request.Target, Attrs: map[string][]string{}, Metadata: request.Metadata,
-		Duration: request.Duration, RequestedDuration: request.Duration,
-		MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses,
+	store := grants.NewDatabase(plans.database, grants.Options{Now: func() time.Time { return fixedNow }})
+	created, wasCreated, err := store.RequestWithPlan(request, prepared)
+	if err != nil || !wasCreated {
+		t.Fatalf("RequestWithPlan() = %+v, %v, %v", created, wasCreated, err)
 	}
-	if err := (Validator{Store: plans}).ValidateActivation(t.Context(), grant, grants.ApprovalConstraints{}); err != nil {
-		t.Fatalf("empty attributes were treated as plan drift: %v", err)
+	if err := (Validator{Store: plans}).ValidateActivation(t.Context(), created.Grant, grants.ApprovalConstraints{}); err != nil {
+		t.Fatalf("normalized stored grant was treated as plan drift: %v", err)
 	}
 }
 
@@ -436,7 +436,7 @@ func TestValidatorUsesCanonicalGrantTargetForCredentialAuthority(t *testing.T) {
 		t.Fatal("repository-scoped credential authorized a bucket grant")
 	}
 	outside := plan
-	outside.Authorization.Target.Fields = cloneValues(plan.Authorization.Target.Fields)
+	outside.Authorization.Target.Fields = canonicalValues(plan.Authorization.Target.Fields)
 	outside.Authorization.Target.Fields["owner"] = []string{"bob"}
 	if err := validator.ValidateCredential(outside); err == nil {
 		t.Fatal("grant target outside credential authority was accepted")
