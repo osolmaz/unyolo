@@ -60,6 +60,7 @@ func (s *Server) forwardGit(c echo.Context) (*http.Response, error) {
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
 	}
+	request = request.WithContext(withGitHubCredentialUse(c, request.Context()))
 	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
 	if err := s.configureGitHubGitRequest(c, request, c.Param("owner"), strings.TrimSuffix(c.Param("repoGit"), ".git")); err != nil {
 		return nil, err
@@ -69,6 +70,10 @@ func (s *Server) forwardGit(c echo.Context) (*http.Response, error) {
 	response, err := s.githubGitClient.Do(request)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream github request failed")
+	}
+	if anonymousCredentialMayHelp(request, response.StatusCode) {
+		_ = response.Body.Close()
+		return nil, managedCredentialRequiredError{status: response.StatusCode}
 	}
 	return response, nil
 }

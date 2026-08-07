@@ -17,6 +17,10 @@ import (
 // creates an idempotent operator approval and waits for it while holding the
 // Git connection, mirroring the receive-pack approval transaction.
 func (s *Server) authorizeGitTransfer(c echo.Context, request policy.Request, run func(echo.Context) error) error {
+	handled, err := s.tryAnonymousGitTransfer(c, request, run)
+	if handled || err != nil {
+		return err
+	}
 	decision, approvalDecision, err := s.evaluateGitMutation(request)
 	if err != nil {
 		s.audit(c, request, "error", "could not inspect grants", 0, nil)

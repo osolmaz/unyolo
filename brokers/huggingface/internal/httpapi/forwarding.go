@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/unyolo/transport/http"
 )
@@ -29,16 +30,25 @@ func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {
 }
 
 func (s *Server) forward(w http.ResponseWriter, r *http.Request, client string, rt route, body []byte, bodyRead bool) (int, error) {
+	return s.forwardWithCredentialUse(w, r, client, rt, body, bodyRead, corepolicy.CredentialUseManaged)
+}
+
+func (s *Server) forwardAnonymous(w http.ResponseWriter, r *http.Request, client string, rt route, body []byte, bodyRead bool) (int, error) {
+	return s.forwardWithCredentialUse(w, r, client, rt, body, bodyRead, corepolicy.CredentialUseNone)
+}
+
+func (s *Server) forwardWithCredentialUse(w http.ResponseWriter, r *http.Request, client string, rt route, body []byte, bodyRead bool, credentialUse corepolicy.CredentialUse) (int, error) {
 	if actionID := r.URL.Query().Get(lfsActionQuery); actionID != "" {
 		action, ok := s.lookupLFSAction(actionID)
 		if !ok || action.client != client || !sameRoute(action.route, rt) {
 			writePlain(w, http.StatusForbidden, "hf-broker: "+errInvalidLFSAction.Error()+"\n")
 			return 0, errInvalidLFSAction
 		}
-		return s.forwardToURL(w, r, client, rt, action.url, body, bodyRead, action.headers, s.lfsActionNeedsHFToken(action.url, rt))
+		injectHFToken := credentialUse == corepolicy.CredentialUseManaged && s.lfsActionNeedsHFToken(action.url, rt)
+		return s.forwardToURL(w, r, client, rt, action.url, body, bodyRead, action.headers, injectHFToken, credentialUse)
 	}
 	upstreamURL := s.upstreamRequestURL(r, rt)
-	return s.forwardToURL(w, r, client, rt, upstreamURL, body, bodyRead, nil, true)
+	return s.forwardToURL(w, r, client, rt, upstreamURL, body, bodyRead, nil, credentialUse == corepolicy.CredentialUseManaged, credentialUse)
 }
 
 func (s *Server) lfsActionNeedsHFToken(rawURL string, rt route) bool {
@@ -52,23 +62,32 @@ func (s *Server) lfsActionNeedsHFToken(rawURL string, rt route) bool {
 		(parsed.Path == repoPath || strings.HasPrefix(parsed.Path, repoPath+"/"))
 }
 
-func (s *Server) forwardToURL(w http.ResponseWriter, r *http.Request, client string, rt route, upstreamURL string, body []byte, bodyRead bool, extraHeaders http.Header, injectHFToken bool) (int, error) {
-	req, err := s.newForwardRequest(r, upstreamURL, body, bodyRead, extraHeaders, injectHFToken)
+func (s *Server) forwardToURL(w http.ResponseWriter, r *http.Request, client string, rt route, upstreamURL string, body []byte, bodyRead bool, extraHeaders http.Header, injectHFToken bool, credentialUse corepolicy.CredentialUse) (int, error) {
+	req, err := s.newForwardRequest(r, upstreamURL, body, bodyRead, extraHeaders, injectHFToken, credentialUse)
 	if err != nil {
 		return 0, err
 	}
-	resp, err := s.httpClient.Do(req)
+	clientHTTP := s.httpClient
+	if credentialUse == corepolicy.CredentialUseNone {
+		anonymousClient := *s.httpClient
+		anonymousClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		clientHTTP = &anonymousClient
+	}
+	resp, err := clientHTTP.Do(req)
 	if err != nil {
 		return 0, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+	if credentialUse == corepolicy.CredentialUseNone && anonymousCredentialFallbackStatus(resp.StatusCode) {
+		return resp.StatusCode, managedCredentialRequiredError{status: resp.StatusCode}
+	}
 	return s.writeForwardResponse(w, r, client, rt, resp)
 }
 
 func (s *Server) forwardReceivePack(w http.ResponseWriter, r *http.Request, rt route, push gitproxy.ReceivePackRequest, body []byte) (int, bool, string, bool, error) {
-	req, err := s.newForwardRequest(r, s.upstreamRequestURL(r, rt), body, true, nil, true)
+	req, err := s.newForwardRequest(r, s.upstreamRequestURL(r, rt), body, true, nil, true, corepolicy.CredentialUseManaged)
 	if err != nil {
 		return 0, false, "", false, err
 	}
@@ -119,7 +138,7 @@ func writeBufferedResponse(w http.ResponseWriter, resp *http.Response, body []by
 	return err
 }
 
-func (s *Server) newForwardRequest(r *http.Request, upstreamURL string, body []byte, bodyRead bool, extraHeaders http.Header, injectHFToken bool) (*http.Request, error) {
+func (s *Server) newForwardRequest(r *http.Request, upstreamURL string, body []byte, bodyRead bool, extraHeaders http.Header, injectHFToken bool, credentialUse corepolicy.CredentialUse) (*http.Request, error) {
 	var reader io.Reader
 	if bodyRead {
 		reader = bytes.NewReader(body)
@@ -131,6 +150,9 @@ func (s *Server) newForwardRequest(r *http.Request, upstreamURL string, body []b
 		return nil, err
 	}
 	copyForwardHeaders(req.Header, r.Header)
+	if credentialUse == corepolicy.CredentialUseNone {
+		stripCredentialHeaders(req.Header)
+	}
 	copyHeaders(req.Header, extraHeaders, func(string) bool { return false })
 	if injectHFToken {
 		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("x-access-token:"+s.hfToken)))

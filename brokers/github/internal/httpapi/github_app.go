@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
@@ -13,6 +14,10 @@ import (
 const githubOperationContextKey = "gh_broker_operation"
 
 func (s *Server) configureGitHubGitRequest(c echo.Context, request *http.Request, owner, repo string) error {
+	if githubCredentialUse(c) == corepolicy.CredentialUseNone {
+		sanitizeAnonymousGitRequest(request)
+		return nil
+	}
 	credential, err := s.githubCredentialForRepo(c, owner, repo)
 	if err != nil {
 		return err

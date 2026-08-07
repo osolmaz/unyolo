@@ -19,6 +19,7 @@ func (s *Server) proxyTo(c echo.Context, upstreamURL *url.URL, configure func(*h
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "create upstream github request")
 	}
+	request = request.WithContext(withGitHubCredentialUse(c, request.Context()))
 	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
 	if err := configure(request); err != nil {
 		return err
@@ -36,6 +37,9 @@ func (s *Server) doProxy(c echo.Context, request *http.Request) error {
 	defer func() {
 		_ = response.Body.Close()
 	}()
+	if anonymousCredentialMayHelp(request, response.StatusCode) {
+		return managedCredentialRequiredError{status: response.StatusCode}
+	}
 	httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
 	c.Response().WriteHeader(response.StatusCode)
 	_, err = io.Copy(c.Response(), response.Body)

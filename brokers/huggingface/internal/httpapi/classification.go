@@ -89,10 +89,10 @@ func classifyLFS(r *http.Request, tail string) (policy.Operation, []byte, bool, 
 		return classifyLFSBatch(r)
 	}
 	if r.Method == http.MethodPost && tail == "info/lfs/locks/verify" {
-		return policy.OpRepoContentsRead, nil, false, 0, ""
+		return policy.OpGitFetch, nil, false, 0, ""
 	}
 	if isLFSObjectDownload(r.Method, tail) {
-		return policy.OpRepoContentsRead, nil, false, 0, ""
+		return policy.OpGitFetch, nil, false, 0, ""
 	}
 	if isLFSObjectUpload(r.Method, tail) {
 		return policy.OpGitPushAppend, nil, false, 0, ""
@@ -120,7 +120,7 @@ func classifyLFSBatch(r *http.Request) (policy.Operation, []byte, bool, int, str
 func classifyLFSOperation(operation string, body []byte) (policy.Operation, []byte, bool, int, string) {
 	switch operation {
 	case "download":
-		return policy.OpRepoContentsRead, body, true, 0, ""
+		return policy.OpGitFetch, body, true, 0, ""
 	case "upload":
 		return policy.OpGitPushAppend, body, true, 0, ""
 	default:

@@ -29,6 +29,7 @@ var (
 	requestCredentialHeaders = map[string]struct{}{
 		"authorization":       {},
 		"cookie":              {},
+		"cookie2":             {},
 		"proxy-authorization": {},
 	}
 	responseCredentialHeaders = map[string]struct{}{
