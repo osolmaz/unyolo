@@ -31,6 +31,7 @@ type Answer string
 const (
 	AnswerApproved         Answer = "approved"
 	AnswerDenied           Answer = "denied"
+	AnswerFailed           Answer = "failed"
 	AnswerAlreadyApproved  Answer = "already_approved"
 	AnswerAlreadyDenied    Answer = "already_denied"
 	AnswerAlreadyExpired   Answer = "already_expired"
@@ -51,6 +52,7 @@ type StatusKind string
 const (
 	StatusActive         StatusKind = "active"
 	StatusDenied         StatusKind = "denied"
+	StatusFailed         StatusKind = "failed"
 	StatusPendingExpired StatusKind = "pending_expired"
 	StatusActiveExpired  StatusKind = "active_expired"
 	StatusConsumed       StatusKind = "consumed"
@@ -65,10 +67,12 @@ const (
 
 // Status carries bounded counters needed for deterministic terminal rendering.
 type Status struct {
-	Kind          StatusKind
-	UsedCount     int
-	ReservedCount int
-	MaxUses       usebudget.Limit
+	Kind             StatusKind
+	UsedCount        int
+	ReservedCount    int
+	MaxUses          usebudget.Limit
+	FailureCode      string
+	FailureReference string
 }
 
 // Decision is a parsed operator decision.

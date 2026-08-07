@@ -362,13 +362,17 @@ func requestFromWire(input operatorwire.BrokerRequest) operatorv1.Request {
 		Mode: string(input.Mode), Status: grants.Status(input.Status), RequestedAt: input.RequestedAt, PendingExpiresAt: input.PendingExpiresAt,
 		ActiveExpiresAt: input.ActiveExpiresAt, RequestedDurationSeconds: int64(input.RequestedDurationSeconds),
 		RequestedMaxUses: operatorv1wire.UseLimitFromWire(input.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitFromWire(input.GrantedMaxUses),
-		UsedCount: input.UsedCount, DecidedAt: input.DecidedAt,
+		UsedCount: input.UsedCount, DecidedAt: input.DecidedAt, FailedAt: input.FailedAt,
 		Presentation: operatorv1.Presentation{Risk: string(input.Presentation.Risk), Title: input.Presentation.Title,
 			Target: input.Presentation.Target, Facts: facts, Warnings: warnings},
 		AllowedActions: make([]operatorv1.Action, 0, len(input.AllowedActions))}
 	result.RequestReason = optional.Value(input.RequestReason)
 	result.DecidedBy = optional.Value(input.DecidedBy)
 	result.DecidedOnBehalfOf = optional.Value(input.DecidedOnBehalfOf)
+	if input.FailureCode != nil {
+		result.FailureCode = string(*input.FailureCode)
+	}
+	result.FailureReference = optional.Value(input.FailureReference)
 	result.Presentation.Summary = optional.Value(input.Presentation.Summary)
 	result.Presentation.PlanHash = optional.Value(input.Presentation.PlanHash)
 	result.PresentationUnavailable = boolValue(input.PresentationUnavailable)

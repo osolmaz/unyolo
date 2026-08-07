@@ -35,6 +35,12 @@
             "constraint_exceeded",
             "invalid_transition",
             "invalid_decision_token",
+            "invalid_notification",
+            "plan_unavailable",
+            "plan_mismatch",
+            "credential_changed",
+            "credential_insufficient",
+            "storage_unavailable",
             "cursor_expired",
             "temporarily_unavailable",
             "internal_error"
@@ -154,6 +160,25 @@
           "type": "string",
           "maxLength": 200
         },
+        "failure_code": {
+          "type": "string",
+          "enum": [
+            "invalid_notification",
+            "plan_unavailable",
+            "plan_mismatch",
+            "credential_changed",
+            "credential_insufficient"
+          ]
+        },
+        "failure_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "failed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "presentation": {
           "$ref": "#/$defs/Presentation"
         },
@@ -262,6 +287,7 @@
         "pending",
         "active",
         "denied",
+        "failed",
         "canceled",
         "expired",
         "consumed",

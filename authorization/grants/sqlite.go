@@ -395,8 +395,8 @@ func decisionFromSQLite(record state.GrantDecisionRecord) (decisionRecord, error
 		return decisionRecord{}, ErrUnsupportedState
 	}
 	return decisionRecord{Scope: record.Scope, CommandHash: record.CommandHash, Result: result, Previous: previous,
-		EventCursor: record.EventCursor, CommittedAt: record.CommittedAt,
-		resultJSON: bytes.Clone(record.ResultJSON), previousJSON: bytes.Clone(record.PreviousJSON)}, nil
+		EventCursor: record.EventCursor, FailureCode: result.FailureCode, FailureReference: result.FailureReference,
+		CommittedAt: record.CommittedAt, resultJSON: bytes.Clone(record.ResultJSON), previousJSON: bytes.Clone(record.PreviousJSON)}, nil
 }
 
 func decodeDecisionGrants(record state.GrantDecisionRecord) (Grant, Grant, error) {

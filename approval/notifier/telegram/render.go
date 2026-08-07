@@ -303,6 +303,16 @@ var terminalStatusText = map[notify.StatusKind]string{
 }
 
 func renderStatus(status notify.Status) string {
+	if status.Kind == notify.StatusFailed {
+		message := "⚠️ Approval failed because the request is no longer valid. Create a new request."
+		if status.FailureCode == "invalid_notification" {
+			message = "⚠️ Approval message could not be verified. Create a new request."
+		}
+		if status.FailureReference != "" {
+			message += " Reference: " + html.EscapeString(status.FailureReference)
+		}
+		return message
+	}
 	if status.Kind == notify.StatusUsedActive {
 		remaining, finite := status.MaxUses.Remaining(status.UsedCount, status.ReservedCount)
 		if !finite {
@@ -318,7 +328,7 @@ func renderStatus(status notify.Status) string {
 
 func answerText(answer notify.Answer) string {
 	values := map[notify.Answer]string{
-		notify.AnswerApproved: "Grant approved", notify.AnswerDenied: "Grant denied",
+		notify.AnswerApproved: "Grant approved", notify.AnswerDenied: "Grant denied", notify.AnswerFailed: "Approval failed; create a new request",
 		notify.AnswerAlreadyApproved: "Grant already approved", notify.AnswerAlreadyDenied: "Grant already denied",
 		notify.AnswerAlreadyExpired: "Grant already expired", notify.AnswerAlreadyConsumed: "Grant already used",
 		notify.AnswerAlreadyRevoked: "Grant already revoked", notify.AnswerAlreadyCanceled: "Grant already canceled",

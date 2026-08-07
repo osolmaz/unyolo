@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/osolmaz/unyolo/agent/v1"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -260,18 +261,18 @@ func (v Validator) ValidateExecution(grant grants.Grant) error {
 
 func (v Validator) validate(grant grants.Grant, constraints grants.ApprovalConstraints) error {
 	if v.Store == nil {
-		return errors.New("HF plan store is unavailable")
+		return activation.New(activation.CodePlanUnavailable, errors.New("HF plan store is unavailable"))
 	}
 	if grant.Metadata[MetadataSchema] != SchemaV1 {
-		return errors.New("HF grant plan schema is missing or unsupported")
+		return activation.New(activation.CodePlanUnavailable, errors.New("HF grant plan schema is missing or unsupported"))
 	}
 	plan, err := v.Store.Get(grant.Metadata[MetadataDigest])
 	if err != nil {
-		return err
+		return activation.New(activation.CodePlanUnavailable, err)
 	}
 	requestedDuration, requestedMaxUses := requestedGrantBounds(grant)
 	if !planMatchesGrant(plan, grant, requestedDuration, requestedMaxUses) {
-		return errors.New("HF grant does not match its immutable plan")
+		return activation.New(activation.CodePlanMismatch, errors.New("HF grant does not match its immutable plan"))
 	}
 	if err := v.ValidateCredential(plan); err != nil {
 		return err
@@ -288,16 +289,16 @@ func (v Validator) ValidateCredential(plan Plan) error {
 	if v.Credential == nil {
 		return nil
 	}
-	if v.Credential.Validate(plan.CredentialSelector.Binding) != nil {
-		return errors.New("HF credential binding is stale")
+	if err := v.Credential.Validate(plan.CredentialSelector.Binding); err != nil {
+		return activation.New(activation.CodeCredentialChanged, err)
 	}
 	if v.Requirement == nil {
-		return errors.New("HF credential requirement map is unavailable")
+		return activation.New(activation.CodeCredentialInsufficient, errors.New("HF credential requirement map is unavailable"))
 	}
 	requirement, found := v.Requirement(plan.Operation)
 	target, targetErr := credentialTarget(plan)
 	if !found || targetErr != nil || !v.Credential.Evaluate(requirement, target).Allowed {
-		return errors.New("HF credential does not cover the operation target")
+		return activation.New(activation.CodeCredentialInsufficient, errors.Join(targetErr, errors.New("HF credential does not cover the operation target")))
 	}
 	return nil
 }

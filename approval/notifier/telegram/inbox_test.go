@@ -25,7 +25,7 @@ func TestInboxPersistsEncryptedCallbackAndClearsAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	decision := testDurableDecision()
-	if err := inbox.persistUpdate(t.Context(), 7, &decision); err != nil {
+	if _, err := inbox.persistUpdate(t.Context(), 7, &decision); err != nil {
 		t.Fatal(err)
 	}
 	if offset, err := inbox.nextOffset(t.Context()); err != nil || offset != 8 {
@@ -125,11 +125,13 @@ func TestInboxRejectsUnsafeConfigurationAndEncryptedReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	decision := testDurableDecision()
-	if err := inbox.persistUpdate(t.Context(), 21, &decision); err != nil {
-		t.Fatal(err)
+	if result, err := inbox.persistUpdate(t.Context(), 21, &decision); err != nil || result.Duplicate {
+		t.Fatalf("first persist = %+v, %v", result, err)
 	}
-	if err := inbox.persistUpdate(t.Context(), 21, &decision); err != nil {
-		t.Fatal(err)
+	duplicate := decision
+	duplicate.CallbackID = "different-telegram-callback"
+	if result, err := inbox.persistUpdate(t.Context(), 22, &duplicate); err != nil || !result.Duplicate || result.Answer != "" {
+		t.Fatalf("duplicate persist = %+v, %v", result, err)
 	}
 	var count int
 	if err := inbox.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM callbacks`).Scan(&count); err != nil || count != 1 {

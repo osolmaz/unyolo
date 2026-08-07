@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/policy"
 )
@@ -65,6 +67,38 @@ func TestApplyOperatorDecisionIsAtomicAndReplaySafe(t *testing.T) {
 	}
 }
 
+func TestApplyOperatorDecisionCommitsAndReplaysTerminalActivationFailure(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "grants.json")
+	store := New(path, Options{})
+	created, _, err := store.Request(Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "update", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("private credential detail")
+	command := OperatorDecision{ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur",
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "failed-decision", CorrelationID: "correlation-1"}
+	result, err := store.ApplyOperatorDecision(t.Context(), command, func(context.Context, Grant, ApprovalConstraints) error {
+		return activation.New(activation.CodeCredentialChanged, cause)
+	})
+	failure, ok := activation.As(err)
+	if !ok || failure.Code != activation.CodeCredentialChanged || result.Grant.Status != StatusFailed ||
+		result.Grant.FailureCode != string(activation.CodeCredentialChanged) || result.Grant.FailureReference != "correlation-1" ||
+		result.Grant.FailedAt.IsZero() || result.EventCursor == "" {
+		t.Fatalf("failed decision = %+v, %v", result, err)
+	}
+	replay, err := New(path, Options{}).ApplyOperatorDecision(t.Context(), command, func(context.Context, Grant, ApprovalConstraints) error {
+		t.Fatal("validator called during failed replay")
+		return nil
+	})
+	replayedFailure, ok := activation.As(err)
+	if !ok || replayedFailure.Code != activation.CodeCredentialChanged || !replay.Replay || replay.Grant.Status != StatusFailed ||
+		replay.Grant.FailureReference != result.Grant.FailureReference {
+		t.Fatalf("failed replay = %+v, %v", replay, err)
+	}
+}
+
 func TestApplyOperatorDecisionFailsClosed(t *testing.T) {
 	t.Parallel()
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
@@ -96,6 +130,28 @@ func TestApplyOperatorDecisionFailsClosed(t *testing.T) {
 	stale.ExpectedRevision++
 	if _, err := store.ApplyOperatorDecision(t.Context(), stale, nil); !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("stale error = %v", err)
+	}
+}
+
+func TestApplyOperatorDecisionRejectsNotificationIntegrityAsTerminalFailure(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "update", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := testTelegramMessageRef(8, "approval")
+	ref.ChatID = 7
+	ref.PresentationDigest = "sha256:" + strings.Repeat("0", 64)
+	result, err := store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur", ExpectedRevision: created.Grant.Revision,
+		IdempotencyKey: "invalid-notification", DecisionToken: created.DecisionToken, Notification: &ref,
+	}, nil)
+	failure, ok := activation.As(err)
+	if !ok || failure.Code != activation.CodeInvalidNotification || err.Error() != string(activation.CodeInvalidNotification) ||
+		result.Grant.Status != StatusFailed || result.Grant.Notification != nil {
+		t.Fatalf("notification failure = %+v, %v", result, err)
 	}
 }
 

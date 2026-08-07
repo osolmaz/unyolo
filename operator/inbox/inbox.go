@@ -37,6 +37,9 @@ type Item struct {
 	DecidedAt                *time.Time                `json:"decided_at,omitempty"`
 	DecidedBy                string                    `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf        string                    `json:"decided_on_behalf_of,omitempty"`
+	FailureCode              string                    `json:"failure_code,omitempty"`
+	FailureReference         string                    `json:"failure_reference,omitempty"`
+	FailedAt                 *time.Time                `json:"failed_at,omitempty"`
 	Presentation             approvalview.Presentation `json:"presentation"`
 	PresentationUnavailable  bool                      `json:"presentation_unavailable,omitempty"`
 }
@@ -113,7 +116,8 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 		UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount,
 		Reason: approvalview.SafeOrEmpty(grant.Reason, maxReasonBytes, true), DecidedBy: approvalview.SafeOrEmpty(grant.DecidedBy, maxLabelBytes, false),
 		DecidedOnBehalfOf: approvalview.SafeOrEmpty(grant.DecidedOnBehalfOf, maxLabelBytes, false),
-		Presentation:      presentation, PresentationUnavailable: unavailable,
+		FailureCode:       grant.FailureCode, FailureReference: approvalview.SafeOrEmpty(grant.FailureReference, 128, false),
+		Presentation: presentation, PresentationUnavailable: unavailable,
 	}
 	if !grant.ExpiresAt.IsZero() {
 		expires := grant.ExpiresAt
@@ -122,6 +126,10 @@ func (s *Service) project(ctx context.Context, grant grants.Grant) Item {
 	if !grant.DecidedAt.IsZero() {
 		decided := grant.DecidedAt
 		item.DecidedAt = &decided
+	}
+	if !grant.FailedAt.IsZero() {
+		failed := grant.FailedAt
+		item.FailedAt = &failed
 	}
 	return item
 }
