@@ -61,6 +61,33 @@ func TestStoreBindsDeterministicImmutablePlan(t *testing.T) {
 	}
 }
 
+func TestValidatorTreatsAbsentAndEmptyAttributesAsEquivalent(t *testing.T) {
+	t.Parallel()
+	fixedNow := time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC)
+	plans := newTestPlanStore(t, func() time.Time { return fixedNow })
+	request := grants.Request{
+		Client: "default", ClientRequestID: "two-file-write", Operation: "bucket.object.write",
+		Target: policy.Target{Kind: "hf", Fields: map[string][]string{
+			"kind": {"bucket"}, "owner": {"osolmaz"}, "name": {"jobs-artifacts"},
+			"keys": {"goept/bundle.json", "goept/manifest.json"},
+		}},
+		Attrs: map[string][]string{}, Metadata: map[string]string{grants.MetadataMode: "window"},
+		Reason: "replace two verified bundle files", Duration: 30 * time.Minute, MaxUses: 2,
+	}
+	if err := plans.Bind(&request); err != nil {
+		t.Fatal(err)
+	}
+	grant := grants.Grant{
+		Client: request.Client, ClientRequestID: request.ClientRequestID, Operation: request.Operation,
+		Target: request.Target, Attrs: map[string][]string{}, Metadata: request.Metadata,
+		Duration: request.Duration, RequestedDuration: request.Duration,
+		MaxUses: request.MaxUses, RequestedMaxUses: request.MaxUses,
+	}
+	if err := (Validator{Store: plans}).ValidateActivation(t.Context(), grant, grants.ApprovalConstraints{}); err != nil {
+		t.Fatalf("empty attributes were treated as plan drift: %v", err)
+	}
+}
+
 func TestCanonicalPlanDigestFixture(t *testing.T) {
 	request := grants.Request{
 		Client: "bob", ClientRequestID: "request-1", Operation: "git.push.force",
