@@ -2,14 +2,14 @@
   "version": 1,
   "provider": "huggingface",
   "preset": "request-all-agent-operations",
-  "catalog_digest": "sha256:8d302990599e52b9c559d0c583d0ef3e676edc543d6e5cae2993008f32870bfe",
+  "catalog_digest": "sha256:01edfeba9adffccbdbf8b351eb05c3ccf6ef84f436aef32c3f3143b42ec01549",
   "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
-  "policy_digest": "sha256:94be3809285681be18d633d21a3b585d0f53e97feaecda251cd55e6344c32ec3",
+  "policy_digest": "sha256:454177abb9ff653bb3281979fc100ba16bbdec91dc80d443f5feb3948d2fdc71",
   "operation_counts": {
     "total": 258,
-    "allow": 10,
+    "allow": 12,
     "request": 142,
-    "deny": 106
+    "deny": 104
   },
   "operations": [
     {
@@ -687,9 +687,9 @@
     {
       "name": "job.list",
       "operation_revision": 1,
-      "default_effect": "deny",
+      "default_effect": "allow",
       "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
-      "effect": "deny"
+      "effect": "allow"
     },
     {
       "name": "job.logs.read",
@@ -708,9 +708,9 @@
     {
       "name": "job.read",
       "operation_revision": 1,
-      "default_effect": "deny",
+      "default_effect": "allow",
       "authorization_digest": "sha256:58c9a765939ca9765f9069f73d9afa009b27e2a0be46fe546b0dfea2f1b07930",
-      "effect": "deny"
+      "effect": "allow"
     },
     {
       "name": "job.run",

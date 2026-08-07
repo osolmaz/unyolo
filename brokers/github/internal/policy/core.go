@@ -18,13 +18,14 @@ type coreDocument struct {
 }
 
 type coreRule struct {
-	ID          string                  `json:"id"`
-	Effect      Effect                  `json:"effect"`
-	Clients     []string                `json:"clients"`
-	Operations  []string                `json:"operations"`
-	Targets     []map[string]string     `json:"targets"`
-	Attrs       map[string][]string     `json:"attrs,omitempty"`
-	GrantPolicy *corepolicy.GrantPolicy `json:"grant_policy,omitempty"`
+	ID             string                     `json:"id"`
+	Effect         Effect                     `json:"effect"`
+	Clients        []string                   `json:"clients"`
+	Operations     []string                   `json:"operations"`
+	Targets        []map[string]string        `json:"targets"`
+	Attrs          map[string][]string        `json:"attrs,omitempty"`
+	CredentialUses []corepolicy.CredentialUse `json:"credential_use,omitempty"`
+	GrantPolicy    *corepolicy.GrantPolicy    `json:"grant_policy,omitempty"`
 }
 
 func corePolicyJSON(scope Scope) ([]byte, error) {
@@ -58,13 +59,14 @@ func expandRule(rule Rule) ([]coreRule, error) {
 			return nil, err
 		}
 		out = append(out, coreRule{
-			ID:          expandedRuleID(rule.ID, op, len(ops)),
-			Effect:      rule.Effect,
-			Clients:     rule.Clients,
-			Operations:  []string{string(op)},
-			Targets:     targets,
-			Attrs:       attrs,
-			GrantPolicy: grantPolicyForEffect(rule.Effect, op, rule.GrantPolicy),
+			ID:             expandedRuleID(rule.ID, op, len(ops)),
+			Effect:         rule.Effect,
+			Clients:        rule.Clients,
+			Operations:     []string{string(op)},
+			Targets:        targets,
+			Attrs:          attrs,
+			CredentialUses: rule.CredentialUses,
+			GrantPolicy:    grantPolicyForEffect(rule.Effect, op, rule.GrantPolicy),
 		})
 	}
 	if len(out) == 0 {
@@ -277,23 +279,25 @@ func fromCoreDecision(decision corepolicy.Decision) Decision {
 			Effect:         EffectAllow,
 			Allowed:        true,
 			Reason:         allowReason(decision),
+			CredentialUse:  decision.CredentialUse,
 			MatchedRuleIDs: matchedAllowIDs(decision),
 			GrantID:        decision.GrantID,
 		}
 	case corepolicy.EffectDeny:
 		if decision.Reason == "approval_required" {
-			return Decision{Effect: EffectRequest, Reason: "grant required by policy", MatchedRuleIDs: originalRuleIDs(decision.MatchedRequestRuleIDs)}
+			return Decision{Effect: EffectRequest, Reason: "grant required by policy", CredentialUse: decision.CredentialUse, MatchedRuleIDs: originalRuleIDs(decision.MatchedRequestRuleIDs)}
 		}
-		return Decision{Effect: EffectDeny, Reason: denyReason(decision), MatchedRuleIDs: originalRuleIDs(decision.MatchedDenyRuleIDs)}
+		return Decision{Effect: EffectDeny, Reason: denyReason(decision), CredentialUse: decision.CredentialUse, MatchedRuleIDs: originalRuleIDs(decision.MatchedDenyRuleIDs)}
 	case corepolicy.EffectRequest:
 		return Decision{
 			Effect:         EffectRequest,
 			Reason:         "grant required by policy",
+			CredentialUse:  decision.CredentialUse,
 			MatchedRuleIDs: originalRuleIDs(decision.MatchedRequestRuleIDs),
 			GrantPolicy:    decision.GrantPolicy,
 		}
 	default:
-		return Decision{Effect: EffectNoMatch, Reason: "no matching policy rule"}
+		return Decision{Effect: EffectNoMatch, Reason: "no matching policy rule", CredentialUse: decision.CredentialUse}
 	}
 }
 

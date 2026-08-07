@@ -103,7 +103,7 @@ func catalogAttributeSpecs() map[string]corepolicy.AttrSpec {
 
 func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 	return map[Operation]corepolicy.OperationSpec{
-		OperationGitFetch:             reusableProtocolOperation(),
+		OperationGitFetch:             anonymousReadableProtocolOperation(),
 		OperationGitLFSWrite:          reusableProtocolOperation(),
 		OperationGitPushAdvertise:     reusableProtocolOperation(),
 		OperationGitPushBranchCreate:  reusableProtocolOperation("ref"),
@@ -113,6 +113,12 @@ func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 		OperationGitTagUpdate:         reusableProtocolOperation("ref"),
 		OperationWebhookGitHubReceive: {TargetKinds: []string{"repo"}},
 	}
+}
+
+func anonymousReadableProtocolOperation() corepolicy.OperationSpec {
+	spec := reusableProtocolOperation()
+	spec.CredentialUses = []corepolicy.CredentialUse{corepolicy.CredentialUseNone, corepolicy.CredentialUseManaged}
+	return spec
 }
 
 func reusableProtocolOperation(attrs ...string) corepolicy.OperationSpec {

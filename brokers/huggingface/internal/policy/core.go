@@ -32,13 +32,14 @@ type coreDocument struct {
 }
 
 type coreRule struct {
-	ID          string                  `json:"id"`
-	Effect      string                  `json:"effect"`
-	Clients     []string                `json:"clients"`
-	Operations  []string                `json:"operations"`
-	Targets     []map[string]any        `json:"targets"`
-	Attrs       map[string][]string     `json:"attrs,omitempty"`
-	GrantPolicy *corepolicy.GrantPolicy `json:"grant_policy,omitempty"`
+	ID             string                     `json:"id"`
+	Effect         string                     `json:"effect"`
+	Clients        []string                   `json:"clients"`
+	Operations     []string                   `json:"operations"`
+	Targets        []map[string]any           `json:"targets"`
+	Attrs          map[string][]string        `json:"attrs,omitempty"`
+	CredentialUses []corepolicy.CredentialUse `json:"credential_use,omitempty"`
+	GrantPolicy    *corepolicy.GrantPolicy    `json:"grant_policy,omitempty"`
 }
 
 // AuthorizationRegistry returns HF's provider-owned policy vocabulary.
@@ -113,13 +114,14 @@ func coreRuleForOperation(rule Rule, operation Operation, view coreView) (coreRu
 		return coreRule{}, false
 	}
 	return coreRule{
-		ID:          coreRuleID(rule.ID, operation),
-		Effect:      string(rule.Effect),
-		Clients:     coreClientPatterns(rule.Clients),
-		Operations:  []string{string(operation)},
-		Targets:     targets,
-		Attrs:       coreRuleAttrs(rule, view),
-		GrantPolicy: coreGrantPolicyForView(rule.GrantPolicy, operation, view),
+		ID:             coreRuleID(rule.ID, operation),
+		Effect:         string(rule.Effect),
+		Clients:        coreClientPatterns(rule.Clients),
+		Operations:     []string{string(operation)},
+		Targets:        targets,
+		Attrs:          coreRuleAttrs(rule, view),
+		CredentialUses: rule.CredentialUses,
+		GrantPolicy:    coreGrantPolicyForView(rule.GrantPolicy, operation, view),
 	}, true
 }
 
@@ -314,6 +316,9 @@ func hfRegistry() corepolicy.Registry {
 			Attrs:       KnownAttributeNames(),
 			Grantable:   info.mode != GrantModeNone,
 		}
+		if operation == OpGitFetch {
+			spec.CredentialUses = []corepolicy.CredentialUse{corepolicy.CredentialUseNone, corepolicy.CredentialUseManaged}
+		}
 		if spec.Grantable {
 			if descriptor, found := opcatalog.ByName(string(operation)); found {
 				spec.GrantMode = corepolicy.GrantMode(descriptor.DefaultAuthorizationMode)
@@ -356,17 +361,22 @@ func ownerNameTargetFields() map[string]corepolicy.FieldSpec {
 }
 
 func (p Policy) decideCore(req Request, grants []Rule, now time.Time, grantRequest bool, view coreView) Decision {
+	return p.decideCoreWithCredentialUse(req, grants, now, grantRequest, view, corepolicy.CredentialUseManaged)
+}
+
+func (p Policy) decideCoreWithCredentialUse(req Request, grants []Rule, now time.Time, grantRequest bool, view coreView, credentialUse corepolicy.CredentialUse) Decision {
 	if _, ok := operations[req.Operation]; !ok {
-		return Decision{Effect: EffectDeny, Reason: "invalid_operation"}
+		return Decision{Effect: EffectDeny, Reason: "invalid_operation", CredentialUse: credentialUse}
 	}
 	if err := validatePolicyRequestTarget(req); err != nil {
-		return Decision{Effect: EffectDeny, Reason: "invalid_target"}
+		return Decision{Effect: EffectDeny, Reason: "invalid_target", CredentialUse: credentialUse}
 	}
 	coreRequest := coreRequestFromHF(req, view)
 	options := corepolicy.DecisionOptions{
 		ForGrantRequest: grantRequest,
 		Now:             now,
 		ActiveGrants:    coreGrants(grants, view),
+		CredentialUse:   credentialUse,
 	}
 	decision := p.coreForView(view).Decide(coreRequest, options)
 	return p.decisionFromCore(decision)
@@ -525,6 +535,7 @@ func (p Policy) decisionFromCore(value corepolicy.Decision) Decision {
 	return Decision{
 		Effect:                Effect(value.Effect),
 		Reason:                value.Reason,
+		CredentialUse:         value.CredentialUse,
 		MatchedDenyRuleIDs:    p.originalRuleIDs(value.MatchedDenyRuleIDs),
 		MatchedGrantRuleIDs:   slices.Clone(value.MatchedGrantRuleIDs),
 		MatchedAllowRuleIDs:   p.originalRuleIDs(value.MatchedAllowRuleIDs),

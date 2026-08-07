@@ -15,11 +15,25 @@ const (
 	maxPathSegments     = 256
 )
 
-func ruleMatches(registry Registry, rule Rule, request Request) bool {
-	return patternsMatch(rule.Clients, request.Client) &&
+func ruleMatches(registry Registry, rule Rule, request Request, credentialUse CredentialUse) bool {
+	return ruleCredentialUseMatches(rule, credentialUse) &&
+		patternsMatch(rule.Clients, request.Client) &&
 		patternsMatch(rule.Operations, request.Operation) &&
 		targetsMatch(registry, rule.Effect, rule.Targets, request.Target) &&
 		attrsMatch(registry, rule.Effect, rule.Attrs, request.Operation, request.Attrs)
+}
+
+func ruleCredentialUseMatches(rule Rule, credentialUse CredentialUse) bool {
+	credentialUse = defaultedCredentialUse(credentialUse)
+	if len(rule.CredentialUses) == 0 {
+		return rule.Effect == EffectDeny || credentialUse == CredentialUseManaged
+	}
+	for _, allowed := range rule.CredentialUses {
+		if allowed == credentialUse {
+			return true
+		}
+	}
+	return false
 }
 
 func targetsMatch(registry Registry, effect Effect, matchers []TargetMatcher, target Target) bool {

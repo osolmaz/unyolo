@@ -27,14 +27,15 @@ type rawPolicy struct {
 }
 
 type rawRule struct {
-	ID          string                 `json:"id"`
-	Effect      Effect                 `json:"effect"`
-	Clients     []string               `json:"clients"`
-	Operations  []string               `json:"operations"`
-	Targets     []TargetMatcher        `json:"targets"`
-	Attrs       map[string]patternList `json:"attrs,omitempty"`
-	GrantPolicy *rawGrantPolicy        `json:"grant_policy,omitempty"`
-	Description string                 `json:"description,omitempty"`
+	ID             string                 `json:"id"`
+	Effect         Effect                 `json:"effect"`
+	Clients        []string               `json:"clients"`
+	Operations     []string               `json:"operations"`
+	Targets        []TargetMatcher        `json:"targets"`
+	Attrs          map[string]patternList `json:"attrs,omitempty"`
+	CredentialUses []CredentialUse        `json:"credential_use,omitempty"`
+	GrantPolicy    *rawGrantPolicy        `json:"grant_policy,omitempty"`
+	Description    string                 `json:"description,omitempty"`
 }
 
 type rawGrantPolicy struct {
@@ -134,19 +135,24 @@ func normalizeRuleBody(id string, raw rawRule, registry Registry) (Rule, error) 
 	if err != nil {
 		return Rule{}, err
 	}
+	credentialUses, err := normalizeCredentialUses(raw.Effect, raw.CredentialUses, operations, registry)
+	if err != nil {
+		return Rule{}, err
+	}
 	grantPolicy, err := normalizeGrantPolicy(raw.Effect, raw.GrantPolicy, operations, registry)
 	if err != nil {
 		return Rule{}, err
 	}
 	return Rule{
-		ID:          id,
-		Effect:      raw.Effect,
-		Clients:     clients,
-		Operations:  operations,
-		Targets:     targets,
-		Attrs:       attrs,
-		GrantPolicy: grantPolicy,
-		Description: strings.TrimSpace(raw.Description),
+		ID:             id,
+		Effect:         raw.Effect,
+		Clients:        clients,
+		Operations:     operations,
+		Targets:        targets,
+		Attrs:          attrs,
+		CredentialUses: credentialUses,
+		GrantPolicy:    grantPolicy,
+		Description:    strings.TrimSpace(raw.Description),
 	}, nil
 }
 
@@ -180,6 +186,47 @@ func normalizeOperations(values []string, registry Registry) ([]string, error) {
 		}
 	}
 	return ops, nil
+}
+
+func normalizeCredentialUses(effect Effect, values []CredentialUse, operations []string, registry Registry) ([]CredentialUse, error) {
+	if effect == EffectDeny {
+		if len(values) > 0 {
+			return nil, errors.New("deny rules cannot restrict credential use")
+		}
+		return nil, nil
+	}
+	if len(values) == 0 {
+		return []CredentialUse{CredentialUseManaged}, nil
+	}
+	seen := make(map[CredentialUse]struct{}, len(values))
+	normalized := make([]CredentialUse, 0, len(values))
+	for _, use := range values {
+		if err := validateRuleCredentialUse(effect, use, operations, registry); err != nil {
+			return nil, err
+		}
+		if _, duplicate := seen[use]; duplicate {
+			return nil, fmt.Errorf("duplicate credential use %q", use)
+		}
+		seen[use] = struct{}{}
+		normalized = append(normalized, use)
+	}
+	slices.Sort(normalized)
+	return normalized, nil
+}
+
+func validateRuleCredentialUse(effect Effect, use CredentialUse, operations []string, registry Registry) error {
+	if !validCredentialUse(use) {
+		return fmt.Errorf("unsupported credential use %q", use)
+	}
+	if effect == EffectRequest && use == CredentialUseNone {
+		return errors.New("request rules cannot grant anonymous credential use")
+	}
+	for _, operation := range operations {
+		if !registry.Operations[operation].SupportsCredentialUse(use) {
+			return fmt.Errorf("operation %q does not support credential use %q", operation, use)
+		}
+	}
+	return nil
 }
 
 func normalizeTargets(values []TargetMatcher, operations []string, registry Registry) ([]TargetMatcher, error) {

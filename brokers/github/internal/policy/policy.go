@@ -55,13 +55,14 @@ type Target struct {
 }
 
 type Rule struct {
-	ID          string                  `json:"id"`
-	Effect      Effect                  `json:"effect"`
-	Clients     []string                `json:"clients"`
-	Operations  []Operation             `json:"operations"`
-	Targets     []Target                `json:"targets"`
-	Attrs       map[string][]string     `json:"attrs,omitempty"`
-	GrantPolicy *corepolicy.GrantPolicy `json:"grant_policy,omitempty"`
+	ID             string                     `json:"id"`
+	Effect         Effect                     `json:"effect"`
+	Clients        []string                   `json:"clients"`
+	Operations     []Operation                `json:"operations"`
+	Targets        []Target                   `json:"targets"`
+	Attrs          map[string][]string        `json:"attrs,omitempty"`
+	CredentialUses []corepolicy.CredentialUse `json:"credential_use,omitempty"`
+	GrantPolicy    *corepolicy.GrantPolicy    `json:"grant_policy,omitempty"`
 }
 
 type Scope struct {
@@ -83,6 +84,7 @@ type Decision struct {
 	Effect         Effect
 	Allowed        bool
 	Reason         string
+	CredentialUse  corepolicy.CredentialUse
 	MatchedRuleIDs []string
 	GrantID        string
 	GrantPolicy    *corepolicy.GrantPolicy
@@ -139,6 +141,12 @@ func New(scope Scope) (*Policy, error) {
 
 func (p *Policy) Evaluate(request Request, activeGrants ...corepolicy.Grant) Decision {
 	return p.evaluate(request, corepolicy.DecisionOptions{ActiveGrants: activeGrants})
+}
+
+// EvaluateAnonymous evaluates the credential-incapable execution path. Active
+// grants never authorize this path.
+func (p *Policy) EvaluateAnonymous(request Request) Decision {
+	return p.evaluate(request, corepolicy.DecisionOptions{CredentialUse: corepolicy.CredentialUseNone})
 }
 
 func (p *Policy) EvaluateGrantRequest(request Request) Decision {

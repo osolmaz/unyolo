@@ -1320,6 +1320,71 @@ func TestSingletonValues(t *testing.T) {
 	}
 }
 
+func TestCredentialUseSeparatesAnonymousAndManagedPolicy(t *testing.T) {
+	registry := testRegistry()
+	fetch := registry.Operations["git.fetch"]
+	fetch.Grantable = true
+	registry.Operations["git.fetch"] = fetch
+	policy := mustParseWithRegistry(t, `{"rules":[
+		{"id":"anonymous-fetch","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["none"]},
+		{"id":"managed-fetch","effect":"request","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["managed"],"grant_policy":{"default_minutes":5,"max_minutes":10,"default_max_uses":1,"max_uses":1}}
+	]}`, registry)
+	request := repoReq("bob", "git.fetch", "public", "")
+	anonymous := policy.Decide(request, DecisionOptions{CredentialUse: CredentialUseNone})
+	if !anonymous.Allowed || anonymous.CredentialUse != CredentialUseNone || len(anonymous.MatchedAllowRuleIDs) != 1 {
+		t.Fatalf("anonymous decision = %+v", anonymous)
+	}
+	managed := policy.Decide(request, DecisionOptions{})
+	if managed.Allowed || managed.Reason != "approval_required" || managed.CredentialUse != CredentialUseManaged {
+		t.Fatalf("managed decision = %+v", managed)
+	}
+	requestable := policy.Decide(request, DecisionOptions{ForGrantRequest: true})
+	if requestable.Effect != EffectRequest || requestable.GrantPolicy == nil {
+		t.Fatalf("managed request decision = %+v", requestable)
+	}
+}
+
+func TestCredentialUseKeepsGrantsManagedAndDenyGlobal(t *testing.T) {
+	policy := mustParse(t, `{"rules":[
+		{"id":"deny-blocked","effect":"deny","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"blocked"}]},
+		{"id":"anonymous-fetch","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["none"]}
+	]}`)
+	now := time.Now().UTC()
+	grant := Grant{ID: "grant-1", Client: "bob", Operation: "git.fetch", Target: repoReq("bob", "git.fetch", "public", "").Target,
+		ExpiresAt: now.Add(time.Minute), UsesLeft: 1}
+	anonymous := policy.Decide(repoReq("bob", "git.fetch", "public", ""), DecisionOptions{
+		CredentialUse: CredentialUseNone, ActiveGrants: []Grant{grant}, Now: now,
+	})
+	if !anonymous.Allowed || anonymous.GrantID != "" || len(anonymous.MatchedAllowRuleIDs) != 1 {
+		t.Fatalf("anonymous grant isolation decision = %+v", anonymous)
+	}
+	blocked := policy.Decide(repoReq("bob", "git.fetch", "blocked", ""), DecisionOptions{CredentialUse: CredentialUseNone})
+	if blocked.Effect != EffectDeny || len(blocked.MatchedDenyRuleIDs) != 1 {
+		t.Fatalf("anonymous deny decision = %+v", blocked)
+	}
+}
+
+func TestCredentialUseValidation(t *testing.T) {
+	invalid := []string{
+		`{"rules":[{"id":"bad","effect":"request","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["none"],"grant_policy":{"default_minutes":5,"max_minutes":10,"default_max_uses":1,"max_uses":1}}]}`,
+		`{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["other"]}]}`,
+		`{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["none","none"]}]}`,
+		`{"rules":[{"id":"bad","effect":"deny","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["managed"]}]}`,
+	}
+	for _, document := range invalid {
+		if _, err := Parse([]byte(document), testRegistry()); err == nil {
+			t.Fatalf("Parse() accepted invalid credential use: %s", document)
+		}
+	}
+	registry := testRegistry()
+	fetch := registry.Operations["git.fetch"]
+	fetch.CredentialUses = nil
+	registry.Operations["git.fetch"] = fetch
+	if _, err := Parse([]byte(`{"rules":[{"id":"bad","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}],"credential_use":["none"]}]}`), registry); err == nil {
+		t.Fatal("Parse() accepted anonymous use for a managed-only operation")
+	}
+}
+
 func mustParse(t *testing.T, data string) *Policy {
 	t.Helper()
 	return mustParseWithRegistry(t, data, testRegistry())
@@ -1369,7 +1434,7 @@ func repoReq(client string, operation string, name string, ref string) Request {
 func testRegistry() Registry {
 	return Registry{
 		Operations: map[string]OperationSpec{
-			"git.fetch":              {TargetKinds: []string{"repo"}},
+			"git.fetch":              {TargetKinds: []string{"repo"}, CredentialUses: []CredentialUse{CredentialUseNone, CredentialUseManaged}},
 			"git.push.branch_create": {TargetKinds: []string{"repo"}, Attrs: []string{"ref", "refs"}, Grantable: true},
 			"git.push.fast_forward":  {TargetKinds: []string{"repo"}, Attrs: []string{"ref", "refs"}, Grantable: true},
 			"pr.create":              {TargetKinds: []string{"repo"}, Attrs: []string{"base_ref", "base_refs", "head_ref", "head_refs"}, Grantable: true},

@@ -32,13 +32,23 @@ func validateRequestRuleAgainstLaterRules(left Rule, later []Rule, registry Regi
 }
 
 func requestRulesMayOverlap(left Rule, right Rule, registry Registry) bool {
-	if !valueListsMayOverlap(left.Clients, right.Clients, patternsMayOverlap) {
+	if !credentialUsesMayOverlap(left.CredentialUses, right.CredentialUses) ||
+		!valueListsMayOverlap(left.Clients, right.Clients, patternsMayOverlap) {
 		return false
 	}
 	for _, operation := range left.Operations {
 		if slices.Contains(right.Operations, operation) &&
 			targetMatchersMayOverlap(left.Targets, right.Targets, registry) &&
 			attrsMayOverlap(left.Attrs, right.Attrs, registry.Operations[operation].Attrs, registry) {
+			return true
+		}
+	}
+	return false
+}
+
+func credentialUsesMayOverlap(left, right []CredentialUse) bool {
+	for _, use := range left {
+		if slices.Contains(right, use) {
 			return true
 		}
 	}

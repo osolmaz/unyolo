@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/unyolo/authorization/budget"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	shared "github.com/osolmaz/unyolo/authorization/preset"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -29,7 +30,14 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.contents.read", "allow")
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.create", "request")
 	assertRuleEffect(t, artifacts.PolicyJSON, "repo.delete", "request")
-	assertRuleEffect(t, artifacts.PolicyJSON, "git.fetch", "request")
+	fetch := policy.Request{Client: "agent", Operation: policy.OpGitFetch,
+		Target: policy.Target{Kind: policy.KindRepo, Type: policy.TypeDataset, Owner: "acme", Name: "public"}}
+	if decision := rendered.DecideAnonymous(fetch, time.Now()); decision.Effect != policy.EffectAllow || decision.CredentialUse != corepolicy.CredentialUseNone {
+		t.Fatalf("anonymous fetch decision = %+v", decision)
+	}
+	if decision := rendered.Decide(fetch, nil, time.Now(), true); decision.Effect != policy.EffectRequest || decision.CredentialUse != corepolicy.CredentialUseManaged {
+		t.Fatalf("managed fetch decision = %+v", decision)
+	}
 	assertRuleEffect(t, artifacts.PolicyJSON, "git.push.append", "request")
 	assertRuleEffect(t, artifacts.PolicyJSON, "service_account.token.create", "deny")
 	assertRuleEffect(t, artifacts.PolicyJSON, "sandbox.port.proxy", "deny")
