@@ -115,6 +115,30 @@ func TestDispatcherDoesNotBlockSharedPollerOnTransientOperatorFailure(t *testing
 	}
 }
 
+func TestDispatcherAPIErrorResults(t *testing.T) {
+	t.Parallel()
+	terminal := operatorv1.Request{Status: grants.StatusDenied}
+	tests := []struct {
+		name       string
+		apiError   *operatorclient.Error
+		wantAnswer notify.Answer
+		wantStatus notify.StatusKind
+	}{
+		{name: "current terminal request", apiError: &operatorclient.Error{Current: &terminal}, wantAnswer: notify.AnswerDenied, wantStatus: notify.StatusDenied},
+		{name: "terminal activation failure", apiError: &operatorclient.Error{Code: "invalid_notification", CorrelationID: "failure-ref"}, wantAnswer: notify.AnswerFailed, wantStatus: notify.StatusFailed},
+		{name: "closed request", apiError: &operatorclient.Error{Code: "invalid_transition"}, wantAnswer: notify.AnswerClosed, wantStatus: notify.StatusClosed},
+		{name: "unknown failure", apiError: &operatorclient.Error{Code: "upstream_unavailable"}, wantAnswer: notify.AnswerUnavailable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := dispatcherAPIErrorResult(test.apiError)
+			if result.Answer != test.wantAnswer || result.MessageStatus.Kind != test.wantStatus {
+				t.Fatalf("dispatcherAPIErrorResult() = %+v", result)
+			}
+		})
+	}
+}
+
 func TestNewDispatcherRejectsInvalidRoutes(t *testing.T) {
 	if _, err := NewDispatcher(nil); err == nil {
 		t.Fatal("empty dispatcher routes accepted")
