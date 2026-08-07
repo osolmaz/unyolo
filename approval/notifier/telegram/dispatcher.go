@@ -37,6 +37,7 @@ type Dispatcher struct {
 var terminalDecisionAnswers = map[grants.Status]notify.Answer{
 	grants.StatusActive:   notify.AnswerApproved,
 	grants.StatusDenied:   notify.AnswerDenied,
+	grants.StatusFailed:   notify.AnswerFailed,
 	grants.StatusExpired:  notify.AnswerAlreadyExpired,
 	grants.StatusConsumed: notify.AnswerAlreadyConsumed,
 	grants.StatusRevoked:  notify.AnswerAlreadyRevoked,
@@ -193,8 +194,14 @@ func operatorAction(action notify.Action) (operatorv1.Action, bool) {
 }
 
 func callbackIdempotencyKey(decision notify.Decision) string {
-	digest := sha256.Sum256([]byte(decision.Route + "\x00" + decision.CallbackID + "\x00" + decision.DecisionToken))
-	return "telegram-" + base64.RawURLEncoding.EncodeToString(digest[:])
+	return "telegram-" + logicalDecisionKey(decision)
+}
+
+func logicalDecisionKey(decision notify.Decision) string {
+	tokenVerifier := sha256.Sum256([]byte(decision.DecisionToken))
+	value := fmt.Sprintf("%s\x00%s\x00%d\x00%s\x00%x", decision.Route, decision.GrantID, decision.MessageID, decision.Action, tokenVerifier)
+	digest := sha256.Sum256([]byte(value))
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func dispatcherErrorResult(err error) notify.DecisionResult {
@@ -208,6 +215,14 @@ func dispatcherErrorResult(err error) notify.DecisionResult {
 		}
 		if apiError.Code == "invalid_decision_token" {
 			return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
+		}
+		switch apiError.Code {
+		case "invalid_notification", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
+			return notify.DecisionResult{Answer: notify.AnswerFailed, MessageStatus: notify.Status{
+				Kind: notify.StatusFailed, FailureCode: apiError.Code, FailureReference: apiError.CorrelationID,
+			}}
+		case "idempotency_conflict", "invalid_transition":
+			return notify.DecisionResult{Answer: notify.AnswerClosed, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
 		}
 	}
 	return notify.DecisionResult{Answer: notify.AnswerUnavailable}
@@ -225,7 +240,8 @@ func completedDecisionResult(request operatorv1.Request) notify.DecisionResult {
 }
 
 func statusForRequest(request operatorv1.Request) notify.Status {
-	status := notify.Status{UsedCount: request.UsedCount, MaxUses: request.GrantedMaxUses}
+	status := notify.Status{UsedCount: request.UsedCount, MaxUses: request.GrantedMaxUses,
+		FailureCode: request.FailureCode, FailureReference: request.FailureReference}
 	if request.Status == grants.StatusExpired {
 		if request.ActiveExpiresAt == nil {
 			status.Kind = notify.StatusPendingExpired
@@ -235,7 +251,7 @@ func statusForRequest(request operatorv1.Request) notify.Status {
 		return status
 	}
 	status.Kind = map[grants.Status]notify.StatusKind{
-		grants.StatusActive: notify.StatusActive, grants.StatusDenied: notify.StatusDenied,
+		grants.StatusActive: notify.StatusActive, grants.StatusDenied: notify.StatusDenied, grants.StatusFailed: notify.StatusFailed,
 		grants.StatusConsumed: notify.StatusConsumed, grants.StatusRevoked: notify.StatusRevoked,
 		grants.StatusCanceled: notify.StatusCanceled,
 	}[request.Status]

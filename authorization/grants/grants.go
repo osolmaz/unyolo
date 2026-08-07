@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/internal/copyx"
@@ -38,6 +39,7 @@ const (
 	StatusPending  Status = "pending"
 	StatusActive   Status = "active"
 	StatusDenied   Status = "denied"
+	StatusFailed   Status = "failed"
 	StatusExpired  Status = "expired"
 	StatusConsumed Status = "consumed"
 	StatusRevoked  Status = "revoked"
@@ -124,6 +126,9 @@ type Grant struct {
 	DecidedAt                 time.Time           `json:"decided_at,omitzero"`
 	DecidedBy                 string              `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf         string              `json:"decided_on_behalf_of,omitempty"`
+	FailureCode               string              `json:"failure_code,omitempty"`
+	FailureReference          string              `json:"failure_reference,omitempty"`
+	FailedAt                  time.Time           `json:"failed_at,omitzero"`
 	UsedAt                    time.Time           `json:"used_at,omitzero"`
 	UsedCount                 int                 `json:"used_count"`
 	UseRevision               int                 `json:"use_revision,omitempty"`
@@ -731,8 +736,16 @@ func validGrantIdentity(grant Grant, seen map[string]bool) bool {
 }
 
 func validGrantLifecycle(grant Grant) bool {
-	return validStoredStatus(grant.Status) && grant.Revision >= 1 && !grant.CreatedAt.IsZero() &&
+	return validStoredStatus(grant.Status) && validGrantFailure(grant) && grant.Revision >= 1 && !grant.CreatedAt.IsZero() &&
 		!grant.PendingExpiresAt.IsZero() && grant.Duration > 0 && grant.RequestedDuration > 0 && grant.PendingTimeout > 0
+}
+
+func validGrantFailure(grant Grant) bool {
+	if grant.Status == StatusFailed {
+		return activation.Known(activation.Code(grant.FailureCode)) && !grant.FailedAt.IsZero() &&
+			len(grant.FailureReference) <= 128 && (grant.FailureReference == "" || safeOperatorIdentity(grant.FailureReference))
+	}
+	return grant.FailureCode == "" && grant.FailureReference == "" && grant.FailedAt.IsZero()
 }
 
 func validGrantUsage(grant Grant) bool {
@@ -746,7 +759,7 @@ func validGrantReservation(grant Grant) bool {
 
 func validStoredStatus(status Status) bool {
 	switch status {
-	case StatusPending, StatusActive, StatusDenied, StatusExpired, StatusConsumed, StatusRevoked, StatusCanceled:
+	case StatusPending, StatusActive, StatusDenied, StatusFailed, StatusExpired, StatusConsumed, StatusRevoked, StatusCanceled:
 		return true
 	default:
 		return false

@@ -3,12 +3,15 @@ package decision
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"math"
 	"strconv"
 	"time"
 
 	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/operator/v1"
 	"github.com/osolmaz/unyolo/telemetry/audit"
@@ -64,17 +67,21 @@ func New(options Options) (*Service, error) {
 
 // Decide applies one revision-bound Operator V1 decision.
 func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Action, actor string, command operatorv1.Decision) (Result, error) {
+	binding := command.Binding
+	if binding == "" {
+		binding = "revision"
+	}
 	constraints, err := normalizeConstraints(command.Constraints)
 	if err != nil {
 		current, _ := s.store.Get(id)
-		_ = s.record(current, current, string(action), actor, command.OnBehalfOf, "revision", "", false, command.ExpectedRevision, grants.ApprovalConstraints{}, err)
+		_ = s.record(current, current, string(action), actor, command.OnBehalfOf, command.CorrelationID, binding, "", false, command.ExpectedRevision, grants.ApprovalConstraints{}, err)
 		return Result{}, err
 	}
 	decision := grants.OperatorDecision{
 		ID: id, Action: grants.DecisionAction(action), Approver: actor,
 		OnBehalfOf: command.OnBehalfOf, ExpectedRevision: command.ExpectedRevision,
 		IdempotencyKey: command.IdempotencyKey,
-		Constraints:    constraints,
+		Constraints:    constraints, CorrelationID: command.CorrelationID,
 	}
 	if command.Notification != nil {
 		decision.DecisionToken = command.Notification.DecisionToken
@@ -89,7 +96,7 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 		auditPrevious, _ = s.store.Get(id)
 		auditCurrent = auditPrevious
 	}
-	auditErr := s.record(auditPrevious, auditCurrent, string(action), actor, command.OnBehalfOf, "revision", result.EventCursor, result.Replay, command.ExpectedRevision, constraints, decisionErr)
+	auditErr := s.record(auditPrevious, auditCurrent, string(action), actor, command.OnBehalfOf, command.CorrelationID, binding, result.EventCursor, result.Replay, command.ExpectedRevision, constraints, decisionErr)
 	s.observe(string(action), decisionErr, result.Replay)
 	return Result{OperatorDecisionResult: result, AuditExportFailed: auditErr != nil}, decisionErr
 }
@@ -114,21 +121,35 @@ func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints 
 	return s.validator.ValidateActivation(ctx, grant, constraints)
 }
 
-// ApproveToken applies a single-use notification-channel approval through the same validator.
+// ApproveToken applies a single-use notification-channel approval through the canonical decision path.
 func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	result, err := s.store.ApproveWithNotificationValidated(ctx, id, token, actor, ref, s.validate)
-	previous, current := s.tokenAuditGrants(id, result)
-	_ = s.record(previous, current, string(grants.ActionApprove), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
-	s.observe(string(grants.ActionApprove), err, false)
-	return result.Grant, err
+	return s.decideToken(ctx, id, token, actor, ref, operatorv1.ActionApprove)
 }
 
-// DenyToken applies a single-use notification-channel denial.
+// DenyToken applies a single-use notification-channel denial through the canonical decision path.
 func (s *Service) DenyToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	result, err := s.store.DenyWithNotificationResult(ctx, id, token, actor, ref)
-	previous, current := s.tokenAuditGrants(id, result)
-	_ = s.record(previous, current, string(grants.ActionDeny), actor, "", "token:"+ref.Kind, result.EventCursor, false, 0, grants.ApprovalConstraints{}, err)
-	s.observe(string(grants.ActionDeny), err, false)
+	return s.decideToken(ctx, id, token, actor, ref, operatorv1.ActionDeny)
+}
+
+func (s *Service) decideToken(ctx context.Context, id, token, actor string, ref notify.MessageRef, action operatorv1.Action) (grants.Grant, error) {
+	current, err := s.store.Get(id)
+	if err != nil {
+		return grants.Grant{}, err
+	}
+	digest := sha256.Sum256([]byte(ref.Kind + "\x00" + id + "\x00" + string(action) + "\x00" + token))
+	command := operatorv1.Decision{
+		ExpectedRevision: current.Revision, Binding: "token:" + ref.Kind,
+		IdempotencyKey: "notification-" + base64.RawURLEncoding.EncodeToString(digest[:]),
+		Notification: &operatorv1.NotificationDecision{
+			Kind: ref.Kind, Renderer: ref.Renderer, DecisionToken: token, ChatID: ref.ChatID, MessageID: ref.MessageID,
+			Text: ref.Text, PresentationJSON: ref.PresentationJSON, PresentationDigest: ref.PresentationDigest,
+			RenderedDigest: ref.RenderedDigest,
+		},
+	}
+	result, err := s.Decide(ctx, id, action, actor, command)
+	if errors.Is(err, grants.ErrInvalidTransition) {
+		err = grants.ErrNotPending
+	}
 	return result.Grant, err
 }
 
@@ -145,15 +166,7 @@ func (s *Service) observe(action string, err error, replay bool) {
 	s.observer.OperatorDecision(action, result)
 }
 
-func (s *Service) tokenAuditGrants(id string, result grants.TokenDecisionResult) (grants.Grant, grants.Grant) {
-	if result.Previous.ID != "" {
-		return result.Previous, result.Grant
-	}
-	current, _ := s.store.Get(id)
-	return current, current
-}
-
-func (s *Service) record(previous, current grants.Grant, action, actor, onBehalfOf, binding, eventCursor string, replay bool, expectedRevision int64, constraints grants.ApprovalConstraints, decisionErr error) error {
+func (s *Service) record(previous, current grants.Grant, action, actor, onBehalfOf, correlationID, binding, eventCursor string, replay bool, expectedRevision int64, constraints grants.ApprovalConstraints, decisionErr error) error {
 	if s.audit == nil {
 		return nil
 	}
@@ -176,6 +189,12 @@ func (s *Service) record(previous, current grants.Grant, action, actor, onBehalf
 	if onBehalfOf != "" {
 		extensions["on_behalf_of"] = onBehalfOf
 	}
+	if correlationID != "" {
+		extensions["correlation_id"] = correlationID
+	}
+	if failure, ok := activation.As(decisionErr); ok {
+		extensions["failure_stage"] = string(failure.Stage)
+	}
 	event := audit.Event{
 		Broker: s.broker, Client: grant.Client, Operation: grant.Operation, Decision: action,
 		GrantID: grant.ID, Approver: actor, Extensions: extensions,
@@ -197,6 +216,9 @@ func formatUseLimit(constraints grants.ApprovalConstraints) string {
 }
 
 func decisionErrorCode(err error) string {
+	if failure, ok := activation.As(err); ok {
+		return string(failure.Code)
+	}
 	classifications := []struct {
 		code   string
 		errors []error

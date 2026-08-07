@@ -77,6 +77,8 @@ func terminalResult(grant grants.Grant) notify.DecisionResult {
 		return notify.DecisionResult{Answer: notify.AnswerAlreadyApproved, MessageStatus: status}
 	case grants.StatusDenied:
 		return notify.DecisionResult{Answer: notify.AnswerAlreadyDenied, MessageStatus: status}
+	case grants.StatusFailed:
+		return notify.DecisionResult{Answer: notify.AnswerFailed, MessageStatus: status}
 	case grants.StatusExpired:
 		return notify.DecisionResult{Answer: notify.AnswerAlreadyExpired, MessageStatus: status}
 	case grants.StatusConsumed:
@@ -92,12 +94,15 @@ func terminalResult(grant grants.Grant) notify.DecisionResult {
 
 // StatusForGrant maps a canonical grant onto a channel-neutral presentation state.
 func StatusForGrant(grant grants.Grant) notify.Status {
-	status := notify.Status{UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount, MaxUses: grant.MaxUses}
+	status := notify.Status{UsedCount: grant.UsedCount, ReservedCount: grant.ReservedCount, MaxUses: grant.MaxUses,
+		FailureCode: grant.FailureCode, FailureReference: grant.FailureReference}
 	switch grant.Status {
 	case grants.StatusActive:
 		status.Kind = notify.StatusActive
 	case grants.StatusDenied:
 		status.Kind = notify.StatusDenied
+	case grants.StatusFailed:
+		status.Kind = notify.StatusFailed
 	case grants.StatusExpired:
 		if grant.ExpiredFrom == grants.StatusPending {
 			status.Kind = notify.StatusPendingExpired

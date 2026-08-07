@@ -21,6 +21,7 @@ const (
 	EventRequestCreated     EventKind = "request.created"
 	EventRequestApproved    EventKind = "request.approved"
 	EventRequestDenied      EventKind = "request.denied"
+	EventRequestFailed      EventKind = "request.failed"
 	EventRequestCanceled    EventKind = "request.canceled"
 	EventRequestExpired     EventKind = "request.expired"
 	EventGrantRevoked       EventKind = "grant.revoked"
@@ -127,8 +128,8 @@ func statusEventKinds(before Grant, after Grant) []EventKind {
 		return nil
 	}
 	kind, ok := map[Status]EventKind{
-		StatusActive: EventRequestApproved, StatusDenied: EventRequestDenied, StatusCanceled: EventRequestCanceled,
-		StatusExpired: EventRequestExpired, StatusRevoked: EventGrantRevoked,
+		StatusActive: EventRequestApproved, StatusDenied: EventRequestDenied, StatusFailed: EventRequestFailed,
+		StatusCanceled: EventRequestCanceled, StatusExpired: EventRequestExpired, StatusRevoked: EventGrantRevoked,
 	}[after.Status]
 	if !ok {
 		return nil

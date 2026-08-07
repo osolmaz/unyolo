@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/internal/storage/state"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 )
@@ -309,20 +310,37 @@ func (s *Store) setNotification(id string, claimedAt time.Time, ref MessageRef, 
 }
 
 func validateMessageRef(ref MessageRef) error {
+	if err := validateMessageRefShape(ref); err != nil {
+		return err
+	}
+	return validateMessageRefIntegrity(ref)
+}
+
+func validateMessageRefShape(ref MessageRef) error {
 	if ref.MessageID <= 0 {
 		return errors.New("notification message id must be positive")
 	}
 	if notificationReferenceExceedsBounds(ref) {
 		return errors.New("notification reference exceeds bounds")
 	}
-	if err := validatePresentationSnapshot(ref); err != nil {
+	if err := validatePresentationSnapshotShape(ref); err != nil {
 		return err
 	}
-	if err := validateRenderedSnapshot(ref); err != nil {
-		return err
+	if ref.RenderedDigest != "" && !validDigest(ref.RenderedDigest) {
+		return errors.New("notification rendered digest is invalid")
 	}
 	if ref.Kind == "telegram" && telegramReferenceIncomplete(ref) {
 		return errors.New("telegram notification reference is incomplete")
+	}
+	return nil
+}
+
+func validateMessageRefIntegrity(ref MessageRef) error {
+	if ref.PresentationJSON != "" && !matchesDigest(ref.PresentationJSON, ref.PresentationDigest) {
+		return activation.New(activation.CodeInvalidNotification, errors.New("notification presentation digest does not match"))
+	}
+	if ref.RenderedDigest != "" && !matchesDigest(ref.Text, ref.RenderedDigest) {
+		return activation.New(activation.CodeInvalidNotification, errors.New("notification rendered digest does not match"))
 	}
 	return nil
 }
@@ -335,14 +353,14 @@ func telegramReferenceIncomplete(ref MessageRef) bool {
 	return ref.ChatID == 0 || ref.Renderer == "" || ref.Text == "" || ref.PresentationJSON == "" || ref.RenderedDigest == ""
 }
 
-func validatePresentationSnapshot(ref MessageRef) error {
+func validatePresentationSnapshotShape(ref MessageRef) error {
 	if ref.PresentationJSON != "" {
 		var snapshot any
 		if err := strictjson.Decode([]byte(ref.PresentationJSON), &snapshot, false); err != nil {
 			return errors.New("notification presentation snapshot is invalid")
 		}
-		if !matchesDigest(ref.PresentationJSON, ref.PresentationDigest) {
-			return errors.New("notification presentation digest does not match")
+		if !validDigest(ref.PresentationDigest) {
+			return errors.New("notification presentation digest is invalid")
 		}
 	} else if ref.PresentationDigest != "" {
 		return errors.New("notification presentation snapshot is missing")
@@ -350,11 +368,12 @@ func validatePresentationSnapshot(ref MessageRef) error {
 	return nil
 }
 
-func validateRenderedSnapshot(ref MessageRef) error {
-	if ref.RenderedDigest != "" && !matchesDigest(ref.Text, ref.RenderedDigest) {
-		return errors.New("notification rendered digest does not match")
+func validDigest(digest string) bool {
+	if !strings.HasPrefix(digest, "sha256:") || len(digest) != len("sha256:")+sha256.Size*2 {
+		return false
 	}
-	return nil
+	_, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
+	return err == nil
 }
 
 func matchesDigest(value, digest string) bool {
@@ -474,7 +493,7 @@ func reservationRevision(grant Grant) string {
 
 func lifecycleUpdate(grant Grant) (StatusUpdate, bool) {
 	switch grant.Status {
-	case StatusActive, StatusDenied, StatusExpired, StatusConsumed, StatusRevoked, StatusCanceled:
+	case StatusActive, StatusDenied, StatusFailed, StatusExpired, StatusConsumed, StatusRevoked, StatusCanceled:
 		update := newStatusUpdate(grant, StatusUpdateLifecycle, grant.Status, string(grant.Status))
 		return update, grant.NotificationStatus != update.NotificationStatusKey()
 	default:

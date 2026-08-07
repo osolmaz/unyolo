@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/decision"
 	"github.com/osolmaz/unyolo/authorization/grants"
@@ -254,9 +255,10 @@ func (h *handler) decide(writer http.ResponseWriter, request *http.Request, id s
 	if !h.decodeDecision(writer, request, &command) {
 		return
 	}
+	command.CorrelationID = writer.Header().Get("X-Correlation-ID")
 	result, err := h.decisions.Decide(request.Context(), id, action, actor, command)
 	if err != nil {
-		h.writeMappedError(writer, request, err)
+		h.writeDecisionError(writer, request, err, result.Grant)
 		return
 	}
 	item := project(h.inbox.Project(request.Context(), result.Grant))
@@ -364,11 +366,16 @@ func project(item operatorinbox.Item) operatorwire.BrokerRequest {
 		RequestedMaxUses: operatorv1wire.UseLimitToWire(item.RequestedMaxUses), GrantedMaxUses: operatorv1wire.UseLimitToWire(item.MaxUses),
 		UsedCount: item.UsedCount, RequestReason: optional.NonZero(item.Reason),
 		DecidedAt: item.DecidedAt, DecidedBy: optional.NonZero(item.DecidedBy), DecidedOnBehalfOf: optional.NonZero(item.DecidedOnBehalfOf),
+		FailedAt: item.FailedAt, FailureReference: optional.NonZero(item.FailureReference),
 		PresentationUnavailable: optional.NonZero(item.PresentationUnavailable),
 		Presentation: operatorwire.Presentation{Risk: operatorwire.PresentationRisk(item.Presentation.Risk), Title: item.Presentation.Title,
 			Summary: optional.NonZero(item.Presentation.Summary), Target: item.Presentation.Target, Facts: &facts,
 			Warnings: &warnings, PlanHash: optional.NonZero(item.Presentation.PlanHash)},
 		AllowedActions: allowedActions(item),
+	}
+	if item.FailureCode != "" {
+		code := operatorwire.BrokerRequestFailureCode(item.FailureCode)
+		request.FailureCode = &code
 	}
 	if item.Status == grants.StatusPending {
 		expires := item.PendingExpiresAt
@@ -565,6 +572,14 @@ func decodeStrictJSON(request *http.Request, target any) error {
 }
 
 func (h *handler) writeMappedError(writer http.ResponseWriter, request *http.Request, err error) {
+	h.writeMappedErrorWithCurrent(writer, request, err, grants.Grant{})
+}
+
+func (h *handler) writeDecisionError(writer http.ResponseWriter, request *http.Request, err error, currentGrant grants.Grant) {
+	h.writeMappedErrorWithCurrent(writer, request, err, currentGrant)
+}
+
+func (h *handler) writeMappedErrorWithCurrent(writer http.ResponseWriter, request *http.Request, err error, currentGrant grants.Grant) {
 	var conflict *grants.RevisionConflictError
 	if errors.As(err, &conflict) {
 		item, getErr := h.inbox.Get(request.Context(), conflict.Current.ID)
@@ -584,13 +599,25 @@ func (h *handler) writeMappedError(writer http.ResponseWriter, request *http.Req
 		status, message = http.StatusBadRequest, "request is invalid"
 	case "cursor_expired":
 		status, message = http.StatusGone, "cursor is no longer retained"
-	case "idempotency_conflict", "invalid_transition", "invalid_decision_token", "constraint_exceeded":
+	case "idempotency_conflict", "invalid_transition", "invalid_decision_token", "constraint_exceeded",
+		"invalid_notification", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
 		status, message = http.StatusConflict, strings.ReplaceAll(code, "_", " ")
+	case "storage_unavailable", "temporarily_unavailable":
+		status, message = http.StatusServiceUnavailable, "operator request temporarily unavailable"
+		writer.Header().Set("Retry-After", "1")
 	}
-	h.writeError(writer, status, code, message, nil)
+	var current *operatorwire.BrokerRequest
+	if failure, ok := activation.As(err); ok && !failure.Retryable && currentGrant.ID != "" {
+		projected := project(h.inbox.Project(request.Context(), currentGrant))
+		current = &projected
+	}
+	h.writeError(writer, status, code, message, current)
 }
 
 func errorCode(err error) string {
+	if failure, ok := activation.As(err); ok {
+		return string(failure.Code)
+	}
 	classifications := []struct {
 		code   string
 		errors []error

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/osolmaz/unyolo/authorization/activation"
 )
 
 const maxApproverBytes = 200
@@ -24,7 +26,7 @@ func (e *RevisionConflictError) Unwrap() error { return ErrRevisionConflict }
 func (s *Store) prepareOperatorDecision() (fileData, map[string]Grant, uint64, bool, error) {
 	data, err := s.load()
 	if err != nil {
-		return fileData{}, nil, 0, false, err
+		return fileData{}, nil, 0, false, activation.New(activation.CodeStorageUnavailable, err)
 	}
 	before := grantSnapshots(data.Grants)
 	eventSequence := data.NextEvent
@@ -45,7 +47,7 @@ func (s *Store) reconcileOperatorMutation(data *fileData, before map[string]Gran
 
 func (s *Store) persistOperatorDecision(data fileData, eventSequence uint64) error {
 	if err := s.save(data); err != nil {
-		return err
+		return activation.New(activation.CodeStorageUnavailable, err)
 	}
 	s.signalNewEvents(eventSequence, data.NextEvent)
 	return nil

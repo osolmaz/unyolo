@@ -139,6 +139,7 @@ export interface components {
       | "pending"
       | "active"
       | "denied"
+      | "failed"
       | "canceled"
       | "expired"
       | "consumed"
@@ -215,6 +216,16 @@ export interface components {
       decided_at?: string;
       decided_by?: string;
       decided_on_behalf_of?: string;
+      /** @enum {string} */
+      failure_code?:
+        | "invalid_notification"
+        | "plan_unavailable"
+        | "plan_mismatch"
+        | "credential_changed"
+        | "credential_insufficient";
+      failure_reference?: string;
+      /** Format: date-time */
+      failed_at?: string;
       presentation: components["schemas"]["Presentation"];
       presentation_unavailable?: boolean;
       allowed_actions: components["schemas"]["Action"][];
@@ -269,6 +280,7 @@ export interface components {
         | "request.created"
         | "request.approved"
         | "request.denied"
+        | "request.failed"
         | "request.canceled"
         | "request.expired"
         | "grant.revoked"
@@ -298,6 +310,12 @@ export interface components {
         | "constraint_exceeded"
         | "invalid_transition"
         | "invalid_decision_token"
+        | "invalid_notification"
+        | "plan_unavailable"
+        | "plan_mismatch"
+        | "credential_changed"
+        | "credential_insufficient"
+        | "storage_unavailable"
         | "cursor_expired"
         | "temporarily_unavailable"
         | "internal_error";

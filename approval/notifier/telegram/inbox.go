@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 CREATE TABLE IF NOT EXISTS callbacks (
   update_id INTEGER PRIMARY KEY,
   callback_id TEXT NOT NULL UNIQUE,
+  decision_key TEXT NOT NULL UNIQUE,
   route TEXT NOT NULL,
   nonce BLOB,
   ciphertext BLOB,
@@ -187,42 +188,65 @@ func queryInt64(ctx context.Context, query rowQuerier, statement string, argumen
 	return value, err
 }
 
-func (i *Inbox) persistUpdate(ctx context.Context, updateID int64, decision *notify.Decision) error {
+type persistResult struct {
+	Duplicate bool
+	Answer    notify.Answer
+}
+
+func (i *Inbox) persistUpdate(ctx context.Context, updateID int64, decision *notify.Decision) (persistResult, error) {
 	tx, err := i.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return persistResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var result persistResult
 	if decision != nil {
-		if err := i.insertDecision(ctx, tx, updateID, *decision); err != nil {
-			return err
+		result, err = i.insertDecision(ctx, tx, updateID, *decision)
+		if err != nil {
+			return persistResult{}, err
 		}
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE metadata SET value = MAX(value, ?) WHERE key = 'next_offset'`, updateID+1)
 	if err != nil {
-		return err
+		return persistResult{}, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return persistResult{}, err
+	}
+	return result, nil
 }
 
-func (i *Inbox) insertDecision(ctx context.Context, tx *sql.Tx, updateID int64, decision notify.Decision) error {
+func (i *Inbox) insertDecision(ctx context.Context, tx *sql.Tx, updateID int64, decision notify.Decision) (persistResult, error) {
 	if err := i.pruneAndBoundCallbacks(ctx, tx); err != nil {
-		return err
+		return persistResult{}, err
 	}
 	nonce, ciphertext, err := i.seal(decision, updateID)
 	if err != nil {
-		return err
+		return persistResult{}, err
 	}
 	defer clearBytes(ciphertext)
 	now := i.now().UTC()
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO callbacks
-  (update_id, callback_id, route, nonce, ciphertext, next_attempt_at, expires_at, state)
-  VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`, updateID, decision.CallbackID, decision.Route, nonce, ciphertext,
+	key := logicalDecisionKey(decision)
+	inserted, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO callbacks
+  (update_id, callback_id, decision_key, route, nonce, ciphertext, next_attempt_at, expires_at, state)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`, updateID, decision.CallbackID, key, decision.Route, nonce, ciphertext,
 		now.UnixMilli(), now.Add(callbackRetention).UnixMilli())
 	if err != nil {
-		return fmt.Errorf("persist telegram callback: %w", err)
+		return persistResult{}, fmt.Errorf("persist telegram callback: %w", err)
 	}
-	return nil
+	rows, err := inserted.RowsAffected()
+	if err != nil || rows > 0 {
+		return persistResult{}, err
+	}
+	var state, answer string
+	if err := tx.QueryRowContext(ctx, `SELECT state, terminal_answer FROM callbacks WHERE decision_key = ?`, key).Scan(&state, &answer); err != nil {
+		return persistResult{}, err
+	}
+	result := persistResult{Duplicate: true}
+	if state == "terminal" {
+		result.Answer = notify.Answer(answer)
+	}
+	return result, nil
 }
 
 func (i *Inbox) pruneAndBoundCallbacks(ctx context.Context, tx *sql.Tx) error {

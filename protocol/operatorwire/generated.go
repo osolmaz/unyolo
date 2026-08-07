@@ -58,6 +58,7 @@ const (
 	RequestCreated     BrokerEventKind = "request.created"
 	RequestDenied      BrokerEventKind = "request.denied"
 	RequestExpired     BrokerEventKind = "request.expired"
+	RequestFailed      BrokerEventKind = "request.failed"
 )
 
 // Valid indicates whether the value is a known member of the BrokerEventKind enum.
@@ -87,6 +88,35 @@ func (e BrokerEventKind) Valid() bool {
 		return true
 	case RequestExpired:
 		return true
+	case RequestFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrokerRequestFailureCode.
+const (
+	BrokerRequestFailureCodeCredentialChanged      BrokerRequestFailureCode = "credential_changed"
+	BrokerRequestFailureCodeCredentialInsufficient BrokerRequestFailureCode = "credential_insufficient"
+	BrokerRequestFailureCodeInvalidNotification    BrokerRequestFailureCode = "invalid_notification"
+	BrokerRequestFailureCodePlanMismatch           BrokerRequestFailureCode = "plan_mismatch"
+	BrokerRequestFailureCodePlanUnavailable        BrokerRequestFailureCode = "plan_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the BrokerRequestFailureCode enum.
+func (e BrokerRequestFailureCode) Valid() bool {
+	switch e {
+	case BrokerRequestFailureCodeCredentialChanged:
+		return true
+	case BrokerRequestFailureCodeCredentialInsufficient:
+		return true
+	case BrokerRequestFailureCodeInvalidNotification:
+		return true
+	case BrokerRequestFailureCodePlanMismatch:
+		return true
+	case BrokerRequestFailureCodePlanUnavailable:
+		return true
 	default:
 		return false
 	}
@@ -109,49 +139,67 @@ func (e DescriptorApiVersion) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ConstraintExceeded     ErrorCode = "constraint_exceeded"
-	CursorExpired          ErrorCode = "cursor_expired"
-	Forbidden              ErrorCode = "forbidden"
-	IdempotencyConflict    ErrorCode = "idempotency_conflict"
-	InternalError          ErrorCode = "internal_error"
-	InvalidDecisionToken   ErrorCode = "invalid_decision_token"
-	InvalidRequest         ErrorCode = "invalid_request"
-	InvalidTransition      ErrorCode = "invalid_transition"
-	MethodNotAllowed       ErrorCode = "method_not_allowed"
-	NotFound               ErrorCode = "not_found"
-	RevisionConflict       ErrorCode = "revision_conflict"
-	TemporarilyUnavailable ErrorCode = "temporarily_unavailable"
-	Unauthorized           ErrorCode = "unauthorized"
+	ErrorCodeConstraintExceeded     ErrorCode = "constraint_exceeded"
+	ErrorCodeCredentialChanged      ErrorCode = "credential_changed"
+	ErrorCodeCredentialInsufficient ErrorCode = "credential_insufficient"
+	ErrorCodeCursorExpired          ErrorCode = "cursor_expired"
+	ErrorCodeForbidden              ErrorCode = "forbidden"
+	ErrorCodeIdempotencyConflict    ErrorCode = "idempotency_conflict"
+	ErrorCodeInternalError          ErrorCode = "internal_error"
+	ErrorCodeInvalidDecisionToken   ErrorCode = "invalid_decision_token"
+	ErrorCodeInvalidNotification    ErrorCode = "invalid_notification"
+	ErrorCodeInvalidRequest         ErrorCode = "invalid_request"
+	ErrorCodeInvalidTransition      ErrorCode = "invalid_transition"
+	ErrorCodeMethodNotAllowed       ErrorCode = "method_not_allowed"
+	ErrorCodeNotFound               ErrorCode = "not_found"
+	ErrorCodePlanMismatch           ErrorCode = "plan_mismatch"
+	ErrorCodePlanUnavailable        ErrorCode = "plan_unavailable"
+	ErrorCodeRevisionConflict       ErrorCode = "revision_conflict"
+	ErrorCodeStorageUnavailable     ErrorCode = "storage_unavailable"
+	ErrorCodeTemporarilyUnavailable ErrorCode = "temporarily_unavailable"
+	ErrorCodeUnauthorized           ErrorCode = "unauthorized"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
-	case ConstraintExceeded:
+	case ErrorCodeConstraintExceeded:
 		return true
-	case CursorExpired:
+	case ErrorCodeCredentialChanged:
 		return true
-	case Forbidden:
+	case ErrorCodeCredentialInsufficient:
 		return true
-	case IdempotencyConflict:
+	case ErrorCodeCursorExpired:
 		return true
-	case InternalError:
+	case ErrorCodeForbidden:
 		return true
-	case InvalidDecisionToken:
+	case ErrorCodeIdempotencyConflict:
 		return true
-	case InvalidRequest:
+	case ErrorCodeInternalError:
 		return true
-	case InvalidTransition:
+	case ErrorCodeInvalidDecisionToken:
 		return true
-	case MethodNotAllowed:
+	case ErrorCodeInvalidNotification:
 		return true
-	case NotFound:
+	case ErrorCodeInvalidRequest:
 		return true
-	case RevisionConflict:
+	case ErrorCodeInvalidTransition:
 		return true
-	case TemporarilyUnavailable:
+	case ErrorCodeMethodNotAllowed:
 		return true
-	case Unauthorized:
+	case ErrorCodeNotFound:
+		return true
+	case ErrorCodePlanMismatch:
+		return true
+	case ErrorCodePlanUnavailable:
+		return true
+	case ErrorCodeRevisionConflict:
+		return true
+	case ErrorCodeStorageUnavailable:
+		return true
+	case ErrorCodeTemporarilyUnavailable:
+		return true
+	case ErrorCodeUnauthorized:
 		return true
 	default:
 		return false
@@ -225,6 +273,7 @@ const (
 	StatusConsumed Status = "consumed"
 	StatusDenied   Status = "denied"
 	StatusExpired  Status = "expired"
+	StatusFailed   Status = "failed"
 	StatusPending  Status = "pending"
 	StatusRevoked  Status = "revoked"
 )
@@ -241,6 +290,8 @@ func (e Status) Valid() bool {
 	case StatusDenied:
 		return true
 	case StatusExpired:
+		return true
+	case StatusFailed:
 		return true
 	case StatusPending:
 		return true
@@ -345,28 +396,34 @@ type BrokerEventKind string
 
 // BrokerRequest defines model for BrokerRequest.
 type BrokerRequest struct {
-	ActiveExpiresAt          *time.Time             `json:"active_expires_at,omitempty"`
-	AllowedActions           []Action               `json:"allowed_actions"`
-	ApprovalBounds           *ApprovalBounds        `json:"approval_bounds,omitempty"`
-	DecidedAt                *time.Time             `json:"decided_at,omitempty"`
-	DecidedBy                *string                `json:"decided_by,omitempty"`
-	DecidedOnBehalfOf        *string                `json:"decided_on_behalf_of,omitempty"`
-	GrantedMaxUses           nullable.Nullable[int] `json:"granted_max_uses"`
-	Id                       string                 `json:"id"`
-	Mode                     GrantMode              `json:"mode"`
-	Operation                string                 `json:"operation"`
-	PendingExpiresAt         *time.Time             `json:"pending_expires_at,omitempty"`
-	Presentation             Presentation           `json:"presentation"`
-	PresentationUnavailable  *bool                  `json:"presentation_unavailable,omitempty"`
-	RequestReason            *string                `json:"request_reason,omitempty"`
-	RequestedAt              time.Time              `json:"requested_at"`
-	RequestedDurationSeconds int                    `json:"requested_duration_seconds"`
-	RequestedMaxUses         nullable.Nullable[int] `json:"requested_max_uses"`
-	Requester                string                 `json:"requester"`
-	Revision                 int                    `json:"revision"`
-	Status                   Status                 `json:"status"`
-	UsedCount                int                    `json:"used_count"`
+	ActiveExpiresAt          *time.Time                `json:"active_expires_at,omitempty"`
+	AllowedActions           []Action                  `json:"allowed_actions"`
+	ApprovalBounds           *ApprovalBounds           `json:"approval_bounds,omitempty"`
+	DecidedAt                *time.Time                `json:"decided_at,omitempty"`
+	DecidedBy                *string                   `json:"decided_by,omitempty"`
+	DecidedOnBehalfOf        *string                   `json:"decided_on_behalf_of,omitempty"`
+	FailedAt                 *time.Time                `json:"failed_at,omitempty"`
+	FailureCode              *BrokerRequestFailureCode `json:"failure_code,omitempty"`
+	FailureReference         *string                   `json:"failure_reference,omitempty"`
+	GrantedMaxUses           nullable.Nullable[int]    `json:"granted_max_uses"`
+	Id                       string                    `json:"id"`
+	Mode                     GrantMode                 `json:"mode"`
+	Operation                string                    `json:"operation"`
+	PendingExpiresAt         *time.Time                `json:"pending_expires_at,omitempty"`
+	Presentation             Presentation              `json:"presentation"`
+	PresentationUnavailable  *bool                     `json:"presentation_unavailable,omitempty"`
+	RequestReason            *string                   `json:"request_reason,omitempty"`
+	RequestedAt              time.Time                 `json:"requested_at"`
+	RequestedDurationSeconds int                       `json:"requested_duration_seconds"`
+	RequestedMaxUses         nullable.Nullable[int]    `json:"requested_max_uses"`
+	Requester                string                    `json:"requester"`
+	Revision                 int                       `json:"revision"`
+	Status                   Status                    `json:"status"`
+	UsedCount                int                       `json:"used_count"`
 }
+
+// BrokerRequestFailureCode defines model for BrokerRequest.FailureCode.
+type BrokerRequestFailureCode string
 
 // Constraints defines model for Constraints.
 type Constraints struct {

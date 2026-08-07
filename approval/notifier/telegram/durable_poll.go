@@ -68,11 +68,19 @@ func retryDurablePoll() (bool, error) { return true, nil }
 func (c *Client) persistUpdates(ctx context.Context, inbox *Inbox, updates []telegramUpdate) error {
 	for _, update := range updates {
 		decision := c.acceptedDecision(update)
-		if err := inbox.persistUpdate(ctx, update.UpdateID, decision); err != nil {
+		result, err := inbox.persistUpdate(ctx, update.UpdateID, decision)
+		if err != nil {
 			return err
 		}
 		if decision != nil {
-			_ = c.answerCallback(ctx, decision.CallbackID, "Request received")
+			answer := "Approval received"
+			if result.Duplicate {
+				answer = "Approval is already being processed"
+				if result.Answer != "" {
+					answer = answerText(result.Answer)
+				}
+			}
+			_ = c.answerCallback(ctx, decision.CallbackID, answer)
 		}
 	}
 	return nil

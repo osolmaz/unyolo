@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/decision"
 	"github.com/osolmaz/unyolo/authorization/grants"
@@ -194,6 +195,25 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	current, _ := store.Get(grant.ID)
 	if current.Status != grants.StatusPending {
 		t.Fatalf("validator committed state: %+v", current)
+	}
+}
+
+func TestOperatorV1ReturnsSafeTerminalActivationFailure(t *testing.T) {
+	store, _, client := newOperatorServer(t, decision.ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error {
+		return activation.New(activation.CodeCredentialChanged, errors.New("private credential detail"))
+	}))
+	grant := requestGrant(t, store, "typed-failure")
+	_, err := client.Decide(t.Context(), grant.ID, operatorv1.ActionApprove, operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "typed-failure",
+	})
+	var apiErr *operatorclient.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != string(activation.CodeCredentialChanged) || apiErr.Status != http.StatusConflict ||
+		apiErr.CorrelationID == "" || apiErr.Current == nil || apiErr.Current.Status != grants.StatusFailed ||
+		apiErr.Current.FailureCode != string(activation.CodeCredentialChanged) || apiErr.Current.FailureReference != apiErr.CorrelationID {
+		t.Fatalf("typed failure = %#v, %v", apiErr, err)
+	}
+	if strings.Contains(err.Error(), "private credential detail") {
+		t.Fatalf("private cause leaked: %v", err)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
@@ -46,6 +47,7 @@ type OperatorDecision struct {
 	Constraints      ApprovalConstraints
 	DecisionToken    string
 	Notification     *MessageRef
+	CorrelationID    string `json:"-"`
 }
 
 // ActivationCheck runs under the grant-store lock before approval commits.
@@ -60,14 +62,16 @@ type OperatorDecisionResult struct {
 }
 
 type decisionRecord struct {
-	Scope        string    `json:"scope"`
-	CommandHash  string    `json:"command_hash"`
-	Result       Grant     `json:"result"`
-	Previous     Grant     `json:"previous"`
-	EventCursor  string    `json:"event_cursor"`
-	CommittedAt  time.Time `json:"committed_at"`
-	resultJSON   []byte
-	previousJSON []byte
+	Scope            string    `json:"scope"`
+	CommandHash      string    `json:"command_hash"`
+	Result           Grant     `json:"result"`
+	Previous         Grant     `json:"previous"`
+	EventCursor      string    `json:"event_cursor"`
+	FailureCode      string    `json:"failure_code,omitempty"`
+	FailureReference string    `json:"failure_reference,omitempty"`
+	CommittedAt      time.Time `json:"committed_at"`
+	resultJSON       []byte
+	previousJSON     []byte
 }
 
 // ApplyOperatorDecision atomically validates and commits one revision-bound decision.
@@ -96,21 +100,26 @@ func (s *Store) ApplyOperatorDecision(ctx context.Context, command OperatorDecis
 		err := &RevisionConflictError{Current: current}
 		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
 	}
-	updated, err := s.applyDecisionMutation(ctx, current, command, validate)
-	if err != nil {
-		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, err)
+	updated, decisionErr := s.applyDecisionMutation(ctx, current, command, validate)
+	if decisionErr != nil && updated.Status != StatusFailed {
+		return OperatorDecisionResult{Grant: current, Previous: current}, s.saveDecisionError(data, eventSequence, lifecycleChanged, decisionErr)
 	}
 	data.Grants[index] = updated
 	s.reconcileOperatorMutation(&data, before, current, lifecycleChanged)
 	result := data.Grants[index]
 	eventCursor := currentEventCursor(data)
-	data.DecisionRecords = append(data.DecisionRecords, decisionRecord{
+	record := decisionRecord{
 		Scope: scope, CommandHash: hash, Result: result, Previous: current, EventCursor: eventCursor, CommittedAt: s.opts.Now().UTC(),
-	})
+	}
+	if failure, ok := activation.As(decisionErr); ok {
+		record.FailureCode = string(failure.Code)
+		record.FailureReference = result.FailureReference
+	}
+	data.DecisionRecords = append(data.DecisionRecords, record)
 	if err := s.persistOperatorDecision(data, eventSequence); err != nil {
 		return OperatorDecisionResult{}, err
 	}
-	return OperatorDecisionResult{Grant: result, Previous: current, EventCursor: eventCursor}, nil
+	return OperatorDecisionResult{Grant: result, Previous: current, EventCursor: eventCursor}, decisionErr
 }
 
 func currentEventCursor(data fileData) string {
@@ -125,16 +134,54 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	if command.DecisionToken != "" && !decisionTokenMatches(grant.DecisionTokenVerifier, command.DecisionToken) {
 		return grant, ErrInvalidDecisionToken
 	}
-	grant, err := s.applyDecisionAction(ctx, grant, command, validate, now)
+	if command.Notification != nil {
+		if err := validateMessageRefIntegrity(*command.Notification); err != nil {
+			return failedActivationGrant(grant, command, now, err), err
+		}
+	}
+	updated, err := s.applyDecisionAction(ctx, grant, command, validate, now)
 	if err != nil {
+		if failure, ok := terminalActivationFailure(err); ok {
+			return failedActivationGrant(grant, command, now, failure), failure
+		}
 		return grant, err
 	}
+	updated.DecidedAt = now
+	updated.DecidedBy = command.Approver
+	updated.DecidedOnBehalfOf = command.OnBehalfOf
+	updated.NotificationDeliveryUnresolved = false
+	updated, _ = attachDecisionNotification(updated, command.Notification)
+	return updated, nil
+}
+
+func terminalActivationFailure(err error) (*activation.Failure, bool) {
+	failure, ok := activation.As(err)
+	if !ok || failure.Retryable {
+		return nil, false
+	}
+	switch failure.Code {
+	case activation.CodeInvalidNotification, activation.CodePlanUnavailable, activation.CodePlanMismatch,
+		activation.CodeCredentialChanged, activation.CodeCredentialInsufficient:
+		return failure, true
+	default:
+		return nil, false
+	}
+}
+
+func failedActivationGrant(grant Grant, command OperatorDecision, now time.Time, err error) Grant {
+	failure := activation.Classify(err)
+	grant.Status = StatusFailed
 	grant.DecidedAt = now
 	grant.DecidedBy = command.Approver
 	grant.DecidedOnBehalfOf = command.OnBehalfOf
+	grant.FailureCode = string(failure.Code)
+	grant.FailureReference = command.CorrelationID
+	grant.FailedAt = now
 	grant.NotificationDeliveryUnresolved = false
-	grant, _ = attachDecisionNotification(grant, command.Notification)
-	return grant, nil
+	if failure.Code != activation.CodeInvalidNotification {
+		grant, _ = attachDecisionNotification(grant, command.Notification)
+	}
+	return grant
 }
 
 func (s *Store) applyDecisionAction(ctx context.Context, grant Grant, command OperatorDecision, validate ActivationCheck, now time.Time) (Grant, error) {
@@ -227,6 +274,7 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	command.OnBehalfOf = strings.TrimSpace(command.OnBehalfOf)
 	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
 	command.DecisionToken = strings.TrimSpace(command.DecisionToken)
+	command.CorrelationID = strings.TrimSpace(command.CorrelationID)
 	if !operatorDecisionRequired(command) {
 		return OperatorDecision{}, fmt.Errorf("%w: id, approver, revision, and idempotency key are required", ErrInvalidCommand)
 	}
@@ -257,7 +305,7 @@ func validateOperatorNotification(command OperatorDecision) error {
 	if command.Action == ActionRevoke {
 		return ErrInvalidCommand
 	}
-	return validateMessageRef(*command.Notification)
+	return validateMessageRefShape(*command.Notification)
 }
 
 func constraintUseLimitSpecified(constraints ApprovalConstraints) bool {
@@ -271,7 +319,8 @@ func operatorDecisionRequired(command OperatorDecision) bool {
 func validOperatorDecisionText(command OperatorDecision) bool {
 	return len(command.IdempotencyKey) <= 200 && safeOperatorIdentity(command.IdempotencyKey) &&
 		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf)) &&
-		len(command.DecisionToken) <= 200 && (command.DecisionToken == "" || safeOperatorIdentity(command.DecisionToken))
+		len(command.DecisionToken) <= 200 && (command.DecisionToken == "" || safeOperatorIdentity(command.DecisionToken)) &&
+		len(command.CorrelationID) <= 128 && (command.CorrelationID == "" || safeOperatorIdentity(command.CorrelationID))
 }
 
 func validOperatorAction(action DecisionAction) bool {
@@ -305,7 +354,11 @@ func replayOperatorDecision(records []decisionRecord, scope string, hash string)
 	if record.CommandHash != hash {
 		return OperatorDecisionResult{}, true, ErrIdempotencyConflict
 	}
-	return OperatorDecisionResult{Grant: record.Result, Previous: record.Previous, EventCursor: record.EventCursor, Replay: true}, true, nil
+	result := OperatorDecisionResult{Grant: record.Result, Previous: record.Previous, EventCursor: record.EventCursor, Replay: true}
+	if record.FailureCode != "" {
+		return result, true, activation.New(activation.Code(record.FailureCode), nil)
+	}
+	return result, true, nil
 }
 
 func (s *Store) saveDecisionError(data fileData, eventSequence uint64, lifecycleChanged bool, commandErr error) error {

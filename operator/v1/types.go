@@ -70,6 +70,9 @@ type Request struct {
 	DecidedAt                *time.Time      `json:"decided_at,omitempty"`
 	DecidedBy                string          `json:"decided_by,omitempty"`
 	DecidedOnBehalfOf        string          `json:"decided_on_behalf_of,omitempty"`
+	FailureCode              string          `json:"failure_code,omitempty"`
+	FailureReference         string          `json:"failure_reference,omitempty"`
+	FailedAt                 *time.Time      `json:"failed_at,omitempty"`
 	Presentation             Presentation    `json:"presentation"`
 	PresentationUnavailable  bool            `json:"presentation_unavailable,omitempty"`
 	AllowedActions           []Action        `json:"allowed_actions"`
@@ -114,6 +117,8 @@ type Decision struct {
 	OnBehalfOf       string                `json:"on_behalf_of,omitempty"`
 	Constraints      *Constraints          `json:"constraints,omitempty"`
 	Notification     *NotificationDecision `json:"notification,omitempty"`
+	CorrelationID    string                `json:"-"`
+	Binding          string                `json:"-"`
 }
 
 type Event struct {
