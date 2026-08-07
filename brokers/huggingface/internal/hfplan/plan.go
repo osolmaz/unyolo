@@ -19,6 +19,7 @@ import (
 	"github.com/osolmaz/unyolo/authorization/grants"
 	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/unyolo/credential/provider"
+	"github.com/osolmaz/unyolo/internal/copyx"
 	"github.com/osolmaz/unyolo/internal/storage/state"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/operation/digest"
@@ -108,8 +109,10 @@ func newStore(database *state.Database, now func() time.Time) (*Store, error) {
 
 // FromRequest creates the immutable plan for a bounded protocol grant.
 func FromRequest(request grants.Request, createdAt time.Time) Plan {
-	target, _ := json.Marshal(GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)})
-	arguments, _ := json.Marshal(grantArguments{Attributes: cloneValues(request.Attrs)})
+	targetFields := canonicalValues(request.Target.Fields)
+	attributes := canonicalValues(request.Attrs)
+	target, _ := json.Marshal(GrantTarget{Kind: request.Target.Kind, Fields: targetFields})
+	arguments, _ := json.Marshal(grantArguments{Attributes: attributes})
 	expiresAt := createdAt.Add(request.PendingTimeout + request.Duration)
 	if !expiresAt.After(createdAt) {
 		expiresAt = createdAt.Add(request.Duration)
@@ -122,7 +125,7 @@ func FromRequest(request grants.Request, createdAt time.Time) Plan {
 		Presentation:       agentv1.Presentation{Title: request.Operation, Summary: truncateUTF8(request.Reason, 500)},
 		Authorization: Authorization{Mode: request.Metadata[grants.MetadataMode], RequestedDurationSeconds: int64(request.Duration.Seconds()),
 			RequestedMaxUses: request.MaxUses, RequestedMaxUsesDefaulted: request.MaxUsesDefaulted,
-			Target: GrantTarget{Kind: request.Target.Kind, Fields: cloneValues(request.Target.Fields)}, Attributes: cloneValues(request.Attrs)},
+			Target: GrantTarget{Kind: request.Target.Kind, Fields: targetFields}, Attributes: attributes},
 		CreatedAt: createdAt.UTC(), ExpiresAt: expiresAt.UTC(),
 	}
 }
@@ -600,10 +603,6 @@ func validateValues(values map[string][]string) error {
 	return nil
 }
 
-func cloneValues(values map[string][]string) map[string][]string {
-	out := make(map[string][]string, len(values))
-	for key, list := range values {
-		out[key] = append([]string(nil), list...)
-	}
-	return out
+func canonicalValues(values map[string][]string) map[string][]string {
+	return copyx.CanonicalStringSliceMap(values)
 }
