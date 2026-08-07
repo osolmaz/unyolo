@@ -317,9 +317,16 @@ func operatorDecisionRequired(command OperatorDecision) bool {
 }
 
 func validOperatorDecisionText(command OperatorDecision) bool {
+	return validOperatorDecisionIdentities(command) && validOperatorDecisionReferences(command)
+}
+
+func validOperatorDecisionIdentities(command OperatorDecision) bool {
 	return len(command.IdempotencyKey) <= 200 && safeOperatorIdentity(command.IdempotencyKey) &&
-		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf)) &&
-		len(command.DecisionToken) <= 200 && (command.DecisionToken == "" || safeOperatorIdentity(command.DecisionToken)) &&
+		safeOperatorIdentity(command.Approver) && (command.OnBehalfOf == "" || safeOperatorIdentity(command.OnBehalfOf))
+}
+
+func validOperatorDecisionReferences(command OperatorDecision) bool {
+	return len(command.DecisionToken) <= 200 && (command.DecisionToken == "" || safeOperatorIdentity(command.DecisionToken)) &&
 		len(command.CorrelationID) <= 128 && (command.CorrelationID == "" || safeOperatorIdentity(command.CorrelationID))
 }
 
