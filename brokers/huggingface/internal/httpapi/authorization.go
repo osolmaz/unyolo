@@ -65,6 +65,14 @@ func (s *Server) serveAuthenticated(w http.ResponseWriter, r *http.Request, clie
 		s.handleReceivePackDiscovery(w, r, client, classified, target)
 		return
 	}
+	s.serveForward(w, r, client, classified, target)
+}
+
+func (s *Server) serveForward(w http.ResponseWriter, r *http.Request, client string, classified classifiedRequest, target string) {
+	classified, handled := s.tryAnonymousForward(w, r, client, classified, target)
+	if handled {
+		return
+	}
 	result, decision, err := s.authorizeForwardRepo(client, r, classified, target)
 	if s.writeForwardAuthorizationResponse(w, client, classified.operation, target, result, decision, err) {
 		return

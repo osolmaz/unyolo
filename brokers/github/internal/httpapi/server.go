@@ -891,7 +891,7 @@ func (s *Server) audit(c echo.Context, request policy.Request, outcome string, r
 			"method": c.Request().Method,
 			"path":   c.Request().URL.Path,
 		},
-		Extensions: map[string]string{},
+		Extensions: map[string]string{"auth_mode": string(githubCredentialUse(c))},
 	}
 	if installationID, ok := c.Get("github_installation_id").(int64); ok && installationID > 0 {
 		event.Extensions["github_installation_id"] = strconv.FormatInt(installationID, 10)

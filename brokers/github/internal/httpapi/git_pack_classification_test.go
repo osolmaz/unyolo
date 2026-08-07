@@ -18,15 +18,15 @@ func TestReceivePackProvesFastForwardFromUploadedPack(t *testing.T) {
 	first := commitClassificationFile(t, repo, "one")
 	second := commitClassificationFile(t, repo, "two")
 	pack := classificationPack(t, repo, second, first)
-	graph := inspectReceivePackGraph(t.Context(), pack, int64(len(pack)), nil)
+	graph := inspectReceivePackGraph(t.Context(), pack, 25<<20, nil)
 	if !graph.provesFastForward(first, second) {
-		t.Fatal("uploaded commit graph did not prove a fast-forward")
+		t.Fatalf("uploaded commit graph did not prove a fast-forward: first=%s second=%s valid=%t failure=%q parents=%v", first, second, graph.valid, graph.failure, graph.parents)
 	}
 
 	runClassificationGit(t, repo, "checkout", "--detach", first)
 	divergent := commitClassificationFile(t, repo, "other")
 	forcePack := classificationPack(t, repo, divergent, second)
-	if inspectReceivePackGraph(t.Context(), forcePack, int64(len(forcePack)), nil).provesFastForward(second, divergent) {
+	if inspectReceivePackGraph(t.Context(), forcePack, 25<<20, nil).provesFastForward(second, divergent) {
 		t.Fatal("divergent uploaded commit graph was classified as a fast-forward")
 	}
 }

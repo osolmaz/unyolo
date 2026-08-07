@@ -85,7 +85,16 @@ func (s *Server) recordPolicyDecision(client, operation, target, decision, reaso
 		MatchedAllowRuleIDs:   policyDecision.MatchedAllowRuleIDs,
 		MatchedRequestRuleIDs: policyDecision.MatchedRequestRuleIDs,
 		GrantID:               policyDecision.GrantID,
+		Extensions:            credentialUseAuditExtensions(policyDecision),
 	})
+}
+
+func credentialUseAuditExtensions(decision policy.Decision) map[string]string {
+	credentialUse := decision.CredentialUse
+	if credentialUse == "" {
+		credentialUse = "managed"
+	}
+	return map[string]string{"auth_mode": string(credentialUse)}
 }
 
 func (s *Server) recordAudit(entry audit.Event) {

@@ -200,10 +200,10 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	defer upstream.server.Close()
 	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(`{"rules":[{
-		"id":"request-content-read",
+		"id":"request-fetch",
 		"effect":"request",
 		"clients":["agent"],
-		"operations":["repo.contents.read"],
+		"operations":["git.fetch"],
 		"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"repo"}],
 		"grant_policy":{"default_minutes":5,"max_minutes":5,"default_max_uses":1,"max_uses":1}
 	}]}`))
@@ -247,7 +247,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	grantBody := apiGrantRequestJSON(policy.OpRepoContentsRead, "", "download one LFS object", "lfs-download", 0, 0)
+	grantBody := apiGrantRequestJSON(policy.OpGitFetch, "", "download one LFS object", "lfs-download", 0, 0)
 	resp, text := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(grantBody))
 	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
 		t.Fatalf("LFS grant request = %d %s messages=%d, want 202 and one message", resp.StatusCode, text, len(notifier.messages))

@@ -166,6 +166,7 @@ func TestHeaderDroppers(t *testing.T) {
 		"hop by hop":              {drop: HopByHopHeader, key: "Connection", want: true},
 		"proxy connection":        {drop: HopByHopHeader, key: "Proxy-Connection", want: true},
 		"request credential":      {drop: RequestCredentialHeader, key: "cookie", want: true},
+		"legacy request cookie":   {drop: RequestCredentialHeader, key: "Cookie2", want: true},
 		"response credential":     {drop: ResponseCredentialHeader, key: "Set-Cookie", want: true},
 		"proxy request":           {drop: ProxyRequestHeader, key: "Authorization", want: true},
 		"proxy response":          {drop: ProxyResponseHeader, key: "WWW-Authenticate", want: true},

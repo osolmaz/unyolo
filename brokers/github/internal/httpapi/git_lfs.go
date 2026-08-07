@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/security"
 	"github.com/osolmaz/unyolo/internal/strictjson"
@@ -277,7 +278,11 @@ func (s *Server) newGitHubLFSRequest(c echo.Context, upstream *url.URL, headers 
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "create upstream Git LFS request")
 	}
+	request = request.WithContext(withGitHubCredentialUse(c, request.Context()))
 	httpx.CopyHeaders(request.Header, c.Request().Header, httpx.ProxyRequestHeader)
+	if githubCredentialUse(c) == corepolicy.CredentialUseNone {
+		sanitizeAnonymousGitRequest(request)
+	}
 	applyGitHubLFSHeaders(request.Header, headers)
 	request.ContentLength = c.Request().ContentLength
 	if err := s.authorizeSameOriginGitHubLFS(c, request, upstream); err != nil {
@@ -312,6 +317,10 @@ func (s *Server) doGitHubLFSRequest(request *http.Request) (*http.Response, erro
 	response, err := s.githubGitClient.Do(request) // #nosec G704 -- URL originates in GitHub's authenticated LFS batch response.
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadGateway, "upstream Git LFS request failed")
+	}
+	if anonymousCredentialMayHelp(request, response.StatusCode) {
+		_ = response.Body.Close()
+		return nil, managedCredentialRequiredError{status: response.StatusCode}
 	}
 	if response.StatusCode >= 300 && response.StatusCode < 400 {
 		_ = response.Body.Close()

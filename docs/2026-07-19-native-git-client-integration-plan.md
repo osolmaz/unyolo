@@ -1,6 +1,11 @@
-# Native Git Client Integration Plan
+---
+title: Native Git Client Integration Plan
+author: Onur Solmaz <osolmaz@users.noreply.github.com>
+date: 2026-07-19
+tags: [git, github, hugging-face, authorization]
+---
 
-Date: 2026-07-19
+# Native Git client integration plan
 
 Status: implemented; release and live acceptance pending
 
@@ -170,7 +175,10 @@ After setup:
 - `git push` uses the broker;
 - Git LFS batch, download, upload, verify, and locking routes use the broker
   where supported;
-- public repositories follow the same policy path as private repositories;
+- public repository reads use the anonymous `git.fetch` policy path and never
+  receive a managed provider credential;
+- private or missing repository reads enter the managed policy path only after
+  an anonymous `401`, `403`, or `404` response;
 - direct allows proceed normally;
 - request decisions wait for operator approval and continue when approved;
 - denies fail with a concise provider, operation, target, and rule result; and
@@ -361,20 +369,27 @@ listeners into one broad router and try to hide routes with middleware.
 
 ### Fetch
 
-Fetch is a direct smart-HTTP operation with an approval path:
+Fetch is a direct smart-HTTP operation with an anonymous-first approval path:
 
 1. Git asks for upload-pack discovery.
 2. The broker authenticates the client and canonicalizes the repository.
-3. Policy evaluates `git.fetch`.
-4. An allow proxies discovery and upload-pack with the provider credential.
-5. A request creates one idempotent operator approval, waits while holding
-   the Git connection, and proxies after approval. One window grant covers
-   discovery, upload-pack, and LFS transfers for the approved repository.
-6. A deny returns a stable Git-readable error without an upstream call.
+3. Policy evaluates `git.fetch` with `credential_use=none`.
+4. An anonymous allow proxies the real request without acquiring or attaching a
+   provider credential.
+5. A successful response completes directly. Timeouts, transport failures,
+   `429`, and `5xx` responses return without creating an approval.
+6. An upstream `401`, `403`, or `404` discards the anonymous response and starts
+   a separate `credential_use=managed` policy evaluation.
+7. A managed request creates one idempotent operator approval, waits while
+   holding the Git connection, and proxies after approval. One window grant
+   covers discovery, upload-pack, and LFS transfers for the approved repository.
+8. A deny returns a stable Git-readable error without a managed upstream call.
 
-Fetch was not requestable until 2026-08-06; see
-`docs/2026-08-06-git-fetch-approval-plan.md`. The client integration must not
-invent a bypass or provider fallback.
+Each discovery, upload-pack, and LFS read proves anonymous access independently.
+The broker does not cache visibility or trust a caller-provided visibility
+field. See `docs/2026-08-07-anonymous-public-repository-fetch-plan.md` for the
+credential boundary and `docs/2026-08-06-git-fetch-approval-plan.md` for the
+managed approval transaction.
 
 ### Push advertisement
 
