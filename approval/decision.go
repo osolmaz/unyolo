@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/osolmaz/unyolo/approval/notifier"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/grants"
 )
 
@@ -63,11 +64,18 @@ func result(grant grants.Grant, err error, success notify.Answer, successStatus 
 		return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
 	case errors.Is(err, grants.ErrInvalidDecisionToken):
 		return notify.DecisionResult{Answer: notify.AnswerSuperseded}
+	case committedTerminalActivationFailure(grant, err):
+		return terminalResult(grant)
 	case errors.Is(err, grants.ErrNotPending):
 		return terminalResult(grant)
 	default:
 		return notify.DecisionResult{Retry: true}
 	}
+}
+
+func committedTerminalActivationFailure(grant grants.Grant, err error) bool {
+	failure, ok := activation.As(err)
+	return ok && !failure.Retryable && grant.Status == grants.StatusFailed
 }
 
 // CompletedDecisionResult maps an already-terminal grant to an immediate

@@ -24,6 +24,7 @@ const (
 	terminalRetention  = 30 * 24 * time.Hour
 	maxPendingPerRoute = 32
 	maxCallbackRows    = 10_000
+	inboxFormatVersion = 2
 )
 
 // Inbox persists Telegram offsets and encrypted callback authority.
@@ -131,7 +132,7 @@ func (i *Inbox) formatVersion(ctx context.Context) (int, error) {
 	if err := i.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return 0, fmt.Errorf("read telegram inbox format: %w", err)
 	}
-	if version != 0 && version != 1 {
+	if version != 0 && version != inboxFormatVersion {
 		return 0, fmt.Errorf("unsupported telegram inbox format %d", version)
 	}
 	return version, nil
@@ -165,7 +166,7 @@ INSERT OR IGNORE INTO metadata(key, value) VALUES ('next_offset', 0);`
 }
 
 func (i *Inbox) initializeFormatVersion(ctx context.Context) error {
-	if _, err := i.db.ExecContext(ctx, `PRAGMA user_version = 1`); err != nil {
+	if _, err := i.db.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, inboxFormatVersion)); err != nil {
 		return fmt.Errorf("initialize telegram inbox format: %w", err)
 	}
 	return nil
