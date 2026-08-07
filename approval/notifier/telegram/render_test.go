@@ -92,6 +92,8 @@ func TestRenderStatusCoversLifecycle(t *testing.T) {
 		{Kind: notify.StatusUsedActive, UsedCount: 2, MaxUses: usebudget.Limit(5)},
 		{Kind: notify.StatusUsedActive, UsedCount: 2, MaxUses: usebudget.Unlimited},
 		{Kind: notify.StatusSuperseded}, {Kind: notify.StatusUnavailable}, {Kind: notify.StatusClosed},
+		{Kind: notify.StatusFailed},
+		{Kind: notify.StatusFailed, FailureCode: "invalid_notification", FailureReference: "failure<&>"},
 	}
 	seen := map[string]bool{}
 	for _, status := range tests {
