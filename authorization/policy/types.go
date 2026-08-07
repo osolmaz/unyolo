@@ -17,6 +17,16 @@ const (
 	EffectNoMatch Effect = "no_match"
 )
 
+// CredentialUse identifies whether one execution path may use a managed
+// provider credential. Brokers select this value after classifying a request;
+// callers cannot supply it.
+type CredentialUse string
+
+const (
+	CredentialUseNone    CredentialUse = "none"
+	CredentialUseManaged CredentialUse = "managed"
+)
+
 // Request is the provider-classified authorization unit.
 type Request struct {
 	Client    string
@@ -33,14 +43,15 @@ type Target struct {
 
 // Rule is one normalized policy rule.
 type Rule struct {
-	ID          string
-	Effect      Effect
-	Clients     []string
-	Operations  []string
-	Targets     []TargetMatcher
-	Attrs       map[string][]string
-	GrantPolicy *GrantPolicy
-	Description string
+	ID             string
+	Effect         Effect
+	Clients        []string
+	Operations     []string
+	Targets        []TargetMatcher
+	Attrs          map[string][]string
+	CredentialUses []CredentialUse
+	GrantPolicy    *GrantPolicy
+	Description    string
 }
 
 // TargetMatcher is one target constraint in a rule.
@@ -76,6 +87,7 @@ type Decision struct {
 	Effect                Effect
 	Allowed               bool
 	Reason                string
+	CredentialUse         CredentialUse
 	MatchedDenyRuleIDs    []string
 	MatchedGrantRuleIDs   []string
 	MatchedAllowRuleIDs   []string
@@ -89,6 +101,7 @@ type DecisionOptions struct {
 	ForGrantRequest bool
 	Now             time.Time
 	ActiveGrants    []Grant
+	CredentialUse   CredentialUse
 }
 
 // Policy is a normalized policy document.

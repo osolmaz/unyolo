@@ -118,14 +118,15 @@ type Policy struct {
 }
 
 type Rule struct {
-	ID          string
-	Effect      Effect
-	Clients     []string
-	Operations  []Operation
-	Targets     []TargetMatcher
-	Attrs       map[string]AttrConstraint
-	GrantPolicy *GrantPolicy
-	Description string
+	ID             string
+	Effect         Effect
+	Clients        []string
+	Operations     []Operation
+	Targets        []TargetMatcher
+	Attrs          map[string]AttrConstraint
+	CredentialUses []corepolicy.CredentialUse
+	GrantPolicy    *GrantPolicy
+	Description    string
 
 	Generated bool
 	GrantID   string
@@ -170,6 +171,7 @@ type GrantPolicy struct {
 type Decision struct {
 	Effect                Effect
 	Reason                string
+	CredentialUse         corepolicy.CredentialUse
 	MatchedDenyRuleIDs    []string
 	MatchedGrantRuleIDs   []string
 	MatchedAllowRuleIDs   []string
@@ -183,14 +185,15 @@ type rawPolicy struct {
 }
 
 type rawRule struct {
-	ID          string                     `json:"id"`
-	Effect      string                     `json:"effect"`
-	Clients     []string                   `json:"clients"`
-	Operations  []string                   `json:"operations"`
-	Targets     []TargetMatcher            `json:"targets"`
-	Attrs       map[string]json.RawMessage `json:"attrs"`
-	GrantPolicy *rawGrantPolicy            `json:"grant_policy"`
-	Description string                     `json:"description"`
+	ID             string                     `json:"id"`
+	Effect         string                     `json:"effect"`
+	Clients        []string                   `json:"clients"`
+	Operations     []string                   `json:"operations"`
+	Targets        []TargetMatcher            `json:"targets"`
+	Attrs          map[string]json.RawMessage `json:"attrs"`
+	CredentialUses []corepolicy.CredentialUse `json:"credential_use,omitempty"`
+	GrantPolicy    *rawGrantPolicy            `json:"grant_policy"`
+	Description    string                     `json:"description"`
 }
 
 type rawGrantPolicy struct {
@@ -337,6 +340,7 @@ var ruleFieldParsers = []ruleFieldParser{
 	parseRuleID,
 	parseRuleEffect,
 	parseRuleCollections,
+	parseRuleCredentialUses,
 	parseRuleGrantPolicy,
 }
 
@@ -691,6 +695,11 @@ func assignParsed[T any](target *T, parse func() (T, error)) error {
 		return err
 	}
 	*target = value
+	return nil
+}
+
+func parseRuleCredentialUses(rule *Rule, _ string, raw rawRule) error {
+	rule.CredentialUses = slices.Clone(raw.CredentialUses)
 	return nil
 }
 
@@ -1500,6 +1509,15 @@ func (p Policy) Decide(req Request, grants []Rule, now time.Time, grantRequest b
 		view = coreViewSupport
 	}
 	return p.decideCore(req, grants, now, grantRequest, view)
+}
+
+// DecideAnonymous evaluates one request through the credential-incapable path.
+func (p Policy) DecideAnonymous(req Request, now time.Time) Decision {
+	view := coreViewNormal
+	if req.IgnoreRepoRefs {
+		view = coreViewSupport
+	}
+	return p.decideCoreWithCredentialUse(req, nil, now, false, view, corepolicy.CredentialUseNone)
 }
 
 // DecideReceivePackDiscovery evaluates the ref-less receive-pack discovery

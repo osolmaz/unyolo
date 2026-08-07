@@ -45,8 +45,10 @@ target
 attrs
 ```
 
-The policy core does not inspect HTTP requests, Git packets, GitHub payloads,
-or Unix command lines. The consuming broker must classify those inputs first.
+The broker also selects a trusted `credential_use` evaluation context. Callers
+cannot supply it. The policy core does not inspect HTTP requests, Git packets,
+GitHub payloads, or Unix command lines. The consuming broker must classify those
+inputs first.
 
 ## Effects
 
@@ -84,10 +86,32 @@ This means:
 | `operations` | Yes | string array | Registered operation names. |
 | `targets` | Yes | object array | Registered target matchers. |
 | `attrs` | No | object | Attr constraints for request details. |
+| `credential_use` | No | string array | Credential paths matched by this rule. Omission means `managed` except on global deny rules. |
 | `grant_policy` | Required for `request` | object | Grant bounds for requestable access. |
 | `description` | No | string | Operator-facing explanation. |
 
 Unknown fields are validation errors.
+
+## Credential use
+
+`credential_use` has two values:
+
+- `none` means the provider request cannot acquire or attach a managed
+  credential.
+- `managed` means the normal provider credential path may run after policy
+  authorization.
+
+Operations are managed-only unless their provider registry explicitly supports
+`none`. Existing rules that omit the field therefore keep their behavior.
+Request rules cannot use `none`, and active grants apply only to `managed`
+evaluation. Deny rules cannot set `credential_use`; they remain global and
+apply to both paths.
+
+For anonymous-first Git reads, the broker evaluates `none` first and proves
+public access by completing the real upstream request without a provider
+credential. Only an upstream `401`, `403`, or `404` may enter the separate
+managed policy path. A timeout, transport failure, `429`, or `5xx` response does
+not create an approval.
 
 ## Provider Registry
 
@@ -98,6 +122,7 @@ The provider registry defines:
 - required target fields per target kind
 - valid attr names
 - each operation's supported attrs
+- each operation's supported credential-use paths
 - which operations may be grantable
 - the grant mode for each grantable operation
 - the match semantics for each target field and attr
@@ -290,6 +315,10 @@ must reject:
 - unsupported attrs
 - attrs on a rule that are not supported by every operation listed in that rule
 - invalid glob patterns
+- unsupported or repeated `credential_use` values
+- anonymous credential use on a managed-only operation
+- `credential_use` on deny rules
+- anonymous request rules
 - request rules without `grant_policy`
 - allow or deny rules with `grant_policy`
 - generated grants with wildcard clients

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
@@ -18,8 +19,17 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if artifacts.Manifest.Provider != "github" || artifacts.Manifest.OperationCounts != want {
 		t.Fatalf("manifest = %+v, want provider github and counts %+v", artifacts.Manifest, want)
 	}
-	if _, err := policy.Parse(artifacts.PolicyJSON); err != nil {
+	rendered, err := policy.Parse(artifacts.PolicyJSON)
+	if err != nil {
 		t.Fatalf("rendered policy is invalid: %v", err)
+	}
+	fetch := policy.Request{Client: "agent-a", Operation: policy.OperationGitFetch,
+		Target: policy.Target{Kind: "repo", Owner: "acme", Name: "public"}}
+	if decision := rendered.EvaluateAnonymous(fetch); !decision.Allowed || decision.CredentialUse != corepolicy.CredentialUseNone {
+		t.Fatalf("anonymous fetch decision = %+v", decision)
+	}
+	if decision := rendered.EvaluateGrantRequest(fetch); decision.Effect != policy.EffectRequest || decision.CredentialUse != corepolicy.CredentialUseManaged {
+		t.Fatalf("managed fetch decision = %+v", decision)
 	}
 	assertEffect(t, artifacts, "repo.contents.read", "allow")
 	assertEffect(t, artifacts, "repo.delete", "request")

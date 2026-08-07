@@ -22,11 +22,12 @@ func cloneOperations(values map[string]OperationSpec) map[string]OperationSpec {
 	out := make(map[string]OperationSpec, len(values))
 	for name, spec := range values {
 		out[name] = OperationSpec{
-			TargetKinds: slices.Clone(spec.TargetKinds),
-			Attrs:       slices.Clone(spec.Attrs),
-			Grantable:   spec.Grantable,
-			GrantMode:   spec.GrantMode,
-			GrantModes:  slices.Clone(spec.GrantModes),
+			TargetKinds:    slices.Clone(spec.TargetKinds),
+			Attrs:          slices.Clone(spec.Attrs),
+			CredentialUses: slices.Clone(spec.CredentialUses),
+			Grantable:      spec.Grantable,
+			GrantMode:      spec.GrantMode,
+			GrantModes:     slices.Clone(spec.GrantModes),
 		}
 	}
 	return out
@@ -64,14 +65,15 @@ func cloneRules(rules []Rule) []Rule {
 
 func cloneRule(rule Rule) Rule {
 	return Rule{
-		ID:          rule.ID,
-		Effect:      rule.Effect,
-		Clients:     slices.Clone(rule.Clients),
-		Operations:  slices.Clone(rule.Operations),
-		Targets:     cloneTargetMatchers(rule.Targets),
-		Attrs:       clonePatternMap(rule.Attrs),
-		GrantPolicy: cloneGrantPolicy(rule.GrantPolicy),
-		Description: rule.Description,
+		ID:             rule.ID,
+		Effect:         rule.Effect,
+		Clients:        slices.Clone(rule.Clients),
+		Operations:     slices.Clone(rule.Operations),
+		Targets:        cloneTargetMatchers(rule.Targets),
+		Attrs:          clonePatternMap(rule.Attrs),
+		CredentialUses: slices.Clone(rule.CredentialUses),
+		GrantPolicy:    cloneGrantPolicy(rule.GrantPolicy),
+		Description:    rule.Description,
 	}
 }
 

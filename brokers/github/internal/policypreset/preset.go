@@ -121,11 +121,21 @@ func (renderer) RenderPolicy(profile shared.Profile, operations []shared.Effecti
 			Targets: []policy.Target{wildcardTarget(descriptor.TargetKind)},
 		})
 	}
+	scope.Rules = append(scope.Rules, transportAnonymousRules(profile.Clients)...)
 	scope.Rules = append(scope.Rules, transportRequestRules(profile.Clients)...)
 	if _, err := policy.New(scope); err != nil {
 		return nil, err
 	}
 	return shared.MarshalCanonical(scope)
+}
+
+func transportAnonymousRules(clients []string) []policy.Rule {
+	return []policy.Rule{{
+		ID: "preset-git-fetch-anonymous", Effect: policy.EffectAllow,
+		Clients: clients, Operations: []policy.Operation{policy.OperationGitFetch},
+		Targets:        []policy.Target{wildcardTarget("repo")},
+		CredentialUses: []corepolicy.CredentialUse{corepolicy.CredentialUseNone},
+	}}
 }
 
 // transportRequestOperations are the Git smart-HTTP operations every preset

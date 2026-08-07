@@ -47,6 +47,7 @@ type Registry struct {
 type OperationSpec struct {
 	TargetKinds                []string
 	Attrs                      []string
+	CredentialUses             []CredentialUse
 	Grantable                  bool
 	GrantMode                  GrantMode
 	GrantModes                 []GrantMode
@@ -84,8 +85,19 @@ func (r Registry) Operation(name string) (OperationSpec, bool) {
 	}
 	spec.TargetKinds = slices.Clone(spec.TargetKinds)
 	spec.Attrs = slices.Clone(spec.Attrs)
+	spec.CredentialUses = slices.Clone(spec.CredentialUses)
 	spec.GrantModes = slices.Clone(spec.GrantModes)
 	return spec, true
+}
+
+// SupportsCredentialUse reports whether an operation can execute through the
+// selected credential path. Operations default to managed-only.
+func (op OperationSpec) SupportsCredentialUse(use CredentialUse) bool {
+	use = defaultedCredentialUse(use)
+	if len(op.CredentialUses) == 0 {
+		return use == CredentialUseManaged
+	}
+	return slices.Contains(op.CredentialUses, use)
 }
 
 // AllowsGrantMode reports whether a registered operation supports mode.
@@ -135,7 +147,24 @@ func (r Registry) validateOperation(name string, op OperationSpec) error {
 			return fmt.Errorf("registry operation %q references unknown attr %q", name, attr)
 		}
 	}
+	if err := validateOperationCredentialUses(name, op.CredentialUses); err != nil {
+		return err
+	}
 	return validateOperationGrantMode(name, op)
+}
+
+func validateOperationCredentialUses(name string, uses []CredentialUse) error {
+	seen := make(map[CredentialUse]struct{}, len(uses))
+	for _, use := range uses {
+		if !validCredentialUse(use) {
+			return fmt.Errorf("registry operation %q has unsupported credential use %q", name, use)
+		}
+		if _, duplicate := seen[use]; duplicate {
+			return fmt.Errorf("registry operation %q repeats credential use %q", name, use)
+		}
+		seen[use] = struct{}{}
+	}
+	return nil
 }
 
 func validateOperationGrantMode(name string, op OperationSpec) error {
@@ -266,6 +295,17 @@ func validGrantMode(mode GrantMode) bool {
 	return mode == GrantModeWindow || mode == GrantModeExecution
 }
 
+func defaultedCredentialUse(use CredentialUse) CredentialUse {
+	if use == "" {
+		return CredentialUseManaged
+	}
+	return use
+}
+
+func validCredentialUse(use CredentialUse) bool {
+	return use == CredentialUseNone || use == CredentialUseManaged
+}
+
 func (r Registry) validateRequest(request Request) error {
 	op, ok := r.Operations[request.Operation]
 	if !ok {
@@ -282,6 +322,21 @@ func (r Registry) validateRequest(request Request) error {
 		return err
 	}
 	return validateRequestAttrs(request.Operation, request.Attrs, op, r.Attrs)
+}
+
+func (r Registry) validateRequestCredentialUse(operation string, use CredentialUse) error {
+	op, ok := r.Operations[operation]
+	if !ok {
+		return fmt.Errorf("unknown operation %q", operation)
+	}
+	use = defaultedCredentialUse(use)
+	if !validCredentialUse(use) {
+		return fmt.Errorf("unsupported credential use %q", use)
+	}
+	if !op.SupportsCredentialUse(use) {
+		return fmt.Errorf("operation %q does not support credential use %q", operation, use)
+	}
+	return nil
 }
 
 func validateRequestTarget(target Target, spec TargetSpec) error {

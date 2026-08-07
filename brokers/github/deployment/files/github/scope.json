@@ -22449,6 +22449,26 @@
       ]
     },
     {
+      "id": "preset-git-fetch-anonymous",
+      "effect": "allow",
+      "clients": [
+        "agent"
+      ],
+      "operations": [
+        "git.fetch"
+      ],
+      "targets": [
+        {
+          "kind": "repo",
+          "owner": "*",
+          "name": "*"
+        }
+      ],
+      "credential_use": [
+        "none"
+      ]
+    },
+    {
       "id": "preset-git-fetch",
       "effect": "request",
       "clients": [
