@@ -70,6 +70,12 @@ func result(grant grants.Grant, err error, success notify.Answer, successStatus 
 	}
 }
 
+// CompletedDecisionResult maps an already-terminal grant to an immediate
+// duplicate-callback response without attempting another logical decision.
+func CompletedDecisionResult(grant grants.Grant) notify.DecisionResult {
+	return terminalResult(grant)
+}
+
 func terminalResult(grant grants.Grant) notify.DecisionResult {
 	status := StatusForGrant(grant)
 	switch grant.Status {

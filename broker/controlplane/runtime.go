@@ -35,18 +35,36 @@ type Options struct {
 	State               *state.Database
 }
 
+var errNotificationIdentity = errors.New("notification identity conflict")
+
 // HandleDecision applies one approval-channel callback through the configured decider.
 func (r *Runtime) HandleDecision(ctx context.Context, decision notify.Decision) notify.DecisionResult {
 	grant, err := r.Store.Get(decision.GrantID)
-	if err == nil && grant.Notification == nil {
-		message := approvalnotify.Project(ctx, r.approvalBroker, r.presenter, grant, decision.DecisionToken)
-		ref, referenceErr := telegram.ApprovalReference(message, decision.ChatID, decision.MessageID)
+	if err == nil && grant.Status != grants.StatusPending {
+		return approval.CompletedDecisionResult(grant)
+	}
+	if err == nil && decision.Notification == nil {
+		ref, referenceErr := r.decisionReference(ctx, grant, decision)
+		if errors.Is(referenceErr, errNotificationIdentity) {
+			return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusClosed}, ClearButtons: true}
+		}
 		if referenceErr != nil {
 			return notify.DecisionResult{Answer: notify.AnswerUnavailable, Retry: true}
 		}
 		decision.Notification = &ref
 	}
 	return approval.HandleDecision(ctx, r.Decider, decision)
+}
+
+func (r *Runtime) decisionReference(ctx context.Context, grant grants.Grant, decision notify.Decision) (notify.MessageRef, error) {
+	if grant.Notification != nil && grant.Notification.Kind == "telegram" {
+		if grant.Notification.ChatID != decision.ChatID || grant.Notification.MessageID != decision.MessageID {
+			return notify.MessageRef{}, errNotificationIdentity
+		}
+		return *grant.Notification, nil
+	}
+	message := approvalnotify.Project(ctx, r.approvalBroker, r.presenter, grant, decision.DecisionToken)
+	return telegram.ApprovalReference(message, decision.ChatID, decision.MessageID)
 }
 
 // Runtime contains the shared state and protected HTTP surfaces for one broker.

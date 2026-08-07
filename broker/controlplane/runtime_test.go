@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	notifier "github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 )
@@ -65,6 +67,21 @@ func TestRuntimeAllowsServerWithoutAgentClients(t *testing.T) {
 	})
 	if err != nil || runtime.Clients == nil || runtime.OperatorHandler == nil {
 		t.Fatalf("New() = %+v, %v", runtime, err)
+	}
+}
+
+func TestRuntimeDecisionReferencePreservesTelegramMessageIdentity(t *testing.T) {
+	ref := notifier.MessageRef{Kind: "telegram", ChatID: 42, MessageID: 7, Renderer: "telegram-html-v1", Text: "approval",
+		PresentationJSON: `{}`, PresentationDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		RenderedDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	runtime := &Runtime{}
+	grant := grants.Grant{Notification: &ref}
+	resolved, err := runtime.decisionReference(t.Context(), grant, notifier.Decision{ChatID: 42, MessageID: 7})
+	if err != nil || resolved != ref {
+		t.Fatalf("decisionReference() = %#v, %v", resolved, err)
+	}
+	if _, err := runtime.decisionReference(t.Context(), grant, notifier.Decision{ChatID: 42, MessageID: 8}); !errors.Is(err, errNotificationIdentity) {
+		t.Fatalf("mismatched message error = %v", err)
 	}
 }
 
