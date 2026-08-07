@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/unyolo/approval/notification"
 	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/admission"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
@@ -310,6 +311,40 @@ func TestRuntimePendingApprovalExecuteAndCancel(t *testing.T) {
 	canceled, err := runtime.Cancel(t.Context(), "agent", operation.ID)
 	if err != nil || canceled.State != agentv1.StateCanceled {
 		t.Fatalf("canceled = %+v, %v", canceled, err)
+	}
+}
+
+func TestRuntimeTerminatesOperationAfterApprovalActivationFailure(t *testing.T) {
+	notifier := &captureNotifier{}
+	runtime, _, operations, grantStore, closeRuntime := newRuntime(t, nil, requestDecision, notifier, true)
+	defer closeRuntime()
+	operation, _, err := runtime.Submit(t.Context(), "agent", agentv1.SubmitRequest{
+		IdempotencyKey: "activation-failure", Operation: "repo.create", Target: json.RawMessage(`{"name":"demo"}`),
+		Arguments: json.RawMessage(`{}`), Reason: "create demo",
+	})
+	if err != nil || operation.State != agentv1.StatePending {
+		t.Fatalf("pending submission = %+v, %v", operation, err)
+	}
+	grant, err := grantStore.Get(operation.ApprovalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = grantStore.ApplyOperatorDecision(t.Context(), grants.OperatorDecision{
+		ID: grant.ID, Action: grants.ActionApprove, Approver: "operator:onur", ExpectedRevision: grant.Revision,
+		IdempotencyKey: "activation-failure", CorrelationID: "correlation-1",
+	}, func(context.Context, grants.Grant, grants.ApprovalConstraints) error {
+		return activation.New(activation.CodeCredentialChanged, errors.New("private credential detail"))
+	})
+	failure, ok := activation.As(err)
+	if !ok || failure.Code != activation.CodeCredentialChanged {
+		t.Fatalf("approval failure = %v", err)
+	}
+
+	runtime.AdvanceAll(t.Context())
+	stored, err := operations.Get("agent", operation.ID)
+	if err != nil || stored.State != agentv1.StateFailed || stored.Error == nil ||
+		stored.Error.Code != string(activation.CodeCredentialChanged) || stored.Error.Message != "Approval activation failed" {
+		t.Fatalf("failed operation = %+v, %v", stored, err)
 	}
 }
 

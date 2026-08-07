@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/unyolo/approval/notification"
 	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization"
+	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/admission"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/authorization/policy"
@@ -705,6 +706,12 @@ func (r *Runtime[I, P, A]) syncApproval(operation agentv1.Operation) agentv1.Ope
 		return updated
 	case grants.StatusDenied:
 		return r.fail(operation.ID, agentv1.StateDenied, "operation_approval_denied", "Approval was denied")
+	case grants.StatusFailed:
+		code := grant.FailureCode
+		if !activation.Known(activation.Code(code)) {
+			code = "approval_activation_failed"
+		}
+		return r.fail(operation.ID, agentv1.StateFailed, code, "Approval activation failed")
 	case grants.StatusExpired:
 		return r.fail(operation.ID, agentv1.StateExpired, "operation_approval_expired", "Approval request expired")
 	case grants.StatusCanceled, grants.StatusRevoked:

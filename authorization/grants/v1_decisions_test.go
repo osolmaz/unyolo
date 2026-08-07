@@ -155,6 +155,36 @@ func TestApplyOperatorDecisionRejectsNotificationIntegrityAsTerminalFailure(t *t
 	}
 }
 
+func TestApplyOperatorDecisionDoesNotOverwriteTerminalGrantOnNotificationMismatch(t *testing.T) {
+	t.Parallel()
+	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
+	created, _, err := store.Request(Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
+		Reason: "update", Duration: time.Minute, MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur", ExpectedRevision: created.Grant.Revision,
+		IdempotencyKey: "approve",
+	}, nil)
+	if err != nil || approved.Grant.Status != StatusActive {
+		t.Fatalf("approval = %+v, %v", approved, err)
+	}
+	ref := testTelegramMessageRef(8, "approval")
+	ref.PresentationDigest = "sha256:" + strings.Repeat("0", 64)
+	result, err := store.ApplyOperatorDecision(t.Context(), OperatorDecision{
+		ID: created.Grant.ID, Action: ActionApprove, Approver: "operator:onur", ExpectedRevision: approved.Grant.Revision,
+		IdempotencyKey: "invalid-terminal-notification", DecisionToken: created.DecisionToken, Notification: &ref,
+	}, nil)
+	if !errors.Is(err, ErrNotPending) || result.Grant.Status != StatusActive {
+		t.Fatalf("terminal mismatch = %+v, %v", result, err)
+	}
+	stored, err := store.Get(created.Grant.ID)
+	if err != nil || stored.Status != StatusActive || stored.FailureCode != "" || !stored.FailedAt.IsZero() {
+		t.Fatalf("stored grant = %+v, %v", stored, err)
+	}
+}
+
 func TestApplyOperatorDecisionValidatesNotificationTokenAtomically(t *testing.T) {
 	t.Parallel()
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
