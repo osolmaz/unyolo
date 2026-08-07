@@ -580,38 +580,57 @@ func (h *handler) writeDecisionError(writer http.ResponseWriter, request *http.R
 }
 
 func (h *handler) writeMappedErrorWithCurrent(writer http.ResponseWriter, request *http.Request, err error, currentGrant grants.Grant) {
-	var conflict *grants.RevisionConflictError
-	if errors.As(err, &conflict) {
-		item, getErr := h.inbox.Get(request.Context(), conflict.Current.ID)
-		var current *operatorwire.BrokerRequest
-		if getErr == nil {
-			projected := project(item)
-			current = &projected
-		}
-		h.writeError(writer, http.StatusConflict, "revision_conflict", "request changed; refresh before deciding", current)
+	if h.writeRevisionConflict(writer, request, err) {
 		return
 	}
-	status, code, message := http.StatusInternalServerError, errorCode(err), "operator request failed"
-	switch code {
-	case "not_found":
-		status, message = http.StatusNotFound, "request not found"
-	case "invalid_request":
-		status, message = http.StatusBadRequest, "request is invalid"
-	case "cursor_expired":
-		status, message = http.StatusGone, "cursor is no longer retained"
-	case "idempotency_conflict", "invalid_transition", "invalid_decision_token", "constraint_exceeded",
-		"invalid_notification", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
-		status, message = http.StatusConflict, strings.ReplaceAll(code, "_", " ")
-	case "storage_unavailable", "temporarily_unavailable":
-		status, message = http.StatusServiceUnavailable, "operator request temporarily unavailable"
+	status, code, message, retry := mappedErrorResponse(err)
+	if retry {
 		writer.Header().Set("Retry-After", "1")
 	}
+	h.writeError(writer, status, code, message, h.terminalFailureCurrent(request, err, currentGrant))
+}
+
+func (h *handler) writeRevisionConflict(writer http.ResponseWriter, request *http.Request, err error) bool {
+	var conflict *grants.RevisionConflictError
+	if !errors.As(err, &conflict) {
+		return false
+	}
+	item, getErr := h.inbox.Get(request.Context(), conflict.Current.ID)
 	var current *operatorwire.BrokerRequest
-	if failure, ok := activation.As(err); ok && !failure.Retryable && currentGrant.ID != "" {
-		projected := project(h.inbox.Project(request.Context(), currentGrant))
+	if getErr == nil {
+		projected := project(item)
 		current = &projected
 	}
-	h.writeError(writer, status, code, message, current)
+	h.writeError(writer, http.StatusConflict, "revision_conflict", "request changed; refresh before deciding", current)
+	return true
+}
+
+func (h *handler) terminalFailureCurrent(request *http.Request, err error, currentGrant grants.Grant) *operatorwire.BrokerRequest {
+	failure, ok := activation.As(err)
+	if !ok || failure.Retryable || currentGrant.ID == "" {
+		return nil
+	}
+	projected := project(h.inbox.Project(request.Context(), currentGrant))
+	return &projected
+}
+
+func mappedErrorResponse(err error) (int, string, string, bool) {
+	code := errorCode(err)
+	switch code {
+	case "not_found":
+		return http.StatusNotFound, code, "request not found", false
+	case "invalid_request":
+		return http.StatusBadRequest, code, "request is invalid", false
+	case "cursor_expired":
+		return http.StatusGone, code, "cursor is no longer retained", false
+	case "idempotency_conflict", "invalid_transition", "invalid_decision_token", "constraint_exceeded",
+		"invalid_notification", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
+		return http.StatusConflict, code, strings.ReplaceAll(code, "_", " "), false
+	case "storage_unavailable", "temporarily_unavailable":
+		return http.StatusServiceUnavailable, code, "operator request temporarily unavailable", true
+	default:
+		return http.StatusInternalServerError, code, "operator request failed", false
+	}
 }
 
 func errorCode(err error) string {

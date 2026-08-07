@@ -7,10 +7,12 @@ import "errors"
 type Code string
 
 const (
-	CodeInvalidNotification    Code = "invalid_notification"
-	CodePlanUnavailable        Code = "plan_unavailable"
-	CodePlanMismatch           Code = "plan_mismatch"
-	CodeCredentialChanged      Code = "credential_changed"
+	CodeInvalidNotification Code = "invalid_notification"
+	CodePlanUnavailable     Code = "plan_unavailable"
+	CodePlanMismatch        Code = "plan_mismatch"
+	// #nosec G101 -- closed error identifiers, not credential material.
+	CodeCredentialChanged Code = "credential_changed"
+	// #nosec G101 -- closed error identifiers, not credential material.
 	CodeCredentialInsufficient Code = "credential_insufficient"
 	CodeConstraintExceeded     Code = "constraint_exceeded"
 	CodeStorageUnavailable     Code = "storage_unavailable"
