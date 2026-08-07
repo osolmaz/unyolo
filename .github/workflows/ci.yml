@@ -38,6 +38,7 @@ jobs:
       - name: gofmt check
         run: test -z "$(gofmt -l .)"
       - run: ./scripts/check-architecture.sh
+      - run: ./scripts/check-container-pins.sh
       - run: ./scripts/check-github-generated.sh
       - run: ./scripts/check-sql.sh
       - run: go test ./protocol

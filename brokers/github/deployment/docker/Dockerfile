@@ -11,8 +11,8 @@
 # only the two binaries plus the certificate roots.
 
 # Pinned Go builder for reproducible cross-compilation.
-ARG GO_BUILDER=golang:1.26.5-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG DISTROLESS=gcr.io/distroless/static-debian12:nonroot@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG GO_BUILDER=golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2
+ARG DISTROLESS=gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 
 FROM ${GO_BUILDER} AS build
 ARG VERSION=dev
