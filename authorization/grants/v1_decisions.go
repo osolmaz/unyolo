@@ -136,6 +136,9 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	}
 	if command.Notification != nil {
 		if err := validateMessageRefIntegrity(*command.Notification); err != nil {
+			if grant.Status != StatusPending {
+				return grant, ErrNotPending
+			}
 			return failedActivationGrant(grant, command, now, err), err
 		}
 	}

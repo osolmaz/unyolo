@@ -17,13 +17,15 @@ func TestPolicyOperationDiscoveryIsClientScopedAndNotAuthorization(t *testing.T)
 	pol, err := Parse([]byte(`{"rules":[
 		{"id":"alice-read","effect":"allow","clients":["alice"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}]},
 		{"id":"bob-request","effect":"request","clients":["bob"],"operations":["repo.delete"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}],"grant_policy":{}},
+		{"id":"agent-glob","effect":"allow","clients":["agent-*"],"operations":["repo.metadata.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}]},
 		{"id":"deny-alice","effect":"deny","clients":["alice"],"operations":["repo.contents.read"],"targets":[{"kind":"repo","type":"dataset","owner":"acme","name":"*"}]}
 	]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !pol.ExposesOperation("alice", OpRepoContentsRead) || pol.ExposesOperation("alice", Operation("repo.delete")) ||
-		!pol.ExposesOperation("bob", Operation("repo.delete")) || pol.ExposesOperation("mallory", OpRepoContentsRead) {
+		!pol.ExposesOperation("bob", Operation("repo.delete")) || !pol.ExposesOperation("agent-1", OpRepoMetadataRead) ||
+		pol.ExposesOperation("mallory", OpRepoContentsRead) {
 		t.Fatal("operation discovery did not follow client allow/request names")
 	}
 	decision := pol.Decide(repoReq("alice", OpRepoContentsRead, "dataset", "acme", "private", "README.md"), nil, time.Now(), false)

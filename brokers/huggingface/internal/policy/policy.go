@@ -1471,10 +1471,22 @@ func (p Policy) ExposesOperation(client string, operation Operation) bool {
 		if rule.Effect != EffectAllow && rule.Effect != EffectRequest {
 			continue
 		}
-		if !slices.Contains(rule.Clients, client) && !slices.Contains(rule.Clients, "*") {
+		if !clientPatternsMatch(rule.Clients, client) {
 			continue
 		}
 		if slices.Contains(rule.Operations, operation) {
+			return true
+		}
+	}
+	return false
+}
+
+func clientPatternsMatch(patterns []string, client string) bool {
+	if strings.TrimSpace(client) == "" {
+		return false
+	}
+	for _, pattern := range patterns {
+		if matched, err := path.Match(pattern, client); err == nil && matched {
 			return true
 		}
 	}
