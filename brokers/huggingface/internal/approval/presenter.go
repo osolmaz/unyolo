@@ -38,6 +38,9 @@ func (Presenter) Present(_ context.Context, grant unyologrants.Grant) (approvalv
 	if mode := grant.Metadata[modeMetadata]; mode != "" {
 		facts = append(facts, approvalview.Fact{Label: "Mode", Value: mode})
 	}
+	if scope, ok := jobArgumentScope(grant); ok {
+		facts = append(facts, approvalview.Fact{Label: "Job scope", Value: scope})
+	}
 	if digest := grant.Metadata[hfplan.MetadataDigest]; digest != "" {
 		facts = append(facts, approvalview.Fact{Label: "Plan digest", Value: digest})
 	}
@@ -58,6 +61,16 @@ func (Presenter) Present(_ context.Context, grant unyologrants.Grant) (approvalv
 		Summary: summary,
 		Target:  target, Facts: facts, Warnings: warnings(grant.Operation), PlanHash: grant.Metadata[hfplan.MetadataDigest],
 	}, nil
+}
+
+func jobArgumentScope(grant unyologrants.Grant) (string, bool) {
+	if grant.Operation != "job.run" && grant.Operation != "job.uv.run" {
+		return "", false
+	}
+	if len(grant.Attrs["arguments_digest"]) == 0 {
+		return "Any job arguments for this target", true
+	}
+	return "Exact job arguments only", true
 }
 
 func transactionFacts(grant unyologrants.Grant) []approvalview.Fact {

@@ -29,6 +29,34 @@ func TestPresenterRendersSafeHFDetails(t *testing.T) {
 	}
 }
 
+func TestPresenterShowsBroadAndExactJobArgumentScopes(t *testing.T) {
+	for name, test := range map[string]struct {
+		attrs map[string][]string
+		want  string
+	}{
+		"broad": {attrs: nil, want: "Any job arguments for this target"},
+		"exact": {attrs: map[string][]string{"arguments_digest": {`"digest"`}}, want: "Exact job arguments only"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			presentation, err := (Presenter{}).Present(t.Context(), unyologrants.Grant{
+				ID: "grant-1", Operation: "job.run", Attrs: test.attrs,
+				Target: unyolopolicy.Target{Kind: "hf", Fields: map[string][]string{
+					"kind": {"job"}, "owner": {"acme"}, "name": {"namespace=acme"},
+				}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, fact := range presentation.Facts {
+				if fact.Label == "Job scope" && fact.Value == test.want {
+					return
+				}
+			}
+			t.Fatalf("presentation = %+v, want job scope %q", presentation, test.want)
+		})
+	}
+}
+
 func TestPresenterUsesExactPlanProjection(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("a", 64)
 	presentation, err := (Presenter{}).Present(t.Context(), unyologrants.Grant{ID: "grant-1", Operation: "repo.delete",

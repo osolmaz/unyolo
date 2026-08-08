@@ -83,9 +83,27 @@ authenticated Hub API calls.
 
 ## Temporary grants
 
-Request a grant only when the user explicitly needs a policy-gated Git action.
-Use a stable request ID and the narrowest repository, ref, duration, and use
-budget:
+Request a reusable grant when the user explicitly asks to authorize repeated
+operations. Always use the number of uses the user requested; do not substitute
+a fixed example value.
+
+For `job.run` and `job.uv.run`, distinguish these requests exactly:
+
+- "Allow any N jobs" means `max_uses: N` with `attrs` omitted or empty. Job
+  arguments may change between uses, but the operation and target must still
+  match.
+- "Run this exact job N times" means `max_uses: N` with the exact target and
+  argument digest attrs.
+- If the wording does not say whether job arguments may change, ask one short
+  question before requesting the grant.
+
+Before requesting approval, state the scope plainly: either "any job arguments
+for this target" or "exact job arguments only." Never silently add exact digest
+attrs to a request for any N jobs, and never omit attrs from an exact-job
+request.
+
+For Git actions, use a stable request ID and the narrowest repository, ref,
+duration, and use budget:
 
 ```sh
 hf-broker client grant request git.push.force OWNER/REPO \

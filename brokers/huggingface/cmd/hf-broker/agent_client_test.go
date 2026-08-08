@@ -429,6 +429,31 @@ func TestMCPToolsDoNotTreatEmptyDiscoveryAsFullAccess(t *testing.T) {
 	}
 }
 
+func TestMCPGrantRequestDescribesVariableUseAndJobScope(t *testing.T) {
+	tools := mcpTools(nil)
+	for _, tool := range tools {
+		if tool["name"] != "hf_grant_request" {
+			continue
+		}
+		description, _ := tool["description"].(string)
+		schema := tool["inputSchema"].(map[string]any)
+		properties := schema["properties"].(map[string]any)
+		attrs := properties["attrs"].(map[string]any)
+		maxUses := properties["max_uses"].(map[string]any)
+		target := properties["target"].(map[string]any)
+		targetProperties := target["properties"].(map[string]any)
+		kind := targetProperties["kind"].(map[string]any)
+		if !strings.Contains(description, "user-requested number") ||
+			!strings.Contains(attrs["description"].(string), "empty object") ||
+			!strings.Contains(maxUses["description"].(string), "user's requested number") ||
+			!slices.Contains(kind["enum"].([]string), "job") {
+			t.Fatalf("grant request tool = %+v", tool)
+		}
+		return
+	}
+	t.Fatal("hf_grant_request tool is missing")
+}
+
 func TestMCPToolsAdvertiseLifecycleForAvailableOperations(t *testing.T) {
 	tools := mcpTools([]string{"repo.create"})
 	names := make(map[string]bool, len(tools))

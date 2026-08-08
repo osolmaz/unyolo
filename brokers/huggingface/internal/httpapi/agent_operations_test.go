@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 	unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/unyolo/operator/v1"
@@ -255,8 +257,9 @@ func TestAgentRepositoryDiscoveryReusesApprovedWindowGrant(t *testing.T) {
 	}
 }
 
-func TestAgentSealedJobRunReusesWindowAcrossFreshPayloads(t *testing.T) {
-	var jobHits int
+func TestAgentSealedJobRunReusesBroadWindowAcrossChangedArguments(t *testing.T) {
+	var jobMu sync.Mutex
+	var jobFlavors []string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+testToken {
 			t.Fatalf("upstream authorization was not the broker token")
@@ -270,10 +273,13 @@ func TestAgentSealedJobRunReusesWindowAcrossFreshPayloads(t *testing.T) {
 				t.Fatal(err)
 			}
 			secrets, ok := payload["secrets"].(map[string]any)
-			if !ok || secrets["TOKEN"] != "hidden" || payload["flavor"] != "cpu-basic" {
+			flavor, flavorOK := payload["flavor"].(string)
+			if !ok || secrets["TOKEN"] != "hidden" || !flavorOK {
 				t.Fatalf("job payload = %#v", payload)
 			}
-			jobHits++
+			jobMu.Lock()
+			jobFlavors = append(jobFlavors, flavor)
+			jobMu.Unlock()
 			writeJSON(w, http.StatusOK, map[string]any{})
 		default:
 			http.NotFound(w, r)
@@ -286,7 +292,23 @@ func TestAgentSealedJobRunReusesWindowAcrossFreshPayloads(t *testing.T) {
 	defer cancel()
 	defer server.Close()
 
-	submit := func(requestKey string) agentv1.Operation {
+	requested, created, err := hfgrant.Request(handler.grants, handler.plans, hfgrant.Input{
+		Client: "agent", ClientRequestID: "broad-job-window", Operation: "job.run", Mode: hfgrant.ModeWindow,
+		PolicyTarget: &policy.Target{Kind: policy.TargetKind("job"), Owner: "alice", Name: "namespace=alice"},
+		Reason:       "allow the requested number of jobs with changing arguments", RequestedDuration: 5 * time.Minute,
+		PendingTimeout: 5 * time.Minute, MaxUses: 5, MaxUsesSpecified: true,
+	})
+	if err != nil || !created || len(requested.Grant.Attrs) != 0 {
+		t.Fatalf("broad grant request = %+v, %v, created=%v", requested, err, created)
+	}
+	grant := requested.Grant
+	if _, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
+		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-broad-job-window",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	submit := func(requestKey, flavor string) agentv1.Operation {
 		t.Helper()
 		headers := map[string]string{"Content-Type": "application/octet-stream", "X-Broker-Operation": "job.run", "X-Broker-Idempotency-Key": requestKey}
 		response, text := doRequestWithHeaders(t, http.MethodPost, server.URL+"/api/agent/v1/sealed-payloads", "Bearer "+testSecret,
@@ -302,7 +324,7 @@ func TestAgentSealedJobRunReusesWindowAcrossFreshPayloads(t *testing.T) {
 			"idempotency_key": requestKey,
 			"operation":       "job.run",
 			"target":          map[string]any{"namespace": "alice"},
-			"arguments":       map[string]any{"public": map[string]any{"flavor": "cpu-basic"}, "sealed_payload": reference},
+			"arguments":       map[string]any{"public": map[string]any{"flavor": flavor}, "sealed_payload": reference},
 			"reason":          "run a test job",
 		})
 		if err != nil {
@@ -316,38 +338,21 @@ func TestAgentSealedJobRunReusesWindowAcrossFreshPayloads(t *testing.T) {
 		return operation
 	}
 
-	first := submit("job-window-1")
-	if first.State != agentv1.StatePending || first.ApprovalID == "" {
-		t.Fatalf("first job = %#v", first)
+	for index, flavor := range []string{"cpu-basic", "cpu-upgrade"} {
+		operation := submit(fmt.Sprintf("job-window-%d", index+1), flavor)
+		if operation.State == agentv1.StatePending || operation.ApprovalID != grant.ID {
+			t.Fatalf("job %d did not reuse broad grant: %#v", index+1, operation)
+		}
+		operation = waitForTestOperation(t, server.URL, operation.ID)
+		if operation.State != agentv1.StateSucceeded {
+			t.Fatalf("job %d = %#v", index+1, operation)
+		}
 	}
-	grant, err := handler.grants.Get(first.ApprovalID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if grant.Metadata[grants.MetadataMode] != "window" || grant.MaxUses != 5 {
-		t.Fatalf("job grant = %#v", grant)
-	}
-	if _, err = handler.control.Decisions.Decide(context.Background(), grant.ID, operatorv1.ActionApprove, "alice", operatorv1.Decision{
-		ExpectedRevision: grant.Revision, IdempotencyKey: "approve-job-window",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	first = waitForTestOperation(t, server.URL, first.ID)
-	if first.State != agentv1.StateSucceeded {
-		t.Fatalf("first job = %#v", first)
-	}
-
-	second := submit("job-window-2")
-	if second.State == agentv1.StatePending || second.ApprovalID != grant.ID {
-		t.Fatalf("reused job = %#v", second)
-	}
-	second = waitForTestOperation(t, server.URL, second.ID)
-	if second.State != agentv1.StateSucceeded || jobHits != 2 {
-		t.Fatalf("second job = %#v, hits = %d", second, jobHits)
-	}
+	jobMu.Lock()
+	defer jobMu.Unlock()
 	updated, err := handler.grants.Get(grant.ID)
-	if err != nil || updated.UsedCount != 2 {
-		t.Fatalf("reused job grant = %#v, %v", updated, err)
+	if err != nil || updated.UsedCount != 2 || len(jobFlavors) != 2 || jobFlavors[0] != "cpu-basic" || jobFlavors[1] != "cpu-upgrade" {
+		t.Fatalf("reused broad grant = %#v, flavors=%v, %v", updated, jobFlavors, err)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func mcpTools(operations []string) []map[string]any {
 	}
 	tools = filtered
 	return append(tools,
-		map[string]any{"name": "hf_grant_request", "description": "Request a scoped temporary HF Broker grant and wait up to 25 seconds for its decision. This does not execute the operation.", "inputSchema": mcpGrantRequestSchema()},
+		map[string]any{"name": "hf_grant_request", "description": "Request a temporary HF Broker grant for the user-requested number of uses and wait briefly for its decision. For job.run and job.uv.run, empty attrs allow job arguments to change; exact digest attrs allow only the exact job arguments. This does not execute the operation.", "inputSchema": mcpGrantRequestSchema()},
 		map[string]any{"name": "hf_grant_get", "description": "Get a temporary HF Broker grant by ID.", "inputSchema": mcpIDSchema("grant_id", false)},
 		map[string]any{"name": "hf_grant_wait", "description": "Wait briefly for a temporary HF Broker grant decision, then call again if it remains pending.", "inputSchema": mcpIDSchema("grant_id", true)},
 		map[string]any{"name": "hf_grant_cancel", "description": "Cancel a pending temporary HF Broker grant.", "inputSchema": mcpIDSchema("grant_id", false)},
@@ -144,7 +145,7 @@ func mcpGrantRequestSchema() map[string]any {
 	target := map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"kind", "name"},
 		"properties": map[string]any{
-			"kind":  map[string]any{"type": "string", "enum": []string{"repo", "bucket", "inference"}},
+			"kind":  map[string]any{"type": "string", "enum": grantTargetKinds()},
 			"type":  map[string]any{"type": "string", "enum": []string{"model", "dataset", "space"}},
 			"owner": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 			"name":  map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
@@ -154,16 +155,31 @@ func mcpGrantRequestSchema() map[string]any {
 	return map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"operation", "target", "reason"},
 		"properties": map[string]any{
-			"operation":    map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
-			"target":       target,
-			"attrs":        map[string]any{"type": "object", "maxProperties": 32},
-			"minutes":      map[string]any{"type": "integer", "minimum": 1, "maximum": 7 * 24 * 60},
-			"max_uses":     map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": int(usebudget.MaxFiniteUses)},
+			"operation": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"target":    target,
+			"attrs": map[string]any{"type": "object", "maxProperties": 32,
+				"description": "Enforced attribute constraints. For job.run and job.uv.run, omit or use an empty object to allow any job arguments for the target; include exact target_digest and arguments_digest values only when the user requested exact job arguments."},
+			"minutes": map[string]any{"type": "integer", "minimum": 1, "maximum": 7 * 24 * 60},
+			"max_uses": map[string]any{"type": []string{"integer", "null"}, "minimum": 1, "maximum": int(usebudget.MaxFiniteUses),
+				"description": "Maximum uses requested by the user. Preserve the user's requested number instead of substituting a fixed example value."},
 			"reason":       map[string]any{"type": "string", "minLength": 1, "maxLength": 2000},
 			"request_id":   map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": mcpoperation.MaxWaitSeconds, "default": mcpoperation.DefaultWaitSeconds},
 		},
 	}
+}
+
+func grantTargetKinds() []string {
+	seen := make(map[string]struct{})
+	for _, descriptor := range opcatalog.MustAll() {
+		seen[descriptor.TargetKind] = struct{}{}
+	}
+	kinds := make([]string, 0, len(seen))
+	for kind := range seen {
+		kinds = append(kinds, kind)
+	}
+	slices.Sort(kinds)
+	return kinds
 }
 
 func mcpIDSchema(idField string, wait bool) map[string]any {
