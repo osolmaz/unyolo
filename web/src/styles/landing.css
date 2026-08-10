@@ -211,7 +211,9 @@
 }
 
 .installer__command--review code {
-  padding-right: 5.5rem;
+  padding-right: 4.5rem;
+  color: var(--text-muted);
+  font-size: 0.78125rem;
   white-space: pre-wrap;
 }
 
@@ -219,10 +221,16 @@
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  height: 2.25rem;
-  padding: 0 0.65rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: calc(var(--radius) - 0.2rem);
+  font-size: 0.6875rem;
+}
+
+.installer__command--review .installer__copy svg {
+  width: 13px;
+  height: 13px;
 }
 
 @media (max-width: 50rem) {
