@@ -1,11 +1,10 @@
 ---
 title: Approvals
-description: The operator inbox, decision safety, the presentation model, and how a waiting request resumes.
+description: Review and decide operations that policy sends to an operator.
 ---
 
-An operation marked `request` in policy does not run. It creates a durable approval record and
-waits for a human. This page covers what an operator sees, how a decision is applied safely, and
-what happens to the caller that is still waiting.
+An operation marked `request` waits for a human before it runs. The broker stores the request,
+shows it in the operator inbox, and resumes the original caller after a decision.
 
 ## The two sides
 

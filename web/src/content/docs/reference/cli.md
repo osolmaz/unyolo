@@ -1,10 +1,10 @@
 ---
 title: CLI commands
-description: Command surface for the three brokers, the host command, and the Telegram ingress.
+description: Find commands for brokers, host setup, and Telegram approvals.
 ---
 
-Command names are consistent across brokers wherever the behaviour is shared. This page groups them
-by what they do rather than by binary, so the differences stand out.
+Brokers use the same command names for shared tasks. The sections below group commands by task and
+show where a broker behaves differently.
 
 ## Shared across every broker
 

@@ -3,9 +3,8 @@ title: Configuration
 description: Environment variables, file layout, client configuration, and host deployment configuration.
 ---
 
-Configuration reaches a broker through three places: environment variables (usually from a
-systemd env file), protected files those variables point at, and the policy file. This page is the
-reference for all three.
+A broker reads settings from environment variables, protected files, and its policy file. Service
+setup writes the environment variables to a systemd or launchd environment file.
 
 ## Naming convention
 

@@ -1,12 +1,10 @@
 ---
 title: Threat model
-description: Trust boundaries, protected assets, required controls, per-threat failure behaviour, and explicit non-protections.
+description: See which attacks unYOLO covers and which risks remain outside its control.
 ---
 
-unYOLO is a control-plane library for brokers that keep an upstream credential or a privilege
-boundary away from an untrusted client. It does not make a provider executor safe. Each broker
-remains responsible for parsing its own operations, classifying them, validating them, and
-executing them.
+unYOLO keeps provider credentials and privileged execution away from untrusted clients. Each broker
+must still parse, classify, validate, and execute its provider operations safely.
 
 ## Trust boundaries
 

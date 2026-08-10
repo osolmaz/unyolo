@@ -1,12 +1,11 @@
 ---
 title: Architecture
-description: The shared control plane, the provider boundary, and the package layout that enforces it.
+description: See how shared code and provider-specific brokers fit together.
 ---
 
-unYOLO is the shared layer beneath `hf-broker`, `gh-broker`, and `sudo-broker`. Its job is to
-make the repeated broker machinery reusable without hiding the dangerous provider-specific
-boundary. This page describes the request path, what belongs on each side of that boundary, and how
-the Go package tree keeps the two apart.
+unYOLO provides the policy, approval, grant, and audit code shared by `hf-broker`, `gh-broker`, and
+`sudo-broker`. Each broker keeps its provider-specific request parsing and execution code. The Go
+package layout enforces that split.
 
 ## Request path
 

@@ -1,11 +1,10 @@
 ---
 title: Conformance tests
-description: What a broker must prove before it is trustworthy, and the shared suites that prove it.
+description: Test whether a broker follows the shared unYOLO rules.
 ---
 
-A broker built on unYOLO inherits the control plane but not a guarantee that it wired it up
-correctly. The conformance suite exists to catch the difference. `broker/conformance` runs the
-shared contract against your real HTTP handlers, and every broker invokes it from its own tests.
+The framework cannot prove that a broker connected every control correctly. The conformance suite
+runs shared tests against the broker's real HTTP handlers and catches missing or bypassed controls.
 
 ## Required proofs
 

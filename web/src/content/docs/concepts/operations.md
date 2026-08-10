@@ -1,12 +1,11 @@
 ---
 title: Agent operations
-description: The Agent Operations V1 lifecycle, idempotency handles, recovery, and how authorization fits inside it.
+description: Submit an operation, track it, and recover it after an interrupted call.
 ---
 
-Agent Operations V1 is the authenticated surface agents use to submit typed provider work without
-receiving the provider credential. Every discrete operation goes through it, whether it arrives
-from the CLI, from an MCP tool call, or from a direct HTTP request. Git traffic is the exception,
-because Git speaks its own protocol on its own listener.
+Agents use Agent Operations V1 to submit typed provider work without receiving the provider
+credential. CLI commands, MCP tools, and direct HTTP requests use this API. Git traffic uses a
+separate listener because it speaks the Git protocol.
 
 ## Contract ownership
 

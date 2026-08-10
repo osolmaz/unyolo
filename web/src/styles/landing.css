@@ -197,7 +197,7 @@
 }
 
 .installer p.installer__review {
-  margin: -0.25rem 0 1rem;
+  margin: -0.25rem 0 0;
   font-size: 0.9375rem;
 }
 
@@ -205,20 +205,12 @@
   color: var(--text-strong);
 }
 
-.installer__review-copy {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-  cursor: pointer;
+.installer__command--review {
+  margin-top: 0.75rem;
 }
 
-.installer__review-copy:hover {
-  text-decoration-thickness: 2px;
+.installer__command--review code {
+  white-space: pre-wrap;
 }
 
 @media (max-width: 50rem) {

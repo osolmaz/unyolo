@@ -1,11 +1,10 @@
 ---
 title: Verify host isolation
-description: Verifying the isolation boundary, the shared building blocks, exit codes, and provider-specific probes.
+description: Check that an agent cannot read broker credentials or control broker processes.
 ---
 
-Running a broker on the same host as the agent it serves is the common case and the easiest one to
-get wrong. Every broker ships a `doctor` command that checks whether the host actually matches the
-threat model, and it fails closed when it cannot establish that.
+A same-host setup must keep the agent away from broker files, processes, and sockets. Every broker
+ships a `doctor` command that checks those controls and fails when it cannot prove they hold.
 
 ```sh
 <broker> doctor

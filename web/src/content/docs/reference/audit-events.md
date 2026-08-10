@@ -1,11 +1,11 @@
 ---
 title: Audit events
-description: Field reference for audit records, the closed error categories, and the exclusion list.
+description: Field reference for broker audit events and safe error categories.
 ---
 
-Every broker emits JSON audit events with the same common fields. This is the field reference; the
-[audit logging](/docs/concepts/audit-logging) page covers how audit differs from metrics and why
-export failure does not roll back authority.
+Every broker writes JSON audit events with the fields below. See
+[audit logging](/docs/concepts/audit-logging) for retention, export behavior, and the difference
+between audit events and metrics.
 
 ## Common fields
 

@@ -1,11 +1,10 @@
 ---
 title: Admission control
-description: Submission quotas, the defaults, the configuration file, and what stays available during overload.
+description: Limit submissions so one agent cannot fill the queue or operator inbox.
 ---
 
-unYOLO applies one admission controller before creating durable Agent V1 operations or approval
-notifications. It exists so that a looping agent cannot fill the operator inbox with thousands of
-pending approvals or exhaust the durable store.
+The admission controller checks a request before unYOLO creates an operation or approval
+notification. It limits submission rates, active work, pending approvals, and stored data.
 
 ## Defaults
 

@@ -3,10 +3,8 @@ title: Write a policy
 description: Build a working scope.json from a deny-all baseline, one rule at a time.
 ---
 
-Policy is the part of unYOLO you will spend the most time in, and it is a file you edit by hand.
-This page builds one from nothing, adding a rule at a time and explaining what each one buys you.
-The [policy engine](/docs/concepts/policy) page covers the evaluation semantics in full; this one
-is about getting to a file that works.
+You edit unYOLO policy by hand. This guide starts with an empty policy and adds one rule at a time.
+See the [policy engine](/docs/concepts/policy) reference for the full decision rules.
 
 ## Start from deny-all
 

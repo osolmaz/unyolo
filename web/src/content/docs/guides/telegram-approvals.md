@@ -1,11 +1,10 @@
 ---
 title: Approve from Telegram
-description: The shared ingress process, why one poller owns the bot, and how a button tap becomes a durable decision.
+description: Send approval requests to Telegram and record button decisions safely.
 ---
 
-Telegram is an optional notification view over the same durable grant store the operator inbox
-uses. A tap on Approve and a call to the inbox API close the same request exactly once. This page
-covers the ingress process, its setup, and the delivery guarantees.
+Telegram can show requests from the operator inbox. A Telegram button and the inbox API decide the
+same stored request, and only the first decision takes effect.
 
 ## Single-poller requirement
 

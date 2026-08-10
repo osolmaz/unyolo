@@ -1,11 +1,11 @@
 ---
 title: Policy engine
-description: Effects, decision order, rule fields, the provider registry, and validation rules.
+description: Write policy rules and understand how unYOLO decides a request.
 ---
 
-The policy engine decides whether a classified request may run. It is shared by every broker, it
-carries no provider vocabulary of its own, and it is deliberately small. This page covers how it
-decides, what a rule may contain, and what makes a policy file invalid.
+The policy engine decides whether a classified request may run. Every broker uses the same engine,
+while each broker defines its own operations and targets. Invalid policy prevents the broker from
+starting.
 
 ## Minimal policy file
 

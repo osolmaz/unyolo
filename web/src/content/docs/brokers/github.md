@@ -1,15 +1,15 @@
 ---
 title: gh-broker
-description: The GitHub credential broker, covering App installation tokens, the typed operation catalog, Git traffic, and admin merges.
+description: Give agents policy-controlled Git and GitHub API access without giving them a GitHub credential.
 ---
 
 `gh-broker` is a GitHub credential broker for coding agents. It gives an agent a broker secret,
 keeps the real GitHub credential server-side, and allows only the Git and GitHub API operations
 that `scope.json` matches.
 
-The central invariant is strict: `gh-broker` must not provide an API, log path, error path, or
-helper that returns original GitHub credential material. Callers choose an operation and a target.
-They never choose a credential kind, a token scope, an installation, or a permission set.
+`gh-broker` never returns the original GitHub credential through an API, log, error, or helper.
+Callers choose an operation and a target. They cannot choose a credential kind, token scope,
+installation, or permission set.
 
 ## Install
 

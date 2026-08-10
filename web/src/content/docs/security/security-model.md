@@ -1,13 +1,11 @@
 ---
 title: Security model
-description: The boundaries unYOLO maintains, the controls behind each one, and how to verify them on a real host.
+description: Understand what unYOLO protects and how to check it on a real host.
 ---
 
-unYOLO's security model rests on keeping several things apart that are usually the same thing:
-the credential and the process that uses it, the agent and the operator, the network path and the
-authorization decision. This page describes each separation and the control that maintains it. The
-[threat model](/docs/security/threat-model) covers the specific attacks and the required failure
-behaviour.
+unYOLO separates provider credentials from agents and keeps operator access separate from agent
+access. It also checks authorization before a request reaches the provider. The
+[threat model](/docs/security/threat-model) lists the attacks covered by these controls.
 
 ## Write-only secrets
 
@@ -15,13 +13,11 @@ Secret material goes into a broker and does not come out. No API, log line, erro
 helper returns the upstream credential, and audit logs never contain secrets, request bodies, or
 pack contents.
 
-This is enforced at the shape of the interface rather than by filtering. Callers choose an
-operation and a target. There is no parameter for a credential kind, a token scope, a GitHub
-installation, or a permission set, so there is no request that could ask for one.
+The API prevents this by design. Callers choose an operation and a target. They cannot request a
+credential kind, token scope, GitHub installation, or permission set.
 
-Generated credentials that must reach a caller go through encrypted credential slots rather than
-appearing in a response body, and sealed operations omit provider messages entirely because a
-provider may echo request values back.
+Generated credentials that must reach a caller use encrypted credential slots. Sealed operations
+also omit provider messages because a provider may echo request values back.
 
 ## Separate authority domains
 

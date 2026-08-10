@@ -1,17 +1,14 @@
 ---
 title: Runtime bundles
-description: Signed immutable release activation, atomic switching, rollback, and why state changes are replacements.
+description: Install, upgrade, and roll back a signed set of unYOLO services.
 ---
 
-Persistent unYOLO services are deployed as one signed runtime bundle. The `unyolo` host
-command stages each separately released broker and ingress binary under an immutable release
-directory, verifies its digest and its exact Agent and Operator contract identities, then activates
-the complete set together.
+A runtime bundle contains the unYOLO services that must run together. The `unyolo` host command
+stages each binary in a read-only release directory, verifies its digest and API identity, and then
+activates the complete set.
 
-The reason for the ceremony is narrow. A host running `hf-broker`, `gh-broker`, `sudo-broker`, and
-`unyolo-telegram` has four processes that speak generated contracts to each other. Upgrading
-them one at a time creates a window where two of them disagree about the wire format, and the
-Telegram ingress in particular can consume an update it cannot correctly route.
+`hf-broker`, `gh-broker`, `sudo-broker`, and `unyolo-telegram` use generated APIs to communicate.
+Updating them together prevents one process from receiving data in a format it does not understand.
 
 ## Commands
 

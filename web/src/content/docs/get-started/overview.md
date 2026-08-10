@@ -1,6 +1,6 @@
 ---
 title: Overview
-description: unYOLO's broker model and included components.
+description: Learn how unYOLO keeps provider credentials away from coding agents.
 ---
 
 unYOLO is an access-control framework for coding agents. It keeps provider

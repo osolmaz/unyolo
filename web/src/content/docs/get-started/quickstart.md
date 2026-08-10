@@ -1,12 +1,10 @@
 ---
 title: Quickstart
-description: Run gh-broker against one repository, push a branch through it, and watch a force push to main get refused.
+description: Run gh-broker locally and test an allowed push and a refused force-push.
 ---
 
-This walkthrough brings up `gh-broker` in development mode, points Git at it, and shows both halves
-of the model: an ordinary branch push that goes straight through, and a force push to `main` that
-the broker refuses before anything reaches GitHub. It takes about ten minutes and touches one
-repository.
+This ten-minute guide runs `gh-broker` in development mode against one repository. You will push an
+allowed branch, then confirm that the broker refuses a force-push to `main` before it reaches GitHub.
 
 <div class="callout callout--warn">
 <span class="callout__title">Development mode only</span>

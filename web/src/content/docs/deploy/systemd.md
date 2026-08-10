@@ -1,11 +1,10 @@
 ---
 title: systemd and launchd
-description: The unified setup command, the hardened unit baseline, file layout, and the two typed policies that vary.
+description: Install a broker as a hardened systemd or launchd service.
 ---
 
-Every broker uses one privileged setup command with the same shape, and unYOLO renders the
-service definition from a shared hardened baseline. This page covers the flags, the file layout the
-setup produces, and the two policies a broker may vary.
+Every broker uses the same privileged setup command. unYOLO creates the service definition,
+protected files, and state directories from a shared secure baseline.
 
 ## The setup command
 

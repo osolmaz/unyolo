@@ -1,11 +1,11 @@
 ---
 title: Policy schema
-description: Complete field reference for the rules file, matcher modes, grant policy, and validation errors.
+description: Field reference for policy rules, matching, grants, and validation errors.
 ---
 
-This is the field-level reference for `scope.json` and `policy.json`. For the reasoning behind the
-model, read the [policy engine](/docs/concepts/policy); for a worked build-up, read
-[your first policy](/docs/guides/write-a-policy).
+This reference covers every field in `scope.json` and `policy.json`. Read the
+[policy engine](/docs/concepts/policy) for decision behavior or
+[write a policy](/docs/guides/write-a-policy) for a complete example.
 
 ## Document
 

@@ -1,13 +1,11 @@
 ---
 title: hf-broker
-description: The Hugging Face credential broker, covering Git and LFS proxying, Hub operations, bucket writes, and Router inference.
+description: Give agents policy-controlled access to Hugging Face without giving them a Hugging Face token.
 ---
 
-`hf-broker` is a self-hosted credential broker between a coding agent and Hugging Face. It exposes
-only registered, policy-gated Git, LFS, repository, and Router inference operations. Broad Hugging
-Face credentials stay inside the broker, and agents receive revocable broker credentials. Dangerous
-operations can require a short-lived operator approval without weakening the append-only and
-execution-time checks the broker performs anyway.
+`hf-broker` keeps the Hugging Face token away from the agent. Policy controls its Git, LFS, Hub,
+bucket, and Router inference operations. An operator can approve a dangerous operation for a short
+time, while the broker still checks the request before execution.
 
 ## Git proxy behaviour
 

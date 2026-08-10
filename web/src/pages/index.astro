@@ -217,16 +217,21 @@ const description =
         </div>
 
         <p class="installer__review">
-          <strong>Paranoid?</strong> Ask your agent to review the installer and the source it runs
-          before installing.
+          <strong>Paranoid?</strong> Give this prompt to your agent before installing.
+        </p>
+
+        <div class="installer__command installer__command--review" aria-label="Agent review prompt">
+          <code>{agentReviewPrompt}</code>
           <button
-            class="installer__review-copy"
+            class="installer__copy"
             type="button"
+            aria-label="Copy agent review prompt"
             data-install-copy={agentReviewPrompt}
           >
-            <span data-copy-label aria-live="polite">Copy prompt</span>
+            <Icon name="copy" />
+            <span data-copy-label aria-live="polite">Copy</span>
           </button>
-        </p>
+        </div>
 
         <a class="text-link" href="/docs/get-started/installation">
           Installation options

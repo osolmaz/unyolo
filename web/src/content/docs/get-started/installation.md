@@ -1,21 +1,18 @@
 ---
 title: Installation
-description: Install the current unYOLO release and understand which setup paths it supports.
+description: Install unYOLO or one broker from a verified release.
 ---
 
-unYOLO verifies one exact release before it runs or installs release files. Guided setup starts with
-your goal. On Linux, you can install only the command, install credential services, connect a local
-agent to an existing installation, or set up both together. A separate command can install one broker
-binary without host setup.
+The installer downloads one release and verifies it before running any release code. On Linux, the
+guided setup can install the `unyolo` command, install credential brokers, connect a local agent to
+an existing installation, or set up the brokers and agent together.
 
-<div class="callout callout--warn">
-<span class="callout__title">Unavailable setup paths stay hidden</span>
-<p>Docker, remote pairing, and managed macOS host setup are not shown. They remain unavailable until
-their apply, restart, rollback, and removal paths pass real-host tests.</p>
-</div>
+Guided host setup currently works on Linux. Docker, remote pairing, and managed macOS setup are not
+available yet.
 
-The full behavior and availability rules are defined in the
-[guided installation contract](https://github.com/osolmaz/unyolo/blob/main/docs/GUIDED_INSTALLATION.md).
+See the
+[guided installation contract](https://github.com/osolmaz/unyolo/blob/main/docs/GUIDED_INSTALLATION.md)
+for the exact setup rules.
 
 ## Current guided setup
 

@@ -1,11 +1,11 @@
 ---
 title: Audit logging
-description: The shared audit event shape, what is excluded from it by rule, and how it differs from metrics.
+description: Record broker decisions without logging credentials or request bodies.
 ---
 
-Every broker emits JSON audit events with the same common fields, so a host running three brokers
-gets one comparable stream rather than three formats. Audit is the security evidence trail;
-[metrics](/docs/operate/observability) report aggregate behaviour and are not a substitute.
+Every broker writes JSON audit events with the same common fields. The events record security
+decisions and the rules that matched. [Metrics](/docs/operate/observability) report aggregate
+activity and do not replace the audit log.
 
 ## Event fields
 

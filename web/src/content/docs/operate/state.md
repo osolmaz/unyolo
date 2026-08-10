@@ -63,8 +63,8 @@ Export is deterministic and bounded, which makes it suitable for diffing two poi
 feeding an external inventory.
 
 It omits operation inputs and results, reasons, plan bodies, decision tokens, notification
-destinations, and credential material. What remains is lifecycle shape rather than content: enough
-to answer what happened and when, and not enough to reconstruct what was pushed or executed.
+destinations, and credentials. The export shows what happened and when without including enough
+data to reconstruct a push or command.
 
 ```sh
 sudo -u hf-broker hf-broker state export \
@@ -74,8 +74,8 @@ sudo -u hf-broker hf-broker state export \
 
 ## Checking integrity
 
-`state check` verifies the database without modifying it. Add `--full` for the deeper pass when you
-suspect corruption rather than as part of a routine.
+`state check` verifies the database without modifying it. Use `--full` when you suspect corruption.
+The full check is too expensive for routine health checks.
 
 Startup and restore both fail closed on corruption or an incompatible database. A broker that
 cannot open its state does not start serving with an empty one, and readiness failing means the

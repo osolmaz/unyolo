@@ -1,9 +1,9 @@
 ---
 title: Request vocabulary
-description: Clients, operations, targets, and attrs, the four-part tuple every authorization decision runs on.
+description: Understand the four values that policy checks for every request.
 ---
 
-Before a broker decides anything, it reduces the incoming request to four values:
+A broker classifies each request into four values before checking policy:
 
 ```text
 client

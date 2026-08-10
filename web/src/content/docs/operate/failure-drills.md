@@ -1,11 +1,10 @@
 ---
 title: Failure drills
-description: The maintained qualification matrix pairing each failure class with its required invariant and automated coverage.
+description: See which tests cover crashes, partial writes, timeouts, and other failures.
 ---
 
-unYOLO keeps deterministic failure drills beside the boundary they exercise. The matrix below is
-the maintained qualification set. Provider suites add operation-specific cases without replacing
-these shared drills.
+The shared failure drills test what unYOLO must preserve when something goes wrong. Broker test
+suites add provider-specific cases to these common checks.
 
 Every drill asserts durable terminal state or rollback state rather than an HTTP status. Test
 fixtures use bounded timeouts and synthetic local upstreams. Live provider tests complement the

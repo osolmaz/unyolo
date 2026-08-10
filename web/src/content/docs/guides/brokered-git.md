@@ -1,11 +1,11 @@
 ---
 title: Broker Git traffic
-description: Brokered Git, covering URL rewrites, the route-gated listener, LFS confinement, and approval mid-push.
+description: Route normal Git and LFS commands through a broker.
 ---
 
-Git is the surface where brokering has to be invisible. An agent that has to learn a special remote
-URL or a wrapper command will get it wrong, so unYOLO makes ordinary `git clone`, `git fetch`,
-and `git push` route through the broker while remotes keep their normal provider URLs.
+Agents keep using ordinary `git clone`, `git fetch`, and `git push` commands with normal provider
+URLs. Git configuration routes those commands through the broker without changing repository
+remotes.
 
 ## Installing the integration
 

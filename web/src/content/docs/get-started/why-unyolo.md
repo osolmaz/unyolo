@@ -7,9 +7,8 @@ unYOLO lets an untrusted process use a credential it cannot read. It is meant
 for coding agents that need narrow, reviewable access to accounts you care
 about.
 
-The design follows from that boundary. This boundary makes unYOLO useful when
-narrow account access matters more than convenience. The rest of this page
-explains where the project stops.
+Use unYOLO when an agent needs limited account access and must not receive the
+provider credential. The limits below explain what unYOLO does not protect.
 
 ## Design goals
 

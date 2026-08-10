@@ -1,12 +1,11 @@
 ---
 title: Agent V1 API
-description: Routes, handles, lifecycle states, and error behaviour for the authenticated agent surface.
+description: API reference for submitting and tracking agent operations.
 ---
 
-Agent Operations V1 (`unyolo.io/agent/v1`) is the authenticated surface agents use to submit and
-resume typed provider operations without receiving the provider credential. The canonical contract
-is `protocol/openapi/agent-v1.yaml`, with generated Go clients and Echo interfaces under
-`protocol/agentwire/`.
+Agents use Agent Operations V1 (`unyolo.io/agent/v1`) to submit and resume provider operations
+without receiving the provider credential. The OpenAPI file is `protocol/openapi/agent-v1.yaml`.
+Generated Go clients and Echo interfaces are under `protocol/agentwire/`.
 
 The shared contract owns identity, idempotency, lifecycle, presentation, and safe errors. Providers
 own target, argument, execution, and result validation.

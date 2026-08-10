@@ -1,12 +1,11 @@
 ---
 title: Operator V1 API
-description: Routes, filters, decision bodies, SSE cursors, and the Go packages behind the operator inbox.
+description: API reference for listing and deciding operator requests.
 ---
 
-Operator V1 (`unyolo.io/operator/v1`) is the protected inbox used to list, approve, deny, and
-revoke requests. The canonical contract is `protocol/openapi/operator-v1.yaml`, with generated Go
-clients and Echo interfaces under `protocol/operatorwire/` and generated TypeScript types and
-validators shipped in `openclaw-unyolo/operator-v1`.
+Operator V1 (`unyolo.io/operator/v1`) is the protected API for listing and deciding requests. The
+OpenAPI file is `protocol/openapi/operator-v1.yaml`. Generated Go code is under
+`protocol/operatorwire/`, and `openclaw-unyolo/operator-v1` ships the TypeScript code.
 
 Provider execution plans and credentials are deliberately absent from the contract.
 

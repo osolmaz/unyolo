@@ -1,12 +1,11 @@
 ---
 title: Rotate credentials
-description: Exact-replacement rotation, what setup does on failure, revocation paths per credential class, and doctor reporting.
+description: Replace credentials safely and recover when rotation fails.
 ---
 
-unYOLO uses one exact-replacement model for installed credentials. It does not keep old and new
-secrets active at the same time. This applies to broker client and operator secrets, provider
-credentials, Telegram bot tokens, GitHub App keys and OAuth secrets, and any other protected file
-broker setup manages.
+unYOLO replaces an installed credential in one step. It never keeps the old and new credentials
+active together. This applies to every secret managed by broker setup, including provider
+credentials, broker secrets, Telegram bot tokens, and GitHub App credentials.
 
 ## Rotation sequence
 

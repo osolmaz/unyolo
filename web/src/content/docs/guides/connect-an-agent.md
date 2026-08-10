@@ -1,19 +1,13 @@
 ---
 title: Connect an agent
-description: Connect an agent account to credential services through client configuration, Git, and MCP.
+description: Connect an agent to the brokers through client configuration, Git, and MCP.
 ---
 
-An agent reaches a broker through a private client configuration. Git integration is needed when the
-agent runs Git, and the MCP server is useful when an LLM calls broker tools. This page covers all of
-these connections.
+An agent uses a private client configuration to reach a broker. Add the Git integration when the
+agent runs Git. Add the MCP server when the agent needs broker tools.
 
-<div class="callout callout--note">
-<span class="callout__title">Current setup is manual</span>
-<p>Version 0.6.3 does not provide a client-only wizard or account selection. The replacement guided
-flow will support the current account, an existing account such as <code>bob</code>, a new restricted
-account, Docker, and a remote machine. Until that ships, use the commands below and review every
-path and account explicitly.</p>
-</div>
+Client setup is manual in the current release. Check every account and path before you run the
+commands below.
 
 ## Write the client config
 

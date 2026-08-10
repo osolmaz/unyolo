@@ -1,15 +1,13 @@
 ---
 title: Host deployment
-description: The internal configuration and administrator commands used to install credential services.
+description: Install credential services and their local accounts on a Linux host.
 ---
 
-Host deployment installs credential services, local endpoints, and their supporting accounts on one
-machine. It is the server-side part of unYOLO setup. Agent-connection-only and command-only setup do
-not need a host deployment.
+Host deployment installs credential services, local endpoints, and their accounts on one machine.
+You do not need it when you install only the command or connect an agent to an existing host.
 
-The current managed host engine supports Linux. macOS support requires native launchd and local-
-account management plus real installation and rollback tests, including removal. The presence of a macOS
-binary does not mean managed macOS setup is available.
+Managed host setup currently supports Linux. The macOS binaries are available, but managed macOS
+setup is not.
 
 ## Guided setup relationship
 
@@ -18,10 +16,9 @@ both. When local credential services are selected, it generates the locked confi
 below. Account choices such as an existing `bob` account or a newly created restricted account must
 flow into that configuration.
 
-Version 0.6.3 still uses a fixed Linux host flow with client name `agent` and account
-`unyolo-agent`. See the
+See the
 [guided installation contract](https://github.com/osolmaz/unyolo/blob/main/docs/GUIDED_INSTALLATION.md)
-for the replacement flow and its platform requirements.
+for the supported choices and platform requirements.
 
 The unprivileged installer shows a plain summary before any administrator work. After confirmation,
 a separately checked root process inspects the host, lists the exact changes, and asks for a second

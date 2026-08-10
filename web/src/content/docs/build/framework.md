@@ -1,12 +1,11 @@
 ---
 title: Framework overview
-description: What unYOLO gives you when you build a broker, and the four things you have to write yourself.
+description: Build a credential broker for another provider with the shared Go packages.
 ---
 
-unYOLO is a Go framework for building credential brokers. The three brokers in this repository
-are consumers of it, not the product. If you need to put a policy boundary in front of some other
-credential, an internal API key, a cloud role, a database superuser, you write the parts that know
-about that provider and the framework supplies everything else.
+unYOLO is a Go framework for credential brokers. To protect another provider credential, write the
+code that understands that provider. The framework supplies policy, approvals, grants, storage,
+audit logs, and the shared APIs.
 
 The split is deliberate and enforced. `scripts/check-architecture.sh` fails a build where shared
 code imports a provider, and Go's `internal/` rules stop one provider importing another.

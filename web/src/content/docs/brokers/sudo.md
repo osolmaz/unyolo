@@ -1,12 +1,11 @@
 ---
 title: sudo-broker
-description: The Unix privilege broker, its exact cataloged commands, the root helper, and the V1 boundary.
+description: Let agents request fixed privileged commands from a root-owned catalog.
 ---
 
-`sudo-broker` is a privileged-command broker for Unix hosts. It lets an authenticated local agent
-request and run one exact, operator-approved command as another Unix user. Commands come from a
-root-owned catalog. It does not accept shell strings, arbitrary executables, interactive shells,
-TTYs, stdin, or caller-controlled environment variables.
+`sudo-broker` lets an authenticated local agent request one fixed command as another Unix user.
+Commands come from a root-owned catalog and can require operator approval. The broker rejects shell
+strings, arbitrary executables, interactive input, and caller-controlled environment variables.
 
 The protected resource is different from the two credential brokers, but the control-plane shape is
 identical:

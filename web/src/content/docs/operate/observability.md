@@ -1,12 +1,10 @@
 ---
 title: Metrics and logs
-description: The Prometheus registry, bounded label cardinality, structured diagnostics, and how health probes are scoped.
+description: Monitor broker activity, dependencies, logs, and health checks.
 ---
 
-Every broker owns an isolated Prometheus registry created by `telemetry/metrics`. Metrics say how
-much work the broker is doing and how healthy its dependencies are. They do not replace audit,
-which records the security evidence and is covered in
-[audit logging](/docs/concepts/audit-logging).
+Each broker has its own Prometheus registry. Metrics report activity and dependency health. Security
+decisions belong in the [audit log](/docs/concepts/audit-logging), not in metrics.
 
 ## Metrics endpoint
 

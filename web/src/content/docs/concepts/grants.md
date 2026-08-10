@@ -1,12 +1,10 @@
 ---
 title: Grants
-description: Grant states, window and execution modes, use budgets, reservations, and idempotency.
+description: Understand temporary grants, their limits, and safe retries.
 ---
 
-A grant is temporary authority created when an operator approves a requestable operation. It
-behaves as a generated allow rule that is bound to one client, one operation, one target, and the
-attrs policy approved, and it expires. This page covers the lifecycle, the two modes, and the
-mechanics that make retries safe.
+An operator creates a temporary grant by approving a request. The grant covers one client, one
+operation, one target, and the approved attrs. It also has an expiry and can have a use limit.
 
 ## Grant contents
 

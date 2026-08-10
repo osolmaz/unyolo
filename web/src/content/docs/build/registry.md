@@ -1,11 +1,11 @@
 ---
 title: Provider registry
-description: Declaring operations, target kinds, and attrs, and choosing the match semantics for each.
+description: Register a provider's operations, targets, attrs, and matching rules.
 ---
 
-The registry is where your provider's vocabulary lives, and it is the only place it may live. The
-shared policy core ships no built-in GitHub, Hugging Face, or Unix semantics, so an operation your
-registry does not declare fails policy loading rather than silently matching nothing.
+Each broker registers the operations, targets, and attrs that its provider supports. The shared
+policy engine has no built-in provider terms. Policy loading fails when a rule names something the
+broker did not register.
 
 ## Shape
 

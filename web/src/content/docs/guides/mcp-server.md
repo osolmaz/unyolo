@@ -1,11 +1,10 @@
 ---
 title: Run an MCP server
-description: Running a broker as a stdio MCP server, what gets advertised, and how recovery works.
+description: Expose broker operations as MCP tools and recover interrupted calls.
 ---
 
-Both credential brokers run a strict stdio MCP server that exposes their operation catalog as
-tools. The server is an adapter over Agent Operations V1 rather than a second lifecycle, which is
-the property that makes an interrupted tool call recoverable.
+Both credential brokers can run as stdio MCP servers. MCP tools submit work through Agent
+Operations V1, so an interrupted tool call can reconnect to the same stored operation.
 
 ```sh
 hf-broker mcp
