@@ -206,11 +206,23 @@
 }
 
 .installer__command--review {
+  position: relative;
   margin-top: 0.75rem;
 }
 
 .installer__command--review code {
+  padding-right: 5.5rem;
   white-space: pre-wrap;
+}
+
+.installer__command--review .installer__copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  height: 2.25rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: calc(var(--radius) - 0.2rem);
 }
 
 @media (max-width: 50rem) {
