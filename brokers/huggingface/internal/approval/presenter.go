@@ -31,6 +31,23 @@ func (Presenter) Present(_ context.Context, grant unyologrants.Grant) (approvalv
 	if target == "" {
 		return approvalview.Presentation{}, fmt.Errorf("HF grant %q has no target", grant.ID)
 	}
+	facts := presentationFacts(grant)
+	title := grant.Metadata[hfplan.MetadataTitle]
+	if title == "" {
+		title = titleForOperation(grant.Operation)
+	}
+	summary := grant.Metadata[hfplan.MetadataSummary]
+	if summary == "" {
+		summary = "Review this Hugging Face operation before granting temporary access."
+	}
+	return approvalview.Presentation{
+		Risk: riskForOperation(grant.Operation), Title: title,
+		Summary: summary,
+		Target:  target, Facts: facts, Warnings: warnings(grant.Operation), PlanHash: grant.Metadata[hfplan.MetadataDigest],
+	}, nil
+}
+
+func presentationFacts(grant unyologrants.Grant) []approvalview.Fact {
 	facts := []approvalview.Fact{{Label: "Operation", Value: operationText(grant.Operation)}}
 	if ref := policy.FirstValue(grant.Target.Fields[targetRefField]); ref != "" {
 		facts = append(facts, approvalview.Fact{Label: "Ref", Value: ref})
@@ -48,19 +65,7 @@ func (Presenter) Present(_ context.Context, grant unyologrants.Grant) (approvalv
 	if grant.ReservationRetained {
 		facts = append(facts, approvalview.Fact{Label: "Needs attention", Value: "Execution result is ambiguous; authority is closed"})
 	}
-	title := grant.Metadata[hfplan.MetadataTitle]
-	if title == "" {
-		title = titleForOperation(grant.Operation)
-	}
-	summary := grant.Metadata[hfplan.MetadataSummary]
-	if summary == "" {
-		summary = "Review this Hugging Face operation before granting temporary access."
-	}
-	return approvalview.Presentation{
-		Risk: riskForOperation(grant.Operation), Title: title,
-		Summary: summary,
-		Target:  target, Facts: facts, Warnings: warnings(grant.Operation), PlanHash: grant.Metadata[hfplan.MetadataDigest],
-	}, nil
+	return facts
 }
 
 func jobArgumentScope(grant unyologrants.Grant) (string, bool) {
