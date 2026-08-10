@@ -9,6 +9,10 @@ import "../styles/landing.css";
 
 const shiki = { light: "github-light", dark: "github-dark" } as const;
 const installCommand = "curl -fsSL https://unyolo.io/install.sh | sh";
+const agentReviewPrompt = `Review https://unyolo.io/install.sh and the exact unYOLO release source it downloads.
+Explain every download, command, privilege request, file, account, and service change.
+Verify the checksums and build attestations.
+Do not install anything until I approve your report.`;
 
 const steps = [
   {
@@ -211,6 +215,18 @@ const description =
             <span data-copy-label aria-live="polite">Copy</span>
           </button>
         </div>
+
+        <p class="installer__review">
+          <strong>Paranoid?</strong> Ask your agent to review the installer and the source it runs
+          before installing.
+          <button
+            class="installer__review-copy"
+            type="button"
+            data-install-copy={agentReviewPrompt}
+          >
+            <span data-copy-label aria-live="polite">Copy prompt</span>
+          </button>
+        </p>
 
         <a class="text-link" href="/docs/get-started/installation">
           Installation options
@@ -493,7 +509,7 @@ const description =
           selection.removeAllRanges();
           selection.addRange(range);
         }
-        label.textContent = "Select and copy";
+        label.textContent = code ? "Select and copy" : "Copy failed";
       }
     });
   });

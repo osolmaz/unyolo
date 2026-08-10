@@ -196,6 +196,31 @@
   height: 16px;
 }
 
+.installer p.installer__review {
+  margin: -0.25rem 0 1rem;
+  font-size: 0.9375rem;
+}
+
+.installer__review strong {
+  color: var(--text-strong);
+}
+
+.installer__review-copy {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.installer__review-copy:hover {
+  text-decoration-thickness: 2px;
+}
+
 @media (max-width: 50rem) {
   .installer {
     padding: 3rem 0;
