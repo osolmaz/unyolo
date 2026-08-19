@@ -133,11 +133,44 @@ func runOperationSubmit(ctx context.Context, stdout io.Writer, args []string) er
 	if len(args) < 1 {
 		return exitError{code: 64, message: "operation name is required"}
 	}
+	if isHelpArgument(args[0]) {
+		return writeOperationSubmitHelp(stdout, "OPERATION")
+	}
 	descriptor, found := opcatalog.ByName(args[0])
 	if !found || !descriptor.AgentFacing {
 		return exitError{code: 64, message: "unknown agent-facing GitHub operation"}
 	}
+	for _, argument := range args[1:] {
+		if isHelpArgument(argument) {
+			return writeOperationSubmitHelp(stdout, descriptor.Name)
+		}
+	}
 	return submitCatalogOperation(ctx, stdout, descriptor, args[1:])
+}
+
+func isHelpArgument(argument string) bool {
+	return argument == "-h" || argument == "--help"
+}
+
+func writeOperationSubmitHelp(stdout io.Writer, operation string) error {
+	_, err := fmt.Fprintf(stdout, `Usage:
+  gh-broker operation submit %s --target-json JSON [flags]
+
+Inspect the effective schemas before submitting:
+  gh-broker operations describe %s
+
+Flags:
+  --arguments-json JSON       closed argument JSON (default {})
+  --reason TEXT               approval reason
+  --request-id ID             stable retry key
+  --wait                      wait for a terminal state
+  --wait-timeout DURATION     maximum wait (default 15m)
+  --sealed-file PATH          sealed argument JSON file
+  --credential-slot NAME      encrypted credential destination slot
+  --stream-file PATH          bounded binary upload file
+  --stream-media-type TYPE    binary upload media type
+`, operation, operation)
+	return err
 }
 
 func runGeneratedCLI(ctx context.Context, stdout io.Writer, args []string) (bool, error) {

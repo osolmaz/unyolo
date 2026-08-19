@@ -47,9 +47,10 @@ gh-broker operations describe pull_request.create
 
 Inspect the effective `schemas.target` and `schemas.arguments` returned by
 `operations describe` before constructing a request. Do not guess fields. If
-validation rejects a request, report the path-level error and stop instead of
-trying different argument shapes. Submit only typed operations exposed by the
-catalog:
+generic CLI syntax is unclear, run `gh-broker operation submit --help` once;
+it points back to schema discovery. If validation rejects a request, report the
+path-level error and stop instead of trying different argument shapes. Submit
+only typed operations exposed by the catalog:
 
 <!-- contract-example:pull_request.create:start -->
 ```sh

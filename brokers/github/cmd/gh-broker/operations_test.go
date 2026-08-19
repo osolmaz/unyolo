@@ -102,6 +102,29 @@ func TestOperationsDescribeReturnsEffectivePullRequestSchemas(t *testing.T) {
 	}
 }
 
+func TestOperationSubmitHelpExplainsSchemaDiscovery(t *testing.T) {
+	for name, args := range map[string][]string{
+		"generic":  {"submit", "--help"},
+		"specific": {"submit", "pull_request.create", "--help"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := runOperation(t.Context(), &output, args); err != nil {
+				t.Fatal(err)
+			}
+			text := output.String()
+			if !strings.Contains(text, "gh-broker operation submit") ||
+				!strings.Contains(text, "gh-broker operations describe") ||
+				!strings.Contains(text, "--arguments-json") || !strings.Contains(text, "--wait") {
+				t.Fatalf("help=%q", text)
+			}
+			if name == "specific" && !strings.Contains(text, "pull_request.create") {
+				t.Fatalf("specific help=%q", text)
+			}
+		})
+	}
+}
+
 func jsonStringSet(value any) map[string]bool {
 	result := map[string]bool{}
 	for _, item := range value.([]any) {
