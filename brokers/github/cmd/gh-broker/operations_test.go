@@ -125,6 +125,31 @@ func TestOperationSubmitHelpExplainsSchemaDiscovery(t *testing.T) {
 	}
 }
 
+func TestOperationValidationErrorStopsUnchangedRetries(t *testing.T) {
+	descriptor, found := opcatalog.ByName("pull_request.create")
+	if !found {
+		t.Fatal("pull_request.create missing")
+	}
+	_, err := parseCatalogSubmitOptions(descriptor, []string{
+		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"bob"}`,
+		"--arguments-json", `{"head":"main","base":"main"}`,
+	})
+	if err == nil {
+		t.Fatal("invalid flat arguments passed validation")
+	}
+	message := err.Error()
+	for _, expected := range []string{
+		`arguments /: required property "input" is missing`,
+		"request not submitted",
+		"do not retry unchanged input",
+		`gh-broker operations describe pull_request.create`,
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("error %q does not contain %q", message, expected)
+		}
+	}
+}
+
 func jsonStringSet(value any) map[string]bool {
 	result := map[string]bool{}
 	for _, item := range value.([]any) {

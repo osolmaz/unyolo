@@ -237,7 +237,8 @@ func parseCatalogSubmitOptions(descriptor opcatalog.Descriptor, args []string) (
 func validateCatalogSubmitOptions(descriptor opcatalog.Descriptor, opts catalogSubmitOptions) (catalogSubmitOptions, error) {
 	target, arguments := json.RawMessage(opts.targetText), json.RawMessage(opts.argumentsText)
 	if err := validateOperationInput(descriptor, target, arguments, opts.sealedFile, opts.credentialSlot, opts.streamFile, opts.streamMediaType); err != nil {
-		return catalogSubmitOptions{}, exitError{code: 64, message: err.Error()}
+		message := fmt.Sprintf(`%s; request not submitted; do not retry unchanged input; inspect with "gh-broker operations describe %s"`, err, descriptor.Name)
+		return catalogSubmitOptions{}, exitError{code: 64, message: message}
 	}
 	if strings.TrimSpace(opts.reason) == "" || len(opts.reason) > 2000 {
 		return catalogSubmitOptions{}, exitError{code: 64, message: "reason is required"}
