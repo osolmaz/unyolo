@@ -440,7 +440,7 @@ git remote set-url origin https://hf-broker.example.com/datasets/osolmaz/scraped
 ## Repository layout
 
 Go package tree `github.com/osolmaz/unyolo/brokers/huggingface`, using the
-root unYOLO module and toolchain `go1.26.6`. One binary
+root unYOLO module and toolchain `go1.26.7`. One binary
 (`cmd/hf-broker`), business logic in
 `internal/` so nothing but the command is importable.
 
