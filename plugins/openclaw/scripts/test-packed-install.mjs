@@ -126,6 +126,8 @@ if (JSON.stringify(pluginManifest.skills) !== '["./dist/skills"]')
 const requiredGuidance = {
   "gh-broker": [
     "pull_request.merge_admin",
+    '--arguments-json \'{"input":{"title":"TITLE","head":"BRANCH","base":"main","body":"BODY"}}\'',
+    "schemas.arguments",
     "gh-broker operation get OPERATION-ID",
     "unknown upstream result",
     "Approval waiting is part of the same agent turn.",

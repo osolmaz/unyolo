@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+	schemakind "github.com/santhosh-tekuri/jsonschema/v6/kind"
 
 	"github.com/osolmaz/unyolo/brokers/github/internal/opbinding"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
@@ -24,6 +25,30 @@ type Operation struct {
 	Target    string         `json:"target"`
 	Arguments map[string]any `json:"arguments"`
 	Result    map[string]any `json:"result"`
+}
+
+// EffectiveSchemas contains the closed schemas enforced for one operation.
+type EffectiveSchemas struct {
+	Target    map[string]any `json:"target"`
+	Arguments map[string]any `json:"arguments"`
+	Result    map[string]any `json:"result"`
+}
+
+const (
+	maxValidationPathRunes        = 192
+	maxValidationKeywordRunes     = 64
+	maxValidationExpectationRunes = 256
+)
+
+// ValidationError is a bounded, value-free description of a schema mismatch.
+type ValidationError struct {
+	Path        string
+	Keyword     string
+	Expectation string
+}
+
+func (err *ValidationError) Error() string {
+	return fmt.Sprintf("%s: %s", err.Path, err.Expectation)
 }
 
 type document struct {
@@ -97,6 +122,26 @@ func Target(kind string) (map[string]any, bool) {
 	}
 	value, found := loaded.Targets[kind]
 	return copyx.JSONMap(value), found
+}
+
+// EffectiveSchemasForOperation returns the same closed schemas used at runtime.
+func EffectiveSchemasForOperation(name string) (EffectiveSchemas, error) {
+	if err := load(); err != nil {
+		return EffectiveSchemas{}, err
+	}
+	operation, found := loaded.Operations[name]
+	if !found {
+		return EffectiveSchemas{}, errors.New("unknown GitHub operation")
+	}
+	target, found := targetSchemaForOperation(name, operation)
+	if !found {
+		return EffectiveSchemas{}, errors.New("missing GitHub target schema")
+	}
+	return EffectiveSchemas{
+		Target:    target,
+		Arguments: copyx.JSONMap(operation.Arguments),
+		Result:    copyx.JSONMap(operation.Result),
+	}, nil
 }
 
 func InputSchemas(descriptor capability.Descriptor) (map[string]any, map[string]any, map[string]any) {
@@ -405,9 +450,85 @@ func validateRaw(raw json.RawMessage, schema map[string]any) error {
 		return errors.New("schema is invalid")
 	}
 	if err := validator.Validate(value); err != nil {
-		return errors.New("does not match the closed schema")
+		return summarizeValidationError(err)
 	}
 	return nil
+}
+
+func summarizeValidationError(err error) error {
+	var validation *jsonschema.ValidationError
+	if !errors.As(err, &validation) {
+		return errors.New("does not match the closed schema")
+	}
+	leaf := firstValidationLeaf(validation)
+	if leaf == nil || leaf.ErrorKind == nil {
+		return errors.New("does not match the closed schema")
+	}
+	keywordPath := leaf.ErrorKind.KeywordPath()
+	keyword := "schema"
+	if len(keywordPath) > 0 && keywordPath[0] != "" {
+		keyword = keywordPath[0]
+	}
+	return &ValidationError{
+		Path:        boundedString(jsonPointer(leaf.InstanceLocation), maxValidationPathRunes),
+		Keyword:     boundedString(keyword, maxValidationKeywordRunes),
+		Expectation: boundedString(validationExpectation(leaf.ErrorKind, keyword), maxValidationExpectationRunes),
+	}
+}
+
+func firstValidationLeaf(err *jsonschema.ValidationError) *jsonschema.ValidationError {
+	if err == nil {
+		return nil
+	}
+	for _, cause := range err.Causes {
+		if leaf := firstValidationLeaf(cause); leaf != nil {
+			return leaf
+		}
+	}
+	return err
+}
+
+func jsonPointer(parts []string) string {
+	if len(parts) == 0 {
+		return "/"
+	}
+	escaped := make([]string, len(parts))
+	for index, part := range parts {
+		escaped[index] = strings.ReplaceAll(strings.ReplaceAll(part, "~", "~0"), "/", "~1")
+	}
+	return "/" + strings.Join(escaped, "/")
+}
+
+func boundedString(value string, maxRunes int) string {
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes]) + "…"
+}
+
+func validationExpectation(kind jsonschema.ErrorKind, keyword string) string {
+	switch typed := kind.(type) {
+	case *schemakind.Required:
+		missing := slices.Clone(typed.Missing)
+		slices.Sort(missing)
+		if len(missing) == 1 {
+			return fmt.Sprintf("required property %q is missing", missing[0])
+		}
+		return "required properties are missing"
+	case *schemakind.Type:
+		want := slices.Clone(typed.Want)
+		slices.Sort(want)
+		return "must be " + strings.Join(want, " or ")
+	case *schemakind.AdditionalProperties:
+		return "additional properties are not allowed"
+	case *schemakind.Enum:
+		return "must match one of the allowed values"
+	case *schemakind.Const:
+		return "must match the required constant"
+	default:
+		return keyword + " constraint failed"
+	}
 }
 
 func HasRawEscapeHatch(name string) bool {

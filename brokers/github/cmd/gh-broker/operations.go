@@ -47,6 +47,11 @@ type catalogSubmitOptions struct {
 
 type operationInputValidator func(opcatalog.Descriptor, json.RawMessage, json.RawMessage, string, string, string, string) error
 
+type operationDescription struct {
+	Operation opcatalog.Descriptor            `json:"operation"`
+	Schemas   schemaregistry.EffectiveSchemas `json:"schemas"`
+}
+
 func runOperations(stdout io.Writer, args []string) error {
 	if len(args) == 0 {
 		return exitError{code: 64, message: "usage: gh-broker operations <list|describe>"}
@@ -62,7 +67,11 @@ func runOperations(stdout io.Writer, args []string) error {
 		if !found {
 			return exitError{code: 64, message: "unknown GitHub operation"}
 		}
-		return writeJSONOutput(stdout, descriptor)
+		schemas, err := schemaregistry.EffectiveSchemasForOperation(descriptor.Name)
+		if err != nil {
+			return fmt.Errorf("describe GitHub operation: %w", err)
+		}
+		return writeJSONOutput(stdout, operationDescription{Operation: descriptor, Schemas: schemas})
 	default:
 		return exitError{code: 64, message: "usage: gh-broker operations <list|describe>"}
 	}

@@ -3,7 +3,9 @@ package schemaregistry
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -30,6 +32,75 @@ func TestSchemasCoverCatalogAndAreClosed(t *testing.T) {
 		if descriptor.AgentFacing && HasRawEscapeHatch(descriptor.Name) {
 			t.Fatalf("raw escape hatch in %q", descriptor.Name)
 		}
+	}
+}
+
+func TestEffectiveSchemasForOperationReturnsIsolatedRuntimeSchemas(t *testing.T) {
+	schemas, err := EffectiveSchemasForOperation("pull_request.create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stringSet(schemas.Target["required"]); !got["kind"] || !got["owner"] || !got["name"] {
+		t.Fatalf("target required=%v", schemas.Target["required"])
+	}
+	if got := stringSet(schemas.Arguments["required"]); !got["input"] {
+		t.Fatalf("arguments required=%v", schemas.Arguments["required"])
+	}
+	schemas.Target["additionalProperties"] = true
+	schemas.Arguments["additionalProperties"] = true
+	schemas.Result["additionalProperties"] = true
+	again, err := EffectiveSchemasForOperation("pull_request.create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Target["additionalProperties"] != false || again.Arguments["additionalProperties"] != false || again.Result["additionalProperties"] != false {
+		t.Fatal("returned schemas mutated the registry")
+	}
+	if _, err := EffectiveSchemasForOperation("not.real"); err == nil {
+		t.Fatal("unknown operation returned schemas")
+	}
+}
+
+func TestSubmissionValidationReportsBoundedValueFreePaths(t *testing.T) {
+	target := json.RawMessage(`{"kind":"repo","owner":"o","name":"r"}`)
+	tests := []struct {
+		name        string
+		arguments   string
+		wantPath    string
+		wantKeyword string
+		wantText    string
+		secret      string
+	}{
+		{
+			name: "missing input", arguments: `{"title":"private-title-value"}`,
+			wantPath: "/", wantKeyword: "required", wantText: `required property "input" is missing`, secret: "private-title-value",
+		},
+		{
+			name: "additional property", arguments: `{"input":{"head":"h","base":"main","private-field-name":"private-field-value"}}`,
+			wantPath: "/input", wantKeyword: "additionalProperties", wantText: "additional properties are not allowed", secret: "private-field",
+		},
+		{
+			name: "wrong type", arguments: `{"input":{"head":"h","base":"main","draft":{"private":"value"}}}`,
+			wantPath: "/input/draft", wantKeyword: "type", wantText: "must be boolean", secret: "private",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateSubmission("pull_request.create", target, json.RawMessage(test.arguments))
+			if err == nil {
+				t.Fatal("invalid submission accepted")
+			}
+			var validation *ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("error type=%T text=%q", err, err)
+			}
+			if validation.Path != test.wantPath || validation.Keyword != test.wantKeyword || validation.Expectation != test.wantText {
+				t.Fatalf("validation=%+v", validation)
+			}
+			if strings.Contains(err.Error(), test.secret) || len(err.Error()) > 512 {
+				t.Fatalf("unsafe validation error=%q", err)
+			}
+		})
 	}
 }
 

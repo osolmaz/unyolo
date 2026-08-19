@@ -17,6 +17,7 @@ import (
 
 	"github.com/osolmaz/unyolo/agent/v1"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
+	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/unyolo/internal/storage/sealed"
 	"github.com/osolmaz/unyolo/operation/payload"
 )
@@ -58,16 +59,61 @@ func TestOperationsListAndDescribeUseGeneratedCatalog(t *testing.T) {
 	if err := runOperations(&output, []string{"describe", "repo.visibility.update"}); err != nil {
 		t.Fatal(err)
 	}
-	var value map[string]any
-	if json.Unmarshal(output.Bytes(), &value) != nil || value["name"] != "repo.visibility.update" || value["explicit_only"] != true {
+	var value struct {
+		Operation opcatalog.Descriptor            `json:"operation"`
+		Schemas   schemaregistry.EffectiveSchemas `json:"schemas"`
+	}
+	if json.Unmarshal(output.Bytes(), &value) != nil || value.Operation.Name != "repo.visibility.update" || !value.Operation.ExplicitOnly {
 		t.Fatalf("describe=%s", output.String())
 	}
+	if value.Schemas.Target["additionalProperties"] != false || value.Schemas.Arguments["additionalProperties"] != false || value.Schemas.Result["additionalProperties"] != false {
+		t.Fatalf("describe schemas are not closed: %s", output.String())
+	}
+}
+
+func TestOperationsDescribeReturnsEffectivePullRequestSchemas(t *testing.T) {
+	var output bytes.Buffer
+	if err := runOperations(&output, []string{"describe", "pull_request.create"}); err != nil {
+		t.Fatal(err)
+	}
+	var value struct {
+		Operation opcatalog.Descriptor            `json:"operation"`
+		Schemas   schemaregistry.EffectiveSchemas `json:"schemas"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &value); err != nil {
+		t.Fatal(err)
+	}
+	if value.Operation.Name != "pull_request.create" {
+		t.Fatalf("operation=%q", value.Operation.Name)
+	}
+	if got := jsonStringSet(value.Schemas.Target["required"]); !got["kind"] || !got["owner"] || !got["name"] {
+		t.Fatalf("target required=%v", value.Schemas.Target["required"])
+	}
+	if got := jsonStringSet(value.Schemas.Arguments["required"]); !got["input"] {
+		t.Fatalf("arguments required=%v", value.Schemas.Arguments["required"])
+	}
+	properties, _ := value.Schemas.Arguments["properties"].(map[string]any)
+	input, _ := properties["input"].(map[string]any)
+	inputProperties, _ := input["properties"].(map[string]any)
+	for _, field := range []string{"title", "head", "base", "body"} {
+		if _, found := inputProperties[field]; !found {
+			t.Fatalf("input property %q missing", field)
+		}
+	}
+}
+
+func jsonStringSet(value any) map[string]bool {
+	result := map[string]bool{}
+	for _, item := range value.([]any) {
+		result[item.(string)] = true
+	}
+	return result
 }
 
 func TestGeneratedCLIFailsClosedBeforeTransport(t *testing.T) {
 	var output bytes.Buffer
 	found, err := runGeneratedCLI(t.Context(), &output, []string{"pull_request", "create", "--target-json", `{"kind":"repo","owner":"o","name":"r"}`, "--arguments-json", `{"method":"POST"}`})
-	if !found || err == nil || !strings.Contains(err.Error(), "closed schema") {
+	if !found || err == nil || !strings.Contains(err.Error(), `arguments /: required property "input" is missing`) {
 		t.Fatalf("found=%v err=%v", found, err)
 	}
 	if found, err = runGeneratedCLI(t.Context(), &output, []string{"http", "request"}); found || err != nil {

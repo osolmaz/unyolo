@@ -45,18 +45,23 @@ gh-broker operations list --family pull_request
 gh-broker operations describe pull_request.create
 ```
 
-Inspect an operation before guessing its target or argument fields. Submit only
-typed operations exposed by the catalog:
+Inspect the effective `schemas.target` and `schemas.arguments` returned by
+`operations describe` before constructing a request. Do not guess fields. If
+validation rejects a request, report the path-level error and stop instead of
+trying different argument shapes. Submit only typed operations exposed by the
+catalog:
 
+<!-- contract-example:pull_request.create:start -->
 ```sh
 gh-broker operation submit pull_request.create \
   --target-json '{"kind":"repo","owner":"OWNER","name":"REPO"}' \
-  --arguments-json '{"title":"TITLE","head":"BRANCH","base":"main","body":"BODY"}' \
+  --arguments-json '{"input":{"title":"TITLE","head":"BRANCH","base":"main","body":"BODY"}}' \
   --reason "Open the reviewed branch" \
   --request-id STABLE-REQUEST-ID \
   --wait \
   --wait-timeout 15m
 ```
+<!-- contract-example:pull_request.create:end -->
 
 Use `--wait` for agent-driven work so the command stays attached until the
 operation finishes or the wait timeout expires. A timeout can leave the
