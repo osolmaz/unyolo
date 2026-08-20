@@ -216,9 +216,23 @@ func TestClientRejectsInvalidConfigurationRedirectsAndResponses(t *testing.T) {
 	if provided.CheckRedirect != nil {
 		t.Fatal("New() mutated provided HTTP client")
 	}
+	missingID := testOperation(agentv1.StatePending)
+	delete(missingID, "id")
+	missingIDJSON, err := json.Marshal(missingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidState := testOperation(agentv1.StatePending)
+	invalidState["state"] = "unknown"
+	invalidStateJSON, err := json.Marshal(invalidState)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for status, body := range map[int]string{
 		http.StatusForbidden: `{"error":{"code":"denied","message":"no"}}`,
 		http.StatusOK:        `{}`,
+		299:                  string(missingIDJSON),
+		298:                  string(invalidStateJSON),
 	} {
 		_, err := decodeResponse(status, []byte(body))
 		if err == nil {
