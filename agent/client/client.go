@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -178,11 +179,19 @@ func (c *Client) WaitDurably(ctx context.Context, operation agentv1.Operation, r
 		if ctx.Err() != nil {
 			return operation, ctx.Err()
 		}
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		if err != nil && !retryableWaitError(err) {
 			return operation, err
 		}
 	}
 	return operation, nil
+}
+
+func retryableWaitError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var networkError net.Error
+	return errors.As(err, &networkError) && networkError.Timeout()
 }
 
 func decodeHTTPResponse(response *http.Response, err error) (agentv1.Operation, error) {
