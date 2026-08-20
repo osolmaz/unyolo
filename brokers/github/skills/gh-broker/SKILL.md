@@ -67,7 +67,7 @@ gh-broker operation submit pull_request.create \
 Use `--wait` for agent-driven work so the command stays attached until the
 operation reaches a terminal state, the user cancels, or an unrecoverable error
 occurs. `--wait-timeout` is an internal retry interval. The CLI keeps waiting
-on the same operation ID when an interval expires.
+on the same operation ID when an internal interval expires.
 
 The CLI explains every returned lifecycle state. `pending`, `approved`, and
 `executing` are not completion. Follow the printed `Next:` wait command with
