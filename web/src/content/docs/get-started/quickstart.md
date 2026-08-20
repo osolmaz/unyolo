@@ -134,7 +134,7 @@ Open a pull request through the typed operation API:
 ```sh
 gh-broker operation submit pull_request.create \
   --target-json '{"kind":"repo","owner":"YOUR-USER","name":"YOUR-REPO"}' \
-  --arguments-json '{"title":"Parser fix","head":"agent-a/parser-fix","base":"main"}' \
+  --arguments-json '{"input":{"title":"Parser fix","head":"agent-a/parser-fix","base":"main"}}' \
   --wait
 ```
 

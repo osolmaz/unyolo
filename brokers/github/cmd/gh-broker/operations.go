@@ -22,6 +22,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/github/internal/schemaregistry"
 	"github.com/osolmaz/unyolo/credential/store"
 	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/operationcli"
 	"github.com/osolmaz/unyolo/internal/storage/sealed"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/operation/capability"
@@ -115,21 +116,21 @@ func writeOperationList(stdout io.Writer, result []opcatalog.Descriptor) error {
 	return nil
 }
 
-func runOperation(ctx context.Context, stdout io.Writer, args []string) error {
+func runOperation(ctx context.Context, stdout, stderr io.Writer, args []string) error {
 	if len(args) == 0 {
 		return exitError{code: 64, message: "usage: gh-broker operation <submit|get|wait|cancel>"}
 	}
 	switch args[0] {
 	case "submit":
-		return runOperationSubmit(ctx, stdout, args[1:])
+		return runOperationSubmit(ctx, stdout, stderr, args[1:])
 	case "get", "wait", "cancel":
-		return runOperationLifecycle(ctx, stdout, args[0], args[1:])
+		return runOperationLifecycle(ctx, stdout, stderr, args[0], args[1:])
 	default:
 		return exitError{code: 64, message: "usage: gh-broker operation <submit|get|wait|cancel>"}
 	}
 }
 
-func runOperationSubmit(ctx context.Context, stdout io.Writer, args []string) error {
+func runOperationSubmit(ctx context.Context, stdout, stderr io.Writer, args []string) error {
 	if len(args) < 1 {
 		return exitError{code: 64, message: "operation name is required"}
 	}
@@ -145,7 +146,7 @@ func runOperationSubmit(ctx context.Context, stdout io.Writer, args []string) er
 			return writeOperationSubmitHelp(stdout, descriptor.Name)
 		}
 	}
-	return submitCatalogOperation(ctx, stdout, descriptor, args[1:])
+	return submitCatalogOperation(ctx, stdout, stderr, descriptor, args[1:])
 }
 
 func isHelpArgument(argument string) bool {
@@ -173,7 +174,7 @@ Flags:
 	return err
 }
 
-func runGeneratedCLI(ctx context.Context, stdout io.Writer, args []string) (bool, error) {
+func runGeneratedCLI(ctx context.Context, stdout, stderr io.Writer, args []string) (bool, error) {
 	descriptor, consumed, found := capability.MatchCLICommand(opcatalog.CapabilityDescriptors(opcatalog.MustAll()), args)
 	if !found {
 		return false, nil
@@ -182,10 +183,10 @@ func runGeneratedCLI(ctx context.Context, stdout io.Writer, args []string) (bool
 	if !found {
 		return true, errors.New("GitHub operation catalog drifted")
 	}
-	return true, submitCatalogOperation(ctx, stdout, providerDescriptor, args[consumed:])
+	return true, submitCatalogOperation(ctx, stdout, stderr, providerDescriptor, args[consumed:])
 }
 
-func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor opcatalog.Descriptor, args []string) error {
+func submitCatalogOperation(ctx context.Context, stdout, stderr io.Writer, descriptor opcatalog.Descriptor, args []string) error {
 	opts, err := parseCatalogSubmitOptions(descriptor, args)
 	if err != nil {
 		return err
@@ -207,11 +208,18 @@ func submitCatalogOperation(ctx context.Context, stdout io.Writer, descriptor op
 	if err != nil {
 		return err
 	}
-	operation, err = waitForSubmittedOperation(ctx, client, operation, opts)
+	operation, waitErr := waitForSubmittedOperation(ctx, client, operation, opts)
+	failed, err := writeOperationOutput(stdout, stderr, operation, submitOperationIntent(opts.wait), opts.waitTimeout)
 	if err != nil {
 		return err
 	}
-	return writeJSONOutput(stdout, operation)
+	if waitErr != nil {
+		return waitErr
+	}
+	if failed {
+		return exitError{code: 1}
+	}
+	return nil
 }
 
 func parseCatalogSubmitOptions(descriptor opcatalog.Descriptor, args []string) (catalogSubmitOptions, error) {
@@ -269,10 +277,13 @@ func waitForSubmittedOperation(ctx context.Context, client *agentclient.Client, 
 	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
 	defer cancel()
 	waited, err := client.Wait(waitCtx, operation)
+	if waited.ID != "" {
+		operation = waited
+	}
 	if err != nil && waitCtx.Err() == nil {
 		return operation, err
 	}
-	return waited, nil
+	return operation, nil
 }
 
 func prepareCLIArguments(ctx context.Context, connection operationConnection, descriptor opcatalog.Descriptor, key string, arguments json.RawMessage,
@@ -309,7 +320,7 @@ func prepareCLISealedArguments(ctx context.Context, connection operationConnecti
 	return connection.wrapSealedArguments(ctx, operation, key, arguments, sealed)
 }
 
-func runOperationLifecycle(ctx context.Context, stdout io.Writer, action string, args []string) error {
+func runOperationLifecycle(ctx context.Context, stdout, stderr io.Writer, action string, args []string) error {
 	flags := flag.NewFlagSet(action, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	timeout := flags.Duration("wait-timeout", operationWaitDefault, "maximum wait")
@@ -320,11 +331,21 @@ func runOperationLifecycle(ctx context.Context, stdout io.Writer, action string,
 	if err != nil {
 		return exitError{code: 78, message: err.Error()}
 	}
-	operation, err := executeOperationLifecycle(ctx, client, action, flags.Arg(0), *timeout)
+	operation, operationErr := executeOperationLifecycle(ctx, client, action, flags.Arg(0), *timeout)
+	if operation.ID == "" {
+		return operationErr
+	}
+	failed, err := writeOperationOutput(stdout, stderr, operation, lifecycleOperationIntent(action), *timeout)
 	if err != nil {
 		return err
 	}
-	return writeJSONOutput(stdout, operation)
+	if operationErr != nil {
+		return operationErr
+	}
+	if failed {
+		return exitError{code: 1}
+	}
+	return nil
 }
 
 func executeOperationLifecycle(ctx context.Context, client *agentclient.Client, action, id string, timeout time.Duration) (agentv1.Operation, error) {
@@ -337,7 +358,47 @@ func executeOperationLifecycle(ctx context.Context, client *agentclient.Client, 
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return client.Wait(waitCtx, operation)
+	updated, waitErr := client.Wait(waitCtx, operation)
+	if updated.ID != "" {
+		operation = updated
+	}
+	return operation, waitErr
+}
+
+func submitOperationIntent(wait bool) operationcli.Intent {
+	if wait {
+		return operationcli.IntentSubmitWait
+	}
+	return operationcli.IntentSubmit
+}
+
+func lifecycleOperationIntent(action string) operationcli.Intent {
+	switch action {
+	case "get":
+		return operationcli.IntentGet
+	case "wait":
+		return operationcli.IntentWait
+	case "cancel":
+		return operationcli.IntentCancel
+	default:
+		panic("unsupported operation lifecycle action")
+	}
+}
+
+func writeOperationOutput(stdout, stderr io.Writer, operation agentv1.Operation, intent operationcli.Intent, timeout time.Duration) (bool, error) {
+	presentation, err := operationcli.Describe(intent, operation, []string{
+		"gh-broker", "operation", "wait", "--wait-timeout", operationcli.WaitTimeoutArgument(timeout), operation.ID,
+	})
+	if err != nil {
+		return false, err
+	}
+	if err := writeJSONOutput(stdout, operation); err != nil {
+		return false, err
+	}
+	if _, err := io.WriteString(stderr, presentation.Notice); err != nil {
+		return false, err
+	}
+	return presentation.CommandFailed, nil
 }
 
 func runStream(ctx context.Context, stdout io.Writer, args []string) error {

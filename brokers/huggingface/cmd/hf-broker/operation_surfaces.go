@@ -21,6 +21,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/operations"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/unyolo/credential/store"
+	"github.com/osolmaz/unyolo/internal/operationcli"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/operation/capability"
 )
@@ -98,22 +99,42 @@ func runCatalogOperation(ctx context.Context, client *agentClient, stdout, stder
 	if err != nil {
 		return err
 	}
-	operation, err := submitAndReportCatalogOperation(ctx, client, stderr, request, options)
-	if err != nil {
-		return err
-	}
-	if err := materializeBucketObjectRead(ctx, client, descriptor, operation, options.outputFile); err != nil {
-		return err
-	}
-	return printClientOperation(stdout, operation, options.jsonOutput)
+	return executeCatalogOperation(ctx, client, stdout, stderr, descriptor, request, options)
 }
 
-func submitAndReportCatalogOperation(ctx context.Context, client *agentClient, stderr io.Writer, request agentv1.SubmitRequest, options operationClientOptions) (agentv1.Operation, error) {
+func executeCatalogOperation(ctx context.Context, client *agentClient, stdout, stderr io.Writer, descriptor opcatalog.Descriptor, request agentv1.SubmitRequest, options operationClientOptions) error {
+	operation, operationErr := submitAndReportCatalogOperation(ctx, client, request, options)
+	if operation.ID == "" {
+		return operationErr
+	}
+	if err := materializeCompletedCatalogOperation(ctx, client, descriptor, operation, options.outputFile, operationErr); err != nil {
+		return err
+	}
+	return reportClientOperation(
+		stdout, stderr, operation, options.jsonOutput,
+		submitClientOperationIntent(options.wait), options.waitTimeout, operationErr,
+	)
+}
+
+func materializeCompletedCatalogOperation(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, operation agentv1.Operation, outputFile string, operationErr error) error {
+	if operationErr != nil {
+		return nil
+	}
+	return materializeBucketObjectRead(ctx, client, descriptor, operation, outputFile)
+}
+
+func submitClientOperationIntent(wait bool) operationcli.Intent {
+	if wait {
+		return operationcli.IntentSubmitWait
+	}
+	return operationcli.IntentSubmit
+}
+
+func submitAndReportCatalogOperation(ctx context.Context, client *agentClient, request agentv1.SubmitRequest, options operationClientOptions) (agentv1.Operation, error) {
 	operation, err := client.submit(ctx, request)
 	if err != nil {
 		return operation, err
 	}
-	printOperationStatus(stderr, operation, options.jsonOutput)
 	if !options.wait || operation.State.Terminal() {
 		return operation, nil
 	}
@@ -492,16 +513,6 @@ func submitAndMaybeWait(ctx context.Context, client *agentClient, request agentv
 		return updated, nil
 	}
 	return updated, err
-}
-
-func printOperationStatus(stderr io.Writer, operation agentv1.Operation, jsonOutput bool) {
-	if jsonOutput {
-		return
-	}
-	_, _ = fmt.Fprintf(stderr, "HF Broker operation %s: %s\n", operation.ID, operation.State)
-	if operation.State == agentv1.StatePending {
-		_, _ = fmt.Fprintln(stderr, "Approval requested; no Hugging Face token is needed.")
-	}
 }
 
 func resolveClientRequestID(value string) (string, error) {

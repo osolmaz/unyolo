@@ -132,6 +132,11 @@ Setup-specific flags: `--github-app-id-file`, `--github-app-private-key-file`,
 `doctor github` accepts `--env-file <path>` for a nonstandard installation, or `--env-file ''` to
 use only the current process environment.
 
+Agent V1 broker commands keep operation data on stdout and lifecycle guidance on stderr. A
+nonterminal result says that the requested action is not complete and prints the exact wait command
+for the same operation ID. Only `succeeded` means the action completed. Completion waits return a
+failure status for `failed`, `denied`, `expired`, or `canceled` operations.
+
 ## sudo-broker
 
 ```sh

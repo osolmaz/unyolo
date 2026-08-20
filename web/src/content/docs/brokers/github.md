@@ -169,15 +169,17 @@ gh-broker operation submit repo.contents.read \
 
 gh-broker operation submit pull_request.create \
   --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
-  --arguments-json '{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}' \
+  --arguments-json '{"input":{"title":"agent work","head":"agent-a/work","base":"main","body":"Ready for review."}}' \
   --reason "Open the reviewed feature branch" \
   --request-id open-agent-pr \
   --wait
 ```
 
 Reuse a stable `--request-id` when retrying, and resume interrupted operations with
-`gh-broker operation get|wait|cancel <id>`. All discrete GitHub JSON operations go through Agent
-V1; there are no direct repository-list or contents proxy routes.
+`gh-broker operation get|wait|cancel <id>`. When an operation is not terminal, the CLI says that
+the requested action is not complete and prints the exact wait command for the same ID. Do not
+report completion until the operation is `succeeded`. All discrete GitHub JSON operations go
+through Agent V1; there are no direct repository-list or contents proxy routes.
 
 ## Admin merge
 

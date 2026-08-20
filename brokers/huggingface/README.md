@@ -216,7 +216,9 @@ hf-broker client bucket object write \
 ```
 
 If policy requires approval, the command prints the durable operation ID and
-waits. Resume it after a disconnect with:
+waits. A nonterminal result says that the requested action is not complete and
+prints the exact wait command for the same operation ID. Only `succeeded` means
+the action completed. Resume it after a disconnect with:
 
 ```sh
 hf-broker client operation wait <operation-id>
