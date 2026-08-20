@@ -19,6 +19,7 @@ import (
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/opcatalog"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/internal/operationcli"
 	"github.com/osolmaz/unyolo/mcp/grant"
 	"github.com/osolmaz/unyolo/mcp/operation"
 	"github.com/osolmaz/unyolo/protocol/contract"
@@ -61,7 +62,7 @@ func TestRunAgentClientRepoCreateWaitsForApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if eventCalls.Load() != 1 || !strings.Contains(stdout.String(), "alice/data") || !strings.Contains(stderr.String(), "Approval requested") {
+	if eventCalls.Load() != 1 || !strings.Contains(stdout.String(), "alice/data") || !strings.Contains(stderr.String(), "requested action completed") {
 		t.Fatalf("stdout=%q stderr=%q calls=%d", stdout.String(), stderr.String(), eventCalls.Load())
 	}
 }
@@ -366,8 +367,8 @@ func TestBucketObjectWriteCLIUploadsAndBindsLocalSource(t *testing.T) {
 	if err := os.WriteFile(source, []byte("artifact"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var stdout bytes.Buffer
-	err = runCatalogOperation(t.Context(), client, &stdout, &bytes.Buffer{}, descriptor, []string{
+	var stdout, stderr bytes.Buffer
+	err = runCatalogOperation(t.Context(), client, &stdout, &stderr, descriptor, []string{
 		"--target-json", `{"kind":"bucket","namespace":"acme","name":"artifacts"}`,
 		"--arguments-json", `{"path":"runs/artifact.bin"}`, "--source", source,
 		"--request-id", "write-1", "--wait=false", "--json",
@@ -378,6 +379,15 @@ func TestBucketObjectWriteCLIUploadsAndBindsLocalSource(t *testing.T) {
 	arguments := string(submitted.Arguments)
 	if submitted.Operation != "bucket.object.write" || !strings.Contains(arguments, `"transfer_id":"write-1"`) || strings.Contains(arguments, "request_key") || strings.Contains(arguments, `"content"`) {
 		t.Fatalf("submitted = %+v", submitted)
+	}
+	for _, expected := range []string{
+		"is pending and is not complete",
+		"Do not report the requested action as completed",
+		"hf-broker client operation wait --wait-timeout 15m op_test",
+	} {
+		if !strings.Contains(stderr.String(), expected) {
+			t.Fatalf("stderr %q does not contain %q", stderr.String(), expected)
+		}
 	}
 }
 
@@ -599,8 +609,10 @@ func TestCatalogOperationOptionsAndTerminalOutput(t *testing.T) {
 	}
 	operation := testAgentOperation(agentv1.StateFailed)
 	operation.Error = &agentv1.OperationError{Code: "failed", Message: "failed safely"}
-	if err := printClientOperation(&bytes.Buffer{}, operation, false); err == nil {
-		t.Fatal("terminal failure printed as success")
+	var terminalOutput, terminalNotice bytes.Buffer
+	failed, err := writeClientOperationOutput(&terminalOutput, &terminalNotice, operation, false, operationcli.IntentSubmitWait, time.Minute)
+	if err != nil || !failed || !strings.Contains(terminalNotice.String(), "did not complete") {
+		t.Fatalf("terminal output=%q notice=%q failed=%v err=%v", terminalOutput.String(), terminalNotice.String(), failed, err)
 	}
 	if err := printClientOperation(&bytes.Buffer{}, operation, true); err != nil {
 		t.Fatalf("JSON terminal output: %v", err)

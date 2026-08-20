@@ -181,7 +181,9 @@ hf-broker client bucket object write \
 ```
 
 If policy requires approval, the command prints the durable operation ID and waits. Resume after a
-disconnect with `hf-broker client operation wait <operation-id>`.
+disconnect with `hf-broker client operation wait <operation-id>`. A nonterminal result explicitly
+says that the requested action is not complete and prints the exact wait command for the same ID.
+Only `succeeded` means the action completed.
 
 `repo.list` queries the authenticated Hub and filters every result through the calling client's
 policy before projection. A target name of `*` discovers bounded repositories for one exact owner

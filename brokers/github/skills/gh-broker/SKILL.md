@@ -68,6 +68,12 @@ Use `--wait` for agent-driven work so the command stays attached until the
 operation finishes or the wait timeout expires. A timeout can leave the
 operation pending. Keep its ID and resume the same operation.
 
+The CLI explains every returned lifecycle state. `pending`, `approved`, and
+`executing` are not completion. Follow the printed `Next:` wait command with
+the same operation ID and do not report the requested action as completed.
+Only `succeeded` means it completed. `failed`, `denied`, `expired`, and
+`canceled` mean it did not complete.
+
 Approval waiting is part of the same agent turn. Do not return control to the
 user while the operation remains pending. If a wait interval expires,
 immediately wait again with the same operation ID. Continue until the user

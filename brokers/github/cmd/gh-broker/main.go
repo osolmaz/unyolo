@@ -48,7 +48,7 @@ func runWithArgs(ctx context.Context, args []string, stdout io.Writer, stderr io
 	if err, handled := runNamedCommand(ctx, args, stdout, stderr); handled {
 		return err
 	}
-	if found, err := runGeneratedCLI(ctx, stdout, args); found {
+	if found, err := runGeneratedCLI(ctx, stdout, stderr, args); found {
 		return err
 	}
 	return fmt.Errorf("usage: gh-broker [--version|version|skill|doctor|setup|git|policy|operations|operation|stream|mcp|state]")
@@ -86,8 +86,8 @@ func namedCommands() map[string]cliCommand {
 		"operations": func(_ context.Context, args []string, stdout io.Writer, _ io.Writer) error {
 			return runOperations(stdout, args)
 		},
-		"operation": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
-			return runOperation(ctx, stdout, args)
+		"operation": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
+			return runOperation(ctx, stdout, stderr, args)
 		},
 		"stream": func(ctx context.Context, args []string, stdout io.Writer, _ io.Writer) error {
 			return runStream(ctx, stdout, args)

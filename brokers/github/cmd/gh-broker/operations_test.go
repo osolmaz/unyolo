@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -109,7 +110,7 @@ func TestOperationSubmitHelpExplainsSchemaDiscovery(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var output bytes.Buffer
-			if err := runOperation(t.Context(), &output, args); err != nil {
+			if err := runOperation(t.Context(), &output, io.Discard, args); err != nil {
 				t.Fatal(err)
 			}
 			text := output.String()
@@ -160,11 +161,11 @@ func jsonStringSet(value any) map[string]bool {
 
 func TestGeneratedCLIFailsClosedBeforeTransport(t *testing.T) {
 	var output bytes.Buffer
-	found, err := runGeneratedCLI(t.Context(), &output, []string{"pull_request", "create", "--target-json", `{"kind":"repo","owner":"o","name":"r"}`, "--arguments-json", `{"method":"POST"}`})
+	found, err := runGeneratedCLI(t.Context(), &output, io.Discard, []string{"pull_request", "create", "--target-json", `{"kind":"repo","owner":"o","name":"r"}`, "--arguments-json", `{"method":"POST"}`})
 	if !found || err == nil || !strings.Contains(err.Error(), `arguments /: required property "input" is missing`) {
 		t.Fatalf("found=%v err=%v", found, err)
 	}
-	if found, err = runGeneratedCLI(t.Context(), &output, []string{"http", "request"}); found || err != nil {
+	if found, err = runGeneratedCLI(t.Context(), &output, io.Discard, []string{"http", "request"}); found || err != nil {
 		t.Fatalf("raw command found=%v err=%v", found, err)
 	}
 }
@@ -199,23 +200,88 @@ func TestOperationSubmissionAndLifecycleUseAgentV1(t *testing.T) {
 	if !found {
 		t.Fatal("repo.metadata.read missing")
 	}
-	var output bytes.Buffer
-	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
+	var output, notice bytes.Buffer
+	err := submitCatalogOperation(t.Context(), &output, &notice, descriptor, []string{
 		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`,
 		"--arguments-json", `{}`, "--request-id", "request-1", "--reason", "test", "--wait",
 	})
-	if err != nil || submitted["operation"] != "repo.metadata.read" || !strings.Contains(output.String(), `"state": "succeeded"`) {
-		t.Fatalf("submitted=%#v output=%s err=%v", submitted, output.String(), err)
+	if err != nil || submitted["operation"] != "repo.metadata.read" || !strings.Contains(output.String(), `"state": "succeeded"`) ||
+		!strings.Contains(notice.String(), "requested action completed") {
+		t.Fatalf("submitted=%#v output=%s notice=%s err=%v", submitted, output.String(), notice.String(), err)
 	}
 
 	for _, action := range []string{"get", "wait", "cancel"} {
 		output.Reset()
-		if err := runOperationLifecycle(t.Context(), &output, action, []string{"op_test"}); err != nil {
+		notice.Reset()
+		if err := runOperationLifecycle(t.Context(), &output, &notice, action, []string{"op_test"}); err != nil {
 			t.Fatalf("%s: %v", action, err)
 		}
-		if !strings.Contains(output.String(), `"id": "op_test"`) {
-			t.Fatalf("%s output=%s", action, output.String())
+		if !strings.Contains(output.String(), `"id": "op_test"`) || notice.Len() == 0 {
+			t.Fatalf("%s output=%s notice=%s", action, output.String(), notice.String())
 		}
+	}
+}
+
+func TestOperationSubmissionExplainsNonterminalLifecycle(t *testing.T) {
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(writer).Encode(githubTestOperation(agentv1.StateApproved))
+	}))
+	defer server.Close()
+
+	descriptor, found := opcatalog.ByName("repo.metadata.read")
+	if !found {
+		t.Fatal("repo.metadata.read missing")
+	}
+	var output, notice bytes.Buffer
+	err := submitCatalogOperation(t.Context(), &output, &notice, descriptor, []string{
+		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`,
+		"--arguments-json", `{}`, "--request-id", "request-async", "--reason", "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var operation agentv1.Operation
+	if err := json.Unmarshal(output.Bytes(), &operation); err != nil || operation.State != agentv1.StateApproved {
+		t.Fatalf("operation=%#v decode=%v output=%q", operation, err, output.String())
+	}
+	for _, expected := range []string{
+		"is approved and is not complete",
+		"Do not report the requested action as completed",
+		"gh-broker operation wait --wait-timeout 15m op_test",
+	} {
+		if !strings.Contains(notice.String(), expected) {
+			t.Fatalf("notice %q does not contain %q", notice.String(), expected)
+		}
+	}
+}
+
+func TestOperationSubmissionReturnsFailureForImmediateTerminalError(t *testing.T) {
+	server := configureOperationTestClient(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		operation := githubTestOperation(agentv1.StateFailed)
+		operation.Error = &agentv1.OperationError{Code: "validation_failed", Message: "failed safely"}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(writer).Encode(operation)
+	}))
+	defer server.Close()
+
+	descriptor, found := opcatalog.ByName("repo.metadata.read")
+	if !found {
+		t.Fatal("repo.metadata.read missing")
+	}
+	var output, notice bytes.Buffer
+	err := submitCatalogOperation(t.Context(), &output, &notice, descriptor, []string{
+		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`,
+		"--arguments-json", `{}`, "--request-id", "request-failed", "--reason", "test",
+	})
+	var exitErr exitError
+	if !errors.As(err, &exitErr) || exitErr.code != 1 {
+		t.Fatalf("error=%#v", err)
+	}
+	if !json.Valid(output.Bytes()) || !strings.Contains(notice.String(), "did not complete") || strings.Contains(notice.String(), "failed safely") {
+		t.Fatalf("output=%q notice=%q", output.String(), notice.String())
 	}
 }
 
@@ -252,7 +318,7 @@ func TestSealedOperationUploadsSecretBeforeSubmission(t *testing.T) {
 	}
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
-	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
+	err := submitCatalogOperation(t.Context(), &output, io.Discard, descriptor, []string{
 		"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`,
 		"--arguments-json", `{"secret_name":"DEPLOY_TOKEN"}`,
 		"--sealed-file", sealedFile,
@@ -286,10 +352,10 @@ func TestCredentialOutputSubmissionRequiresEncryptedSlot(t *testing.T) {
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
 	withoutSlot := []string{"--target-json", `{"kind":"repo","owner":"osolmaz","name":"unyolo"}`, "--arguments-json", `{}`}
-	if err := submitCatalogOperation(t.Context(), &output, descriptor, withoutSlot); err == nil {
+	if err := submitCatalogOperation(t.Context(), &output, io.Discard, descriptor, withoutSlot); err == nil {
 		t.Fatal("credential output accepted without a slot")
 	}
-	err := submitCatalogOperation(t.Context(), &output, descriptor, append(withoutSlot,
+	err := submitCatalogOperation(t.Context(), &output, io.Discard, descriptor, append(withoutSlot,
 		"--credential-slot", "ci-runner", "--request-id", "runner-token", "--reason", "enroll runner"))
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +402,7 @@ func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
 	}
 	descriptor, _ := opcatalog.ByName(operation)
 	var output bytes.Buffer
-	err := submitCatalogOperation(t.Context(), &output, descriptor, []string{
+	err := submitCatalogOperation(t.Context(), &output, io.Discard, descriptor, []string{
 		"--target-json", `{"kind":"release","id":9,"owner":"osolmaz","repo":"unyolo"}`,
 		"--arguments-json", `{"name":"asset.bin"}`, "--stream-file", input, "--stream-media-type", "application/octet-stream",
 		"--request-id", "asset-request", "--reason", "upload release asset",
@@ -357,7 +423,7 @@ func TestStreamUploadSubmissionAndDownloadCLI(t *testing.T) {
 func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 	var output bytes.Buffer
 	for _, args := range [][]string{nil, {"submit"}, {"submit", "not.real"}, {"bogus"}, {"get"}} {
-		if err := runOperation(t.Context(), &output, args); err == nil {
+		if err := runOperation(t.Context(), &output, io.Discard, args); err == nil {
 			t.Fatalf("accepted operation args %#v", args)
 		}
 	}
@@ -367,12 +433,12 @@ func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 		{"--target-json", `{}`},
 		{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`, "--reason", ""},
 	} {
-		if err := submitCatalogOperation(t.Context(), &output, descriptor, args); err == nil {
+		if err := submitCatalogOperation(t.Context(), &output, io.Discard, descriptor, args); err == nil {
 			t.Fatalf("accepted submit args %#v", args)
 		}
 	}
 	sealed, _ := opcatalog.ByName("agent_task.create_or_update_repo_secret")
-	if err := submitCatalogOperation(t.Context(), &output, sealed, []string{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`}); err == nil {
+	if err := submitCatalogOperation(t.Context(), &output, io.Discard, sealed, []string{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`}); err == nil {
 		t.Fatal("accepted sealed operation")
 	}
 	optionalSealed, _ := opcatalog.ByName("organization.update_webhook")

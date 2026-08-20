@@ -20,9 +20,9 @@ import { isoDefs, isoStopCss, isoPaintCss, personIcon, agentIcon } from "../lib/
 const P = "th";
 
 const lines = [
-  { text: "$ gh-broker operation submit pull_request.create" },
+  { text: "$ gh-broker operation submit pull_request.create --wait" },
   { text: "op_9c2f  succeeded  pull request #482 opened", tone: "ok" },
-  { text: "$ gh-broker operation submit pull_request.merge" },
+  { text: "$ gh-broker operation submit pull_request.merge --wait" },
   { text: "op_1d55  pending    policy requires operator approval", tone: "warn" },
   { text: "op_1d55  approved   by operator, single use", tone: "ok" },
   { text: "op_1d55  succeeded  pull request #482 merged", tone: "ok" },

@@ -56,6 +56,12 @@ Catalog commands wait by default. Keep that behavior for agent-driven work so
 the command returns after completion or the wait timeout. A timeout can leave
 the operation pending.
 
+The CLI explains every returned lifecycle state. `pending`, `approved`, and
+`executing` are not completion. Follow the printed `Next:` wait command with
+the same operation ID and do not report the requested action as completed.
+Only `succeeded` means it completed. `failed`, `denied`, `expired`, and
+`canceled` mean it did not complete.
+
 Requestable operations default to reusable window grants. Each invocation still
 has its own immutable plan, operation ID, result, and audit record. Policy may
 select `execution` mode for an exact single-use approval. Do not assume a

@@ -39,6 +39,11 @@ state, revision, timestamps, and safe presentation. It never waits for approval.
 what makes the surface usable from an LLM tool call, where a blocking call would burn the context
 window on a wait.
 
+The CLI prints the operation record on stdout and lifecycle guidance on stderr. `pending`,
+`approved`, and `executing` mean the requested action is not complete. The guidance includes the
+exact wait command for the same operation ID. Only `succeeded` means the action completed;
+`failed`, `denied`, `expired`, and `canceled` mean it did not.
+
 ```sh
 gh-broker operation submit repo.contents.read \
   --target-json '{"kind":"repo","owner":"osolmaz","name":"unyolo"}' \
@@ -67,7 +72,8 @@ later, and reaching for them before an ordinary operation creates approval reque
 
 ## Recovery
 
-Operations are durable, so a lost connection or a restarted process does not lose the work:
+Operations are durable, so a lost connection or a restarted process does not lose the work. Run
+the exact `Next:` command printed by the CLI. Do not submit another operation when a wait times out:
 
 ```sh
 gh-broker operation get <id>

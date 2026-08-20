@@ -16,6 +16,7 @@ import (
 	"github.com/osolmaz/unyolo/agent/client"
 	"github.com/osolmaz/unyolo/agent/v1"
 	"github.com/osolmaz/unyolo/internal/config/client"
+	"github.com/osolmaz/unyolo/internal/operationcli"
 )
 
 const defaultClientWait = 15 * time.Minute
@@ -31,7 +32,7 @@ func runAgentClient(ctx context.Context, getenv func(string) string, stdout, std
 		return exitError{code: 78, message: err.Error()}
 	}
 	if len(args) >= 2 && isClientOperationCommand(args) {
-		return runClientOperation(ctx, client, stdout, args[1], args[2:])
+		return runClientOperation(ctx, client, stdout, stderr, args[1], args[2:])
 	}
 	if descriptor, consumed, found := matchCLICommand(args); found {
 		return runCatalogOperation(ctx, client, stdout, stderr, descriptor, args[consumed:])
@@ -45,20 +46,13 @@ func isClientOperationCommand(args []string) bool {
 		(args[1] == "get" || args[1] == "wait" || args[1] == "cancel")
 }
 
-func runClientOperation(ctx context.Context, client *agentClient, stdout io.Writer, action string, args []string) error {
+func runClientOperation(ctx context.Context, client *agentClient, stdout, stderr io.Writer, action string, args []string) error {
 	options, err := parseClientOperationOptions(action, args)
 	if err != nil {
 		return err
 	}
-	operation, err := clientOperationInitialState(ctx, client, action, options.id)
-	if err != nil {
-		return err
-	}
-	operation, err = waitForClientOperationAction(ctx, client, action, operation, options.timeout)
-	if err != nil {
-		return err
-	}
-	return printClientOperation(stdout, operation, options.jsonOutput)
+	operation, operationErr := executeClientOperationAction(ctx, client, action, options)
+	return reportClientOperation(stdout, stderr, operation, options.jsonOutput, clientOperationIntent(action), options.timeout, operationErr)
 }
 
 type clientOperationOptions struct {
@@ -78,13 +72,29 @@ func parseClientOperationOptions(action string, args []string) (clientOperationO
 	return clientOperationOptions{id: flags.Arg(0), timeout: *timeout, jsonOutput: *jsonOutput}, nil
 }
 
+func executeClientOperationAction(ctx context.Context, client *agentClient, action string, options clientOperationOptions) (agentv1.Operation, error) {
+	operation, err := clientOperationInitialState(ctx, client, action, options.id)
+	if err != nil {
+		return operation, err
+	}
+	return waitForClientOperationAction(ctx, client, action, operation, options.timeout)
+}
+
 func waitForClientOperationAction(ctx context.Context, client *agentClient, action string, operation agentv1.Operation, timeout time.Duration) (agentv1.Operation, error) {
-	if action != "wait" || operation.State.Terminal() {
+	if !shouldWaitForClientOperation(action, operation.State) {
 		return operation, nil
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return client.wait(waitCtx, operation)
+	updated, waitErr := client.wait(waitCtx, operation)
+	if updated.ID != "" {
+		operation = updated
+	}
+	return operation, waitErr
+}
+
+func shouldWaitForClientOperation(action string, state agentv1.State) bool {
+	return action == "wait" && !state.Terminal()
 }
 
 func clientOperationInitialState(ctx context.Context, client *agentClient, action, id string) (agentv1.Operation, error) {
@@ -170,10 +180,67 @@ func (client *agentClient) cancel(ctx context.Context, id string) (agentv1.Opera
 
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
 	updated, err := client.operations.Wait(ctx, operation)
-	if err != nil && ctx.Err() != nil {
-		return updated, fmt.Errorf("operation %s is still pending; resume it with hf-broker client operation wait %s", operation.ID, operation.ID)
+	if updated.ID != "" {
+		operation = updated
 	}
-	return updated, err
+	if err != nil && ctx.Err() != nil {
+		return operation, fmt.Errorf("operation %s is still incomplete", operation.ID)
+	}
+	return operation, err
+}
+
+func writeClientOperationOutput(stdout, stderr io.Writer, operation agentv1.Operation, jsonOutput bool, intent operationcli.Intent, timeout time.Duration) (bool, error) {
+	presentation, err := operationcli.Describe(intent, operation, []string{
+		"hf-broker", "client", "operation", "wait", "--wait-timeout", operationcli.WaitTimeoutArgument(timeout), operation.ID,
+	})
+	if err != nil {
+		return false, err
+	}
+	if err := printClientOperation(stdout, operation, jsonOutput); err != nil {
+		return false, err
+	}
+	if _, err := io.WriteString(stderr, presentation.Notice); err != nil {
+		return false, err
+	}
+	return presentation.CommandFailed, nil
+}
+
+func clientOperationIntent(action string) operationcli.Intent {
+	switch action {
+	case "get":
+		return operationcli.IntentGet
+	case "wait":
+		return operationcli.IntentWait
+	case "cancel":
+		return operationcli.IntentCancel
+	default:
+		panic("unsupported client operation action")
+	}
+}
+
+func reportClientOperation(stdout, stderr io.Writer, operation agentv1.Operation, jsonOutput bool, intent operationcli.Intent, timeout time.Duration, operationErr error) error {
+	if operation.ID == "" {
+		return operationErr
+	}
+	failed, err := writeClientOperationOutput(stdout, stderr, operation, jsonOutput, intent, timeout)
+	if err != nil {
+		return err
+	}
+	if operationErr != nil {
+		return operationErr
+	}
+	if failed {
+		return clientOperationFailure(operation)
+	}
+	return nil
+}
+
+func clientOperationFailure(operation agentv1.Operation) error {
+	message := "Operation did not succeed"
+	if operation.Error != nil {
+		message = operation.Error.Message
+	}
+	return exitError{code: 1, message: fmt.Sprintf("%s: %s (%s)", operation.ID, message, operation.State)}
 }
 
 func printClientOperation(stdout io.Writer, operation agentv1.Operation, jsonOutput bool) error {
@@ -185,13 +252,6 @@ func printClientOperation(stdout io.Writer, operation agentv1.Operation, jsonOut
 	if operation.State == agentv1.StateSucceeded {
 		_, err := fmt.Fprintf(stdout, "Succeeded: %s\n%s\n", operation.Presentation.Summary, string(operation.Result))
 		return err
-	}
-	if operation.State.Terminal() {
-		message := "Operation did not succeed"
-		if operation.Error != nil {
-			message = operation.Error.Message
-		}
-		return exitError{code: 1, message: fmt.Sprintf("%s: %s (%s)", operation.ID, message, operation.State)}
 	}
 	_, err := fmt.Fprintf(stdout, "%s %s\n", operation.ID, operation.State)
 	return err
