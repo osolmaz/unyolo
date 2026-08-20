@@ -136,6 +136,7 @@ Agent V1 broker commands keep operation data on stdout and lifecycle guidance on
 nonterminal result says that the requested action is not complete and prints the exact wait command
 for the same operation ID. Only `succeeded` means the action completed. Completion waits return a
 failure status for `failed`, `denied`, `expired`, or `canceled` operations.
+`--wait-timeout` is an internal retry interval; it is not a total operation deadline.
 
 ## sudo-broker
 

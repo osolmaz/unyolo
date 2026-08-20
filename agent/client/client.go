@@ -158,6 +158,33 @@ func (c *Client) Wait(ctx context.Context, operation agentv1.Operation) (agentv1
 	return operation, nil
 }
 
+// WaitDurably follows one operation through internal retry intervals until it
+// terminates, the parent context ends, or the broker returns an unrecoverable
+// error.
+func (c *Client) WaitDurably(ctx context.Context, operation agentv1.Operation, retryInterval time.Duration) (agentv1.Operation, error) {
+	if retryInterval <= 0 {
+		return operation, errors.New("wait retry interval must be positive")
+	}
+	for !operation.State.Terminal() {
+		waitCtx, cancel := context.WithTimeout(ctx, retryInterval)
+		updated, err := c.Wait(waitCtx, operation)
+		cancel()
+		if updated.ID != "" {
+			operation = updated
+		}
+		if operation.State.Terminal() {
+			return operation, nil
+		}
+		if ctx.Err() != nil {
+			return operation, ctx.Err()
+		}
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			return operation, err
+		}
+	}
+	return operation, nil
+}
+
 func decodeHTTPResponse(response *http.Response, err error) (agentv1.Operation, error) {
 	return decodeAgentResponse(response, err, decodeResponse)
 }

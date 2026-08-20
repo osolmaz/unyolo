@@ -65,8 +65,9 @@ gh-broker operation submit pull_request.create \
 <!-- contract-example:pull_request.create:end -->
 
 Use `--wait` for agent-driven work so the command stays attached until the
-operation finishes or the wait timeout expires. A timeout can leave the
-operation pending. Keep its ID and resume the same operation.
+operation reaches a terminal state, the user cancels, or an unrecoverable error
+occurs. `--wait-timeout` is an internal retry interval. The CLI keeps waiting
+on the same operation ID when an interval expires.
 
 The CLI explains every returned lifecycle state. `pending`, `approved`, and
 `executing` are not completion. Follow the printed `Next:` wait command with
@@ -75,11 +76,11 @@ Only `succeeded` means it completed. `failed`, `denied`, `expired`, and
 `canceled` mean it did not complete.
 
 Approval waiting is part of the same agent turn. Do not return control to the
-user while the operation remains pending. If a wait interval expires,
-immediately wait again with the same operation ID. Continue until the user
-clicks or otherwise records a decision and the operation reaches a terminal
-state. Stop only for a terminal result, an explicit user cancellation, or an
-unrecoverable broker error.
+user while the operation remains pending. The CLI retries internal wait
+intervals with the same operation ID. Continue until the user clicks or
+otherwise records a decision and the operation reaches a terminal state. Stop
+only for a terminal result, an explicit user cancellation, or an unrecoverable
+broker error.
 
 Use a stable, task-specific `--request-id`. If a call is interrupted, recover
 it instead of submitting the mutation again:
