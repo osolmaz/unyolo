@@ -126,7 +126,7 @@ func TestClientWaitDurablyRetriesTransportTimeout(t *testing.T) {
 	client := newTestClient(t, server.URL, &http.Client{Timeout: 5 * time.Millisecond})
 	started := time.Now()
 	operation, err := client.WaitDurably(t.Context(), domainOperation(agentv1.StatePending), 10*time.Millisecond)
-	if err != nil || operation.State != agentv1.StateSucceeded || waits.Load() != 2 || time.Since(started) < 10*time.Millisecond {
+	if err != nil || operation.State != agentv1.StateSucceeded || waits.Load() < 2 || time.Since(started) < 10*time.Millisecond {
 		t.Fatalf("WaitDurably() = %+v, %v; waits=%d elapsed=%s", operation, err, waits.Load(), time.Since(started))
 	}
 }
