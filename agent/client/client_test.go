@@ -111,6 +111,25 @@ func TestClientWaitDurablyRetriesInternalTimeout(t *testing.T) {
 	}
 }
 
+func TestClientWaitDurablyRetriesTransportTimeout(t *testing.T) {
+	t.Parallel()
+	var waits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if waits.Add(1) == 1 {
+			<-request.Context().Done()
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(testOperation(agentv1.StateSucceeded))
+	}))
+	defer server.Close()
+	client := newTestClient(t, server.URL, &http.Client{Timeout: 10 * time.Millisecond})
+	operation, err := client.WaitDurably(t.Context(), domainOperation(agentv1.StatePending), time.Minute)
+	if err != nil || operation.State != agentv1.StateSucceeded || waits.Load() != 2 {
+		t.Fatalf("WaitDurably() = %+v, %v; waits=%d", operation, err, waits.Load())
+	}
+}
+
 func TestClientWaitDurablyReturnsTerminalOperationWithoutPolling(t *testing.T) {
 	t.Parallel()
 	initial := domainOperation(agentv1.StateSucceeded)
