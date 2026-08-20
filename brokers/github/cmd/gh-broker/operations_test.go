@@ -432,10 +432,14 @@ func TestOperationCommandValidationAndClientConfiguration(t *testing.T) {
 		{},
 		{"--target-json", `{}`},
 		{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`, "--reason", ""},
+		{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`, "--wait-timeout=0"},
 	} {
 		if err := submitCatalogOperation(t.Context(), &output, io.Discard, descriptor, args); err == nil {
 			t.Fatalf("accepted submit args %#v", args)
 		}
+	}
+	if err := runOperationLifecycle(t.Context(), &output, io.Discard, "wait", []string{"--wait-timeout=0", "op_test"}); err == nil || !strings.Contains(err.Error(), "wait timeout must be positive") {
+		t.Fatalf("nonpositive lifecycle timeout error = %v", err)
 	}
 	sealed, _ := opcatalog.ByName("agent_task.create_or_update_repo_secret")
 	if err := submitCatalogOperation(t.Context(), &output, io.Discard, sealed, []string{"--target-json", `{"kind":"repo","owner":"o","name":"r"}`}); err == nil {

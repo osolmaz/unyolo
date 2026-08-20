@@ -142,6 +142,19 @@ func TestBucketObjectReadMaterializesInlineContentWithoutOverwrite(t *testing.T)
 	}
 }
 
+func TestFailedBucketObjectReadSkipsMaterialization(t *testing.T) {
+	t.Parallel()
+	descriptor, _ := opcatalog.ByName("bucket.object.read")
+	operation := agentv1.Operation{State: agentv1.StateFailed}
+	output := filepath.Join(t.TempDir(), "result.bin")
+	if err := materializeCompletedCatalogOperation(t.Context(), nil, descriptor, operation, output, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("failed operation created output: %v", err)
+	}
+}
+
 func TestCapturedResultsAreTranscriptSafe(t *testing.T) {
 	for _, descriptor := range agentFacingDescriptors() {
 		binding, found := opbinding.ByName(descriptor.Name)

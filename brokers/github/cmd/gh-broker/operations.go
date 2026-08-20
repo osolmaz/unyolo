@@ -251,6 +251,9 @@ func validateCatalogSubmitOptions(descriptor opcatalog.Descriptor, opts catalogS
 	if strings.TrimSpace(opts.reason) == "" || len(opts.reason) > 2000 {
 		return catalogSubmitOptions{}, exitError{code: 64, message: "reason is required"}
 	}
+	if opts.waitTimeout <= 0 {
+		return catalogSubmitOptions{}, exitError{code: 64, message: "wait timeout must be positive"}
+	}
 	key, err := normalizedOperationRequestID(opts.key)
 	if err != nil {
 		return catalogSubmitOptions{}, err
@@ -326,6 +329,9 @@ func runOperationLifecycle(ctx context.Context, stdout, stderr io.Writer, action
 	timeout := flags.Duration("wait-timeout", operationWaitDefault, "maximum wait")
 	if flags.Parse(args) != nil || flags.NArg() != 1 {
 		return exitError{code: 64, message: "operation ID is required"}
+	}
+	if *timeout <= 0 {
+		return exitError{code: 64, message: "wait timeout must be positive"}
 	}
 	client, err := loadOperationClient(os.Getenv)
 	if err != nil {
