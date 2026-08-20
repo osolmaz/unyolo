@@ -167,23 +167,53 @@ func (c *Client) WaitDurably(ctx context.Context, operation agentv1.Operation, r
 		return operation, errors.New("wait retry interval must be positive")
 	}
 	for !operation.State.Terminal() {
-		waitCtx, cancel := context.WithTimeout(ctx, retryInterval)
-		updated, err := c.Wait(waitCtx, operation)
-		cancel()
-		if updated.ID != "" {
-			operation = updated
-		}
+		updated, waitErr := c.waitDurableInterval(ctx, operation, retryInterval)
+		operation = latestOperation(operation, updated)
 		if operation.State.Terminal() {
 			return operation, nil
 		}
-		if ctx.Err() != nil {
-			return operation, ctx.Err()
-		}
-		if err != nil && !retryableWaitError(err) {
+		if err := continueDurableWait(ctx, waitErr, retryInterval); err != nil {
 			return operation, err
 		}
 	}
 	return operation, nil
+}
+
+func (c *Client) waitDurableInterval(ctx context.Context, operation agentv1.Operation, retryInterval time.Duration) (agentv1.Operation, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, retryInterval)
+	defer cancel()
+	return c.Wait(waitCtx, operation)
+}
+
+func latestOperation(current, updated agentv1.Operation) agentv1.Operation {
+	if updated.ID != "" {
+		return updated
+	}
+	return current
+}
+
+func continueDurableWait(ctx context.Context, waitErr error, retryInterval time.Duration) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if waitErr == nil {
+		return nil
+	}
+	if !retryableWaitError(waitErr) {
+		return waitErr
+	}
+	return waitForRetry(ctx, min(retryInterval, time.Second))
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func retryableWaitError(err error) bool {
