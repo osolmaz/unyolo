@@ -138,9 +138,7 @@ func submitAndReportCatalogOperation(ctx context.Context, client *agentClient, r
 	if !options.wait || operation.State.Terminal() {
 		return operation, nil
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, options.waitTimeout)
-	defer cancel()
-	return client.wait(waitCtx, operation)
+	return client.waitDurably(ctx, operation, options.waitTimeout)
 }
 
 func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string) (operationClientOptions, error) {
@@ -169,7 +167,7 @@ func parseOperationClientOptions(descriptor opcatalog.Descriptor, args []string)
 	flags.IntVar(&options.minutes, "minutes", 0, "window duration; omit for policy default")
 	flags.Var(&options.maxUses, "max-uses", "window use count or unlimited")
 	flags.BoolVar(&options.wait, "wait", true, "wait for approval and completion")
-	flags.DurationVar(&options.waitTimeout, "wait-timeout", options.waitTimeout, "maximum wait")
+	flags.DurationVar(&options.waitTimeout, "wait-timeout", options.waitTimeout, "internal wait retry interval")
 	flags.BoolVar(&options.jsonOutput, "json", false, "emit JSON")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return options, errors.New("operation arguments are invalid")

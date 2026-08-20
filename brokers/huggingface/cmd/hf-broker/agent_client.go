@@ -65,7 +65,7 @@ func parseClientOperationOptions(action string, args []string) (clientOperationO
 	flags := flag.NewFlagSet("operation "+action, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	jsonOutput := flags.Bool("json", false, "emit JSON")
-	timeout := flags.Duration("wait-timeout", defaultClientWait, "maximum wait")
+	timeout := flags.Duration("wait-timeout", defaultClientWait, "internal wait retry interval")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		return clientOperationOptions{}, exitError{code: 64, message: "operation ID is required"}
 	}
@@ -87,13 +87,7 @@ func waitForClientOperationAction(ctx context.Context, client *agentClient, acti
 	if !shouldWaitForClientOperation(action, operation.State) {
 		return operation, nil
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	updated, waitErr := client.wait(waitCtx, operation)
-	if updated.ID != "" {
-		operation = updated
-	}
-	return operation, waitErr
+	return client.waitDurably(ctx, operation, timeout)
 }
 
 func shouldWaitForClientOperation(action string, state agentv1.State) bool {
@@ -182,14 +176,11 @@ func (client *agentClient) cancel(ctx context.Context, id string) (agentv1.Opera
 }
 
 func (client *agentClient) wait(ctx context.Context, operation agentv1.Operation) (agentv1.Operation, error) {
-	updated, err := client.operations.Wait(ctx, operation)
-	if updated.ID != "" {
-		operation = updated
-	}
-	if err != nil && ctx.Err() != nil {
-		return operation, fmt.Errorf("operation %s is still incomplete", operation.ID)
-	}
-	return operation, err
+	return client.operations.Wait(ctx, operation)
+}
+
+func (client *agentClient) waitDurably(ctx context.Context, operation agentv1.Operation, retryInterval time.Duration) (agentv1.Operation, error) {
+	return client.operations.WaitDurably(ctx, operation, retryInterval)
 }
 
 func writeClientOperationOutput(stdout, stderr io.Writer, operation agentv1.Operation, jsonOutput bool, intent operationcli.Intent, timeout time.Duration) (bool, error) {

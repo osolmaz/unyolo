@@ -52,7 +52,8 @@ gh-broker operation submit repo.contents.read \
 ```
 
 The `--wait` flag is a client convenience that polls after submitting. The submission itself still
-returned right away.
+returned right away. `--wait-timeout` controls an internal retry interval, not the total operation
+lifetime. The CLI keeps waiting on the same ID after an interval expires.
 
 ## Authorization inside the lifecycle
 

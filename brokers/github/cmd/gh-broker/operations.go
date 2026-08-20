@@ -165,7 +165,7 @@ Flags:
   --reason TEXT               approval reason
   --request-id ID             stable retry key
   --wait                      wait for a terminal state
-  --wait-timeout DURATION     maximum wait (default 15m)
+  --wait-timeout DURATION     internal wait retry interval (default 15m)
   --sealed-file PATH          sealed argument JSON file
   --credential-slot NAME      encrypted credential destination slot
   --stream-file PATH          bounded binary upload file
@@ -235,7 +235,7 @@ func parseCatalogSubmitOptions(descriptor opcatalog.Descriptor, args []string) (
 	flags.StringVar(&opts.reason, "reason", opts.reason, "approval reason")
 	flags.StringVar(&opts.key, "request-id", "", "stable retry key")
 	flags.BoolVar(&opts.wait, "wait", false, "wait for terminal state")
-	flags.DurationVar(&opts.waitTimeout, "wait-timeout", opts.waitTimeout, "maximum wait")
+	flags.DurationVar(&opts.waitTimeout, "wait-timeout", opts.waitTimeout, "internal wait retry interval")
 	if flags.Parse(args) != nil || flags.NArg() != 0 || opts.targetText == "" {
 		return catalogSubmitOptions{}, exitError{code: 64, message: "closed --target-json and valid operation flags are required"}
 	}
@@ -277,16 +277,7 @@ func waitForSubmittedOperation(ctx context.Context, client *agentclient.Client, 
 	if !opts.wait || operation.State.Terminal() {
 		return operation, nil
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, opts.waitTimeout)
-	defer cancel()
-	waited, err := client.Wait(waitCtx, operation)
-	if waited.ID != "" {
-		operation = waited
-	}
-	if err != nil && waitCtx.Err() == nil {
-		return operation, err
-	}
-	return operation, nil
+	return client.WaitDurably(ctx, operation, opts.waitTimeout)
 }
 
 func prepareCLIArguments(ctx context.Context, connection operationConnection, descriptor opcatalog.Descriptor, key string, arguments json.RawMessage,
@@ -326,7 +317,7 @@ func prepareCLISealedArguments(ctx context.Context, connection operationConnecti
 func runOperationLifecycle(ctx context.Context, stdout, stderr io.Writer, action string, args []string) error {
 	flags := flag.NewFlagSet(action, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	timeout := flags.Duration("wait-timeout", operationWaitDefault, "maximum wait")
+	timeout := flags.Duration("wait-timeout", operationWaitDefault, "internal wait retry interval")
 	if flags.Parse(args) != nil || flags.NArg() != 1 {
 		return exitError{code: 64, message: "operation ID is required"}
 	}
@@ -362,13 +353,7 @@ func executeOperationLifecycle(ctx context.Context, client *agentclient.Client, 
 	if err != nil || action != "wait" || operation.State.Terminal() {
 		return operation, err
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	updated, waitErr := client.Wait(waitCtx, operation)
-	if updated.ID != "" {
-		operation = updated
-	}
-	return operation, waitErr
+	return client.WaitDurably(ctx, operation, timeout)
 }
 
 func submitOperationIntent(wait bool) operationcli.Intent {
