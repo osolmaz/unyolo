@@ -241,10 +241,14 @@ func decodeResponse(status int, data []byte) (agentv1.Operation, error) {
 		return agentv1.Operation{}, errors.New("agent source returned an invalid operation")
 	}
 	operation, err := agentv1wire.OperationFromWire(wire)
-	if err != nil || operation.APIVersion != agentv1.APIVersion {
+	if err != nil || !validOperationResponse(operation) {
 		return agentv1.Operation{}, errors.New("agent source returned an invalid operation")
 	}
 	return operation, nil
+}
+
+func validOperationResponse(operation agentv1.Operation) bool {
+	return operation.APIVersion == agentv1.APIVersion && operation.ID != "" && operation.State.Valid()
 }
 
 func decodeError(status int, data []byte) error {
