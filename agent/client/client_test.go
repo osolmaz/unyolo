@@ -111,6 +111,41 @@ func TestClientWaitDurablyRetriesInternalTimeout(t *testing.T) {
 	}
 }
 
+func TestClientWaitDurablyReturnsTerminalOperationWithoutPolling(t *testing.T) {
+	t.Parallel()
+	initial := domainOperation(agentv1.StateSucceeded)
+	operation, err := newTestClient(t, "tcp://127.0.0.1:1", nil).WaitDurably(t.Context(), initial, time.Minute)
+	if err != nil || operation.State != agentv1.StateSucceeded {
+		t.Fatalf("WaitDurably() = %+v, %v", operation, err)
+	}
+}
+
+func TestClientWaitDurablyReturnsParentCancellation(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	initial := domainOperation(agentv1.StatePending)
+	operation, err := newTestClient(t, "tcp://127.0.0.1:1", nil).WaitDurably(ctx, initial, time.Minute)
+	if !errors.Is(err, context.Canceled) || operation.ID != initial.ID {
+		t.Fatalf("WaitDurably() = %+v, %v", operation, err)
+	}
+}
+
+func TestClientWaitDurablyReturnsUnrecoverableError(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(writer).Encode(agentv1.ErrorEnvelope{Error: agentv1.Error{Code: "failed", Message: "failed safely"}})
+	}))
+	defer server.Close()
+	initial := domainOperation(agentv1.StatePending)
+	operation, err := newTestClient(t, server.URL, nil).WaitDurably(t.Context(), initial, time.Minute)
+	if err == nil || operation.ID != initial.ID {
+		t.Fatalf("WaitDurably() = %+v, %v", operation, err)
+	}
+}
+
 func TestClientWaitDurablyRejectsInvalidInterval(t *testing.T) {
 	t.Parallel()
 	initial := domainOperation(agentv1.StatePending)

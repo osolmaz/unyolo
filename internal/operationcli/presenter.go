@@ -39,39 +39,57 @@ type Presentation struct {
 // Describe derives CLI guidance from command intent and the authoritative
 // Agent V1 operation state. waitCommand must end with the same operation ID.
 func Describe(intent Intent, operation agentv1.Operation, waitCommand []string) (Presentation, error) {
+	if err := validatePresentationInput(intent, operation); err != nil {
+		return Presentation{}, err
+	}
+	return describeValidOperation(intent, operation, waitCommand)
+}
+
+func validatePresentationInput(intent Intent, operation agentv1.Operation) error {
 	if !validIntent(intent) {
-		return Presentation{}, errors.New("operation CLI intent is invalid")
+		return errors.New("operation CLI intent is invalid")
 	}
 	if !operation.State.Valid() {
-		return Presentation{}, errors.New("operation state is invalid")
+		return errors.New("operation state is invalid")
 	}
 	if err := validateDisplayValue(operation.ID, maxOperationIDBytes); err != nil {
-		return Presentation{}, errors.New("operation ID is unsafe to display")
+		return errors.New("operation ID is unsafe to display")
 	}
+	if intent == IntentCancel && !operation.State.Terminal() {
+		return errors.New("cancel returned a nonterminal operation")
+	}
+	return nil
+}
+
+func describeValidOperation(intent Intent, operation agentv1.Operation, waitCommand []string) (Presentation, error) {
 	if intent == IntentCancel {
-		if !operation.State.Terminal() {
-			return Presentation{}, errors.New("cancel returned a nonterminal operation")
-		}
 		return describeCancel(operation), nil
 	}
-	if !operation.State.Terminal() {
-		command, err := renderWaitCommand(waitCommand, operation.ID)
-		if err != nil {
-			return Presentation{}, err
-		}
-		return Presentation{
-			Notice: fmt.Sprintf(
-				"Operation %s is %s and is not complete.\nDo not report the requested action as completed.\nNext: %s\n",
-				operation.ID, operation.State, command,
-			),
-			CommandFailed: intent == IntentSubmitWait || intent == IntentWait,
-		}, nil
+	if operation.State.Terminal() {
+		return describeTerminal(intent, operation), nil
 	}
+	return describeNonterminal(intent, operation, waitCommand)
+}
+
+func describeNonterminal(intent Intent, operation agentv1.Operation, waitCommand []string) (Presentation, error) {
+	command, err := renderWaitCommand(waitCommand, operation.ID)
+	if err != nil {
+		return Presentation{}, err
+	}
+	return Presentation{
+		Notice: fmt.Sprintf(
+			"Operation %s is %s and is not complete.\nDo not report the requested action as completed.\nNext: %s\n",
+			operation.ID, operation.State, command,
+		),
+		CommandFailed: intent == IntentSubmitWait || intent == IntentWait,
+	}, nil
+}
+
+func describeTerminal(intent Intent, operation agentv1.Operation) Presentation {
 	if operation.State == agentv1.StateSucceeded {
 		return Presentation{
-			Notice:        fmt.Sprintf("Operation %s succeeded. The requested action completed. Use the operation output as the authoritative receipt.\n", operation.ID),
-			CommandFailed: false,
-		}, nil
+			Notice: fmt.Sprintf("Operation %s succeeded. The requested action completed. Use the operation output as the authoritative receipt.\n", operation.ID),
+		}
 	}
 	return Presentation{
 		Notice: fmt.Sprintf(
@@ -79,7 +97,7 @@ func Describe(intent Intent, operation agentv1.Operation, waitCommand []string) 
 			operation.ID, operation.State,
 		),
 		CommandFailed: intent != IntentGet,
-	}, nil
+	}
 }
 
 // WaitTimeoutArgument formats an existing positive wait timeout for a safe
