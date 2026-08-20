@@ -107,7 +107,7 @@ func executeCatalogOperation(ctx context.Context, client *agentClient, stdout, s
 	if operation.ID == "" {
 		return operationErr
 	}
-	if err := materializeCompletedCatalogOperation(ctx, client, descriptor, operation, options.outputFile, operationErr); err != nil {
+	if err := materializeCompletedCatalogOperation(ctx, client, descriptor, operation, options.outputFile, operationErr == nil); err != nil {
 		return err
 	}
 	return reportClientOperation(
@@ -116,8 +116,8 @@ func executeCatalogOperation(ctx context.Context, client *agentClient, stdout, s
 	)
 }
 
-func materializeCompletedCatalogOperation(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, operation agentv1.Operation, outputFile string, operationErr error) error {
-	if operationErr != nil {
+func materializeCompletedCatalogOperation(ctx context.Context, client *agentClient, descriptor opcatalog.Descriptor, operation agentv1.Operation, outputFile string, canMaterialize bool) error {
+	if !canMaterialize || operation.State != agentv1.StateSucceeded {
 		return nil
 	}
 	return materializeBucketObjectRead(ctx, client, descriptor, operation, outputFile)
