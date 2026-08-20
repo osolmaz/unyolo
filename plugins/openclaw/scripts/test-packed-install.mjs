@@ -131,13 +131,13 @@ const requiredGuidance = {
     "gh-broker operation get OPERATION-ID",
     "unknown upstream result",
     "Approval waiting is part of the same agent turn.",
-    "If a wait interval expires",
+    "on the same operation ID when an internal interval expires",
   ],
   "hf-broker": [
     "hf-broker client operation get OPERATION-ID",
     "hf-broker client operation cancel OPERATION-ID",
     "Approval waiting is part of the same agent turn.",
-    "If a wait interval expires",
+    "on the same operation ID when an internal interval expires",
   ],
   "sudo-broker": [
     "--operation-id STABLE-OPERATION-ID",

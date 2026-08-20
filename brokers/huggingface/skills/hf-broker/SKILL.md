@@ -55,7 +55,7 @@ hf-broker client repo create \
 Catalog commands wait by default. Keep that behavior for agent-driven work so
 the command returns only after a terminal result, explicit cancellation, or an
 unrecoverable error. `--wait-timeout` is an internal retry interval. The CLI
-keeps waiting on the same operation ID when an interval expires.
+keeps waiting on the same operation ID when an internal interval expires.
 
 The CLI explains every returned lifecycle state. `pending`, `approved`, and
 `executing` are not completion. Follow the printed `Next:` wait command with
