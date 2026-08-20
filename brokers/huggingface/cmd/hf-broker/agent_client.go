@@ -69,6 +69,9 @@ func parseClientOperationOptions(action string, args []string) (clientOperationO
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		return clientOperationOptions{}, exitError{code: 64, message: "operation ID is required"}
 	}
+	if *timeout <= 0 {
+		return clientOperationOptions{}, exitError{code: 64, message: "wait timeout must be positive"}
+	}
 	return clientOperationOptions{id: flags.Arg(0), timeout: *timeout, jsonOutput: *jsonOutput}, nil
 }
 

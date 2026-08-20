@@ -585,6 +585,16 @@ func TestAgentClientConfigurationAndResponseErrors(t *testing.T) {
 	}
 }
 
+func TestClientOperationOptionsRejectNonpositiveTimeout(t *testing.T) {
+	t.Parallel()
+	for _, timeout := range []string{"0", "-1s"} {
+		_, err := parseClientOperationOptions("wait", []string{"--wait-timeout=" + timeout, "op_test"})
+		if err == nil || !strings.Contains(err.Error(), "wait timeout must be positive") {
+			t.Fatalf("timeout %q error = %v", timeout, err)
+		}
+	}
+}
+
 func TestCatalogOperationOptionsAndTerminalOutput(t *testing.T) {
 	descriptor, _, found := matchCLICommand([]string{"repo", "create"})
 	if !found || descriptor.Name != "repo.create" {
