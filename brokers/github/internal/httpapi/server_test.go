@@ -1253,7 +1253,7 @@ func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
 	restarted.deliverGrantStatusUpdates(context.Background())
 	restarted.deliverGrantStatusUpdates(context.Background())
 	if len(statusNotifier.statuses) != 1 || statusNotifier.statuses[0].Kind != notify.StatusActive {
-		t.Fatalf("statuses = %q, want one durable active update", statusNotifier.statuses)
+		t.Fatalf("statuses = %+v, want one durable active update", statusNotifier.statuses)
 	}
 	stored, err := restarted.grants.Get(grant.ID)
 	if err != nil {
@@ -1304,7 +1304,7 @@ func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
 
 	server.deliverGrantStatusUpdates(context.Background())
 	if len(notifier.statuses) != 1 || notifier.statuses[0].Kind != notify.StatusRetained {
-		t.Fatalf("statuses = %q, want retained-use warning", notifier.statuses)
+		t.Fatalf("statuses = %+v, want retained-use warning", notifier.statuses)
 	}
 }
 

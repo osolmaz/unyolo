@@ -9,7 +9,7 @@
 # image contains the broker process and its exec helper; it does not contain
 # sudo or any host command inventory.
 
-ARG GO_BUILDER=golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468
+ARG GO_BUILDER=golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0
 ARG DISTROLESS=gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 
 FROM ${GO_BUILDER} AS build
