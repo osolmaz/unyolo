@@ -85,7 +85,7 @@ release artifact, and audit stream.
 ## Install
 
 ```sh
-curl -fsSL https://unyolo.io/install.sh | sh
+curl -fsSL https://unyolo.o9.nz/install.sh | sh
 ```
 
 Guided setup starts with your goal. On Linux, it can install only the command,
@@ -98,7 +98,7 @@ or remove resources it can still prove it created.
 Docker, remote pairing, and managed macOS setup stay hidden until their complete
 apply, restart, rollback, and removal paths have passed real-host tests. Ctrl-C
 on the first screen removes temporary files and installs nothing. See
-[installation](https://unyolo.io/docs/get-started/installation) and the
+[installation](https://unyolo.o9.nz/docs/get-started/installation) and the
 [guided installation contract](docs/GUIDED_INSTALLATION.md).
 
 ## Build

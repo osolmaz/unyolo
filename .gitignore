@@ -8,5 +8,4 @@ node_modules/
 plugins/openclaw/dist/
 plugins/openclaw/test-results/
 plugins/openclaw/playwright-report/
-web/dist/
 .astro/
