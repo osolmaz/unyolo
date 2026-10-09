@@ -1,6 +1,5 @@
 packages:
   - plugins/*
-  - web
 
 allowBuilds:
   "@google/genai": false

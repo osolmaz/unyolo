@@ -1,14 +1,14 @@
 #!/bin/sh
 #
-# unYOLO installer, served from https://unyolo.io/install.sh
+# unYOLO installer, served from https://unyolo.o9.nz/install.sh
 #
 # Guided host setup:
 #
-#   curl -fsSL https://unyolo.io/install.sh | sh
+#   curl -fsSL https://unyolo.o9.nz/install.sh | sh
 #
 # Install one broker binary without guided setup:
 #
-#   curl -fsSL https://unyolo.io/install.sh | sh -s -- github
+#   curl -fsSL https://unyolo.o9.nz/install.sh | sh -s -- github
 #
 set -eu
 
@@ -52,7 +52,7 @@ case "$component" in
   "" | setup | --*) ;;
   *)
     printf '%s\n' "unyolo install: unknown component '$component'" >&2
-    printf '%s\n' 'usage: curl -fsSL https://unyolo.io/install.sh | sh -s -- <github|huggingface|sudo>' >&2
+    printf '%s\n' 'usage: curl -fsSL https://unyolo.o9.nz/install.sh | sh -s -- <github|huggingface|sudo>' >&2
     exit 64
     ;;
 esac

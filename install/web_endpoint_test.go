@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-const endpointScript = "../web/public/install.sh"
+const endpointScript = "web-endpoint.sh"
 
 var endpointBrokerCase = regexp.MustCompile(`(?m)^\s*([a-z0-9-]+(?:\s*\|\s*[a-z0-9-]+)*)\)\s*$`)
 
