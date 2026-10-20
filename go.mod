@@ -17,6 +17,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+	github.com/vektah/gqlparser/v2 v2.5.60
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0

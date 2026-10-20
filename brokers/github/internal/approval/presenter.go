@@ -108,6 +108,7 @@ func DisplayFacts(grant grants.Grant) []approvalview.Fact {
 		"resource_id": "Resource ID", "resource_name": "Resource name", "resource_owner": "Resource owner", "role": "Role",
 		"visibility": "Visibility", "workflow": "Workflow", "workflow_ref": "Workflow ref",
 		"operation": "Push operations", "command": "Ordered push commands", "old_oid": "Previous object IDs", "new_oid": "New object IDs", "plan_digest": "Push plan digest",
+		"request_digest": "Request digest",
 	}
 	keys := make([]string, 0, len(grant.Attrs))
 	for key := range grant.Attrs {
@@ -142,6 +143,7 @@ func risk(operation string) approvalview.Risk {
 		"git.push.force":         approvalview.RiskCritical,
 		"git.ref.delete":         approvalview.RiskCritical,
 		"git.tag.update":         approvalview.RiskHigh,
+		"graphql.read":           approvalview.RiskLow,
 		"webhook.github.receive": approvalview.RiskMedium,
 	}
 	if value, ok := risks[operation]; ok {

@@ -111,6 +111,7 @@ func protocolOperationSpecs() map[Operation]corepolicy.OperationSpec {
 		OperationGitPushForce:         reusableProtocolOperation("ref"),
 		OperationGitRefDelete:         reusableProtocolOperation("ref"),
 		OperationGitTagUpdate:         reusableProtocolOperation("ref"),
+		OperationGraphQLRead:          reusableProtocolOperation(),
 		OperationWebhookGitHubReceive: {TargetKinds: []string{"repo"}},
 	}
 }

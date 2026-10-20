@@ -11,7 +11,10 @@ These instructions apply to this repository.
 - `scope.json` is the authorization source of truth. Keep policy decisions inside `internal/policy`.
 - Handlers may reject malformed transport requests, but they must not independently authorize valid broker operations.
 - Keep broker routes compatible with Git smart HTTP and the generated typed Agent V1 operation surface.
-- Do not add broad GitHub API proxying or arbitrary local shell execution.
+- Do not add broad GitHub API proxying or arbitrary local shell execution. The
+  GitHub-compatible `/api/v3` and `/api/graphql` routes forward only requests
+  that classify to exactly one catalog operation or reviewed GraphQL shape, and
+  they refuse every other request before any upstream call.
 - High-risk operations must remain explicit, narrowly typed, and policy-gated.
 - Each invocation must retain its own immutable plan; execution-mode grants remain one-use.
 - Keep package APIs small and explicit. Keep interfaces near their consumers.

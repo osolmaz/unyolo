@@ -138,10 +138,13 @@ func transportAnonymousRules(clients []string) []policy.Rule {
 	}}
 }
 
-// transportRequestOperations are the Git smart-HTTP operations every preset
-// deployment exposes as requestable. The catalog covers typed API operations
-// only, so transport rules are appended directly.
-var transportRequestOperations = []policy.Operation{policy.OperationGitFetch, policy.OperationGitLFSWrite, policy.OperationGitPushAdvertise}
+// transportRequestOperations are the Git smart-HTTP and GitHub-compatible
+// GraphQL read operations every preset deployment exposes as requestable. The
+// catalog covers typed API operations only, so transport rules are appended
+// directly.
+var transportRequestOperations = []policy.Operation{
+	policy.OperationGitFetch, policy.OperationGitLFSWrite, policy.OperationGitPushAdvertise, policy.OperationGraphQLRead,
+}
 
 func transportRequestRules(clients []string) []policy.Rule {
 	rules := make([]policy.Rule, 0, len(transportRequestOperations))
@@ -155,9 +158,10 @@ func transportRequestRules(clients []string) []policy.Rule {
 	return rules
 }
 
-// transportGrantPolicy bounds one fetch or LFS approval to a one-hour session
-// window with a fifteen-minute approval wait, generous enough for clone,
-// fetch, and LFS transfers for the approved repository.
+// transportGrantPolicy bounds one fetch, LFS, or GraphQL read approval to a
+// one-hour session window with a fifteen-minute approval wait, generous enough
+// for clone, fetch, LFS transfers, and GitHub CLI reads of the approved
+// repository.
 func transportGrantPolicy() *corepolicy.GrantPolicy {
 	return &corepolicy.GrantPolicy{
 		Mode: string(corepolicy.GrantModeWindow), DefaultMinutes: 60, MaxMinutes: 10080, RequestTTLMinutes: 15,

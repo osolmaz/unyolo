@@ -447,6 +447,7 @@ func (s *Server) registerRoutes(auth security.TokenAuth) {
 	protected.POST("/:owner/:repoGit/info/lfs/locks/verify", s.gitLFSDirect)
 	protected.POST("/:owner/:repoGit/info/lfs/locks/:lockID/unlock", s.gitLFSDirect)
 	s.echo.POST("/webhooks/github", s.githubWebhook)
+	s.registerGitHubAPI(auth)
 }
 
 func (s *Server) authenticateAgentUpload(response http.ResponseWriter, request *http.Request) (string, bool) {
@@ -746,20 +747,7 @@ func (s *Server) runAuthorizedBrokerRequest(
 	reserved []grants.UseReservation,
 	run func(echo.Context) error,
 ) error {
-	c.Set(githubOperationContextKey, string(request.Operation))
-	err := run(c)
-	if err != nil {
-		err = s.settleFailedExecution(c, reserved, err)
-		s.audit(c, request, errorOutcome(err), errorString(err), errorStatus(c, err), decision.MatchedRuleIDs)
-		return err
-	}
-	if err := s.commitGrantUses(reserved); err != nil {
-		_ = s.closeGrantUsesAfterCommitFailure(reserved)
-		s.audit(c, request, "error", "grant use commit failed", responseStatus(c), decision.MatchedRuleIDs)
-		return echo.NewHTTPError(http.StatusInternalServerError, "could not commit grant use")
-	}
-	s.audit(c, request, "proxied", "", responseStatus(c), decision.MatchedRuleIDs)
-	return nil
+	return s.runHeld(c, []heldAuthorization{{request: request, decision: decision, reserved: reserved}}, run)
 }
 
 func (s *Server) repoRequest(c echo.Context, operation policy.Operation, attrs map[string]string) policy.Request {
@@ -874,7 +862,10 @@ func copyUpstreamResponse(c echo.Context, response *http.Response) error {
 }
 
 func (s *Server) audit(c echo.Context, request policy.Request, outcome string, reason string, status int, matchedRuleIDs []string) {
-	repo := request.Target.Name
+	repo := request.Target.Repo
+	if repo == "" {
+		repo = request.Target.Name
+	}
 	if repo == "" {
 		repo = strings.TrimSuffix(c.Param("repoGit"), ".git")
 	}
@@ -904,9 +895,11 @@ func repositoryTarget(owner string, repo string) string {
 }
 
 func (s *Server) auditAuthorizedReceivePack(c echo.Context, authorized []authorizedReceivePackRequest, outcome string, reason string, status int) {
-	for _, item := range authorized {
-		s.audit(c, item.Request, outcome, reason, status, item.Decision.MatchedRuleIDs)
+	held := make([]heldAuthorization, len(authorized))
+	for index, item := range authorized {
+		held[index] = heldAuthorization{request: item.Request, decision: item.Decision}
 	}
+	s.auditHeld(c, held, outcome, reason, status)
 }
 
 func errorString(err error) string {

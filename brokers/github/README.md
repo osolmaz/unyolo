@@ -396,11 +396,14 @@ POST /{owner}/{repo}.git/info/lfs/objects/batch
 *    /{owner}/{repo}.git/info/lfs/locks/*
 
 POST /webhooks/github                    GitHub App webhooks
+
+*    /api/v3/*                           GitHub-compatible REST API
+POST /api/graphql                        GitHub-compatible GraphQL API
 ```
 
-All discrete GitHub JSON operations use Agent V1; there are no direct
-repository-list or contents proxy routes. The separate operator listener
-exposes the shared operator inbox:
+Typed clients use Agent V1. Stock GitHub clients use the GitHub-compatible
+routes described in [GitHub CLI without a token](#github-cli-without-a-token).
+The separate operator listener exposes the shared operator inbox:
 
 ```text
 GET  /api/operator/v1/requests
@@ -418,6 +421,57 @@ through either path closes the same state exactly once. GitHub supplies the
 bounded operation and target along with its risk and warnings. It also supplies
 generated projection facts. unYOLO renders the shared Telegram HTML, controls, callback
 answers, and terminal states.
+
+## GitHub CLI without a token
+
+The stock GitHub CLI supports GitHub Enterprise Server hosts. Point it at the
+agent listener and it sends REST calls to `/api/v3`, GraphQL calls to
+`/api/graphql`, and Git traffic to the Git smart-HTTP routes, all on one host:
+
+```sh
+export GH_HOST=broker.example.internal:8443
+export GH_ENTERPRISE_TOKEN="$(cat /run/agent/gh-broker-client-secret)"
+gh pr view 12 -R acme/widgets
+```
+
+`GH_ENTERPRISE_TOKEN` is the broker client secret, not a GitHub credential.
+The listener must use `tls://`, and the client must trust its certificate.
+Point Git remotes at the same host, for example with
+`git config --global url."https://broker.example.internal:8443/".insteadOf https://github.com/`.
+
+gh-broker serves a request only when it classifies it before any upstream
+call:
+
+- A REST call must match exactly one reviewed REST binding. The operation must
+  be implemented, agent-facing, use an installation credential, take no sealed
+  input, return no credential, and target one repository. Policy attributes come
+  from the same vocabulary as Agent V1.
+- A GraphQL query may read `repository(owner:, name:)`, `viewer`, and schema
+  introspection. Each named repository is checked as `graphql.read`, and the
+  forwarded token is narrowed to those repositories with read permissions only.
+  Introspection-only queries use a metadata-only token.
+- A GraphQL mutation must be one field from a reviewed table, such as
+  `createPullRequest`, `mergePullRequest`, or `addComment`. It is checked as the
+  REST operation with the same effect, for example `pull_request.merge`, after
+  gh-broker resolves its subject node to the repository and number.
+
+Every other request is refused with a GitHub-style JSON error. Forwarded calls
+use an installation token narrowed to the target repository and the minimum
+permissions of the classified operation. Responses keep GitHub's status and
+body, drop credential headers, and rewrite `Link` and `Location` headers to the
+broker host, so `gh --paginate` stays on the broker.
+
+A requestable decision creates the same idempotent approval as a Git transfer
+and holds the HTTP request until the operator decides or the request expires.
+The client then receives the upstream response, or `403` with the grant id.
+A repeated request reuses the pending approval. A window grant covers later
+requests with the same operation, target, and attributes. An execution grant
+is bound to one exact request.
+
+This first version does not serve GraphQL `search`, `node`, or organization
+queries, label and project mutations, release asset uploads, Codespaces,
+Copilot, `gh auth login`, operations that need a user or App credential, or
+GraphQL reads across more than one App installation.
 
 ## Security model
 

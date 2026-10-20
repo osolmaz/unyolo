@@ -30,16 +30,11 @@ func targetSummary(kind string, target map[string]any) string {
 
 func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Binding, target, arguments map[string]any,
 	credential githubauth.Metadata) Authorization {
-	attrs := authorizationAttrs(arguments)
-	attrs = normalizeOperationAuthorizationAttrs(descriptor.Name, attrs)
-	selectors := authorizationSelectorAttrs(binding, arguments)
-	if attrs == nil && (len(selectors) > 0 || credential.UserID > 0) {
-		attrs = map[string][]string{}
-	}
-	for key, values := range selectors {
-		attrs[key] = values
-	}
+	attrs := PolicyAttributes(descriptor.Name, binding, arguments)
 	if credential.UserID > 0 {
+		if attrs == nil {
+			attrs = map[string][]string{}
+		}
 		attrs["actor_id"] = []string{fmt.Sprint(credential.UserID)}
 	}
 	return Authorization{
@@ -49,6 +44,21 @@ func authorizeDescriptor(descriptor opcatalog.Descriptor, binding *opbinding.Bin
 		Attrs:          attrs,
 		CredentialKind: descriptor.CredentialKind,
 	}
+}
+
+// PolicyAttributes returns the policy attributes of one GitHub call: the
+// reviewed argument fields plus the binding's authorization selectors. Typed
+// operations and the GitHub-compatible API share this vocabulary.
+func PolicyAttributes(operation string, binding *opbinding.Binding, arguments map[string]any) map[string][]string {
+	attrs := normalizeOperationAuthorizationAttrs(operation, authorizationAttrs(arguments))
+	selectors := authorizationSelectorAttrs(binding, arguments)
+	if attrs == nil && len(selectors) > 0 {
+		attrs = map[string][]string{}
+	}
+	for key, values := range selectors {
+		attrs[key] = values
+	}
+	return attrs
 }
 
 func authorizationSelectorAttrs(binding *opbinding.Binding, arguments map[string]any) map[string][]string {

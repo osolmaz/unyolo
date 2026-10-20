@@ -41,6 +41,7 @@ const (
 	OperationGitPushForce         Operation = "git.push.force"
 	OperationGitRefDelete         Operation = "git.ref.delete"
 	OperationGitTagUpdate         Operation = "git.tag.update"
+	OperationGraphQLRead          Operation = "graphql.read"
 	OperationWebhookGitHubReceive Operation = "webhook.github.receive"
 )
 
