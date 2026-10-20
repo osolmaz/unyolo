@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -80,7 +81,7 @@ func (s *Server) githubGraphQL(c echo.Context) error {
 	case apicompat.GraphQLSchema:
 		return s.serveGraphQLSchema(c, body)
 	case apicompat.GraphQLRead:
-		return s.serveGraphQLRead(c, body, classified.Repositories)
+		return s.serveGraphQLRead(c, body, classified)
 	default:
 		return s.serveGraphQLMutation(c, body, classified.Mutation)
 	}
@@ -95,7 +96,7 @@ func (s *Server) serveGraphQLSchema(c echo.Context, body []byte) error {
 		s.audit(c, request, "error", "GitHub credential acquisition failed", http.StatusBadGateway, nil)
 		return echo.NewHTTPError(http.StatusBadGateway, "GitHub credential acquisition failed")
 	}
-	if err := s.forwardGitHubAPI(c, "/graphql", body, credential); err != nil {
+	if err := s.forwardGitHubAPI(c, "/graphql", body, credential, githubauth.Repository{}); err != nil {
 		s.audit(c, request, errorOutcome(err), errorString(err), errorStatus(c, err), nil)
 		return err
 	}
@@ -103,7 +104,16 @@ func (s *Server) serveGraphQLSchema(c echo.Context, body []byte) error {
 	return nil
 }
 
-func (s *Server) serveGraphQLRead(c echo.Context, body []byte, repositories []githubauth.Repository) error {
+func (s *Server) serveGraphQLRead(c echo.Context, body []byte, classified apicompat.GraphQLRequest) error {
+	nodes := make([]githubauth.Node, 0, len(classified.NodeIDs))
+	for _, id := range classified.NodeIDs {
+		node, err := s.resolveCompatNode(c, id, "node")
+		if err != nil {
+			return err
+		}
+		nodes = append(nodes, node)
+	}
+	repositories := apicompat.ReadRepositories(classified.Repositories, nodes)
 	requestDigest := compatRequestDigest(c, body)
 	held := make([]heldAuthorization, 0, len(repositories))
 	for _, repository := range repositories {
@@ -122,17 +132,14 @@ func (s *Server) serveGraphQLRead(c echo.Context, body []byte, repositories []gi
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadGateway, "GitHub credential acquisition failed")
 		}
-		return s.forwardGitHubAPI(c, "/graphql", body, credential)
+		return s.forwardGitHubAPI(c, "/graphql", body, credential, githubauth.Repository{})
 	})
 }
 
 func (s *Server) serveGraphQLMutation(c echo.Context, body []byte, mutation apicompat.Mutation) error {
-	node, err := s.githubCredentials.ResolveNode(c.Request().Context(), mutation.NodeID)
-	if errors.Is(err, githubauth.ErrNodeNotFound) {
-		return echo.NewHTTPError(http.StatusNotFound, "gh-broker: the "+mutation.Field+" subject is not visible to the broker")
-	}
+	node, err := s.resolveCompatNode(c, mutation.NodeID, mutation.Field)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, "gh-broker: could not resolve the "+mutation.Field+" subject")
+		return err
 	}
 	request, err := mutation.Request(node)
 	if err != nil {
@@ -148,6 +155,19 @@ func (s *Server) serveGraphQLMutation(c echo.Context, body []byte, mutation apic
 	})
 }
 
+// resolveCompatNode resolves one GraphQL node id to its repository with a
+// broker-internal lookup before policy runs on that repository.
+func (s *Server) resolveCompatNode(c echo.Context, id, field string) (githubauth.Node, error) {
+	node, err := s.githubCredentials.ResolveNode(c.Request().Context(), id)
+	if errors.Is(err, githubauth.ErrNodeNotFound) {
+		return githubauth.Node{}, echo.NewHTTPError(http.StatusNotFound, "gh-broker: the "+field+" subject is not visible to the broker")
+	}
+	if err != nil {
+		return githubauth.Node{}, echo.NewHTTPError(http.StatusBadGateway, "gh-broker: could not resolve the "+field+" subject")
+	}
+	return node, nil
+}
+
 // forwardRepositoryAPI forwards one authorized call with the installation
 // credential narrowed to its repository and the operation's permissions.
 func (s *Server) forwardRepositoryAPI(c echo.Context, request policy.Request, path string, body []byte) error {
@@ -156,13 +176,13 @@ func (s *Server) forwardRepositoryAPI(c echo.Context, request policy.Request, pa
 	if err != nil {
 		return err
 	}
-	return s.forwardGitHubAPI(c, path, body, credential)
+	return s.forwardGitHubAPI(c, path, body, credential, githubauth.Repository{Owner: owner, Name: repo})
 }
 
 // forwardGitHubAPI sends one call to the GitHub API and copies the response.
 // Credential headers are removed, and API links are rewritten to this host so
 // clients keep paginating through the broker.
-func (s *Server) forwardGitHubAPI(c echo.Context, escapedPath string, body []byte, credential *githubauth.Credential) error {
+func (s *Server) forwardGitHubAPI(c echo.Context, escapedPath string, body []byte, credential *githubauth.Credential, repository githubauth.Repository) error {
 	base := githubAPIRoot(s.githubAPIBaseURL)
 	upstreamURL, err := githubAPIURL(base, escapedPath, c.Request().URL.RawQuery)
 	if err != nil {
@@ -188,7 +208,7 @@ func (s *Server) forwardGitHubAPI(c echo.Context, escapedPath string, body []byt
 	}
 	defer func() { _ = response.Body.Close() }()
 	httpx.CopyHeaders(c.Response().Header(), response.Header, githubProxyResponseHeader)
-	rewriteGitHubAPILinks(c.Response().Header(), base.String(), c.Scheme()+"://"+c.Request().Host+githubAPIPrefix+"/")
+	rewriteGitHubAPILinks(c.Response().Header(), base.String(), c.Scheme()+"://"+c.Request().Host+githubAPIPrefix+"/", repository)
 	return copyUpstreamResponse(c, response)
 }
 
@@ -212,7 +232,16 @@ func githubAPIURL(base *url.URL, escapedPath, rawQuery string) (*url.URL, error)
 	return base.ResolveReference(relative), nil
 }
 
-func rewriteGitHubAPILinks(header http.Header, upstreamRoot, publicRoot string) {
+// rewriteGitHubAPILinks points API links at the broker. GitHub pages
+// repository lists through /repositories/{id}/ links; for a call scoped to one
+// repository, that id is the requested repository, so the link is rewritten to
+// the /repos/{owner}/{repo}/ path that the broker classifies.
+func rewriteGitHubAPILinks(header http.Header, upstreamRoot, publicRoot string, repository githubauth.Repository) {
+	byID := regexp.MustCompile(regexp.QuoteMeta(upstreamRoot) + `repositories/[0-9]+/`)
+	repositoryRoot := ""
+	if repository.Owner != "" && repository.Name != "" {
+		repositoryRoot = publicRoot + "repos/" + url.PathEscape(repository.Owner) + "/" + url.PathEscape(repository.Name) + "/"
+	}
 	for _, key := range []string{"Link", "Location"} {
 		values := header.Values(key)
 		if len(values) == 0 {
@@ -220,6 +249,9 @@ func rewriteGitHubAPILinks(header http.Header, upstreamRoot, publicRoot string) 
 		}
 		header.Del(key)
 		for _, value := range values {
+			if repositoryRoot != "" {
+				value = byID.ReplaceAllLiteralString(value, repositoryRoot)
+			}
 			header.Add(key, strings.ReplaceAll(value, upstreamRoot, publicRoot))
 		}
 	}

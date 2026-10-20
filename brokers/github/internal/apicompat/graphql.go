@@ -21,7 +21,8 @@ const (
 	// GraphQLSchema is schema introspection only. GitHub CLI sends it to
 	// every GitHub Enterprise host to detect features.
 	GraphQLSchema GraphQLKind = "schema"
-	// GraphQLRead reads named repositories.
+	// GraphQLRead reads named repositories and repository, issue, or pull
+	// request nodes.
 	GraphQLRead GraphQLKind = "read"
 	// GraphQLMutation is one reviewed mutation.
 	GraphQLMutation GraphQLKind = "mutation"
@@ -31,7 +32,10 @@ const (
 type GraphQLRequest struct {
 	Kind         GraphQLKind
 	Repositories []githubauth.Repository
-	Mutation     Mutation
+	// NodeIDs are node(id:) subjects. Each must be resolved to its repository
+	// before policy can run.
+	NodeIDs  []string
+	Mutation Mutation
 }
 
 type graphQLEnvelope struct {
@@ -132,26 +136,46 @@ func classifyQuery(fields []*ast.Field, variables map[string]any) (GraphQLReques
 	request := GraphQLRequest{Kind: GraphQLSchema}
 	viewer := false
 	for _, field := range fields {
-		switch field.Name {
-		case "__typename", "__type", "__schema":
-		case "viewer":
-			viewer = true
-		case "repository":
-			repository, err := repositoryArgument(field, variables)
-			if err != nil {
-				return GraphQLRequest{}, err
-			}
-			request.Repositories = appendRepository(request.Repositories, repository)
-		default:
-			return GraphQLRequest{}, unsupported("GraphQL query field %s is not served; read through repository(owner:, name:)", field.Name)
+		isViewer, err := request.addQueryField(field, variables)
+		if err != nil {
+			return GraphQLRequest{}, err
 		}
+		viewer = viewer || isViewer
 	}
-	if len(request.Repositories) > 0 {
+	if len(request.Repositories) > 0 || len(request.NodeIDs) > 0 {
 		request.Kind = GraphQLRead
 	} else if viewer {
 		return GraphQLRequest{}, unsupported("GraphQL viewer queries must also name a repository")
 	}
 	return request, nil
+}
+
+// addQueryField records one root query field and reports whether it is viewer.
+func (r *GraphQLRequest) addQueryField(field *ast.Field, variables map[string]any) (bool, error) {
+	switch field.Name {
+	case "__typename", "__type", "__schema":
+		return false, nil
+	case "viewer":
+		return true, nil
+	case "repository":
+		repository, err := repositoryArgument(field, variables)
+		if err != nil {
+			return false, err
+		}
+		r.Repositories = appendRepository(r.Repositories, repository)
+		return false, nil
+	case "node":
+		id, err := nodeArgument(field, variables)
+		if err != nil {
+			return false, err
+		}
+		if !slices.Contains(r.NodeIDs, id) {
+			r.NodeIDs = append(r.NodeIDs, id)
+		}
+		return false, nil
+	default:
+		return false, unsupported("GraphQL query field %s is not served; read through repository(owner:, name:) or node(id:)", field.Name)
+	}
 }
 
 func repositoryArgument(field *ast.Field, variables map[string]any) (githubauth.Repository, error) {
@@ -173,6 +197,28 @@ func repositoryArgument(field *ast.Field, variables map[string]any) (githubauth.
 		return githubauth.Repository{}, malformed("repository needs exactly the owner and name arguments")
 	}
 	return githubauth.Repository{Owner: owner, Name: name}, nil
+}
+
+func nodeArgument(field *ast.Field, variables map[string]any) (string, error) {
+	values, err := fieldArguments(field, variables)
+	if err != nil {
+		return "", err
+	}
+	id, isText := values["id"].(string)
+	if len(values) != 1 || !isText || strings.TrimSpace(id) == "" {
+		return "", malformed("node needs exactly the id argument")
+	}
+	return id, nil
+}
+
+// ReadRepositories returns the named repositories plus the repositories of
+// resolved node subjects, without duplicates.
+func ReadRepositories(named []githubauth.Repository, nodes []githubauth.Node) []githubauth.Repository {
+	repositories := slices.Clone(named)
+	for _, node := range nodes {
+		repositories = appendRepository(repositories, githubauth.Repository{Owner: node.Owner, Name: node.Repository})
+	}
+	return repositories
 }
 
 func validRepositoryPart(value string) bool {

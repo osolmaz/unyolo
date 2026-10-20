@@ -436,6 +436,8 @@ gh pr view 12 -R acme/widgets
 
 `GH_ENTERPRISE_TOKEN` is the broker client secret, not a GitHub credential.
 The listener must use `tls://`, and the client must trust its certificate.
+`gh auth git-credential` gives Git the same secret; the agent listener answers
+Git requests without credentials with a `Basic` challenge.
 Point Git remotes at the same host, for example with
 `git config --global url."https://broker.example.internal:8443/".insteadOf https://github.com/`.
 
@@ -446,10 +448,11 @@ call:
   be implemented, agent-facing, use an installation credential, take no sealed
   input, return no credential, and target one repository. Policy attributes come
   from the same vocabulary as Agent V1.
-- A GraphQL query may read `repository(owner:, name:)`, `viewer`, and schema
-  introspection. Each named repository is checked as `graphql.read`, and the
-  forwarded token is narrowed to those repositories with read permissions only.
-  Introspection-only queries use a metadata-only token.
+- A GraphQL query may read `repository(owner:, name:)`, `node(id:)` for a
+  repository, issue, or pull request, `viewer`, and schema introspection.
+  gh-broker resolves each node to its repository. Each repository is checked as
+  `graphql.read`, and the forwarded token is narrowed to those repositories with
+  read permissions only. Introspection-only queries use a metadata-only token.
 - A GraphQL mutation must be one field from a reviewed table, such as
   `createPullRequest`, `mergePullRequest`, or `addComment`. It is checked as the
   REST operation with the same effect, for example `pull_request.merge`, after
@@ -459,7 +462,9 @@ Every other request is refused with a GitHub-style JSON error. Forwarded calls
 use an installation token narrowed to the target repository and the minimum
 permissions of the classified operation. Responses keep GitHub's status and
 body, drop credential headers, and rewrite `Link` and `Location` headers to the
-broker host, so `gh --paginate` stays on the broker.
+broker host, so `gh --paginate` stays on the broker. GitHub pages repository
+lists through `/repositories/{id}/` links; for a call scoped to one repository,
+those links are rewritten to `/repos/{owner}/{repo}/`.
 
 A requestable decision creates the same idempotent approval as a Git transfer
 and holds the HTTP request until the operator decides or the request expires.
@@ -468,7 +473,7 @@ A repeated request reuses the pending approval. A window grant covers later
 requests with the same operation, target, and attributes. An execution grant
 is bound to one exact request.
 
-This first version does not serve GraphQL `search`, `node`, or organization
+This first version does not serve GraphQL `search`, `nodes`, or organization
 queries, label and project mutations, release asset uploads, Codespaces,
 Copilot, `gh auth login`, operations that need a user or App credential, or
 GraphQL reads across more than one App installation.

@@ -31,6 +31,9 @@ func (a TokenAuth) Middleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		client, err := a.authenticator.AuthenticateRequest(c.Request())
 		if errors.Is(err, auth.ErrMissing) {
+			// Git sends the credential it gets from a helper only after a
+			// challenge, so the agent listener's Git routes need one.
+			c.Response().Header().Set("WWW-Authenticate", `Basic realm="gh-broker"`)
 			return echo.NewHTTPError(http.StatusUnauthorized, "missing authorization")
 		}
 		if err != nil {

@@ -68,13 +68,13 @@ func TestClassifyGraphQLRefusesUnreviewedShapes(t *testing.T) {
 	cases := map[string]string{
 		`{ viewer { login } }`: "must also name a repository",
 		`{ search(query: "x", type: REPOSITORY, first: 1) { repositoryCount } }`: "search is not served",
-		`{ node(id: "x") { id } }`:                                             "node is not served",
-		`{ ...Root } fragment Root on Query { viewer { login } }`:              "root fragments",
-		`{ ... on Query { viewer { login } } }`:                                "root fragments",
-		`{ repository(owner: "a", name: "b") @include(if: true) { id } }`:      "root directives",
-		`query Q @cached { repository(owner: "a", name: "b") { id } }`:         "operation directives",
-		`subscription { repository(owner: "a", name: "b") { id } }`:            "subscriptions",
-		`mutation { addStar(input: {starrableId: "x"}) { clientMutationId } }`: "addStar is not served",
+		`{ nodes(ids: ["x"]) { id } }`:                                           "nodes is not served",
+		`{ ...Root } fragment Root on Query { viewer { login } }`:                "root fragments",
+		`{ ... on Query { viewer { login } } }`:                                  "root fragments",
+		`{ repository(owner: "a", name: "b") @include(if: true) { id } }`:        "root directives",
+		`query Q @cached { repository(owner: "a", name: "b") { id } }`:           "operation directives",
+		`subscription { repository(owner: "a", name: "b") { id } }`:              "subscriptions",
+		`mutation { addStar(input: {starrableId: "x"}) { clientMutationId } }`:   "addStar is not served",
 		`mutation { a: addComment(input: {subjectId: "x", body: "1"}) { clientMutationId } b: addComment(input: {subjectId: "x", body: "2"}) { clientMutationId } }`: "exactly one GraphQL mutation",
 	}
 	for query, fragment := range cases {
@@ -251,5 +251,22 @@ func TestRefusalErrorText(t *testing.T) {
 	var refusal *Refusal
 	if !errors.As(err, &refusal) || err.Error() != "gh-broker: x 1" || !strings.HasPrefix(refusal.Message, "gh-broker:") {
 		t.Fatalf("refusal = %v", err)
+	}
+}
+
+func TestClassifyGraphQLNodeReads(t *testing.T) {
+	request := classify(t, `query($id: ID!) { viewer { login } a: node(id: $id) { id } b: node(id: "PR_2") { id } c: node(id: $id) { id } }`,
+		map[string]any{"id": "PR_1"})
+	if request.Kind != GraphQLRead || !reflect.DeepEqual(request.NodeIDs, []string{"PR_1", "PR_2"}) || len(request.Repositories) != 0 {
+		t.Fatalf("request = %+v", request)
+	}
+	for _, query := range []string{`{ node { id } }`, `{ node(id: "") { id } }`, `{ node(id: "x", extra: 1) { id } }`} {
+		_, err := ClassifyGraphQL(graphQLBody(t, query, nil, ""))
+		assertRefusal(t, err, http.StatusBadRequest, "exactly the id argument")
+	}
+	repositories := ReadRepositories([]githubauth.Repository{{Owner: "acme", Name: "widgets"}},
+		[]githubauth.Node{{Owner: "ACME", Repository: "Widgets"}, {Owner: "acme", Repository: "docs"}})
+	if !reflect.DeepEqual(repositories, []githubauth.Repository{{Owner: "acme", Name: "widgets"}, {Owner: "acme", Name: "docs"}}) {
+		t.Fatalf("repositories = %+v", repositories)
 	}
 }

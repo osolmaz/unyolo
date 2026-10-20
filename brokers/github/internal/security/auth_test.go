@@ -69,6 +69,10 @@ func TestTokenAuthRejectsMissingAndInvalidBearerToken(t *testing.T) {
 		if err := handler(e.NewContext(request, response)); err == nil {
 			t.Fatalf("handler() error = nil for header %q", header)
 		}
+		challenge := response.Header().Get("WWW-Authenticate")
+		if (header == "") != (challenge == `Basic realm="gh-broker"`) {
+			t.Fatalf("WWW-Authenticate = %q for header %q", challenge, header)
+		}
 	}
 }
 

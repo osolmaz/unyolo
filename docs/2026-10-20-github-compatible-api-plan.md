@@ -67,10 +67,11 @@ change.
   - A query whose root fields are only `__type`, `__schema`, and `__typename`
     is schema introspection. `gh` sends these to every Enterprise host for
     feature detection. The broker forwards it with a metadata-only token.
-  - A query whose root fields are `repository(owner:, name:)`, `viewer`, and
-    `__typename` reads the named repositories. Each repository is checked as
-    the new `graphql.read` operation, and the forwarded token is narrowed to
-    those repositories with read-only permissions from a reviewed list.
+  - A query whose root fields are `repository(owner:, name:)`, `node(id:)`,
+    `viewer`, and `__typename` reads repositories. Each node is resolved to its
+    repository first. Each repository is checked as the new `graphql.read`
+    operation, and the forwarded token is narrowed to those repositories with
+    read-only permissions from a reviewed list.
   - A mutation with exactly one root field from a reviewed table maps to the
     equivalent REST catalog operation, for example `mergePullRequest` to
     `pull_request.merge`. The broker resolves the subject node id to its
@@ -84,13 +85,17 @@ change.
   same request. Denial or expiry returns `403` with the grant id.
 - Responses: `Link` and `Location` headers that point at the upstream API are
   rewritten to the broker host so `gh --paginate` keeps using the broker.
+  Repository-id links (`/repositories/{id}/`) of a call scoped to one
+  repository become `/repos/{owner}/{repo}/` links.
+- Git on the agent listener: a request without credentials gets a `Basic`
+  challenge, so Git sends the secret from `gh auth git-credential`.
 - Policy presets add a requestable `graphql.read` rule next to the Git
   transport rules.
 
 ## Non-goals for this first version
 
-- GraphQL `search`, `node`, `nodes`, `organization`, `user`, and viewer-only
-  queries. Use REST, or name a repository.
+- GraphQL `search`, `nodes`, `organization`, `user`, and viewer-only queries.
+  Use REST, or name a repository or node.
 - GraphQL mutations outside the table, including label and project
   mutations, and mutation inputs with `labelIds`.
 - Release asset uploads (`/api/uploads`), Codespaces, Copilot, and

@@ -13,6 +13,7 @@ import (
 
 	usebudget "github.com/osolmaz/unyolo/authorization/budget"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
 
@@ -296,9 +297,15 @@ func TestGitHubAPIURLHelpers(t *testing.T) {
 		t.Fatal("invalid escaping accepted")
 	}
 	header := http.Header{"Location": {"https://api.github.com/repos/a/b/pulls/1"}}
-	rewriteGitHubAPILinks(header, "https://api.github.com/", "https://broker:8443/api/v3/")
+	rewriteGitHubAPILinks(header, "https://api.github.com/", "https://broker:8443/api/v3/", githubauth.Repository{})
 	if header.Get("Location") != "https://broker:8443/api/v3/repos/a/b/pulls/1" {
 		t.Fatalf("Location = %q", header.Get("Location"))
+	}
+	paged := http.Header{"Link": {`<https://api.github.com/repositories/1293335769/pulls?page=2>; rel="next", <https://api.github.com/repositories/1293335769/pulls?page=3>; rel="last"`}}
+	rewriteGitHubAPILinks(paged, "https://api.github.com/", "https://broker:8443/api/v3/", githubauth.Repository{Owner: "a", Name: "b"})
+	want := `<https://broker:8443/api/v3/repos/a/b/pulls?page=2>; rel="next", <https://broker:8443/api/v3/repos/a/b/pulls?page=3>; rel="last"`
+	if paged.Get("Link") != want {
+		t.Fatalf("Link = %q, want %q", paged.Get("Link"), want)
 	}
 	if compatError(errors.New("other")).Error() == "" {
 		t.Fatal("unclassified error has no message")
@@ -348,5 +355,26 @@ func TestGitHubGraphQLExecutionReadApprovalBindsTheDocument(t *testing.T) {
 	}
 	if response := <-responses; response.Code != http.StatusOK || len(fake.recorded()) != 1 {
 		t.Fatalf("status = %d, calls = %d", response.Code, len(fake.recorded()))
+	}
+}
+
+func TestGitHubGraphQLNodeReadResolvesItsRepository(t *testing.T) {
+	t.Parallel()
+	server, fake, _ := newCompatServer(t)
+	body := graphQLRequest(t, `query($id: ID!) { node(id: $id) { ... on PullRequest { statusCheckRollup: commits(last: 1) { totalCount } } } }`,
+		map[string]any{"id": "PR_5"})
+	if response := doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body); response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if calls := fake.recorded(); len(calls) != 1 || calls[0].body != string(body) {
+		t.Fatalf("calls = %+v", calls)
+	}
+	fake.node = `{"data":{"node":{"__typename":"PullRequest","number":1,"repository":{"name":"repo","owner":{"login":"other"}}}}}`
+	if response := doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body); response.Code != http.StatusForbidden || len(fake.recorded()) != 1 {
+		t.Fatalf("other repository node status = %d, calls = %d", response.Code, len(fake.recorded()))
+	}
+	fake.node = `{"data":{"node":null}}`
+	if response := doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body); response.Code != http.StatusNotFound {
+		t.Fatalf("missing node status = %d", response.Code)
 	}
 }
