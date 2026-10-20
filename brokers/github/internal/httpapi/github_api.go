@@ -104,12 +104,13 @@ func (s *Server) serveGraphQLSchema(c echo.Context, body []byte) error {
 }
 
 func (s *Server) serveGraphQLRead(c echo.Context, body []byte, repositories []githubauth.Repository) error {
+	requestDigest := compatRequestDigest(c, body)
 	held := make([]heldAuthorization, 0, len(repositories))
 	for _, repository := range repositories {
 		item, err := s.authorizeHeld(c, policy.Request{
 			Client: security.ClientFromContext(c), Operation: policy.OperationGraphQLRead,
 			Target: policy.Target{Kind: "repo", Owner: repository.Owner, Name: repository.Name},
-		}, "")
+		}, requestDigest)
 		if err != nil {
 			s.releaseHeld(held)
 			return err

@@ -319,3 +319,34 @@ func TestHeldApprovalReasonNamesTheRequest(t *testing.T) {
 		}
 	}
 }
+
+func TestGitHubGraphQLExecutionReadApprovalBindsTheDocument(t *testing.T) {
+	t.Parallel()
+	brokerPolicy, err := policy.New(policy.Scope{Rules: []policy.Rule{{
+		ID: "request-read", Effect: policy.EffectRequest, Clients: []string{"bob"}, Operations: []policy.Operation{policy.OperationGraphQLRead},
+		Targets:     []policy.Target{{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}},
+		GrantPolicy: &corepolicy.GrantPolicy{Mode: "execution", DefaultMinutes: 10, MaxMinutes: 10, RequestTTLMinutes: 15, DefaultMaxUses: 1, MaxUses: 1},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeGitHubAPI{}
+	server := newTestServerWithPolicyAndHandler(t, brokerPolicy, fake.handler(t))
+	notifier := &captureNotifier{}
+	server.notifier = notifier
+	body := graphQLRequest(t, `{ repository(owner: "osolmaz", name: "gh-broker") { id } }`, nil)
+	responses := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		responses <- doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body)
+	}()
+	grant, token := waitForGitApproval(t, server, notifier, 1)
+	if grant.Operation != string(policy.OperationGraphQLRead) || len(grant.Attrs["request_digest"]) != 1 {
+		t.Fatalf("grant = %+v", grant)
+	}
+	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	if response := <-responses; response.Code != http.StatusOK || len(fake.recorded()) != 1 {
+		t.Fatalf("status = %d, calls = %d", response.Code, len(fake.recorded()))
+	}
+}
