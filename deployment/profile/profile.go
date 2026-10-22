@@ -71,11 +71,19 @@ type AgentTarget struct {
 	RemoteName       string `json:"remote_name,omitempty"`
 }
 
-// Operator binds an existing trusted Unix account.
+// Operator binds one trusted Unix account. An existing operator is a person's
+// account. A managed operator is a noninteractive service account that unYOLO
+// creates and that receives its operator credential from each provider.
 type Operator struct {
-	ID       string `json:"id"`
-	UnixUser string `json:"unix_user"`
+	ID          string `json:"id"`
+	UnixUser    string `json:"unix_user"`
+	AccountMode string `json:"account_mode,omitempty"`
+	Home        string `json:"home,omitempty"`
+	Shell       string `json:"shell,omitempty"`
 }
+
+// Managed reports whether unYOLO creates and owns the operator account.
+func (o Operator) Managed() bool { return o.AccountMode == "managed" }
 
 // Component points to one provider-owned setup profile.
 type Component struct {
@@ -269,6 +277,9 @@ func validateIdentities(d Deployment) error {
 		if !registerName(operators, operator.ID) || !validUnixName(operator.UnixUser) {
 			return fmt.Errorf("operator %q has an invalid or duplicate identity", operator.ID)
 		}
+		if err := validateOperatorAccount(operator); err != nil {
+			return fmt.Errorf("operator %q: %w", operator.ID, err)
+		}
 	}
 	for _, component := range d.Components {
 		if !registerName(components, component.ID) {
@@ -283,6 +294,27 @@ func validateIdentities(d Deployment) error {
 	return nil
 }
 
+func validateOperatorAccount(operator Operator) error {
+	switch operator.AccountMode {
+	case "":
+		if operator.Home != "" || operator.Shell != "" {
+			return errors.New("existing operator account cannot declare a home or shell")
+		}
+	case "managed":
+		if !noninteractiveAccount(operator.Home, operator.Shell) {
+			return errors.New("managed operator account must use a noninteractive account")
+		}
+	default:
+		return errors.New("operator account mode is invalid")
+	}
+	return nil
+}
+
+func noninteractiveAccount(home, shell string) bool {
+	return cleanAbsolute(home) && cleanAbsolute(shell) && home != "/" && home != "/root" &&
+		slices.Contains([]string{"nologin", "false"}, filepath.Base(shell))
+}
+
 func validateAgentTarget(target AgentTarget) error {
 	if !slices.Contains([]string{"separate", "container", "remote", "reduced"}, target.Isolation) {
 		return errors.New("target isolation is invalid")
@@ -293,7 +325,7 @@ func validateAgentTarget(target AgentTarget) error {
 			!cleanAbsolute(target.Home) || !cleanAbsolute(target.Shell) || target.ProjectDirectory != "" || target.Service != "" || target.RemoteName != "" {
 			return errors.New("local account target is invalid")
 		}
-		if target.AccountMode == "managed" && (target.Home == "/" || target.Home == "/root" || !slices.Contains([]string{"nologin", "false"}, filepath.Base(target.Shell))) {
+		if target.AccountMode == "managed" && !noninteractiveAccount(target.Home, target.Shell) {
 			return errors.New("managed account target must use a noninteractive account")
 		}
 	case "container":

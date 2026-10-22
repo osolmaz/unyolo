@@ -67,13 +67,24 @@ type Receipt struct {
 
 // AccountReceipt records one host account known to this installation.
 type AccountReceipt struct {
-	ID              string `json:"id"`
+	ID string `json:"id"`
+	// Role is empty for an agent account and "operator" for an operator account.
+	Role            string `json:"role,omitempty"`
 	UnixUser        string `json:"unix_user"`
 	Mode            string `json:"mode"`
 	Home            string `json:"home,omitempty"`
 	Shell           string `json:"shell,omitempty"`
 	Created         bool   `json:"created"`
 	HomeFingerprint string `json:"home_fingerprint,omitempty"`
+}
+
+// key returns the identity of an account record, which is unique across
+// agent and operator accounts.
+func (account AccountReceipt) key() string {
+	if account.Role == "operator" {
+		return "operator." + account.ID
+	}
+	return "agent." + account.ID
 }
 
 // GroupReceipt records one host group known to this installation.
@@ -152,7 +163,7 @@ func (value Receipt) Validate() error {
 	seenAccounts := map[string]bool{}
 	for _, account := range value.Accounts {
 		if !receiptNamePattern.MatchString(account.ID) || strings.TrimSpace(account.UnixUser) == "" ||
-			seenAccounts[account.ID] {
+			!slices.Contains([]string{"", "operator"}, account.Role) || seenAccounts[account.key()] {
 			return errors.New("ownership receipt account is invalid or duplicated")
 		}
 		if !slices.Contains([]string{"managed", "existing", "current"}, account.Mode) {
@@ -167,7 +178,7 @@ func (value Receipt) Validate() error {
 		if account.HomeFingerprint != "" && !receiptDigestPattern.MatchString(account.HomeFingerprint) {
 			return errors.New("ownership receipt account home fingerprint is invalid")
 		}
-		seenAccounts[account.ID] = true
+		seenAccounts[account.key()] = true
 	}
 	seenGroups := map[string]bool{}
 	for _, group := range value.Groups {
@@ -310,7 +321,24 @@ func populateReceiptAgents(ctx context.Context, receipt *Receipt, snapshot profi
 		receipt.Accounts = append(receipt.Accounts, entry)
 		receipt.Connections = append(receipt.Connections, ConnectionReceipt{ID: agent.ID, ClientID: agent.ClientID})
 	}
-	slices.SortFunc(receipt.Accounts, func(a, b AccountReceipt) int { return strings.Compare(a.ID, b.ID) })
+	for _, operator := range snapshot.Deployment.Operators {
+		if !operator.Managed() {
+			continue
+		}
+		entry := AccountReceipt{
+			ID: operator.ID, Role: "operator", UnixUser: operator.UnixUser, Mode: operator.AccountMode,
+			Home: operator.Home, Shell: operator.Shell, Created: accounts["operator:"+operator.ID].Missing,
+		}
+		if entry.Created && capturePostApply {
+			fingerprint, err := sourceset.Digest(entry.Home)
+			if err != nil {
+				return fmt.Errorf("fingerprint managed account home %q: %w", entry.UnixUser, err)
+			}
+			entry.HomeFingerprint = fingerprint
+		}
+		receipt.Accounts = append(receipt.Accounts, entry)
+	}
+	slices.SortFunc(receipt.Accounts, func(a, b AccountReceipt) int { return strings.Compare(a.key(), b.key()) })
 	slices.SortFunc(receipt.Connections, func(a, b ConnectionReceipt) int { return strings.Compare(a.ID, b.ID) })
 	// Managed accounts are the only groups the engine level directly manages;
 	// component-managed groups appear in provider receipts. Deduplicate defensively.
@@ -540,16 +568,16 @@ func MergeReceipt(previous, current Receipt) (Receipt, error) {
 	}
 	priorAccounts := map[string]AccountReceipt{}
 	for _, account := range previous.Accounts {
-		priorAccounts[account.ID] = account
+		priorAccounts[account.key()] = account
 	}
 	for index := range current.Accounts {
-		if prior, exists := priorAccounts[current.Accounts[index].ID]; exists && prior.Created {
+		if prior, exists := priorAccounts[current.Accounts[index].key()]; exists && prior.Created {
 			current.Accounts[index].Created = true
 			if current.Accounts[index].HomeFingerprint == "" {
 				current.Accounts[index].HomeFingerprint = prior.HomeFingerprint
 			}
 		}
-		delete(priorAccounts, current.Accounts[index].ID)
+		delete(priorAccounts, current.Accounts[index].key())
 	}
 	for _, account := range priorAccounts {
 		current.Accounts = append(current.Accounts, account)

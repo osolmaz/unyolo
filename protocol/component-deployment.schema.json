@@ -13,6 +13,7 @@
     "files": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/file" } },
     "credentials": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/credential" } },
     "clients": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/client" } },
+    "operator_clients": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/operator_client" } },
     "services": { "type": "array", "maxItems": 16, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } }
   },
   "$defs": {
@@ -61,6 +62,14 @@
         "agent_id": { "type": "string", "minLength": 1, "maxLength": 64 }, "broker_name": { "type": "string", "minLength": 1, "maxLength": 64 },
         "env_prefix": { "type": "string", "minLength": 1, "maxLength": 64 }, "secret_slot": { "type": "string", "minLength": 1, "maxLength": 128 },
         "endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 }, "git_endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    },
+    "operator_client": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operator_id", "broker_name", "secret_slot", "endpoint"],
+      "properties": {
+        "operator_id": { "type": "string", "minLength": 1, "maxLength": 64 }, "broker_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "secret_slot": { "type": "string", "minLength": 1, "maxLength": 128 }, "endpoint": { "type": "string", "minLength": 1, "maxLength": 2048 }
       }
     }
   }

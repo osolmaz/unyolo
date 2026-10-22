@@ -164,6 +164,14 @@
       "endpoint": "unix:///run/unyolo/huggingface/agent/broker.sock"
     }
   ],
+  "operator_clients": [
+    {
+      "operator_id": "operator",
+      "broker_name": "hf-broker",
+      "secret_slot": "huggingface-operator-secret",
+      "endpoint": "unix:///run/unyolo/huggingface/operator/broker.sock"
+    }
+  ],
   "services": [
     "hf-broker.service"
   ]

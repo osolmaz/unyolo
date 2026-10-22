@@ -182,6 +182,14 @@
       "endpoint": "unix:///run/unyolo/sudo/agent/broker.sock"
     }
   ],
+  "operator_clients": [
+    {
+      "operator_id": "operator",
+      "broker_name": "sudo-broker",
+      "secret_slot": "sudo-operator-secret",
+      "endpoint": "unix:///run/unyolo/sudo/operator/broker.sock"
+    }
+  ],
   "services": [
     "sudo-broker.service"
   ]

@@ -299,11 +299,14 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 				Agents: []profile.Agent{{ID: "agent", Target: profile.AgentTarget{
 					Kind: "local_account", Isolation: "separate", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin",
 				}}},
+				Operators: []profile.Operator{{
+					ID: "telegram", UnixUser: "unyolo-test-telegram", AccountMode: "managed", Home: "/var/lib/unyolo-test-telegram", Shell: "/usr/sbin/nologin",
+				}},
 				Components: []profile.Component{{ID: "github"}},
 			},
 			Manifest: bundle.Manifest{Components: []bundle.Component{{Name: "github", Services: []string{"gh-broker.service"}}}},
 		},
-		Accounts: map[string]identity.Account{"agent:agent": {Missing: true}},
+		Accounts: map[string]identity.Account{"agent:agent": {Missing: true}, "operator:telegram": {Missing: true}},
 		Responses: []api.Response{{
 			ComponentID: "github", PlanDigest: engineDigest("github"),
 			Actions:     []api.PlannedAction{{ID: "service", Restart: true, Resource: api.Resource{Kind: "service", ID: "gh-broker.service"}}},
@@ -312,8 +315,8 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 	}
 	engine := &Engine{}
 	steps, err := engine.identitySteps(planned)
-	if runtime.GOOS == "linux" && (err != nil || len(steps) != 1) {
-		t.Fatalf("identitySteps() = %d, %v", len(steps), err)
+	if runtime.GOOS == "linux" && (err != nil || len(steps) != 2 || steps[0].ID != "identity.agent" || steps[1].Kind != "identity:operator.telegram") {
+		t.Fatalf("identitySteps() = %#v, %v", steps, err)
 	}
 	if services := restartServices(planned); len(services) != 1 || services[0] != "gh-broker.service" {
 		t.Fatalf("services = %v", services)
@@ -345,10 +348,13 @@ func TestPlanAssemblyHelpers(t *testing.T) {
 	}
 }
 
-func TestDeleteManagedAgentRejectsUnknownHandle(t *testing.T) {
-	agent := profile.Agent{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "missing-unyolo-agent", Home: "/home/missing-unyolo-agent", Shell: "/usr/sbin/nologin"}}
-	if err := deleteManagedAgent(t.Context(), agent, "retained"); err == nil {
-		t.Fatal("unknown managed-agent rollback handle was accepted")
+func TestDeleteManagedAccountRejectsUnknownHandle(t *testing.T) {
+	account := identity.Managed{UnixUser: "missing-unyolo-agent", Home: "/home/missing-unyolo-agent", Shell: "/usr/sbin/nologin"}
+	if err := deleteManagedAccount(t.Context(), account, "retained"); err == nil {
+		t.Fatal("unknown managed-account rollback handle was accepted")
+	}
+	if err := deleteManagedAccount(t.Context(), account, "created"); err != nil {
+		t.Fatalf("rollback of an account that was never created = %v", err)
 	}
 }
 

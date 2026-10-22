@@ -21,6 +21,7 @@ import (
 const (
 	clientFileMode        os.FileMode = 0o600
 	maxClientSecretsBytes             = 1024 * 1024
+	clientFileName                    = "client.json"
 )
 
 // APIVersion is the private broker client document contract.
@@ -120,7 +121,7 @@ func Path(homeDir string, brokerName string) (string, error) {
 	if !filepath.IsAbs(homeDir) {
 		return "", errors.New("home directory must be absolute")
 	}
-	return filepath.Join(homeDir, ".config", brokerName, "client.json"), nil
+	return filepath.Join(homeDir, ".config", brokerName, clientFileName), nil
 }
 
 // Render returns the closed client V1 JSON document for cfg.
@@ -163,18 +164,18 @@ func WriteForHomeOwner(cfg Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := writeClientConfigSafely(cfg.HomeDir, cfg.BrokerName, body); err != nil {
+	if err := writeHomeConfigSafely(cfg.HomeDir, cfg.BrokerName, clientFileName, body); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-func writeClientConfigSafely(homeDir string, brokerName string, body []byte) error {
+func writeHomeConfigSafely(homeDir, brokerName, fileName string, body []byte) error {
 	root, err := openVerifiedHomeRoot(homeDir)
 	if err != nil {
 		return err
 	}
-	writeErr := writeClientConfigInRoot(root, brokerName, body)
+	writeErr := writeHomeConfigInRoot(root, brokerName, fileName, body)
 	closeErr := root.Close()
 	if writeErr != nil {
 		return writeErr
@@ -212,7 +213,7 @@ func verifyOpenedHomeRoot(root *os.Root, expected os.FileInfo) error {
 	return nil
 }
 
-func writeClientConfigInRoot(root *os.Root, brokerName string, body []byte) error {
+func writeHomeConfigInRoot(root *os.Root, brokerName, fileName string, body []byte) error {
 	uid, gid, err := rootOwner(root)
 	if err != nil {
 		return err
@@ -225,7 +226,7 @@ func writeClientConfigInRoot(root *os.Root, brokerName string, body []byte) erro
 	if err := ensureClientDirectory(root, brokerDir, uid, gid); err != nil {
 		return err
 	}
-	return writeClientFile(root, filepath.Join(brokerDir, "client.json"), body, uid, gid)
+	return writeClientFile(root, filepath.Join(brokerDir, fileName), body, uid, gid)
 }
 
 func (cfg Config) validate() error {

@@ -60,6 +60,7 @@ func TestReceiptValidateRejectsInvalid(t *testing.T) {
 		"missing runtime":           func(r *Receipt) { r.RuntimeBundleID = "" },
 		"missing recorded time":     func(r *Receipt) { r.RecordedAt = time.Time{} },
 		"bad account mode":          func(r *Receipt) { r.Accounts[0].Mode = "extra" },
+		"bad account role":          func(r *Receipt) { r.Accounts[0].Role = "agent" },
 		"duplicate connection":      func(r *Receipt) { r.Connections = append(r.Connections, r.Connections[0]) },
 		"duplicate service":         func(r *Receipt) { r.Services = append(r.Services, r.Services[0]) },
 		"non-absolute home":         func(r *Receipt) { r.Accounts[0].Home = "home/bob" },
@@ -324,6 +325,10 @@ func TestReceiptFromPlanCollectsAgentsAndServices(t *testing.T) {
 					{ID: "bob", ClientID: "bob", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "existing", UnixUser: "bob", Home: "/home/bob", Shell: "/bin/bash"}},
 					{ID: "unyolo-agent", ClientID: "unyolo-agent", Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}},
 				},
+				Operators: []profile.Operator{
+					{ID: "bob", UnixUser: "bob"},
+					{ID: "unyolo-agent", UnixUser: "unyolo-telegram", AccountMode: "managed", Home: "/var/lib/unyolo-telegram", Shell: "/usr/sbin/nologin"},
+				},
 			},
 			Digest: "sha256:" + strings.Repeat("e", 64),
 			Manifest: bundle.Manifest{
@@ -334,8 +339,9 @@ func TestReceiptFromPlanCollectsAgentsAndServices(t *testing.T) {
 			},
 		},
 		Accounts: map[string]identity.Account{
-			"agent:bob":          {Name: "bob"},
-			"agent:unyolo-agent": {Missing: true},
+			"agent:bob":             {Name: "bob"},
+			"agent:unyolo-agent":    {Missing: true},
+			"operator:unyolo-agent": {Missing: true},
 		},
 		Responses: []api.Response{{ComponentID: "github", PlanDigest: "sha256:" + strings.Repeat("f", 64)}},
 	}
@@ -345,12 +351,16 @@ func TestReceiptFromPlanCollectsAgentsAndServices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReceiptFromPlan() = %v", err)
 	}
-	if len(receipt.Accounts) != 2 {
+	if len(receipt.Accounts) != 3 {
 		t.Fatalf("accounts = %#v", receipt.Accounts)
+	}
+	operator := receipt.Accounts[2]
+	if operator.Role != "operator" || operator.UnixUser != "unyolo-telegram" || !operator.Created || operator.Mode != "managed" {
+		t.Fatalf("managed operator account = %#v", operator)
 	}
 	created := false
 	for _, account := range receipt.Accounts {
-		if account.ID == "unyolo-agent" {
+		if account.ID == "unyolo-agent" && account.Role == "" {
 			created = account.Created
 		}
 		if account.ID == "bob" && account.Created {

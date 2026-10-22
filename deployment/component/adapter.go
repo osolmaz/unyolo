@@ -119,17 +119,27 @@ type Client struct {
 	GitEndpoint string `json:"git_endpoint,omitempty"`
 }
 
+// OperatorClient delivers the operator credential of one managed operator to
+// that operator's home, as an operator client document.
+type OperatorClient struct {
+	OperatorID string `json:"operator_id"`
+	BrokerName string `json:"broker_name"`
+	SecretSlot string `json:"secret_slot"`
+	Endpoint   string `json:"endpoint"`
+}
+
 // Profile is the common resource section embedded in each provider profile.
 type Profile struct {
-	APIVersion   string        `json:"api_version"`
-	Accounts     []Account     `json:"accounts,omitempty"`
-	Groups       []Group       `json:"groups,omitempty"`
-	Directories  []Directory   `json:"directories,omitempty"`
-	Files        []ManagedFile `json:"files,omitempty"`
-	Credentials  []Credential  `json:"credentials,omitempty"`
-	SecretStores []SecretStore `json:"secret_stores,omitempty"`
-	Clients      []Client      `json:"clients,omitempty"`
-	Services     []string      `json:"services,omitempty"`
+	APIVersion      string           `json:"api_version"`
+	Accounts        []Account        `json:"accounts,omitempty"`
+	Groups          []Group          `json:"groups,omitempty"`
+	Directories     []Directory      `json:"directories,omitempty"`
+	Files           []ManagedFile    `json:"files,omitempty"`
+	Credentials     []Credential     `json:"credentials,omitempty"`
+	SecretStores    []SecretStore    `json:"secret_stores,omitempty"`
+	Clients         []Client         `json:"clients,omitempty"`
+	OperatorClients []OperatorClient `json:"operator_clients,omitempty"`
+	Services        []string         `json:"services,omitempty"`
 }
 
 // Serve handles one setup-component request and writes one response.
@@ -168,7 +178,7 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, config Config
 func dispatchWithoutInspection(ctx context.Context, request api.Request, profile Profile, config Config) (api.Response, bool, error) {
 	switch request.Action {
 	case api.ActionValidate, api.ActionRollback, api.ActionFinalize:
-		if err := validateProfile(profile, config, request.Agents); err != nil {
+		if err := validateProfile(profile, config, request.Agents, request.Operators); err != nil {
 			return api.Response{}, true, err
 		}
 		response := api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "valid"}
@@ -200,14 +210,21 @@ type inspected struct {
 	fingerprints []string
 	files        map[string]api.File
 	agents       map[string]api.AgentBinding
+	operators    map[string]api.OperatorBinding
 }
 
 //nolint:cyclop // Inspection projects each bounded resource kind into one canonical component plan.
 func inspect(ctx context.Context, request api.Request, profile Profile, config Config) (inspected, error) {
-	if err := validateProfile(profile, config, request.Agents); err != nil {
+	if err := validateProfile(profile, config, request.Agents, request.Operators); err != nil {
 		return inspected{}, err
 	}
-	state := inspected{files: map[string]api.File{}, agents: map[string]api.AgentBinding{}, storeSecrets: map[string][]byte{}}
+	state := inspected{
+		files: map[string]api.File{}, agents: map[string]api.AgentBinding{}, operators: map[string]api.OperatorBinding{},
+		storeSecrets: map[string][]byte{},
+	}
+	for _, operator := range request.Operators {
+		state.operators[operator.ID] = operator
+	}
 	for _, file := range request.Files {
 		state.files[file.Path] = file
 	}
@@ -362,6 +379,9 @@ func inspect(ctx context.Context, request api.Request, profile Profile, config C
 			DesiredDigest: metadataDigest(0o600, agent.UnixUser, agent.UnixUser),
 		})
 	}
+	if err := inspectOperatorClients(profile, &state); err != nil {
+		return inspected{}, err
+	}
 	slices.SortFunc(state.actions, func(a, b api.PlannedAction) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(state.credentials, func(a, b api.CredentialAction) int { return strings.Compare(a.Slot, b.Slot) })
 	slices.Sort(state.fingerprints)
@@ -415,7 +435,7 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 }
 
 //nolint:cyclop // Provider-owned profiles are checked exhaustively before any host inspection or mutation.
-func validateProfile(profile Profile, config Config, agents []api.AgentBinding) error {
+func validateProfile(profile Profile, config Config, agents []api.AgentBinding, operators []api.OperatorBinding) error {
 	if profile.APIVersion != config.ProfileAPI {
 		return errors.New("component deployment profile API is invalid")
 	}
@@ -483,6 +503,9 @@ func validateProfile(profile Profile, config Config, agents []api.AgentBinding) 
 		if !agentIDs[client.AgentID] || !seenSlots[client.SecretSlot] || client.BrokerName == "" || client.EnvPrefix == "" {
 			return errors.New("component client binding is invalid")
 		}
+	}
+	if err := validateOperatorClients(profile.OperatorClients, operators, seenSlots); err != nil {
+		return err
 	}
 	for _, service := range profile.Services {
 		if !slices.Contains(config.AllowedServices, service) {

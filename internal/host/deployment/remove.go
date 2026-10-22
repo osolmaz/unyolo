@@ -241,7 +241,7 @@ func planReceiptAccounts(ctx context.Context, plan *RemovalPlan, receipt Receipt
 			continue
 		}
 		plan.Actions = append(plan.Actions, RemovalAction{
-			Kind: RemovalActionRemoveAccount, ID: "agent." + account.ID, ResourceID: account.UnixUser,
+			Kind: RemovalActionRemoveAccount, ID: account.key(), ResourceID: account.UnixUser,
 			Home: account.Home, Shell: account.Shell, Fingerprint: account.HomeFingerprint, Destructive: true,
 		})
 	}
@@ -492,8 +492,8 @@ func pruneRemovedReceiptResources(receipt *Receipt, actions []RemovalAction) {
 		if action.ComponentID != "" {
 			removedResources[action.ComponentID+"\x00"+strings.TrimPrefix(action.ID, action.ComponentID+".")] = true
 		}
-		if action.Kind == RemovalActionRemoveAccount && strings.HasPrefix(action.ID, "agent.") {
-			removedAccounts[strings.TrimPrefix(action.ID, "agent.")] = true
+		if action.Kind == RemovalActionRemoveAccount {
+			removedAccounts[action.ID] = true
 		}
 		if action.Kind == RemovalActionRemoveGroup && strings.HasPrefix(action.ID, "agent-group.") {
 			removedGroups[action.ResourceID] = true
@@ -508,7 +508,7 @@ func pruneRemovedReceiptResources(receipt *Receipt, actions []RemovalAction) {
 	receipt.Resources = resources
 	accounts := receipt.Accounts[:0]
 	for _, account := range receipt.Accounts {
-		if !removedAccounts[account.ID] {
+		if !removedAccounts[account.key()] {
 			accounts = append(accounts, account)
 		}
 	}

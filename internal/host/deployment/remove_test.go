@@ -299,3 +299,15 @@ func TestRemoveManagedAccountIgnoresUnknownUser(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPruneRemovedReceiptResourcesSeparatesAgentAndOperatorAccounts(t *testing.T) {
+	t.Parallel()
+	receipt := Receipt{Accounts: []AccountReceipt{
+		{ID: "telegram", UnixUser: "telegram-agent", Mode: "managed", Created: true},
+		{ID: "telegram", Role: "operator", UnixUser: "unyolo-telegram", Mode: "managed", Created: true},
+	}}
+	pruneRemovedReceiptResources(&receipt, []RemovalAction{{Kind: RemovalActionRemoveAccount, ID: receipt.Accounts[1].key(), ResourceID: "unyolo-telegram"}})
+	if len(receipt.Accounts) != 1 || receipt.Accounts[0].UnixUser != "telegram-agent" {
+		t.Fatalf("accounts = %#v", receipt.Accounts)
+	}
+}

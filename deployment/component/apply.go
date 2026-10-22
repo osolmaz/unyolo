@@ -129,6 +129,10 @@ func apply(ctx context.Context, request api.Request, profile Profile, config Con
 	if err := applyClients(clients, state.agents, installed); err != nil {
 		return "", err
 	}
+	operatorClients := plannedValues(profile.OperatorClients, planned, "", operatorClientActionID)
+	if err := applyOperatorClients(operatorClients, state.operators, installed); err != nil {
+		return "", err
+	}
 	return record.ID, nil
 }
 
@@ -631,6 +635,11 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 		}
 		evidence = append(evidence, "client "+value.AgentID+" completed authenticated real-agent discovery")
 	}
+	operatorEvidence, err := verifyOperatorClients(profile, state)
+	if err != nil {
+		return nil, err
+	}
+	evidence = append(evidence, operatorEvidence...)
 	slices.Sort(evidence)
 	return evidence, nil
 }

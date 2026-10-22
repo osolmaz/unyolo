@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/osolmaz/unyolo/approval/notifier/telegram"
+	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
 	unyoloservice "github.com/osolmaz/unyolo/internal/host/service"
 	unyolosetup "github.com/osolmaz/unyolo/internal/host/setup"
 	"github.com/osolmaz/unyolo/internal/validatex"
@@ -265,14 +266,18 @@ func ingressInstallPlan(opts setupOptions) (unyoloservice.SystemdInstallPlan, er
 		if readErr != nil {
 			return unyoloservice.SystemdInstallPlan{}, fmt.Errorf("read route %q operator token: %w", route, readErr)
 		}
-		name := "operator-token-" + route
+		name := operatorClientFileName(route)
 		readyClient, clientErr := operatorclient.New(source.Endpoint, token, nil)
 		if clientErr != nil {
 			return unyoloservice.SystemdInstallPlan{}, fmt.Errorf("configure route %q readiness: %w", route, clientErr)
 		}
 		readyClients = append(readyClients, readyClient)
-		files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: name, Data: []byte(token + "\n"), Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-operator-" + route})
-		managedConfig.Routes[route] = routeConfig{OperatorEndpoint: source.Endpoint, OperatorTokenFile: filepath.Join(opts.ConfigDir, name)}
+		document, renderErr := clientconfig.RenderOperator(clientconfig.Operator{Endpoint: source.Endpoint, Secret: token})
+		if renderErr != nil {
+			return unyoloservice.SystemdInstallPlan{}, fmt.Errorf("route %q: %w", route, renderErr)
+		}
+		files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: name, Data: document, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "broker-operator-" + route})
+		managedConfig.Routes[route] = routeConfig{OperatorClientFile: filepath.Join(opts.ConfigDir, name)}
 		groups = append(groups, source.AccessGroup)
 	}
 	configData, err := json.MarshalIndent(managedConfig, "", "  ")
@@ -326,13 +331,19 @@ func ingressReadyCheck(clients []*operatorclient.Client) unyoloservice.Readiness
 	}
 }
 
+// retiredRouteCredentials removes the operator client of every route that is
+// not configured, and the raw operator token files of the older layout.
 func retiredRouteCredentials(opts setupOptions) []unyoloservice.ManagedFileRef {
-	result := make([]unyoloservice.ManagedFileRef, 0, len(opts.Routes))
+	result := make([]unyoloservice.ManagedFileRef, 0, 2*len(opts.Routes))
 	for _, route := range []string{telegram.RouteHuggingFace, telegram.RouteGitHub, telegram.RouteSudo} {
+		result = append(result, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig,
+			Name: "operator-token-" + route, CredentialClass: "broker-operator-token-" + route})
 		if opts.Routes[route].TokenFile == "" {
 			result = append(result, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig,
-				Name: "operator-token-" + route, CredentialClass: "broker-operator-" + route})
+				Name: operatorClientFileName(route), CredentialClass: "broker-operator-" + route})
 		}
 	}
 	return result
 }
+
+func operatorClientFileName(route string) string { return "operator-" + route + ".json" }

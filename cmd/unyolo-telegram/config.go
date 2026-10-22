@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/osolmaz/unyolo/approval/notifier/telegram"
+	clientconfig "github.com/osolmaz/unyolo/internal/config/client"
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/operator/client"
 )
@@ -28,9 +29,11 @@ type ingressConfig struct {
 	Routes               map[string]routeConfig `json:"routes"`
 }
 
+// routeConfig points to the operator client document of one broker route. The
+// document holds the broker's Operator V1 endpoint and this owner's operator
+// credential, and belongs to the account that runs the owner.
 type routeConfig struct {
-	OperatorEndpoint  string `json:"operator_endpoint"`
-	OperatorTokenFile string `json:"operator_token_file"`
+	OperatorClientFile string `json:"operator_client_file"`
 }
 
 func loadIngressConfig(path string) (ingressConfig, error) {
@@ -75,11 +78,8 @@ func validateIngressRoutes(routes map[string]routeConfig) error {
 		if !supportedRoute(route) {
 			return fmt.Errorf("unsupported Telegram route %q", route)
 		}
-		if strings.TrimSpace(source.OperatorEndpoint) == "" {
-			return fmt.Errorf("route %q operator_endpoint is required", route)
-		}
-		if !filepath.IsAbs(source.OperatorTokenFile) {
-			return fmt.Errorf("route %q operator_token_file must be absolute", route)
+		if !filepath.IsAbs(source.OperatorClientFile) || filepath.Clean(source.OperatorClientFile) != source.OperatorClientFile {
+			return fmt.Errorf("route %q operator_client_file must be absolute and clean", route)
 		}
 	}
 	return nil
@@ -168,11 +168,11 @@ func newTelegramClient(cfg ingressConfig) (*telegram.Client, error) {
 func routeSources(cfg ingressConfig) (map[string]*operatorclient.Client, error) {
 	sources := make(map[string]*operatorclient.Client, len(cfg.Routes))
 	for route, source := range cfg.Routes {
-		token, err := readSecretFile(source.OperatorTokenFile)
+		document, err := clientconfig.ReadOperatorPath(source.OperatorClientFile, os.Geteuid())
 		if err != nil {
-			return nil, fmt.Errorf("read route %q operator token: %w", route, err)
+			return nil, fmt.Errorf("read route %q operator client: %w", route, err)
 		}
-		operator, err := operatorclient.New(source.OperatorEndpoint, token, nil)
+		operator, err := operatorclient.New(document.Endpoint, document.Secret, nil)
 		if err != nil {
 			return nil, fmt.Errorf("configure route %q: %w", route, err)
 		}

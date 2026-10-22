@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/user"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -115,24 +116,78 @@ func TestLookupCurrentShell(t *testing.T) {
 	}
 }
 
-func TestSafeManagedCommand(t *testing.T) {
-	valid := profile.Agent{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "unyolo-agent", AccountMode: "managed", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}}
-	command, err := SafeManagedCommand(valid)
+func TestManagedAccountCommand(t *testing.T) {
+	valid := Managed{UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}
+	command, err := valid.Command()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(command) < 2 || command[0] != "useradd" || command[len(command)-1] != valid.Target.UnixUser {
+	if len(command) < 2 || command[0] != "useradd" || command[len(command)-1] != valid.UnixUser {
 		t.Fatalf("command = %v", command)
 	}
-	for _, invalid := range []profile.Agent{
-		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: "bad user", AccountMode: "managed", Home: valid.Target.Home, Shell: valid.Target.Shell}},
-		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: valid.Target.UnixUser, AccountMode: "existing", Home: valid.Target.Home, Shell: valid.Target.Shell}},
-		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: valid.Target.UnixUser, AccountMode: "managed", Home: "relative", Shell: valid.Target.Shell}},
-		{Target: profile.AgentTarget{Kind: "local_account", Isolation: "separate", UnixUser: valid.Target.UnixUser, AccountMode: "managed", Home: valid.Target.Home, Shell: "/bin/bash"}},
+	for _, invalid := range []Managed{
+		{UnixUser: "bad user", Home: valid.Home, Shell: valid.Shell},
+		{UnixUser: valid.UnixUser, Home: "relative", Shell: valid.Shell},
+		{UnixUser: valid.UnixUser, Home: "/", Shell: valid.Shell},
+		{UnixUser: valid.UnixUser, Home: valid.Home, Shell: "/bin/bash"},
 	} {
-		if _, err := SafeManagedCommand(invalid); err == nil {
-			t.Fatalf("unsafe agent was accepted: %#v", invalid)
+		if _, err := invalid.Command(); err == nil {
+			t.Fatalf("unsafe account was accepted: %#v", invalid)
 		}
+	}
+}
+
+func TestManagedAccountsListsManagedAgentsAndOperators(t *testing.T) {
+	deployment := profile.Deployment{
+		Agents: []profile.Agent{
+			{ID: "managed", Target: profile.AgentTarget{Kind: "local_account", AccountMode: "managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"}},
+			{ID: "existing", Target: profile.AgentTarget{Kind: "local_account", AccountMode: "existing", UnixUser: "agent"}},
+			{ID: "remote", Target: profile.AgentTarget{Kind: "remote", RemoteName: "remote"}},
+		},
+		Operators: []profile.Operator{
+			{ID: "person", UnixUser: "operator"},
+			{ID: "telegram", UnixUser: "unyolo-telegram", AccountMode: "managed", Home: "/var/lib/unyolo-telegram", Shell: "/usr/sbin/nologin"},
+		},
+	}
+	got := ManagedAccounts(deployment)
+	want := []Managed{
+		{Key: "agent:managed", Kind: "identity:managed", UnixUser: "unyolo-agent", Home: "/var/lib/unyolo-agent", Shell: "/usr/sbin/nologin"},
+		{Key: "operator:telegram", Kind: "identity:operator.telegram", UnixUser: "unyolo-telegram", Home: "/var/lib/unyolo-telegram", Shell: "/usr/sbin/nologin"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ManagedAccounts() = %#v, want %#v", got, want)
+	}
+}
+func TestInspectDeploymentManagedOperator(t *testing.T) {
+	users := map[string]*user.User{
+		"operator":        {Username: "operator", Uid: "1002", Gid: "1002", HomeDir: "/home/operator"},
+		"unyolo-telegram": {Username: "unyolo-telegram", Uid: "998", Gid: "998", HomeDir: "/var/lib/unyolo-telegram"},
+	}
+	managed := profile.Operator{ID: "telegram", UnixUser: "unyolo-telegram", AccountMode: "managed", Home: "/var/lib/unyolo-telegram", Shell: "/bin/false"}
+	deployment := profile.Deployment{Operators: []profile.Operator{{ID: "operator", UnixUser: "operator"}, managed}}
+	accounts, err := fakeInspector(map[string]*user.User{"operator": users["operator"]}, nil).InspectDeployment(context.Background(), deployment)
+	if err != nil || !accounts["operator:telegram"].Missing || accounts["operator:telegram"].Home != managed.Home {
+		t.Fatalf("missing managed operator = %#v, %v", accounts, err)
+	}
+	accounts, err = fakeInspector(users, map[string][]string{"unyolo-telegram": {"1002"}}).InspectDeployment(context.Background(), deployment)
+	if err != nil || accounts["operator:telegram"].UID != 998 {
+		t.Fatalf("existing managed operator = %#v, %v", accounts, err)
+	}
+	for name, prepare := range map[string]func(*profile.Deployment, map[string][]string){
+		"home mismatch":  func(value *profile.Deployment, _ map[string][]string) { value.Operators[1].Home = "/var/lib/other" },
+		"shell mismatch": func(value *profile.Deployment, _ map[string][]string) { value.Operators[1].Shell = "/usr/sbin/nologin" },
+		"root-equivalent": func(_ *profile.Deployment, groups map[string][]string) {
+			groups["unyolo-telegram"] = []string{"27"}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := profile.Deployment{Operators: append([]profile.Operator(nil), deployment.Operators...)}
+			groups := map[string][]string{"unyolo-telegram": {"1002"}}
+			prepare(&value, groups)
+			if _, err := fakeInspector(users, groups).InspectDeployment(context.Background(), value); err == nil {
+				t.Fatal("changed managed operator was accepted")
+			}
+		})
 	}
 }
 

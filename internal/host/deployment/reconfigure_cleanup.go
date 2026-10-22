@@ -94,6 +94,13 @@ func desiredClientPaths(snapshot profile.Snapshot) (map[string]bool, error) {
 			}
 			result[path] = true
 		}
+		operatorPaths, err := operatorClientPaths(snapshot, component)
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range operatorPaths {
+			result[path] = true
+		}
 	}
 	return result, nil
 }

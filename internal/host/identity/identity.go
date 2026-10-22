@@ -86,10 +86,18 @@ func (inspector Inspector) InspectDeployment(ctx context.Context, deployment pro
 	for _, operator := range deployment.Operators {
 		account, err := inspector.inspect(ctx, operator.UnixUser)
 		if err != nil {
+			var unknown user.UnknownUserError
+			if operator.Managed() && errors.As(err, &unknown) {
+				result["operator:"+operator.ID] = Account{Name: operator.UnixUser, Home: operator.Home, Shell: operator.Shell, Missing: true}
+				continue
+			}
 			return nil, fmt.Errorf("inspect operator %q: %w", operator.ID, err)
 		}
 		if account.UID == 0 {
 			return nil, fmt.Errorf("operator %q must not bind root directly", operator.ID)
+		}
+		if err := validateManagedOperator(account, operator); err != nil {
+			return nil, fmt.Errorf("operator %q: %w", operator.ID, err)
 		}
 		if previous := usedUIDs[account.UID]; previous != "" && !reducedUIDs[account.UID] {
 			return nil, fmt.Errorf("operator %q shares UID with %s", operator.ID, previous)
@@ -176,15 +184,68 @@ func validateAgent(account Account, desired profile.Agent) error {
 	return nil
 }
 
-// SafeManagedCommand returns one fixed Linux account-creation argv.
-func SafeManagedCommand(agent profile.Agent) ([]string, error) {
-	if agent.Target.Kind != "local_account" || agent.Target.AccountMode != "managed" {
-		return nil, errors.New("account is not managed")
+// validateManagedOperator checks that an existing account still matches a
+// managed operator. A managed operator is a service account: it has no
+// root-equivalent group, and its home and shell match the deployment.
+func validateManagedOperator(account Account, desired profile.Operator) error {
+	if !desired.Managed() {
+		return nil
 	}
-	if !managedNamePattern.MatchString(agent.Target.UnixUser) || !filepath.IsAbs(agent.Target.Home) || filepath.Clean(agent.Target.Home) != agent.Target.Home ||
-		agent.Target.Home == "/" || agent.Target.Home == "/root" || !filepath.IsAbs(agent.Target.Shell) ||
-		!slices.Contains([]string{"nologin", "false"}, filepath.Base(agent.Target.Shell)) {
+	for _, group := range rootEquivalentGroups {
+		if slices.Contains(account.Groups, group) {
+			return fmt.Errorf("managed operator belongs to root-equivalent group %q", group)
+		}
+	}
+	if filepath.Clean(account.Home) != desired.Home {
+		return fmt.Errorf("home mismatch: found %q", account.Home)
+	}
+	if account.Shell != "" && filepath.Clean(account.Shell) != desired.Shell {
+		return fmt.Errorf("shell mismatch: found %q", account.Shell)
+	}
+	return nil
+}
+
+// Managed is one noninteractive account that unYOLO creates for a managed
+// agent or a managed operator.
+type Managed struct {
+	// Key is the account key in the inspected identity map.
+	Key string
+	// Kind is the transaction step kind that creates the account.
+	Kind     string
+	UnixUser string
+	Home     string
+	Shell    string
+}
+
+// ManagedAccounts returns every managed agent and operator account of a
+// deployment, agents first.
+func ManagedAccounts(deployment profile.Deployment) []Managed {
+	var result []Managed
+	for _, agent := range deployment.Agents {
+		if agent.Target.Kind == "local_account" && agent.Target.AccountMode == "managed" {
+			result = append(result, Managed{
+				Key: "agent:" + agent.ID, Kind: "identity:" + agent.ID,
+				UnixUser: agent.Target.UnixUser, Home: agent.Target.Home, Shell: agent.Target.Shell,
+			})
+		}
+	}
+	for _, operator := range deployment.Operators {
+		if operator.Managed() {
+			result = append(result, Managed{
+				Key: "operator:" + operator.ID, Kind: "identity:operator." + operator.ID,
+				UnixUser: operator.UnixUser, Home: operator.Home, Shell: operator.Shell,
+			})
+		}
+	}
+	return result
+}
+
+// Command returns one fixed Linux account-creation argv.
+func (managed Managed) Command() ([]string, error) {
+	if !managedNamePattern.MatchString(managed.UnixUser) || !filepath.IsAbs(managed.Home) || filepath.Clean(managed.Home) != managed.Home ||
+		managed.Home == "/" || managed.Home == "/root" || !filepath.IsAbs(managed.Shell) ||
+		!slices.Contains([]string{"nologin", "false"}, filepath.Base(managed.Shell)) {
 		return nil, errors.New("managed account fields are unsafe")
 	}
-	return []string{"useradd", "--system", "--create-home", "--home-dir", agent.Target.Home, "--shell", agent.Target.Shell, agent.Target.UnixUser}, nil
+	return []string{"useradd", "--system", "--create-home", "--home-dir", managed.Home, "--shell", managed.Shell, managed.UnixUser}, nil
 }

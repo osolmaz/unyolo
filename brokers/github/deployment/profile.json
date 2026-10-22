@@ -180,6 +180,14 @@
       "endpoint": "unix:///run/unyolo/github/agent/broker.sock"
     }
   ],
+  "operator_clients": [
+    {
+      "operator_id": "operator",
+      "broker_name": "gh-broker",
+      "secret_slot": "github-operator-secret",
+      "endpoint": "unix:///run/unyolo/github/operator/broker.sock"
+    }
+  ],
   "services": [
     "gh-broker.service"
   ]

@@ -692,7 +692,7 @@ func (engine *Engine) runComponent(ctx context.Context, snapshot profile.Snapsho
 	request := api.Request{
 		APIVersion: api.APIVersion, Action: action, DeploymentDigest: snapshot.Digest,
 		PlanDigest: planDigest, ComponentID: id, Profile: snapshot.Files[desired.Profile.Path].Data,
-		Files: files, Agents: agentBindings(snapshot, id),
+		Files: files, Agents: agentBindings(snapshot, id), Operators: operatorBindings(snapshot),
 		ProbeExecutable: filepath.Join(engine.options.Paths.Root, "current", runtimeComponent.Destination),
 	}
 	response, err := (adapterruntime.Runner{Timeout: engine.options.AdapterTimeout}).Run(ctx, command, request, secrets)
@@ -729,7 +729,7 @@ func generatedClientPaths(snapshot profile.Snapshot, desired profile.Component) 
 			homes[agent.ID] = agent.Target.Home
 		}
 	}
-	paths := make([]string, 0, len(component.Clients))
+	paths := make([]string, 0, len(component.Clients)+len(component.OperatorClients))
 	for _, client := range component.Clients {
 		home := homes[client.AgentID]
 		if home == "" {
@@ -741,8 +741,51 @@ func generatedClientPaths(snapshot profile.Snapshot, desired profile.Component) 
 		}
 		paths = append(paths, path)
 	}
+	operatorPaths, err := operatorClientPaths(snapshot, component)
+	if err != nil {
+		return nil, err
+	}
+	paths = append(paths, operatorPaths...)
 	slices.Sort(paths)
 	return paths, nil
+}
+
+// operatorClientPaths returns the operator client document path of every
+// operator client in a component profile. Each one must name a managed
+// operator of the deployment.
+func operatorClientPaths(snapshot profile.Snapshot, component componentprofile.Profile) ([]string, error) {
+	homes := map[string]string{}
+	for _, operator := range snapshot.Deployment.Operators {
+		if operator.Managed() {
+			homes[operator.ID] = operator.Home
+		}
+	}
+	paths := make([]string, 0, len(component.OperatorClients))
+	for _, client := range component.OperatorClients {
+		home := homes[client.OperatorID]
+		if home == "" {
+			return nil, fmt.Errorf("operator client %q has no managed operator", client.OperatorID)
+		}
+		path, err := clientconfig.OperatorPath(home, client.BrokerName)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
+// operatorBindings lists the managed operator accounts. Every component that
+// renders an operator client for one of them writes it into its home.
+func operatorBindings(snapshot profile.Snapshot) []api.OperatorBinding {
+	var result []api.OperatorBinding
+	for _, operator := range snapshot.Deployment.Operators {
+		if operator.Managed() {
+			result = append(result, api.OperatorBinding{ID: operator.ID, UnixUser: operator.UnixUser, Home: operator.Home})
+		}
+	}
+	slices.SortFunc(result, func(a, b api.OperatorBinding) int { return strings.Compare(a.ID, b.ID) })
+	return result
 }
 
 func agentBindings(snapshot profile.Snapshot, componentID string) []api.AgentBinding {
@@ -876,70 +919,70 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 
 func (engine *Engine) identitySteps(planned Planned) ([]transaction.Step, error) {
 	var steps []transaction.Step
-	for _, agent := range planned.Snapshot.Deployment.Agents {
-		if !planned.Accounts["agent:"+agent.ID].Missing {
+	for _, account := range identity.ManagedAccounts(planned.Snapshot.Deployment) {
+		if !planned.Accounts[account.Key].Missing {
 			continue
 		}
 		if runtime.GOOS != "linux" {
-			return nil, errors.New("managed agent creation is supported only on Linux")
+			return nil, errors.New("managed account creation is supported only on Linux")
 		}
-		agent := agent
-		command, err := identity.SafeManagedCommand(agent)
+		account := account
+		command, err := account.Command()
 		if err != nil {
 			return nil, err
 		}
-		if _, err := os.Lstat(agent.Target.Home); err == nil {
-			return nil, fmt.Errorf("managed agent %q home already exists", agent.ID)
+		if _, err := os.Lstat(account.Home); err == nil {
+			return nil, fmt.Errorf("managed account %q home already exists", account.UnixUser)
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("inspect managed agent %q home: %w", agent.ID, err)
+			return nil, fmt.Errorf("inspect managed account %q home: %w", account.UnixUser, err)
 		}
 		steps = append(steps, transaction.Step{
-			ID: "identity." + agent.ID, Kind: "identity:" + agent.ID,
+			ID: strings.Replace(account.Kind, ":", ".", 1), Kind: account.Kind,
 			Apply: func(ctx context.Context) (string, error) {
-				if _, err := os.Lstat(agent.Target.Home); !errors.Is(err, os.ErrNotExist) {
-					return "", fmt.Errorf("managed agent %q home appeared before creation", agent.ID)
+				if _, err := os.Lstat(account.Home); !errors.Is(err, os.ErrNotExist) {
+					return "", fmt.Errorf("managed account %q home appeared before creation", account.UnixUser)
 				}
 				process := exec.CommandContext(ctx, command[0], command[1:]...) // #nosec G204 -- fixed account command with validated profile fields.
 				if err := process.Run(); err != nil {
-					return "", fmt.Errorf("create managed agent %q: %w", agent.ID, err)
+					return "", fmt.Errorf("create managed account %q: %w", account.UnixUser, err)
 				}
 				return "created", nil
 			},
 			Rollback: func(ctx context.Context, handle string) error {
-				return deleteManagedAgent(ctx, agent, handle)
+				return deleteManagedAccount(ctx, account, handle)
 			},
-			RollbackRunning: func(ctx context.Context) error { return deleteManagedAgent(ctx, agent, "created") },
+			RollbackRunning: func(ctx context.Context) error { return deleteManagedAccount(ctx, account, "created") },
 		})
 	}
 	return steps, nil
 }
 
 //nolint:cyclop // Managed identity rollback fails closed across handle, account, passwd, deletion, and home checks.
-func deleteManagedAgent(ctx context.Context, agent profile.Agent, handle string) error {
+func deleteManagedAccount(ctx context.Context, managed identity.Managed, handle string) error {
 	if handle != "created" {
-		return errors.New("managed agent rollback handle is invalid")
+		return errors.New("managed account rollback handle is invalid")
 	}
-	account, err := user.Lookup(agent.Target.UnixUser)
+	account, err := user.Lookup(managed.UnixUser)
 	if err != nil {
 		var unknown user.UnknownUserError
 		if errors.As(err, &unknown) {
 			return nil
 		}
-		return fmt.Errorf("inspect managed agent for rollback: %w", err)
+		return fmt.Errorf("inspect managed account for rollback: %w", err)
 	}
-	if filepath.Clean(account.HomeDir) != agent.Target.Home {
-		return errors.New("managed agent changed before rollback")
+	if filepath.Clean(account.HomeDir) != managed.Home {
+		return errors.New("managed account changed before rollback")
 	}
-	output, err := exec.CommandContext(ctx, "getent", "passwd", agent.Target.UnixUser).Output() // #nosec G204 -- managed account names are validated before planning.
+	output, err := exec.CommandContext(ctx, "getent", "passwd", managed.UnixUser).Output() // #nosec G204 -- managed account names are validated before planning.
 	fields := strings.Split(strings.TrimSpace(string(output)), ":")
-	if err != nil || len(fields) != 7 || filepath.Clean(fields[5]) != agent.Target.Home || filepath.Clean(fields[6]) != agent.Target.Shell {
-		return errors.New("managed agent identity changed before rollback")
+	if err != nil || len(fields) != 7 || filepath.Clean(fields[5]) != managed.Home || filepath.Clean(fields[6]) != managed.Shell {
+		return errors.New("managed account identity changed before rollback")
 	}
-	if output, err := exec.CommandContext(ctx, "userdel", "--remove", agent.Target.UnixUser).CombinedOutput(); err != nil { // #nosec G204 -- validated managed account name.
-		return fmt.Errorf("remove managed agent: %w: %s", err, strings.TrimSpace(string(output)))
+	if output, err := exec.CommandContext(ctx, "userdel", "--remove", managed.UnixUser).CombinedOutput(); err != nil { // #nosec G204 -- validated managed account name.
+		return fmt.Errorf("remove managed account: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-	if err := os.RemoveAll(agent.Target.Home); err != nil {
-		return fmt.Errorf("remove managed agent home: %w", err)
+	if err := os.RemoveAll(managed.Home); err != nil {
+		return fmt.Errorf("remove managed account home: %w", err)
 	}
 	return nil
 }
@@ -955,8 +998,8 @@ func (engine *Engine) finalizationHandlers(planned Planned) map[string]func(cont
 			return engine.finalizeComponent(ctx, planned.Snapshot, component.ID, handle)
 		}
 	}
-	for _, agent := range planned.Snapshot.Deployment.Agents {
-		handlers["identity:"+agent.ID] = func(context.Context, string) error { return nil }
+	for _, account := range identity.ManagedAccounts(planned.Snapshot.Deployment) {
+		handlers[account.Kind] = func(context.Context, string) error { return nil }
 	}
 	for _, service := range recoveryServices(planned) {
 		handlers["service:"+service] = func(context.Context, string) error { return nil }
@@ -989,10 +1032,10 @@ func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.
 			return engine.rollbackComponent(ctx, planned.Snapshot, component.ID, planDigest, handle)
 		}
 	}
-	for _, agent := range planned.Snapshot.Deployment.Agents {
-		agent := agent
-		handlers["identity:"+agent.ID] = func(ctx context.Context, handle string) error {
-			return deleteManagedAgent(ctx, agent, handle)
+	for _, account := range identity.ManagedAccounts(planned.Snapshot.Deployment) {
+		account := account
+		handlers[account.Kind] = func(ctx context.Context, handle string) error {
+			return deleteManagedAccount(ctx, account, handle)
 		}
 	}
 	for _, service := range recoveryServices(planned) {
@@ -1058,7 +1101,7 @@ func (engine *Engine) rollbackComponent(ctx context.Context, snapshot profile.Sn
 	request := api.Request{
 		APIVersion: api.APIVersion, Action: api.ActionRollback, DeploymentDigest: snapshot.Digest,
 		PlanDigest: planDigest, ComponentID: id, Profile: snapshot.Files[desired.Profile.Path].Data,
-		Agents: agentBindings(snapshot, id), RollbackHandle: handle,
+		Agents: agentBindings(snapshot, id), Operators: operatorBindings(snapshot), RollbackHandle: handle,
 	}
 	response, err := (adapterruntime.Runner{Timeout: engine.options.AdapterTimeout}).Run(ctx, command, request, nil)
 	if err != nil {
@@ -1082,7 +1125,7 @@ func (engine *Engine) finalizeComponent(ctx context.Context, snapshot profile.Sn
 	request := api.Request{
 		APIVersion: api.APIVersion, Action: api.ActionFinalize, DeploymentDigest: snapshot.Digest,
 		PlanDigest: digestText("finalize:" + handle), ComponentID: id,
-		Profile: snapshot.Files[desired.Profile.Path].Data, Agents: agentBindings(snapshot, id), RollbackHandle: handle,
+		Profile: snapshot.Files[desired.Profile.Path].Data, Agents: agentBindings(snapshot, id), Operators: operatorBindings(snapshot), RollbackHandle: handle,
 	}
 	response, err := (adapterruntime.Runner{Timeout: engine.options.AdapterTimeout}).Run(ctx, command, request, nil)
 	if err != nil {

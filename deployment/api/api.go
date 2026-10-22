@@ -61,6 +61,14 @@ type AgentBinding struct {
 	RemoteName  string `json:"remote_name,omitempty"`
 }
 
+// OperatorBinding is one managed operator account that receives operator
+// credentials in its home.
+type OperatorBinding struct {
+	ID       string `json:"id"`
+	UnixUser string `json:"unix_user"`
+	Home     string `json:"home"`
+}
+
 // Request is one bounded adapter request.
 type Request struct {
 	APIVersion       string             `json:"api_version"`
@@ -71,6 +79,7 @@ type Request struct {
 	Profile          json.RawMessage    `json:"profile"`
 	Files            []File             `json:"files"`
 	Agents           []AgentBinding     `json:"agents,omitempty"`
+	Operators        []OperatorBinding  `json:"operators,omitempty"`
 	ProbeExecutable  string             `json:"probe_executable,omitempty"`
 	Secrets          []SecretDescriptor `json:"secrets,omitempty"`
 	RollbackHandle   string             `json:"rollback_handle,omitempty"`
@@ -141,7 +150,7 @@ func (request Request) Validate() error {
 	if request.Action != ActionApply && len(request.Secrets) != 0 {
 		return errors.New("setup-component secrets are accepted only during apply")
 	}
-	if len(request.Profile) == 0 || len(request.Profile) > MaxMessageBytes || len(request.Files) > MaxFiles || len(request.Secrets) > MaxCredentialSlots || len(request.Agents) > 32 {
+	if len(request.Profile) == 0 || len(request.Profile) > MaxMessageBytes || len(request.Files) > MaxFiles || len(request.Secrets) > MaxCredentialSlots || len(request.Agents) > 32 || len(request.Operators) > 32 {
 		return errors.New("setup-component request exceeds size limits")
 	}
 	seenFiles, seenSlots, seenFDs, seenAgents := map[string]bool{}, map[string]bool{}, map[int]bool{}, map[string]bool{}
@@ -164,6 +173,13 @@ func (request Request) Validate() error {
 			return errors.New("setup-component nonlocal agent binding is invalid")
 		}
 		seenAgents[agent.ID] = true
+	}
+	seenOperators := map[string]bool{}
+	for _, operator := range request.Operators {
+		if !identifierPattern.MatchString(operator.ID) || strings.TrimSpace(operator.UnixUser) == "" || !strings.HasPrefix(operator.Home, "/") || seenOperators[operator.ID] {
+			return errors.New("setup-component operator binding is invalid or duplicated")
+		}
+		seenOperators[operator.ID] = true
 	}
 	for _, secret := range request.Secrets {
 		if !identifierPattern.MatchString(secret.Name) || secret.FD < 3 || seenSlots[secret.Name] || seenFDs[secret.FD] {

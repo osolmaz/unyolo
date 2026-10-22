@@ -89,7 +89,14 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "unix_user"],
-      "properties": { "id": { "$ref": "#/$defs/name" }, "unix_user": { "type": "string", "minLength": 1, "maxLength": 32 } }
+      "properties": {
+        "id": { "$ref": "#/$defs/name" },
+        "unix_user": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "account_mode": { "const": "managed" },
+        "home": { "$ref": "#/$defs/path" },
+        "shell": { "$ref": "#/$defs/path" }
+      },
+      "dependentRequired": { "account_mode": ["home", "shell"], "home": ["account_mode"], "shell": ["account_mode"] }
     },
     "component": {
       "type": "object",

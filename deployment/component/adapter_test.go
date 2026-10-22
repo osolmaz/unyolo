@@ -211,7 +211,7 @@ func TestProfileRejectsDuplicateGroupMembers(t *testing.T) {
 		ComponentID: "test", ProfileAPI: profile.APIVersion,
 		AllowedGroups: []string{"test"}, BackupDirectory: t.TempDir(),
 	}
-	if err := validateProfile(profile, config, nil); err == nil {
+	if err := validateProfile(profile, config, nil, nil); err == nil {
 		t.Fatal("duplicate group members were accepted")
 	}
 }
@@ -236,7 +236,7 @@ func TestValidateProfileRejectsUnsafeResources(t *testing.T) {
 		}
 	}
 	agents := []api.AgentBinding{{ID: "agent", ClientID: "agent", TargetKind: "local_account", Isolation: "separate", AccountMode: "existing", UnixUser: "agent", Home: "/home/agent"}}
-	if err := validateProfile(valid(), config, agents); err != nil {
+	if err := validateProfile(valid(), config, agents, nil); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -261,7 +261,7 @@ func TestValidateProfileRejectsUnsafeResources(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			value := valid()
 			test.edit(&value)
-			if err := validateProfile(value, config, agents); err == nil {
+			if err := validateProfile(value, config, agents, nil); err == nil {
 				t.Fatal("unsafe profile was accepted")
 			}
 		})

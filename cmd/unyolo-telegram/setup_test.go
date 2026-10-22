@@ -67,7 +67,7 @@ func TestIngressInstallPlanManagesConfigSecretsAndAccess(t *testing.T) {
 		!slices.Contains(plan.Unit.SupplementaryGroups, "hf-broker-operator") {
 		t.Fatalf("operator access groups = %v members=%v unit=%v", plan.AdditionalGroups, plan.GroupMembers, plan.Unit.SupplementaryGroups)
 	}
-	if len(plan.RemoveFiles) != 2 || plan.ReadyCheck == nil {
+	if len(plan.RemoveFiles) != 5 || plan.ReadyCheck == nil {
 		t.Fatalf("route retirement = %+v readiness=%v", plan.RemoveFiles, plan.ReadyCheck != nil)
 	}
 	configFile := managedFile(t, plan.Files, "config.json")
@@ -75,11 +75,13 @@ func TestIngressInstallPlanManagesConfigSecretsAndAccess(t *testing.T) {
 	if err := json.Unmarshal(configFile.Data, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.TelegramAPIBase != opts.TelegramAPIBase || cfg.Routes["h"].OperatorTokenFile != filepath.Join(opts.ConfigDir, "operator-token-h") {
+	if cfg.TelegramAPIBase != opts.TelegramAPIBase || cfg.Routes["h"].OperatorClientFile != filepath.Join(opts.ConfigDir, "operator-h.json") {
 		t.Fatalf("managed config = %+v", cfg)
 	}
+	operatorClient := managedFile(t, plan.Files, "operator-h.json")
 	if managedFile(t, plan.Files, "telegram-bot-token").Owner != service.ManagedFileOwnerService ||
-		managedFile(t, plan.Files, "operator-token-h").Mode != 0o600 {
+		operatorClient.Mode != 0o600 || operatorClient.Owner != service.ManagedFileOwnerService ||
+		!strings.Contains(string(operatorClient.Data), `"operator_endpoint": "unix:///run/unyolo/huggingface/operator/broker.sock"`) {
 		t.Fatalf("managed secret metadata = %+v", plan.Files)
 	}
 }
