@@ -86,9 +86,11 @@ type Decision struct {
 	CallbackID    string
 	MessageID     int
 	MessageText   string
-	Notification  *MessageRef
-	OperatorID    int64
-	OperatorTag   string
+	// ButtonText is the label of the clicked button as Telegram reports it.
+	ButtonText   string
+	Notification *MessageRef
+	OperatorID   int64
+	OperatorTag  string
 }
 
 // DecisionResult is the callback answer returned after an operator decision.

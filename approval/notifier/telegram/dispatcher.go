@@ -29,9 +29,15 @@ type readyOperatorSource interface {
 	Health(context.Context) error
 }
 
+// cardVerifier checks that a click belongs to a card the owner sent.
+type cardVerifier interface {
+	verifyCard(context.Context, notify.Decision) error
+}
+
 // Dispatcher sends callbacks from one Telegram poller to broker Operator V1 sources.
 type Dispatcher struct {
 	routes map[string]OperatorSource
+	cards  cardVerifier
 }
 
 var terminalDecisionAnswers = map[grants.Status]notify.Answer{
@@ -52,10 +58,11 @@ var routeBrokerNames = map[string]string{
 
 const operatorDecisionTimeout = 15 * time.Second
 
-// NewDispatcher builds a single-ingress route dispatcher.
-func NewDispatcher(routes map[string]OperatorSource) (*Dispatcher, error) {
-	if len(routes) == 0 {
-		return nil, errors.New("telegram dispatcher requires at least one route")
+// NewDispatcher builds the route dispatcher. cards holds the cards the owner
+// sent, so that only clicks on those cards reach a broker.
+func NewDispatcher(routes map[string]OperatorSource, cards cardVerifier) (*Dispatcher, error) {
+	if len(routes) == 0 || cards == nil {
+		return nil, errors.New("telegram dispatcher requires at least one route and the card store")
 	}
 	cloned := make(map[string]OperatorSource, len(routes))
 	for route, source := range routes {
@@ -64,7 +71,7 @@ func NewDispatcher(routes map[string]OperatorSource) (*Dispatcher, error) {
 		}
 		cloned[route] = source
 	}
-	return &Dispatcher{routes: cloned}, nil
+	return &Dispatcher{routes: cloned, cards: cards}, nil
 }
 
 // Ready verifies exact authenticated discovery and health for every route.
@@ -113,6 +120,11 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	if !ok {
 		return notify.DecisionResult{Answer: notify.AnswerRouteUnavailable, MessageStatus: notify.Status{Kind: notify.StatusClosed}}
 	}
+	if err := d.cards.verifyCard(ctx, decision); errors.Is(err, errCardMismatch) {
+		return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
+	} else if err != nil {
+		return notify.DecisionResult{Answer: notify.AnswerUnavailable}
+	}
 	current, err := source.Get(ctx, decision.GrantID)
 	if err != nil {
 		return dispatcherErrorResult(err)
@@ -124,37 +136,15 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	if !ok {
 		return notify.DecisionResult{Answer: notify.AnswerIgnored}
 	}
-	notification, err := notificationDecision(current, decision)
-	if err != nil {
-		return notify.DecisionResult{Answer: notify.AnswerUnavailable}
-	}
 	updated, err := source.Decide(ctx, current.ID, action, operatorv1.Decision{
 		ExpectedRevision: current.Revision,
 		IdempotencyKey:   callbackIdempotencyKey(decision),
 		OnBehalfOf:       approval.Actor(decision),
-		Notification:     notification,
 	})
 	if err != nil {
 		return dispatcherErrorResult(err)
 	}
 	return completedDecisionResult(updated)
-}
-
-func notificationDecision(request operatorv1.Request, decision notify.Decision) (*operatorv1.NotificationDecision, error) {
-	semantic, err := semanticApproval(request, decision.Route, decision.DecisionToken)
-	if err != nil {
-		return nil, err
-	}
-	text, err := RenderApproval(semantic)
-	if err != nil {
-		return nil, err
-	}
-	return &operatorv1.NotificationDecision{
-		Kind: "telegram", Renderer: rendererID, DecisionToken: decision.DecisionToken,
-		ChatID: decision.ChatID, MessageID: decision.MessageID, Text: text,
-		PresentationJSON: approvalnotify.SnapshotJSON(semantic), PresentationDigest: approvalnotify.PresentationDigest(semantic),
-		RenderedDigest: renderedDigest(text),
-	}, nil
 }
 
 func semanticApproval(request operatorv1.Request, route, token string) (approvalnotify.Approval, error) {

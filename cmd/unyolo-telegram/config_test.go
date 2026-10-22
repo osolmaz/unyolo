@@ -86,11 +86,11 @@ func TestBuildIngressReadsManagedSecrets(t *testing.T) {
 	writeTestFile(t, key, strings.Repeat("0", 64)+"\n")
 	cfg := ingressConfig{TelegramBotTokenFile: bot, TelegramChatID: 1, InboxPath: filepath.Join(dir, "callbacks.db"), InboxKeyFile: key,
 		Routes: map[string]routeConfig{"h": {OperatorEndpoint: "unix:///tmp/operator.sock", OperatorTokenFile: operator}}}
-	client, dispatcher, inbox, err := buildIngress(t.Context(), cfg)
-	if err != nil || client == nil || dispatcher == nil || inbox == nil {
-		t.Fatalf("buildIngress() client=%v dispatcher=%v error=%v", client, dispatcher, err)
+	built, err := buildIngress(t.Context(), cfg)
+	if err != nil || built.client == nil || built.dispatcher == nil || built.owner == nil || built.inbox == nil {
+		t.Fatalf("buildIngress() = %+v, %v", built, err)
 	}
-	_ = inbox.Close()
+	_ = built.inbox.Close()
 }
 
 func TestRunServeStopsWithCanceledContext(t *testing.T) {

@@ -127,46 +127,89 @@ func supportedRoute(route string) bool {
 	}
 }
 
-//nolint:cyclop // Construction keeps every secret and route dependency failure attributable to its source.
-func buildIngress(ctx context.Context, cfg ingressConfig) (*telegram.Client, *telegram.Dispatcher, *telegram.Inbox, error) {
+// ingress is the single Telegram owner: it sends approval cards for every
+// broker route and handles the clicks on them.
+type ingress struct {
+	client     *telegram.Client
+	dispatcher *telegram.Dispatcher
+	owner      *telegram.Owner
+	inbox      *telegram.Inbox
+}
+
+func buildIngress(ctx context.Context, cfg ingressConfig) (ingress, error) {
+	client, err := newTelegramClient(cfg)
+	if err != nil {
+		return ingress{}, err
+	}
+	sources, err := routeSources(cfg)
+	if err != nil {
+		return ingress{}, err
+	}
+	inbox, err := openIngressInbox(ctx, cfg)
+	if err != nil {
+		return ingress{}, err
+	}
+	built, err := assembleIngress(client, inbox, sources)
+	if err != nil {
+		_ = inbox.Close()
+		return ingress{}, err
+	}
+	return built, nil
+}
+
+func newTelegramClient(cfg ingressConfig) (*telegram.Client, error) {
 	botToken, err := readSecretFile(cfg.TelegramBotTokenFile)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read Telegram bot token: %w", err)
+		return nil, fmt.Errorf("read Telegram bot token: %w", err)
 	}
-	client, err := telegram.New(botToken, cfg.TelegramChatID, nil, cfg.TelegramAPIBase)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	routes := make(map[string]telegram.OperatorSource, len(cfg.Routes))
+	return telegram.New(botToken, cfg.TelegramChatID, nil, cfg.TelegramAPIBase)
+}
+
+func routeSources(cfg ingressConfig) (map[string]*operatorclient.Client, error) {
+	sources := make(map[string]*operatorclient.Client, len(cfg.Routes))
 	for route, source := range cfg.Routes {
-		token, readErr := readSecretFile(source.OperatorTokenFile)
-		if readErr != nil {
-			return nil, nil, nil, fmt.Errorf("read route %q operator token: %w", route, readErr)
+		token, err := readSecretFile(source.OperatorTokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("read route %q operator token: %w", route, err)
 		}
-		operator, clientErr := operatorclient.New(source.OperatorEndpoint, token, nil)
-		if clientErr != nil {
-			return nil, nil, nil, fmt.Errorf("configure route %q: %w", route, clientErr)
+		operator, err := operatorclient.New(source.OperatorEndpoint, token, nil)
+		if err != nil {
+			return nil, fmt.Errorf("configure route %q: %w", route, err)
 		}
-		routes[route] = operator
+		sources[route] = operator
 	}
-	dispatcher, err := telegram.NewDispatcher(routes)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	return sources, nil
+}
+
+func openIngressInbox(ctx context.Context, cfg ingressConfig) (*telegram.Inbox, error) {
 	keyText, err := readSecretFile(cfg.InboxKeyFile)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read Telegram inbox key: %w", err)
+		return nil, fmt.Errorf("read Telegram inbox key: %w", err)
 	}
 	key, err := hex.DecodeString(keyText)
 	if err != nil || len(key) != 32 {
-		return nil, nil, nil, errors.New("telegram inbox key is invalid")
+		return nil, errors.New("telegram inbox key is invalid")
 	}
-	inbox, err := telegram.OpenInbox(ctx, cfg.InboxPath, key)
-	clearSecret(key)
+	defer clearSecret(key)
+	return telegram.OpenInbox(ctx, cfg.InboxPath, key)
+}
+
+func assembleIngress(client *telegram.Client, inbox *telegram.Inbox, sources map[string]*operatorclient.Client) (ingress, error) {
+	operators := make(map[string]telegram.OperatorSource, len(sources))
+	cards := make(map[string]telegram.CardSource, len(sources))
+	for route, source := range sources {
+		operators[route] = source
+		cards[route] = source
+	}
+	dispatcher, err := telegram.NewDispatcher(operators, inbox)
 	if err != nil {
-		return nil, nil, nil, err
+		return ingress{}, err
 	}
-	return client, dispatcher, inbox, nil
+	owner, err := telegram.NewOwner(client, inbox, cards)
+	if err != nil {
+		return ingress{}, err
+	}
+	return ingress{client: client, dispatcher: dispatcher, owner: owner, inbox: inbox}, nil
 }
 
 func clearSecret(value []byte) {

@@ -33,7 +33,25 @@ const (
 	RouteSudo = "s"
 )
 
+// Button labels. A click is accepted only when Telegram reports the label
+// that belongs to the clicked action.
+const (
+	approveButtonText = "✅ Approve"
+	denyButtonText    = "❌ Deny"
+)
+
 var errMessageNotModified = errors.New("telegram message is not modified")
+
+func buttonText(action notify.Action) string {
+	switch action {
+	case notify.ActionApprove:
+		return approveButtonText
+	case notify.ActionDeny:
+		return denyButtonText
+	default:
+		return ""
+	}
+}
 
 // Options configures Telegram approval behavior.
 type Options struct {
@@ -108,6 +126,10 @@ func routeOrDefault(route string) string {
 
 // SendApproval sends one approval message with approve/deny buttons.
 func (c *Client) SendApproval(ctx context.Context, approval approvalnotify.Approval) (notify.MessageRef, error) {
+	return c.sendCard(ctx, c.route, approval)
+}
+
+func (c *Client) sendCard(ctx context.Context, route string, approval approvalnotify.Approval) (notify.MessageRef, error) {
 	if strings.TrimSpace(approval.GrantID) == "" || strings.TrimSpace(approval.DecisionToken) == "" {
 		return notify.MessageRef{}, errors.New("approval grant id and decision token are required")
 	}
@@ -121,8 +143,8 @@ func (c *Client) SendApproval(ctx context.Context, approval approvalnotify.Appro
 		"parse_mode": "HTML",
 		"reply_markup": map[string]any{
 			"inline_keyboard": [][]map[string]string{{
-				{"text": "✅ Approve", "callback_data": callbackData(c.route, notify.ActionApprove, approval.GrantID, approval.DecisionToken)},
-				{"text": "❌ Deny", "callback_data": callbackData(c.route, notify.ActionDeny, approval.GrantID, approval.DecisionToken)},
+				{"text": approveButtonText, "callback_data": callbackData(route, notify.ActionApprove, approval.GrantID, approval.DecisionToken)},
+				{"text": denyButtonText, "callback_data": callbackData(route, notify.ActionDeny, approval.GrantID, approval.DecisionToken)},
 			}},
 		},
 	}
@@ -450,9 +472,35 @@ type telegramUser struct {
 }
 
 type telegramMessage struct {
-	MessageID int          `json:"message_id"`
-	Chat      telegramChat `json:"chat"`
-	Text      string       `json:"text"`
+	MessageID   int                   `json:"message_id"`
+	Chat        telegramChat          `json:"chat"`
+	Text        string                `json:"text"`
+	ReplyMarkup *telegramInlineMarkup `json:"reply_markup"`
+}
+
+type telegramInlineMarkup struct {
+	InlineKeyboard [][]telegramInlineButton `json:"inline_keyboard"`
+}
+
+type telegramInlineButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
+// pressedButtonText returns the label of the button that carries data, as the
+// message currently shows it.
+func (m *telegramMessage) pressedButtonText(data string) string {
+	if m.ReplyMarkup == nil {
+		return ""
+	}
+	for _, row := range m.ReplyMarkup.InlineKeyboard {
+		for _, button := range row {
+			if button.CallbackData == data {
+				return button.Text
+			}
+		}
+	}
+	return ""
 }
 
 type telegramChat struct {

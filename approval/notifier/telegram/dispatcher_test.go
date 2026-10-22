@@ -52,7 +52,7 @@ func (s *dispatcherSource) Decide(_ context.Context, _ string, action operatorv1
 
 func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
 	source := &dispatcherSource{request: pendingOperatorRequest()}
-	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteHuggingFace: source})
+	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteHuggingFace: source}, acceptCards{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,10 +64,36 @@ func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
 	}
 	if source.action != operatorv1.ActionApprove || source.decision.ExpectedRevision != 3 ||
 		source.decision.OnBehalfOf != "telegram:42" || !strings.HasPrefix(source.decision.IdempotencyKey, "telegram-") ||
-		source.decision.Notification == nil || source.decision.Notification.DecisionToken != "token" || source.decision.Notification.MessageID != 8 ||
-		source.decision.Notification.Renderer != rendererID || source.decision.Notification.PresentationJSON == "" ||
-		source.decision.Notification.PresentationDigest == "" || source.decision.Notification.RenderedDigest == "" {
+		source.decision.Notification != nil {
 		t.Fatalf("operator decision = %+v action=%q", source.decision, source.action)
+	}
+}
+
+// acceptCards is a card store that accepts or rejects every click.
+type acceptCards struct{ err error }
+
+func (c acceptCards) verifyCard(context.Context, notify.Decision) error { return c.err }
+
+func TestDispatcherRejectsClicksOutsideOwnedCards(t *testing.T) {
+	source := &dispatcherSource{request: pendingOperatorRequest()}
+	decision := notify.Decision{Route: RouteGitHub, Action: notify.ActionApprove, GrantID: "grant-1", ChatID: 7, MessageID: 8}
+	mismatch, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: source}, acceptCards{err: errCardMismatch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := mismatch.Handle(t.Context(), decision); result.Answer != notify.AnswerSuperseded ||
+		result.MessageStatus.Kind != notify.StatusSuperseded || source.decideCall != 0 {
+		t.Fatalf("mismatched click Handle() = %+v calls=%d", result, source.decideCall)
+	}
+	broken, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: source}, acceptCards{err: errors.New("disk")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := broken.Handle(t.Context(), decision); result.Answer != notify.AnswerUnavailable || source.decideCall != 0 {
+		t.Fatalf("unreadable card store Handle() = %+v calls=%d", result, source.decideCall)
+	}
+	if _, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: source}, nil); err == nil {
+		t.Fatal("dispatcher without a card store accepted")
 	}
 }
 
@@ -82,7 +108,7 @@ func pendingOperatorRequest() operatorv1.Request {
 
 func TestDispatcherHandlesTerminalAndUnavailableRoutes(t *testing.T) {
 	terminal := &dispatcherSource{request: operatorv1.Request{ID: "grant-1", Status: grants.StatusDenied}}
-	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: terminal})
+	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: terminal}, acceptCards{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +124,7 @@ func TestDispatcherHandlesTerminalAndUnavailableRoutes(t *testing.T) {
 
 func TestDispatcherDoesNotBlockSharedPollerOnTransientOperatorFailure(t *testing.T) {
 	source := &dispatcherSource{getErr: errors.New("offline")}
-	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteSudo: source})
+	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteSudo: source}, acceptCards{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,26 +166,26 @@ func TestDispatcherAPIErrorResults(t *testing.T) {
 }
 
 func TestNewDispatcherRejectsInvalidRoutes(t *testing.T) {
-	if _, err := NewDispatcher(nil); err == nil {
+	if _, err := NewDispatcher(nil, acceptCards{}); err == nil {
 		t.Fatal("empty dispatcher routes accepted")
 	}
-	if _, err := NewDispatcher(map[string]OperatorSource{"github": &dispatcherSource{}}); err == nil {
+	if _, err := NewDispatcher(map[string]OperatorSource{"github": &dispatcherSource{}}, acceptCards{}); err == nil {
 		t.Fatal("invalid dispatcher route accepted")
 	}
 }
 
 func TestDispatcherReadinessRequiresExactOperatorSource(t *testing.T) {
-	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: &dispatcherSource{}})
+	dispatcher, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: &dispatcherSource{}}, acceptCards{})
 	if err != nil || dispatcher.Ready(t.Context()) != nil {
 		t.Fatalf("Ready() = %v, constructor = %v", dispatcher.Ready(t.Context()), err)
 	}
-	withoutReadiness, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: struct{ OperatorSource }{&minimalSource{}}})
+	withoutReadiness, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: struct{ OperatorSource }{&minimalSource{}}}, acceptCards{})
 	if err != nil || withoutReadiness.Ready(t.Context()) == nil {
 		t.Fatal("Ready() accepted a source without discovery and health")
 	}
 	wrong := &dispatcherSource{descriptor: &operatorv1.Descriptor{APIVersion: operatorv1.APIVersion,
 		ContractDigest: "sha256:" + strings.Repeat("f", 64), BuildID: "test"}}
-	incompatible, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: wrong})
+	incompatible, err := NewDispatcher(map[string]OperatorSource{RouteGitHub: wrong}, acceptCards{})
 	if err != nil || incompatible.Ready(t.Context()) == nil || incompatible.Compatible(t.Context()) == nil {
 		t.Fatal("dispatcher accepted a different Operator contract")
 	}

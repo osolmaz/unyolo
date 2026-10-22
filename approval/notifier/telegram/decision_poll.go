@@ -95,6 +95,7 @@ func parseDecision(update telegramUpdate) (notify.Decision, bool) {
 		ChatID:        callback.Message.Chat.ID,
 		MessageID:     callback.Message.MessageID,
 		MessageText:   callback.Message.Text,
+		ButtonText:    callback.Message.pressedButtonText(callback.Data),
 		OperatorID:    callback.From.ID,
 		OperatorTag:   callback.From.Username,
 		Approver:      callback.From.Username,

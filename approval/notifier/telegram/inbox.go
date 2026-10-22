@@ -121,6 +121,9 @@ func (i *Inbox) initialize(ctx context.Context) error {
 	if err := i.createSchema(ctx); err != nil {
 		return err
 	}
+	if err := i.createCardSchema(ctx); err != nil {
+		return err
+	}
 	if version == 0 {
 		return i.initializeFormatVersion(ctx)
 	}

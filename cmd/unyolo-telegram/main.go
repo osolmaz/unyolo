@@ -76,12 +76,24 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	client, dispatcher, inbox, err := buildIngress(ctx, cfg)
+	built, err := buildIngress(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = inbox.Close() }()
-	err = client.PollDurableReady(ctx, inbox, dispatcher.Handle, dispatcher.Compatible)
+	defer func() { _ = built.inbox.Close() }()
+	return serveIngress(ctx, built)
+}
+
+// serveIngress runs the card owner and the click poller together. The poller
+// stops on a contract mismatch, and then the owner stops too.
+func serveIngress(ctx context.Context, built ingress) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	owned := make(chan error, 1)
+	go func() { owned <- built.owner.Run(ctx) }()
+	err := built.client.PollDurableReady(ctx, built.inbox, built.dispatcher.Handle, built.dispatcher.Compatible)
+	cancel()
+	<-owned
 	if errors.Is(err, context.Canceled) {
 		return nil
 	}
