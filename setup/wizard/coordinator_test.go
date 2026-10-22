@@ -164,6 +164,85 @@ func TestCoordinatorCompleteLocalHappyPath(t *testing.T) {
 	}
 }
 
+func TestCoordinatorAsksForTelegramOnSystemdHosts(t *testing.T) {
+	prompter := &scriptedPrompter{t: t, answers: []scriptedAnswer{
+		{kind: "select", stringValue: "credential_service"},
+		{kind: "select", stringValue: "native"},
+		{kind: "multiselect", stringSlice: []string{"github"}},
+		{kind: "confirm", boolValue: true, expectMessage: setupcopy.Screens[setupcopy.ScreenTelegram].Question},
+		{kind: "text", stringValue: " -1001234567890 ", expectMessage: setupcopy.Screens[setupcopy.ScreenTelegramChat].Question},
+		{kind: "confirm", boolValue: true, expectMessage: "Ready to continue?"},
+	}}
+	capabilities := nativeCompleteSnapshot()
+	capabilities.ServiceBackend = "systemd"
+	result, err := New(Options{
+		Prompter: prompter, Capabilities: capabilities,
+		Providers: []ProviderChoice{{Value: "github", Label: "GitHub", Selected: true}},
+		Initial:   State{Intent: setupintent.Intent{APIVersion: setupintent.APIVersion}},
+	}).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Intent.Telegram == nil || result.Intent.Telegram.ChatID != -1001234567890 {
+		t.Fatalf("telegram = %#v", result.Intent.Telegram)
+	}
+	if err := result.Intent.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompter.transcript.String(), "Approvals: Telegram chat -1001234567890") {
+		t.Fatalf("review does not show Telegram: %s", prompter.transcript.String())
+	}
+
+	declined := &scriptedPrompter{t: t, answers: []scriptedAnswer{
+		{kind: "select", stringValue: "credential_service"},
+		{kind: "select", stringValue: "native"},
+		{kind: "multiselect", stringSlice: []string{"github"}},
+		{kind: "confirm", boolValue: false, expectMessage: setupcopy.Screens[setupcopy.ScreenTelegram].Question},
+		{kind: "confirm", boolValue: true, expectMessage: "Ready to continue?"},
+	}}
+	result, err = New(Options{
+		Prompter: declined, Capabilities: capabilities,
+		Providers: []ProviderChoice{{Value: "github", Label: "GitHub", Selected: true}},
+		Initial:   State{Intent: setupintent.Intent{APIVersion: setupintent.APIVersion, Telegram: &setupintent.Telegram{ChatID: 1}}},
+	}).Run(context.Background())
+	if err != nil || result.Intent.Telegram != nil {
+		t.Fatalf("declined telegram = %#v, %v", result.Intent.Telegram, err)
+	}
+}
+
+func TestTelegramAvailabilityAndChatParsing(t *testing.T) {
+	capabilities := nativeCompleteSnapshot()
+	capabilities.ServiceBackend = "systemd"
+	native := State{Capabilities: capabilities, Intent: setupintent.Intent{
+		Goal: setupintent.GoalCompleteLocal, CredentialService: &setupintent.CredentialService{Location: setupintent.ServiceNative},
+	}}
+	if !TelegramAvailable(native) {
+		t.Fatal("telegram is unavailable on a native systemd host")
+	}
+	docker := native
+	docker.Intent.CredentialService = &setupintent.CredentialService{Location: setupintent.ServiceDocker}
+	launchd := native
+	launchd.Capabilities.ServiceBackend = "launchd"
+	agentOnly := native
+	agentOnly.Intent.Goal = setupintent.GoalAgentConnection
+	for name, state := range map[string]State{"docker": docker, "launchd": launchd, "agent only": agentOnly} {
+		if TelegramAvailable(state) {
+			t.Fatalf("telegram is available for %s", name)
+		}
+	}
+	for _, value := range []string{"", "0", "chat", "1.5"} {
+		if _, err := ParseTelegramChat(value); err == nil {
+			t.Fatalf("chat %q was accepted", value)
+		}
+	}
+	state := native
+	state.Intent.Telegram = &setupintent.Telegram{ChatID: 5}
+	InvalidateAfter(&state, StepServiceLocation)
+	if state.Intent.Telegram != nil {
+		t.Fatal("changing the service location kept the Telegram choice")
+	}
+}
+
 func TestCoordinatorBackClearsDerivedAnswers(t *testing.T) {
 	prompter := &scriptedPrompter{t: t, answers: []scriptedAnswer{
 		{kind: "select", stringValue: "complete_local"},

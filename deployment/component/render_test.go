@@ -56,6 +56,48 @@ func TestStandardRendererDeterministicOutput(t *testing.T) {
 	}
 }
 
+func TestStandardRendererDeliversOperatorCredentialsToManagedApprovers(t *testing.T) {
+	t.Parallel()
+	request, _ := standardRenderRequest()
+	var template map[string]any
+	if err := json.Unmarshal(request.Profile, &template); err != nil {
+		t.Fatal(err)
+	}
+	template["operator_clients"] = []map[string]string{{
+		"operator_id": "operator", "broker_name": "gh-broker", "secret_slot": "github-operator-secret", "endpoint": "unix:///run/operator.sock",
+	}}
+	data, err := json.Marshal(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Profile = data
+	request.Approvers = append(request.Approvers, api.RenderApprover{ID: "telegram", Account: "unyolo-telegram", Managed: true, Home: "/var/lib/unyolo-telegram"})
+	response, err := (StandardRenderer{}).Render(request, data, map[string][]byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var profile Profile
+	if err := json.Unmarshal(response.Profile, &profile); err != nil {
+		t.Fatal(err)
+	}
+	want := OperatorClient{OperatorID: "telegram", BrokerName: "gh-broker", SecretSlot: "github-approver-telegram", Endpoint: "unix:///run/operator.sock"}
+	if len(profile.OperatorClients) != 1 || profile.OperatorClients[0] != want {
+		t.Fatalf("operator clients = %#v", profile.OperatorClients)
+	}
+	if members := profile.Groups[1].Members; len(members) != 2 || members[1] != "unyolo-telegram" {
+		t.Fatalf("operator group members = %v", members)
+	}
+	request.Approvers = request.Approvers[:1]
+	response, err = (StandardRenderer{}).Render(request, data, map[string][]byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile = Profile{}
+	if err := json.Unmarshal(response.Profile, &profile); err != nil || len(profile.OperatorClients) != 0 {
+		t.Fatalf("operator clients without a managed approver = %#v, %v", profile.OperatorClients, err)
+	}
+}
+
 func TestStandardRendererDigestBindsFilesAndPrompts(t *testing.T) {
 	t.Parallel()
 	request, template := standardRenderRequest()
@@ -108,6 +150,18 @@ func TestRenderRequestRejectsInvalidInputs(t *testing.T) {
 		{"identity", func(r *api.RenderRequest) { r.ComponentID = "" }},
 		{"platform", func(r *api.RenderRequest) { r.OperatingSystem = "" }},
 		{"approvers", func(r *api.RenderRequest) { r.Approvers = nil }},
+		{"managed approver without home", func(r *api.RenderRequest) {
+			r.Approvers = []api.RenderApprover{{ID: "telegram", Account: "unyolo-telegram", Managed: true}}
+		}},
+		{"home without managed approver", func(r *api.RenderRequest) {
+			r.Approvers = []api.RenderApprover{{ID: "alice", Account: "alice", Home: "/home/alice"}}
+		}},
+		{"relative managed home", func(r *api.RenderRequest) {
+			r.Approvers = []api.RenderApprover{{ID: "telegram", Account: "unyolo-telegram", Managed: true, Home: "var/lib"}}
+		}},
+		{"duplicate provider", func(r *api.RenderRequest) { r.Providers = []string{"github", "github"} }},
+		{"invalid provider", func(r *api.RenderRequest) { r.Providers = []string{"Git Hub"} }},
+		{"telegram chat", func(r *api.RenderRequest) { r.Telegram = &api.RenderTelegram{} }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

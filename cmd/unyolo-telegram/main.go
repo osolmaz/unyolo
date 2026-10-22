@@ -31,13 +31,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return errors.New("usage: unyolo-telegram [--version|version|serve|setup]")
+		return errors.New("usage: unyolo-telegram [--version|version|serve|setup|doctor]")
 	}
 	switch args[0] {
 	case "serve":
 		return runServe(ctx, args[1:], stderr)
 	case "setup":
 		return runSetup(ctx, args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr)
 	case "setup-component-probe":
 		if err := component.Probe(ctx, args[1:]); err != nil {
 			return err
@@ -48,14 +50,29 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		if len(args) != 1 {
 			return errors.New("setup-component does not accept arguments")
 		}
-		return component.Serve(ctx, os.Stdin, stdout, component.Config{
-			ComponentID: "telegram", ProfileAPI: "unyolo.io/telegram-deployment/v1",
-			AllowedPaths:    []string{"/etc/unyolo-telegram", "/var/lib/unyolo-telegram", "/etc/systemd/system/unyolo-telegram.service"},
-			AllowedServices: []string{"unyolo-telegram.service"}, AllowedAccounts: []string{"unyolo-telegram"},
-			AllowedGroups: []string{"unyolo-telegram"}, BackupDirectory: "/var/lib/unyolo-telegram/deployment-backups",
-		})
+		return component.Serve(ctx, os.Stdin, stdout, componentConfig())
+	case "setup-component-render":
+		if len(args) != 1 {
+			return errors.New("setup-component-render does not accept arguments")
+		}
+		return component.ServeRender(os.Stdin, stdout, componentRenderer{})
 	default:
-		return errors.New("usage: unyolo-telegram [--version|version|serve|setup]")
+		return errors.New("usage: unyolo-telegram [--version|version|serve|setup|doctor]")
+	}
+}
+
+// componentConfig is the ownership of the Telegram deployment component. The
+// deployment engine creates the unyolo-telegram account as a managed
+// approver, so the component owns no account or group.
+func componentConfig() component.Config {
+	return component.Config{
+		ComponentID: componentID, ProfileAPI: "unyolo.io/telegram-deployment/v1",
+		AllowedPaths: []string{
+			componentConfigDir, componentStateDir, "/var/lib/unyolo-telegram/deployment-backups",
+			"/etc/systemd/system/unyolo-telegram.service",
+		},
+		AllowedServices: []string{"unyolo-telegram.service"},
+		BackupDirectory: "/var/lib/unyolo-telegram/deployment-backups",
 	}
 }
 
@@ -81,11 +98,15 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 		return err
 	}
 	defer func() { _ = built.inbox.Close() }()
-	return serveIngress(ctx, built)
+	if err := startOwner(ctx, cfg, built); err != nil {
+		return err
+	}
+	return recordOwnerConflict(ownerConflictPath(cfg), serveIngress(ctx, built))
 }
 
 // serveIngress runs the card owner and the click poller together. The poller
-// stops on a contract mismatch, and then the owner stops too.
+// stops on a contract mismatch or when another process polls the bot, and then
+// the owner stops too.
 func serveIngress(ctx context.Context, built ingress) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

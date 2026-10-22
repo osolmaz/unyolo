@@ -60,6 +60,23 @@ type Connection struct {
 	Integrations []string `json:"integrations,omitempty"`
 }
 
+// Telegram holds the Telegram approval settings. When it is set, setup
+// installs the Telegram owner as a managed approver of every provider.
+type Telegram struct {
+	ChatID int64 `json:"chat_id"`
+}
+
+// The Telegram owner is a managed approver with a fixed identity. Setup
+// creates its noninteractive account, and each provider delivers its operator
+// credential into the account's home.
+const (
+	TelegramComponentID = "telegram"
+	TelegramApproverID  = "telegram"
+	TelegramAccount     = "unyolo-telegram"
+	TelegramHome        = "/var/lib/unyolo-telegram"
+	TelegramShell       = "/usr/sbin/nologin"
+)
+
 // Installation is the only editable source for one guided server installation.
 type Installation struct {
 	APIVersion        string                        `json:"api_version"`
@@ -67,6 +84,7 @@ type Installation struct {
 	CredentialService setupintent.CredentialService `json:"credential_service"`
 	Approvers         []Approver                    `json:"approvers"`
 	Connections       []Connection                  `json:"connections"`
+	Telegram          *Telegram                     `json:"telegram,omitempty"`
 }
 
 func Decode(data []byte) (Installation, error) {
@@ -96,10 +114,17 @@ func (value Installation) Validate() error {
 	}
 	approvers := map[string]bool{}
 	for _, approver := range value.Approvers {
-		if !validName(approver.ID) || !validAccount(approver.Account) || approvers[approver.ID] {
-			return errors.New("installation approver is invalid or duplicated")
+		if !validName(approver.ID) || !validAccount(approver.Account) || approvers[approver.ID] ||
+			approver.ID == TelegramApproverID || approver.Account == TelegramAccount {
+			return errors.New("installation approver is invalid, duplicated, or reserved for Telegram")
 		}
 		approvers[approver.ID] = true
+	}
+	if value.Telegram != nil && value.Telegram.ChatID == 0 {
+		return errors.New("installation Telegram chat is required")
+	}
+	if slices.Contains(value.CredentialService.Providers, TelegramComponentID) {
+		return errors.New("telegram is an approval channel, not a credential provider")
 	}
 	connections, clients := map[string]bool{}, map[string]bool{}
 	providers := toSet(value.CredentialService.Providers)

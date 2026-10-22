@@ -11,6 +11,7 @@ func TestIntentGoals(t *testing.T) {
 	values := []Intent{
 		{APIVersion: APIVersion, Goal: GoalCommandOnly},
 		{APIVersion: APIVersion, Goal: GoalCredentialService, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github"}}},
+		{APIVersion: APIVersion, Goal: GoalCredentialService, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github"}}, Telegram: &Telegram{ChatID: -100123}},
 		{APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentLocalAccount, ConnectionName: "bob", Account: &Account{Mode: AccountExisting, Name: "bob"}}, Connection: &Connection{Transport: TransportLocalSocket}, Integrations: []string{"openclaw"}},
 		{APIVersion: APIVersion, Goal: GoalCompleteLocal, CredentialService: &CredentialService{Location: ServiceDocker, Providers: []string{"github", "huggingface"}}, Agent: &Agent{Location: AgentContainer, ConnectionName: "agent", Container: &Container{ProjectDirectory: "/srv/app", Service: "agent"}}, Connection: &Connection{Transport: TransportTLS, RemoteEndpoint: "https://broker.example", ServerName: "broker.example"}},
 	}
@@ -52,12 +53,16 @@ func TestValidatePartialAcceptsWizardTransitions(t *testing.T) {
 func TestIntentRejectsInvalidCrossFields(t *testing.T) {
 	t.Parallel()
 	cases := map[string]Intent{
-		"missing service":        {APIVersion: APIVersion, Goal: GoalCredentialService},
-		"service on command":     {APIVersion: APIVersion, Goal: GoalCommandOnly, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github"}}},
-		"duplicate providers":    {APIVersion: APIVersion, Goal: GoalCredentialService, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github", "github"}}},
-		"current named":          {APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentLocalAccount, ConnectionName: "bob", Account: &Account{Mode: AccountCurrent, Name: "root"}}, Connection: &Connection{Transport: TransportLocalSocket}},
-		"plaintext remote":       {APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentRemote, ConnectionName: "bob"}, Connection: &Connection{Transport: TransportTLS, RemoteEndpoint: "http://host", ServerName: "host"}},
-		"integration on command": {APIVersion: APIVersion, Goal: GoalCommandOnly, Integrations: []string{"openclaw"}},
+		"missing service":          {APIVersion: APIVersion, Goal: GoalCredentialService},
+		"service on command":       {APIVersion: APIVersion, Goal: GoalCommandOnly, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github"}}},
+		"duplicate providers":      {APIVersion: APIVersion, Goal: GoalCredentialService, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github", "github"}}},
+		"current named":            {APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentLocalAccount, ConnectionName: "bob", Account: &Account{Mode: AccountCurrent, Name: "root"}}, Connection: &Connection{Transport: TransportLocalSocket}},
+		"plaintext remote":         {APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentRemote, ConnectionName: "bob"}, Connection: &Connection{Transport: TransportTLS, RemoteEndpoint: "http://host", ServerName: "host"}},
+		"integration on command":   {APIVersion: APIVersion, Goal: GoalCommandOnly, Integrations: []string{"openclaw"}},
+		"telegram on command":      {APIVersion: APIVersion, Goal: GoalCommandOnly, Telegram: &Telegram{ChatID: 1}},
+		"telegram without chat":    {APIVersion: APIVersion, Goal: GoalCredentialService, CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github"}}, Telegram: &Telegram{}},
+		"telegram in docker":       {APIVersion: APIVersion, Goal: GoalCredentialService, CredentialService: &CredentialService{Location: ServiceDocker, Providers: []string{"github"}}, Telegram: &Telegram{ChatID: 1}},
+		"telegram without service": {APIVersion: APIVersion, Goal: GoalAgentConnection, Agent: &Agent{Location: AgentRemote, ConnectionName: "bob"}, Connection: &Connection{Transport: TransportLocalSocket}, Telegram: &Telegram{ChatID: 1}},
 	}
 	for name, value := range cases {
 		value := value

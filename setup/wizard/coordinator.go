@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/osolmaz/unyolo/deployment/flow"
@@ -152,6 +153,8 @@ func (c *Coordinator) runStep(ctx context.Context, state *State, step Step) (Ste
 		return c.stepServiceLocation(ctx, state)
 	case StepProviders:
 		return c.stepProviders(ctx, state)
+	case StepTelegram:
+		return c.stepTelegram(ctx, state)
 	case StepAgentLocation:
 		return c.stepAgentLocation(ctx, state)
 	case StepAccount:
@@ -238,6 +241,50 @@ func (c *Coordinator) stepProviders(ctx context.Context, state *State) (Step, er
 	}
 	state.Intent.CredentialService.Providers = value
 	return Next(*state, StepProviders), nil
+}
+
+func (c *Coordinator) stepTelegram(ctx context.Context, state *State) (Step, error) {
+	screen := setupcopy.Screens[setupcopy.ScreenTelegram]
+	enabled, err := c.options.Prompter.Confirm(ctx, flow.ConfirmPrompt{
+		Message:     screen.Question,
+		Description: screen.Reason,
+		Affirmative: screen.Primary,
+		Negative:    screen.Secondary,
+		Safe:        true,
+		Navigation:  flow.Navigation{CanGoBack: true},
+	})
+	if err != nil {
+		return "", err
+	}
+	if !enabled {
+		state.Intent.Telegram = nil
+		return Next(*state, StepTelegram), nil
+	}
+	initial := ""
+	if state.Intent.Telegram != nil {
+		initial = strconv.FormatInt(state.Intent.Telegram.ChatID, 10)
+	}
+	chat := setupcopy.Screens[setupcopy.ScreenTelegramChat]
+	value, err := c.options.Prompter.Text(ctx, flow.Prompt{
+		Message:      chat.Question,
+		Description:  chat.Reason,
+		InitialValue: initial,
+		Required:     true,
+		Navigation:   flow.Navigation{CanGoBack: true},
+		Validate: func(value string) error {
+			_, err := ParseTelegramChat(value)
+			return err
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	chatID, err := ParseTelegramChat(value)
+	if err != nil {
+		return "", err
+	}
+	state.Intent.Telegram = &setupintent.Telegram{ChatID: chatID}
+	return Next(*state, StepTelegram), nil
 }
 
 func (c *Coordinator) stepAgentLocation(ctx context.Context, state *State) (Step, error) {
@@ -437,6 +484,9 @@ func ReviewSummary(state State) string {
 		}
 	} else {
 		lines = append(lines, "No credential services will be installed")
+	}
+	if state.Intent.Telegram != nil {
+		lines = append(lines, "Approvals: Telegram chat "+strconv.FormatInt(state.Intent.Telegram.ChatID, 10))
 	}
 	if state.Intent.Agent != nil {
 		lines = append(lines, "Agent")

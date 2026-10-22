@@ -1,0 +1,66 @@
+{
+  "api_version": "unyolo.io/telegram-deployment/v1",
+  "directories": [
+    {
+      "id": "config",
+      "destination": "/etc/unyolo-telegram",
+      "mode": 488,
+      "owner": "root",
+      "group": "unyolo-telegram"
+    },
+    {
+      "id": "state",
+      "destination": "/var/lib/unyolo-telegram/state",
+      "mode": 448,
+      "owner": "unyolo-telegram",
+      "group": "unyolo-telegram"
+    }
+  ],
+  "files": [
+    {
+      "id": "config-json",
+      "source": {
+        "path": "files/telegram/config.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/unyolo-telegram/config.json",
+      "mode": 416,
+      "owner": "root",
+      "group": "unyolo-telegram",
+      "restart": true
+    },
+    {
+      "id": "unyolo-telegram-service",
+      "source": {
+        "path": "files/telegram/unyolo-telegram.service",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "destination": "/etc/systemd/system/unyolo-telegram.service",
+      "mode": 420,
+      "owner": "root",
+      "group": "root",
+      "restart": true
+    }
+  ],
+  "credentials": [
+    {
+      "slot": "telegram-bot-token",
+      "destination": "/etc/unyolo-telegram/telegram-bot-token",
+      "mode": 384,
+      "owner": "unyolo-telegram",
+      "group": "unyolo-telegram",
+      "encoding": "raw"
+    },
+    {
+      "slot": "telegram-inbox-key",
+      "destination": "/etc/unyolo-telegram/inbox-key",
+      "mode": 384,
+      "owner": "unyolo-telegram",
+      "group": "unyolo-telegram",
+      "encoding": "raw"
+    }
+  ],
+  "services": [
+    "unyolo-telegram.service"
+  ]
+}

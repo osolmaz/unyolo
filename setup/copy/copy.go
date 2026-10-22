@@ -28,6 +28,8 @@ const (
 	ScreenGoal            = "goal"
 	ScreenServiceLocation = "service_location"
 	ScreenProviders       = "providers"
+	ScreenTelegram        = "telegram"
+	ScreenTelegramChat    = "telegram_chat"
 	ScreenAgentLocation   = "agent_location"
 	ScreenAccount         = "account"
 	ScreenIsolationWarn   = "isolation_warning"
@@ -52,6 +54,16 @@ var Screens = map[string]Screen{
 	ScreenProviders: {
 		Question: "Which credentials should unYOLO protect?",
 		Reason:   "Each option installs one credential service you can add or remove later.",
+	},
+	ScreenTelegram: {
+		Question:  "Send approval requests to Telegram?",
+		Reason:    "One Telegram bot sends a card for each request to one chat, where you approve or deny it. You need the bot token file from BotFather and the chat ID.",
+		Primary:   "Use Telegram",
+		Secondary: "Not now",
+	},
+	ScreenTelegramChat: {
+		Question: "Which Telegram chat receives the approval requests?",
+		Reason:   "Only button presses from this chat can approve or deny a request.",
 	},
 	ScreenAgentLocation: {
 		Question: "Where does the agent run?",

@@ -56,6 +56,9 @@ func (c *Client) pollDurableOnce(ctx context.Context, inbox *Inbox,
 		return retryDurablePoll()
 	}
 	updates, err := c.getUpdates(ctx, offset)
+	if errors.Is(err, ErrAnotherOwner) {
+		return false, err
+	}
 	if err != nil {
 		return retryDurablePoll()
 	}

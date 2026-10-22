@@ -1,0 +1,46 @@
+{
+  "api_version": "unyolo.io/deployment-release-component/v1",
+  "provider": "telegram",
+  "name": "telegram",
+  "binary": "unyolo-telegram",
+  "destination": "bin/unyolo-telegram",
+  "role": "consumer",
+  "services": [
+    "unyolo-telegram.service"
+  ],
+  "agent_contract": false,
+  "state_format_digest": "sha256:f7ddedcf867f2a4a678b9c848873a83ee577dd548d72ad3ffaab8baad52094c2",
+  "state_dir": "/var/lib/unyolo-telegram/state",
+  "required": false,
+  "approval_channel": true,
+  "setup": {
+    "protocol": "unyolo.io/setup-component/v1",
+    "arguments": [
+      "setup-component"
+    ],
+    "ownership": {
+      "paths": [
+        "/etc/unyolo-telegram",
+        "/var/lib/unyolo-telegram/state",
+        "/var/lib/unyolo-telegram/deployment-backups",
+        "/etc/systemd/system/unyolo-telegram.service"
+      ],
+      "services": [
+        "unyolo-telegram.service"
+      ],
+      "accounts": [],
+      "groups": []
+    }
+  },
+  "profile": "profile.json",
+  "additional_profile_files": [
+    {
+      "source": "files/telegram/config.json",
+      "destination": "files/telegram/config.json"
+    },
+    {
+      "source": "files/telegram/unyolo-telegram.service",
+      "destination": "files/telegram/unyolo-telegram.service"
+    }
+  ]
+}

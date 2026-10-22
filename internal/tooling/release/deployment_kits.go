@@ -25,20 +25,24 @@ const (
 )
 
 type deploymentReleaseComponent struct {
-	APIVersion             string                             `json:"api_version"`
-	Provider               string                             `json:"provider"`
-	Name                   string                             `json:"name"`
-	Binary                 string                             `json:"binary"`
-	Destination            string                             `json:"destination"`
-	Role                   bundle.Role                        `json:"role"`
-	Services               []string                           `json:"services"`
-	OperatorEndpoint       string                             `json:"operator_endpoint,omitempty"`
-	OperatorTokenFile      string                             `json:"operator_token_file,omitempty"`
-	AgentContract          bool                               `json:"agent_contract"`
-	StateFormatDigest      string                             `json:"state_format_digest"`
-	StateDir               string                             `json:"state_dir,omitempty"`
-	ReplaceState           bool                               `json:"replace_state,omitempty"`
-	Required               bool                               `json:"required"`
+	APIVersion        string      `json:"api_version"`
+	Provider          string      `json:"provider"`
+	Name              string      `json:"name"`
+	Binary            string      `json:"binary"`
+	Destination       string      `json:"destination"`
+	Role              bundle.Role `json:"role"`
+	Services          []string    `json:"services"`
+	OperatorEndpoint  string      `json:"operator_endpoint,omitempty"`
+	OperatorTokenFile string      `json:"operator_token_file,omitempty"`
+	AgentContract     bool        `json:"agent_contract"`
+	StateFormatDigest string      `json:"state_format_digest"`
+	StateDir          string      `json:"state_dir,omitempty"`
+	ReplaceState      bool        `json:"replace_state,omitempty"`
+	Required          bool        `json:"required"`
+	// ApprovalChannel marks a component that delivers approvals, such as the
+	// Telegram owner. Setup selects it in its own step, not in the provider
+	// catalog.
+	ApprovalChannel        bool                               `json:"approval_channel,omitempty"`
 	Setup                  *bundle.SetupAdapter               `json:"setup,omitempty"`
 	Profile                string                             `json:"profile,omitempty"`
 	AdditionalProfileFiles []deploymentReleaseFile            `json:"additional_profile_files,omitempty"`
@@ -82,12 +86,11 @@ func generateDeploymentKits(work string, options Options, binaries map[string]st
 	if err != nil {
 		return nil, nil, err
 	}
-	providers := selectableProviders(components)
-	if err := validateProviderCatalogFiles(options.ExtraFiles, providers); err != nil {
+	if err := validateProviderCatalogFiles(options.ExtraFiles, selectableProviders(components)); err != nil {
 		return nil, nil, err
 	}
 	publicData := []byte(base64.StdEncoding.EncodeToString(publicKey) + "\n")
-	if err := generateSourceSet(root, options, components, binaries, providers, privateKey, publicData, goos, goarch); err != nil {
+	if err := generateSourceSet(root, options, components, binaries, sourceProviders(components), privateKey, publicData, goos, goarch); err != nil {
 		return nil, nil, err
 	}
 	files, err := collectGeneratedFiles(root, "deployment-kits")
@@ -111,8 +114,9 @@ func copyRuntimeArtifacts(root string, components []loadedDeploymentComponent, b
 
 // generateSourceSet writes one canonical, verified release source set. It emits
 // the signed runtime manifest with every declared component, one provider
-// directory per selectable provider, and empty integration and platform
-// directories so setup callers can rely on a single stable layout.
+// directory per selectable provider and approval channel, and empty
+// integration and platform directories so setup callers can rely on a single
+// stable layout.
 func generateSourceSet(root string, options Options, components []loadedDeploymentComponent, binaries map[string]string, providers []string, privateKey ed25519.PrivateKey, publicData []byte, goos, goarch string) error {
 	if err := prepareSourceSetLayout(root, goos); err != nil {
 		return err
@@ -314,15 +318,17 @@ func validateComponentRuntime(value deploymentReleaseComponent, binaries map[str
 
 func validateComponentProfile(value deploymentReleaseComponent, selectable map[string]bool) error {
 	if value.Name != value.Provider {
-		if value.Profile != "" {
-			return errors.New("provider companion must not declare a deployment profile")
+		if value.Profile != "" || value.ApprovalChannel {
+			return errors.New("provider companion must not declare a deployment profile or an approval channel")
 		}
 		return nil
 	}
 	if !safeArchivePath(value.Profile) || selectable[value.Provider] {
 		return errors.New("selectable provider requires one unique profile")
 	}
-	selectable[value.Provider] = true
+	if !value.ApprovalChannel {
+		selectable[value.Provider] = true
+	}
 	return nil
 }
 
@@ -353,7 +359,21 @@ func validateProviderCatalogFiles(files map[string]string, providers []string) e
 	return nil
 }
 
+// selectableProviders lists the providers of the setup provider catalog.
 func selectableProviders(components []loadedDeploymentComponent) []string {
+	var result []string
+	for _, component := range components {
+		if component.descriptor.Name == component.descriptor.Provider && !component.descriptor.ApprovalChannel {
+			result = append(result, component.descriptor.Provider)
+		}
+	}
+	slices.Sort(result)
+	return result
+}
+
+// sourceProviders lists every component with its own deployment profile: the
+// selectable providers and the approval channels.
+func sourceProviders(components []loadedDeploymentComponent) []string {
 	var result []string
 	for _, component := range components {
 		if component.descriptor.Name == component.descriptor.Provider {

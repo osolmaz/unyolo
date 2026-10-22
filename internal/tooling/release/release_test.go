@@ -89,6 +89,7 @@ func TestRepositoryDeploymentReleaseInputsExist(t *testing.T) {
 		"brokers/huggingface/deployment/release.json",
 		"brokers/sudo/deployment/release.json",
 		"brokers/sudo/deployment/release-exec.json",
+		"cmd/unyolo-telegram/deployment/release.json",
 	}
 	for _, relative := range descriptors {
 		descriptorPath := filepath.Join(repository, filepath.FromSlash(relative))
@@ -316,6 +317,9 @@ func TestDeploymentReleaseDescriptorValidation(t *testing.T) {
 		{"operator pair", func(value *deploymentReleaseComponent) { value.OperatorEndpoint = "unix:///tmp/operator.sock" }},
 		{"profile", func(value *deploymentReleaseComponent) { value.Profile = "../profile.json" }},
 		{"companion profile", func(value *deploymentReleaseComponent) { value.Name = "helper" }},
+		{"companion approval channel", func(value *deploymentReleaseComponent) {
+			value.Name, value.Profile, value.ApprovalChannel = "helper", "", true
+		}},
 		{"additional source", func(value *deploymentReleaseComponent) {
 			value.AdditionalProfileFiles = []deploymentReleaseFile{{Source: "../source", Destination: "files/source"}}
 		}},
@@ -343,6 +347,19 @@ func TestDeploymentReleaseDescriptorValidation(t *testing.T) {
 	}
 	if err := validateDeploymentComponent(valid, binaries, map[string]bool{}, map[string]bool{"test": true}); err == nil {
 		t.Fatal("duplicate selectable provider was accepted")
+	}
+	channel := valid
+	channel.ApprovalChannel = true
+	selectable := map[string]bool{}
+	if err := validateDeploymentComponent(channel, binaries, map[string]bool{}, selectable); err != nil || len(selectable) != 0 {
+		t.Fatalf("approval channel = %v, selectable %v", err, selectable)
+	}
+	components := []loadedDeploymentComponent{{descriptor: valid}, {descriptor: deploymentReleaseComponent{Provider: "telegram", Name: "telegram", ApprovalChannel: true}}}
+	if got := selectableProviders(components); !slices.Equal(got, []string{"test"}) {
+		t.Fatalf("selectable providers = %v", got)
+	}
+	if got := sourceProviders(components); !slices.Equal(got, []string{"telegram", "test"}) {
+		t.Fatalf("source providers = %v", got)
 	}
 }
 

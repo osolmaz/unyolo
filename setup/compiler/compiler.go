@@ -83,7 +83,7 @@ func Compile(options Options) (profile.Snapshot, error) {
 	if err != nil {
 		return profile.Snapshot{}, err
 	}
-	selectedProviders, err := loadSelectedProviders(options.SourceSet, options.Installation.CredentialService.Providers)
+	selectedProviders, err := loadSelectedProviders(options.SourceSet, installationComponents(options.Installation))
 	if err != nil {
 		return profile.Snapshot{}, err
 	}
@@ -121,6 +121,32 @@ func Compile(options Options) (profile.Snapshot, error) {
 	}
 	cleanup = func() {}
 	return profile.Load(options.Destination)
+}
+
+// installationComponents lists the deployment components of an installation:
+// its providers and, when Telegram approvals are on, the Telegram owner.
+func installationComponents(value installation.Installation) []string {
+	result := append([]string(nil), value.CredentialService.Providers...)
+	if value.Telegram != nil {
+		result = append(result, installation.TelegramComponentID)
+	}
+	return result
+}
+
+// renderApprovers lists the approvers that every component renders: the
+// installation's people and, when Telegram approvals are on, the managed
+// Telegram owner.
+func renderApprovers(value installation.Installation) []api.RenderApprover {
+	result := make([]api.RenderApprover, 0, len(value.Approvers)+1)
+	for _, approver := range value.Approvers {
+		result = append(result, api.RenderApprover{ID: approver.ID, Account: approver.Account})
+	}
+	if value.Telegram != nil {
+		result = append(result, api.RenderApprover{
+			ID: installation.TelegramApproverID, Account: installation.TelegramAccount, Managed: true, Home: installation.TelegramHome,
+		})
+	}
+	return result
 }
 
 func loadSourceManifest(sourceSet string) (bundle.Manifest, error) {
@@ -262,6 +288,12 @@ func compileDeployment(source installation.Installation, providers []SourceProvi
 	for _, approver := range source.Approvers {
 		deployment.Operators = append(deployment.Operators, profile.Operator{ID: approver.ID, UnixUser: approver.Account})
 	}
+	if source.Telegram != nil {
+		deployment.Operators = append(deployment.Operators, profile.Operator{
+			ID: installation.TelegramApproverID, UnixUser: installation.TelegramAccount, AccountMode: "managed",
+			Home: installation.TelegramHome, Shell: installation.TelegramShell,
+		})
+	}
 	if len(deployment.Operators) == 0 {
 		return profile.Deployment{}, errors.New("installation must have at least one approver")
 	}
@@ -331,8 +363,11 @@ func providerRenderRequest(sourceSet string, source installation.Installation, m
 		return api.RenderRequest{}, err
 	}
 	request.CapabilityDigest = contentDigest(capabilityData)
-	for _, approver := range source.Approvers {
-		request.Approvers = append(request.Approvers, api.RenderApprover{ID: approver.ID, Account: approver.Account})
+	request.Approvers = renderApprovers(source)
+	if provider.ID == installation.TelegramComponentID {
+		request.Providers = append([]string(nil), source.CredentialService.Providers...)
+		slices.Sort(request.Providers)
+		request.Telegram = &api.RenderTelegram{ChatID: source.Telegram.ChatID}
 	}
 	integrations := map[string]bool{}
 	for _, connection := range source.Connections {

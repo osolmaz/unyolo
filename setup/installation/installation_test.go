@@ -68,6 +68,9 @@ func TestInstallationRejectsInvalidConnections(t *testing.T) {
 		"duplicate client":  func(value *Installation) { value.Connections = append(value.Connections, value.Connections[0]) },
 		"missing approver":  func(value *Installation) { value.Approvers = nil },
 		"local target path": func(value *Installation) { value.Connections[0].Target.ProjectDirectory = "/tmp" },
+		"telegram approver": func(value *Installation) { value.Approvers[0].ID = TelegramApproverID },
+		"telegram account":  func(value *Installation) { value.Approvers[0].Account = TelegramAccount },
+		"telegram chat":     func(value *Installation) { value.Telegram = &Telegram{} },
 	}
 	for name, mutate := range cases {
 		mutate := mutate
@@ -79,6 +82,20 @@ func TestInstallationRejectsInvalidConnections(t *testing.T) {
 				t.Fatal("expected validation error")
 			}
 		})
+	}
+}
+
+func TestInstallationAcceptsTelegram(t *testing.T) {
+	t.Parallel()
+	value := validInstallation()
+	value.Telegram = &Telegram{ChatID: -100123}
+	data, err := value.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(data)
+	if err != nil || decoded.Telegram == nil || decoded.Telegram.ChatID != -100123 {
+		t.Fatalf("Decode() = %#v, %v", decoded.Telegram, err)
 	}
 }
 

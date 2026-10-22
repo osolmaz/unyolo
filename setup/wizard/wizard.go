@@ -9,6 +9,8 @@ package wizard
 import (
 	"errors"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/osolmaz/unyolo/setup/capability"
 	setupcopy "github.com/osolmaz/unyolo/setup/copy"
@@ -23,6 +25,7 @@ const (
 	StepGoal            Step = "goal"
 	StepServiceLocation Step = "service_location"
 	StepProviders       Step = "providers"
+	StepTelegram        Step = "telegram"
 	StepAgentLocation   Step = "agent_location"
 	StepAccount         Step = "account"
 	StepIsolationWarn   Step = "isolation_warning"
@@ -37,6 +40,7 @@ var Order = []Step{
 	StepGoal,
 	StepServiceLocation,
 	StepProviders,
+	StepTelegram,
 	StepAgentLocation,
 	StepAccount,
 	StepIsolationWarn,
@@ -119,6 +123,8 @@ func Applies(state State, step Step) bool {
 		return goal == setupintent.GoalCredentialService || goal == setupintent.GoalCompleteLocal
 	case StepProviders:
 		return goal == setupintent.GoalCredentialService || goal == setupintent.GoalCompleteLocal
+	case StepTelegram:
+		return TelegramAvailable(state)
 	case StepAgentLocation:
 		return goal == setupintent.GoalAgentConnection || goal == setupintent.GoalCompleteLocal
 	case StepAccount:
@@ -147,21 +153,41 @@ func InvalidateAfter(state *State, step Step) {
 	switch step {
 	case StepGoal:
 		state.Intent.CredentialService, state.Intent.Agent, state.Intent.Connection, state.Intent.Integrations = nil, nil, nil, nil
+		state.Intent.Telegram = nil
 		state.InstallationName = ""
 	case StepServiceLocation:
 		if state.Intent.CredentialService != nil {
 			state.Intent.CredentialService.Providers = nil
 		}
-		state.Intent.Agent, state.Intent.Connection, state.Intent.Integrations = nil, nil, nil
+		state.Intent.Agent, state.Intent.Connection, state.Intent.Integrations, state.Intent.Telegram = nil, nil, nil, nil
 	case StepProviders:
 		state.Intent.Agent, state.Intent.Connection, state.Intent.Integrations = nil, nil, nil
 	case StepAgentLocation, StepAccount:
 		state.Intent.Connection, state.Intent.Integrations = nil, nil
 	case StepInstallName:
 		state.InstallationName = ""
-	case StepIsolationWarn, StepReview, StepDone:
+	case StepTelegram, StepIsolationWarn, StepReview, StepDone:
 		// No derived answers to clear.
 	}
+}
+
+// TelegramAvailable reports whether setup can send approvals to Telegram: the
+// owner runs as a managed systemd service next to native credential services.
+func TelegramAvailable(state State) bool {
+	goal := state.Intent.Goal
+	return (goal == setupintent.GoalCredentialService || goal == setupintent.GoalCompleteLocal) &&
+		state.Intent.CredentialService != nil && state.Intent.CredentialService.Location == setupintent.ServiceNative &&
+		state.Capabilities.ServiceBackend == "systemd" && state.Capabilities.Has(capability.FeatureLocalAccounts)
+}
+
+// ParseTelegramChat parses a Telegram chat ID. Group and channel IDs are
+// negative; zero is not a chat.
+func ParseTelegramChat(value string) (int64, error) {
+	chat, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || chat == 0 {
+		return 0, errors.New("enter the numeric chat ID, such as 123456789 or -1001234567890")
+	}
+	return chat, nil
 }
 
 // GoalChoices returns the goal choices that are complete for the current

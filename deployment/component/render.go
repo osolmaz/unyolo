@@ -52,10 +52,18 @@ func (StandardRenderer) Render(request api.RenderRequest, profileTemplate []byte
 		return api.RenderResponse{}, err
 	}
 	renderStandardClients(&profile, request)
+	renderStandardOperatorClients(&profile, request)
 	renderedAssets := cloneAssets(assets)
 	if err := renderPolicyAssets(&profile, renderedAssets, clientsForRender(request)); err != nil {
 		return api.RenderResponse{}, err
 	}
+	return FinishRender(request, profile, renderedAssets)
+}
+
+// FinishRender binds rendered asset digests into the profile and returns the
+// validated, digest-bound render response with its review items and secret
+// prompts. Component renderers call it after they fill the profile.
+func FinishRender(request api.RenderRequest, profile Profile, renderedAssets map[string][]byte) (api.RenderResponse, error) {
 	bindRenderedAssetDigests(&profile, renderedAssets)
 	renderedProfile, err := json.MarshalIndent(profile, "", "  ")
 	if err != nil {
@@ -184,6 +192,26 @@ func renderStandardClients(profile *Profile, request api.RenderRequest) {
 		client.AgentID = connection.ID
 		client.SecretSlot = request.ComponentID + "-client-" + connection.ClientID
 		profile.Clients = append(profile.Clients, client)
+	}
+}
+
+// renderStandardOperatorClients replaces the template operator client with
+// one operator client for each managed approver. A component without a
+// template delivers no operator credentials.
+func renderStandardOperatorClients(profile *Profile, request api.RenderRequest) {
+	if len(profile.OperatorClients) == 0 {
+		return
+	}
+	template := profile.OperatorClients[0]
+	profile.OperatorClients = nil
+	for _, approver := range request.Approvers {
+		if !approver.Managed {
+			continue
+		}
+		client := template
+		client.OperatorID = approver.ID
+		client.SecretSlot = request.ComponentID + "-approver-" + approver.ID
+		profile.OperatorClients = append(profile.OperatorClients, client)
 	}
 }
 

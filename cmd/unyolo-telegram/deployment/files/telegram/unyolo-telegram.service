@@ -1,0 +1,21 @@
+[Unit]
+Description=unYOLO Telegram approval owner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=unyolo-telegram
+Group=unyolo-telegram
+ExecStart=/opt/unyolo/current/bin/unyolo-telegram serve --config /etc/unyolo-telegram/config.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/unyolo-telegram/state
+ReadOnlyPaths=/etc/unyolo-telegram
+
+[Install]
+WantedBy=multi-user.target

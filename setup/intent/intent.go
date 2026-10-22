@@ -83,6 +83,12 @@ type Agent struct {
 	Container      *Container    `json:"container,omitempty"`
 }
 
+// Telegram is the choice to send approval requests to one Telegram chat. The
+// bot token is a credential and is collected later, never in the intent.
+type Telegram struct {
+	ChatID int64 `json:"chat_id"`
+}
+
 type Connection struct {
 	Transport      Transport `json:"transport"`
 	RemoteEndpoint string    `json:"remote_endpoint,omitempty"`
@@ -96,6 +102,7 @@ type Intent struct {
 	CredentialService *CredentialService `json:"credential_service,omitempty"`
 	Agent             *Agent             `json:"agent,omitempty"`
 	Connection        *Connection        `json:"connection,omitempty"`
+	Telegram          *Telegram          `json:"telegram,omitempty"`
 	Integrations      []string           `json:"integrations,omitempty"`
 }
 
@@ -147,8 +154,11 @@ func (value Intent) ValidatePartial() error {
 	if value.APIVersion != APIVersion || value.Goal != "" && !slices.Contains([]Goal{GoalCommandOnly, GoalCredentialService, GoalAgentConnection, GoalCompleteLocal}, value.Goal) {
 		return errors.New("setup intent identity is invalid")
 	}
-	if value.Goal == GoalCommandOnly && (value.CredentialService != nil || value.Agent != nil || value.Connection != nil || len(value.Integrations) != 0) {
+	if value.Goal == GoalCommandOnly && (value.CredentialService != nil || value.Agent != nil || value.Connection != nil || value.Telegram != nil || len(value.Integrations) != 0) {
 		return errors.New("command-only setup cannot contain host choices")
+	}
+	if value.Telegram != nil && (value.Telegram.ChatID == 0 || value.CredentialService == nil || value.CredentialService.Location != ServiceNative) {
+		return errors.New("telegram approvals require a chat and native credential services")
 	}
 	if value.CredentialService != nil {
 		if !slices.Contains([]ServiceLocation{ServiceNative, ServiceDocker}, value.CredentialService.Location) ||

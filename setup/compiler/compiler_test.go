@@ -91,6 +91,59 @@ func TestCompileProducesDeterministicByteIdenticalOutput(t *testing.T) {
 	}
 }
 
+func TestCompileDeploymentAddsManagedTelegramApprover(t *testing.T) {
+	t.Parallel()
+	source := compilerInstallation()
+	source.Telegram = &installation.Telegram{ChatID: 42}
+	if got := installationComponents(source); !slices.Equal(got, []string{"github", "telegram"}) {
+		t.Fatalf("installation components = %v", got)
+	}
+	manifest := bundle.Manifest{Components: []bundle.Component{{Name: "github"}, {Name: "telegram"}}}
+	providers := []SourceProvider{
+		{APIVersion: SourceProviderAPIVersion, ID: "github", Components: []string{"github"}, Profile: "profile.json"},
+		{APIVersion: SourceProviderAPIVersion, ID: "telegram", Components: []string{"telegram"}, Profile: "profile.json"},
+	}
+	deployment, err := compileDeployment(source, providers, manifest, "sha256:"+strings.Repeat("1", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deployment.Operators) != 2 || !deployment.Operators[1].Managed() || deployment.Operators[1].UnixUser != installation.TelegramAccount ||
+		deployment.Operators[1].Home != installation.TelegramHome || len(deployment.Components) != 2 {
+		t.Fatalf("deployment = %#v", deployment)
+	}
+}
+
+func TestProviderRenderRequestCarriesTelegramSettings(t *testing.T) {
+	t.Parallel()
+	sourceSet := buildTestSourceSet(t)
+	telegramRoot := filepath.Join(sourceSet, "providers", "telegram")
+	if err := os.MkdirAll(telegramRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeTestSourceFile(t, filepath.Join(telegramRoot, "profile.json"), []byte(`{"api_version":"unyolo.io/telegram-deployment/v1"}`))
+	source := compilerInstallation()
+	source.Telegram = &installation.Telegram{ChatID: 42}
+	manifest := bundle.Manifest{OperatingSystem: "linux", Architecture: "amd64"}
+	telegram, err := providerRenderRequest(sourceSet, source, manifest, SourceProvider{ID: "telegram", Profile: "profile.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if telegram.Telegram == nil || telegram.Telegram.ChatID != 42 || !slices.Equal(telegram.Providers, []string{"github"}) {
+		t.Fatalf("telegram render request = %#v", telegram)
+	}
+	managed := telegram.Approvers[len(telegram.Approvers)-1]
+	if !managed.Managed || managed.ID != installation.TelegramApproverID || managed.Home != installation.TelegramHome {
+		t.Fatalf("managed approver = %#v", managed)
+	}
+	github, err := providerRenderRequest(sourceSet, source, manifest, SourceProvider{ID: "github", Profile: "profile.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if github.Telegram != nil || len(github.Providers) != 0 || len(github.Approvers) != 2 {
+		t.Fatalf("github render request = %#v", github)
+	}
+}
+
 func TestCompileRejectsMissingProvider(t *testing.T) {
 	t.Parallel()
 	sourceSet := buildTestSourceSet(t)

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -433,6 +435,9 @@ func installationFromIntent(value setupintent.Intent, approver, name string) (in
 		APIVersion: installation.APIVersion, Name: name,
 		CredentialService: *value.CredentialService, Approvers: []installation.Approver{{ID: approver, Account: approver}},
 	}
+	if value.Telegram != nil {
+		result.Telegram = &installation.Telegram{ChatID: value.Telegram.ChatID}
+	}
 	if value.Agent != nil && value.Agent.Location == setupintent.AgentLocalAccount {
 		record, err := inspectAccount(context.Background(), agentAccountName(value.Agent, approver))
 		if err != nil && value.Agent.Account.Mode != setupintent.AccountManaged {
@@ -677,6 +682,22 @@ func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot st
 		clear(value)
 		return encoded, nil
 	}
+	if slot == telegramInboxKeySlot {
+		value := make([]byte, 32)
+		if _, err := rand.Read(value); err != nil {
+			return nil, err
+		}
+		encoded := []byte(hex.EncodeToString(value))
+		clear(value)
+		return encoded, nil
+	}
+	if slot == telegramBotTokenSlot {
+		path, err := prompter.Text(ctx, flow.Prompt{Message: "Path to the Telegram bot token file", Description: "unYOLO reads the file once and gives the token only to the Telegram approval service.", Required: true})
+		if err != nil {
+			return nil, err
+		}
+		return readTelegramBotTokenFile(path)
+	}
 	if strings.Contains(slot, "github-app-private-key") {
 		path, err := prompter.Text(ctx, flow.Prompt{Message: "Path to the GitHub App private key", Description: "unYOLO reads the selected PEM file once and sends it directly to the GitHub service.", Required: true})
 		if err != nil {
@@ -693,6 +714,45 @@ func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot st
 		label = friendlyCredentialLabel(slot)
 	}
 	return prompter.Secret(ctx, flow.Prompt{Message: label, Description: "This is sent once to the selected credential service and is not saved in setup progress.", Required: true})
+}
+
+const (
+	telegramBotTokenSlot = "telegram-bot-token" // #nosec G101 -- public credential slot name, not a credential.
+	telegramInboxKeySlot = "telegram-inbox-key"
+)
+
+// readTelegramBotTokenFile reads one BotFather token, such as
+// 123456789:AA..., from a regular file.
+func readTelegramBotTokenFile(path string) ([]byte, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, errors.New("telegram bot token file path must be absolute and clean")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 1024 {
+		return nil, errors.New("telegram bot token file must be a small nonempty regular file without symbolic links")
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- explicit validated user-selected credential file.
+	if err != nil {
+		return nil, err
+	}
+	token := bytes.TrimSpace(data)
+	bot, secret, found := bytes.Cut(token, []byte(":"))
+	if !found || len(bot) == 0 || len(secret) < 20 || bytes.ContainsAny(token, " \t\r\n") || !digitsOnly(bot) {
+		clear(data)
+		return nil, errors.New("telegram bot token file does not hold one bot token")
+	}
+	result := append([]byte(nil), token...)
+	clear(data)
+	return result, nil
+}
+
+func digitsOnly(value []byte) bool {
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func readSetupCredentialFile(path string) ([]byte, error) {

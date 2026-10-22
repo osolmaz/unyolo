@@ -19,6 +19,15 @@ const RenderAPIVersion = "unyolo.io/setup-component-render/v1"
 type RenderApprover struct {
 	ID      string `json:"id"`
 	Account string `json:"account"`
+	// Managed reports that the approver is a service account that receives
+	// its operator credential from each provider, in its home.
+	Managed bool   `json:"managed,omitempty"`
+	Home    string `json:"home,omitempty"`
+}
+
+// RenderTelegram holds the nonsecret Telegram approval settings.
+type RenderTelegram struct {
+	ChatID int64 `json:"chat_id"`
 }
 
 // RenderConnection is one nonsecret connection description supplied to a provider.
@@ -43,6 +52,8 @@ type RenderRequest struct {
 	Approvers        []RenderApprover   `json:"approvers"`
 	Connections      []RenderConnection `json:"connections,omitempty"`
 	Integrations     []string           `json:"integrations,omitempty"`
+	Providers        []string           `json:"providers,omitempty"`
+	Telegram         *RenderTelegram    `json:"telegram,omitempty"`
 	CapabilityDigest string             `json:"capability_snapshot_digest,omitempty"`
 	Profile          json.RawMessage    `json:"profile"`
 	Files            []RenderFile       `json:"files,omitempty"`
@@ -139,16 +150,27 @@ func (request RenderRequest) Validate() error {
 	if len(request.Approvers) == 0 || len(request.Approvers) > MaxCredentialSlots {
 		return errors.New("render request approver count is invalid")
 	}
-	if len(request.Connections) > 32 || len(request.Integrations) > 32 || len(request.Profile) == 0 ||
+	if len(request.Connections) > 32 || len(request.Integrations) > 32 || len(request.Providers) > 32 || len(request.Profile) == 0 ||
 		len(request.Profile) > MaxMessageBytes || !json.Valid(request.Profile) || len(request.Files) > MaxFiles {
 		return errors.New("render request collection exceeds limits")
 	}
 	seenApprovers := map[string]bool{}
 	for _, approver := range request.Approvers {
-		if !identifierPattern.MatchString(approver.ID) || strings.TrimSpace(approver.Account) == "" || seenApprovers[approver.ID] {
+		if !identifierPattern.MatchString(approver.ID) || strings.TrimSpace(approver.Account) == "" || seenApprovers[approver.ID] ||
+			approver.Managed != (approver.Home != "") || approver.Home != "" && (!filepath.IsAbs(approver.Home) || filepath.Clean(approver.Home) != approver.Home) {
 			return errors.New("render request approver is invalid or duplicated")
 		}
 		seenApprovers[approver.ID] = true
+	}
+	seenProviders := map[string]bool{}
+	for _, provider := range request.Providers {
+		if !identifierPattern.MatchString(provider) || seenProviders[provider] {
+			return errors.New("render request provider is invalid or duplicated")
+		}
+		seenProviders[provider] = true
+	}
+	if request.Telegram != nil && request.Telegram.ChatID == 0 {
+		return errors.New("render request Telegram chat is invalid")
 	}
 	seenConnections := map[string]bool{}
 	for _, connection := range request.Connections {

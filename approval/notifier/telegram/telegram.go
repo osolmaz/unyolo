@@ -278,6 +278,9 @@ func decodeTelegramResponse(resp *http.Response, out any) error {
 }
 
 func decodeTelegramError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusConflict {
+		return ErrAnotherOwner
+	}
 	var apiError telegramErrorResponse
 	if err := httpx.DecodeJSON(resp.Body, 64*1024, &apiError, false); err != nil || apiError.Description == "" {
 		return fmt.Errorf("telegram request returned status %d", resp.StatusCode)

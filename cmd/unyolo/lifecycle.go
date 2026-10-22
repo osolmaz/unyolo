@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"slices"
+	"strconv"
 
 	"github.com/osolmaz/unyolo/deployment/flow"
 	"github.com/osolmaz/unyolo/deployment/session"
@@ -20,6 +21,7 @@ import (
 	"github.com/osolmaz/unyolo/internal/host/privilege"
 	terminalsetup "github.com/osolmaz/unyolo/internal/terminal/setup"
 	setupcompiler "github.com/osolmaz/unyolo/setup/compiler"
+	setupcopy "github.com/osolmaz/unyolo/setup/copy"
 	"github.com/osolmaz/unyolo/setup/installation"
 	setupintent "github.com/osolmaz/unyolo/setup/intent"
 	"github.com/osolmaz/unyolo/setup/wizard"
@@ -220,6 +222,7 @@ func editInstallation(ctx context.Context, prompter flow.SetupPrompter, desired 
 		if len(desired.Approvers) > 1 {
 			actions = append(actions, flow.Option{Value: "remove-approver", Label: "Remove an approver"})
 		}
+		actions = append(actions, telegramActions(desired, options)...)
 		if len(desired.Connections) > 0 {
 			actions = append(actions,
 				flow.Option{Value: "change-connection", Label: "Change an agent connection"},
@@ -247,6 +250,17 @@ func editInstallation(ctx context.Context, prompter flow.SetupPrompter, desired 
 			for index := range desired.Connections {
 				desired.Connections[index].Providers = append([]string(nil), selected...)
 			}
+		case "telegram-chat":
+			chat, err := promptTelegramChat(ctx, prompter, desired.Telegram)
+			if err != nil {
+				if isBackNavigation(err) {
+					continue
+				}
+				return installation.Installation{}, err
+			}
+			desired.Telegram = &installation.Telegram{ChatID: chat}
+		case "telegram-off":
+			desired.Telegram = nil
 		case "add-approver":
 			account, err := prompter.Text(ctx, flow.Prompt{Message: "Which local account can approve requests?", Required: true, Navigation: flow.Navigation{CanGoBack: true}})
 			if err != nil {
@@ -311,7 +325,11 @@ func editInstallation(ctx context.Context, prompter flow.SetupPrompter, desired 
 }
 
 func installationSummary(value installation.Installation) string {
-	return fmt.Sprintf("Credential services: %s · Approvers: %d · Connections: %d", joinProviders(value), len(value.Approvers), len(value.Connections))
+	summary := fmt.Sprintf("Credential services: %s · Approvers: %d · Connections: %d", joinProviders(value), len(value.Approvers), len(value.Connections))
+	if value.Telegram != nil {
+		summary += fmt.Sprintf(" · Telegram chat: %d", value.Telegram.ChatID)
+	}
+	return summary
 }
 
 func isBackNavigation(err error) bool {
@@ -390,10 +408,52 @@ func editOneConnection(ctx context.Context, prompter flow.SetupPrompter, existin
 	return generated.Connections[0], nil
 }
 
+// telegramActions offers to start, change, or stop Telegram approvals when
+// this host can run the Telegram owner.
+func telegramActions(desired installation.Installation, options setupOptions) []flow.Option {
+	available := wizard.TelegramAvailable(wizard.State{Capabilities: options.Capabilities, Intent: setupintent.Intent{
+		Goal: setupintent.GoalCredentialService, CredentialService: &desired.CredentialService,
+	}})
+	switch {
+	case desired.Telegram != nil:
+		return []flow.Option{
+			{Value: "telegram-chat", Label: "Change the Telegram chat"},
+			{Value: "telegram-off", Label: "Stop sending approvals to Telegram"},
+		}
+	case available:
+		return []flow.Option{{Value: "telegram-chat", Label: "Send approvals to Telegram"}}
+	default:
+		return nil
+	}
+}
+
+func promptTelegramChat(ctx context.Context, prompter flow.SetupPrompter, current *installation.Telegram) (int64, error) {
+	screen := setupcopy.Screens[setupcopy.ScreenTelegramChat]
+	initial := ""
+	if current != nil {
+		initial = strconv.FormatInt(current.ChatID, 10)
+	}
+	value, err := prompter.Text(ctx, flow.Prompt{
+		Message: screen.Question, Description: screen.Reason, InitialValue: initial, Required: true,
+		Navigation: flow.Navigation{CanGoBack: true},
+		Validate: func(value string) error {
+			_, err := wizard.ParseTelegramChat(value)
+			return err
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+	return wizard.ParseTelegramChat(value)
+}
+
 func intentFromInstallation(value installation.Installation) (setupintent.Intent, error) {
 	result := setupintent.Intent{
 		APIVersion: setupintent.APIVersion, Goal: setupintent.GoalCredentialService,
 		CredentialService: &setupintent.CredentialService{Location: value.CredentialService.Location, Providers: append([]string(nil), value.CredentialService.Providers...)},
+	}
+	if value.Telegram != nil {
+		result.Telegram = &setupintent.Telegram{ChatID: value.Telegram.ChatID}
 	}
 	if len(value.Connections) == 0 {
 		return result, nil

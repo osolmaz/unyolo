@@ -13,6 +13,7 @@
     "credential_service": { "$ref": "#/$defs/credential_service" },
     "agent": { "$ref": "#/$defs/agent" },
     "connection": { "$ref": "#/$defs/connection" },
+    "telegram": { "$ref": "#/$defs/telegram" },
     "integrations": {
       "type": "array",
       "maxItems": 32,
@@ -39,6 +40,13 @@
     {
       "if": { "properties": { "goal": { "const": "command_only" } } },
       "then": { "properties": { "integrations": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "required": ["telegram"] },
+      "then": {
+        "required": ["credential_service"],
+        "properties": { "credential_service": { "properties": { "location": { "const": "native" } } } }
+      }
     }
   ],
   "$defs": {
@@ -47,6 +55,12 @@
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+    "telegram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chat_id"],
+      "properties": { "chat_id": { "type": "integer", "not": { "const": 0 } } }
     },
     "credential_service": {
       "type": "object",
