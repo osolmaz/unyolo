@@ -131,6 +131,12 @@ A shared bot therefore needs one deterministic upstream owner. OpenClaw and
 unYOLO may consume separate local queues after that owner records and routes an
 update.
 
+`unyolo-telegram` enforces this for its own bot. Before it reports ready to
+systemd, it fails when the bot has a webhook or when another `getUpdates` call
+arrives during a short probe, so setup cannot install a second owner. When
+Telegram later answers its poll with HTTP 409 Conflict, it stops instead of
+competing for updates and records the conflict for `unyolo-telegram doctor`.
+
 Telegram can put a configured secret header on webhook deliveries. That header
 can authenticate a request delivered over TLS directly to a trusted ingress,
 although it is not a signature over the body. It does not authenticate the new

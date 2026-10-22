@@ -12,11 +12,70 @@ Run exactly one `unyolo-telegram` for each bot. When OpenClaw also uses the
 bot, the owner must route separate local queues. Hardened mode also requires
 that owner to protect unYOLO messages from OpenClaw's outbound Bot API calls.
 
-## Linux setup
+## Setup
 
-Install and configure each provider broker first. Keep the raw operator secret
-files supplied to their setup commands. Then configure the owner with the bot
-token and chat ID:
+`unyolo setup` installs the owner when the user turns on Telegram approvals. It
+asks for the chat ID in the wizard and for the bot token file when it collects
+credentials. See [Guided installation](GUIDED_INSTALLATION.md#telegram-approvals).
+
+The owner is a managed approver of every installed provider:
+
+- Setup creates the noninteractive `unyolo-telegram` account with the home
+  `/var/lib/unyolo-telegram`, and adds it to each provider's operator socket
+  group.
+- Each provider adds a `telegram` approver to its approver store and writes
+  that approver's credential into the account's home, at
+  `/var/lib/unyolo-telegram/.config/<broker>/operator.json`. The owner takes
+  every operator credential from the broker that issued it. No credential
+  passes through a command line.
+- The Telegram component writes `/etc/unyolo-telegram/config.json`, the bot
+  token and the inbox key in `/etc/unyolo-telegram`, the inbox state in
+  `/var/lib/unyolo-telegram/state`, and `unyolo-telegram.service`.
+
+An operator client document holds one broker's Operator V1 endpoint and the
+owner's credential for it. It is an owner-only file of the `unyolo-telegram`
+account:
+
+```json
+{
+  "api_version": "unyolo.io/operator-client/v1",
+  "operator_endpoint": "unix:///run/unyolo/github/operator/broker.sock",
+  "shared_secret": "<credential>"
+}
+```
+
+The managed configuration has this shape:
+
+```json
+{
+  "telegram_bot_token_file": "/etc/unyolo-telegram/telegram-bot-token",
+  "telegram_chat_id": 123456789,
+  "inbox_path": "/var/lib/unyolo-telegram/state/callbacks.db",
+  "inbox_key_file": "/etc/unyolo-telegram/inbox-key",
+  "routes": {
+    "g": {
+      "operator_client_file": "/var/lib/unyolo-telegram/.config/gh-broker/operator.json"
+    }
+  }
+}
+```
+
+The route keys are `h` for Hugging Face, `g` for GitHub, and `s` for sudo.
+Configuration rejects duplicate or unknown fields, unsupported routes, and
+relative or unclean paths. The owner reads an operator client document only
+when it is a regular owner-only file of the account that runs the owner.
+
+`unyolo reconfigure` can change the chat or stop Telegram approvals. Stopping
+them stops the service, removes the `telegram` approver and its operator
+client documents from every provider, and removes the account from the
+operator groups. The configuration, the bot token, and the account remain
+until the installation is removed.
+
+### Manual setup
+
+Hosts without guided setup can install the owner directly. Install and
+configure each provider broker first, and keep the raw operator secret files
+supplied to their setup commands:
 
 ```sh
 sudo unyolo-telegram setup systemd \
@@ -29,36 +88,37 @@ sudo unyolo-telegram setup systemd \
 
 Omit a provider token flag when that provider is not installed. The default
 Operator V1 sockets and access groups match the provider installers. Endpoint
-and group flags are available for non-default layouts.
-
-Setup creates a dedicated `unyolo-telegram` service account, copies the bot
-and operator tokens into `/etc/unyolo-telegram` with service-only read
-access, adds the account to the configured broker operator socket groups, and
-installs `unyolo-telegram.service`. Secrets are read from files and are not
+and group flags are available for non-default layouts. The command creates the
+`unyolo-telegram` account, writes the bot token, the inbox key, and one
+operator client document for each route into `/etc/unyolo-telegram` with
+service-only access, adds the account to the broker operator socket groups,
+and installs `unyolo-telegram.service`. Secrets are read from files and are not
 accepted as command-line values.
 
-The managed configuration has this shape:
+## One owner per bot
 
-```json
-{
-  "telegram_bot_token_file": "/etc/unyolo-telegram/telegram-bot-token",
-  "telegram_chat_id": 123456789,
-  "inbox_path": "/var/lib/unyolo-telegram/callbacks.db",
-  "inbox_key_file": "/etc/unyolo-telegram/inbox-key",
-  "routes": {
-    "h": {
-      "operator_endpoint": "unix:///run/unyolo/huggingface/operator/broker.sock",
-      "operator_token_file": "/etc/unyolo-telegram/operator-token-h"
-    }
-  }
-}
+Telegram gives each bot one update queue, so each bot must have exactly one
+owner.
+
+- At start, `unyolo-telegram` fails when the bot has a webhook, or when another
+  `getUpdates` call arrives during a five-second probe. The probe confirms no
+  update. The guided unit uses `Type=notify` and reports ready only after this
+  check and the route contract check, so setup fails instead of installing a
+  second owner.
+- When Telegram answers a poll with HTTP 409 Conflict, the owner stops instead
+  of competing for updates.
+- In both cases, the owner records the time of the conflict next to its inbox.
+
+`unyolo-telegram doctor` reports the configuration, whether the bot has a
+webhook, the last recorded conflict, and the Operator V1 contract of every
+route. It never polls the bot, so it does not take updates away from the
+running owner. Run it as the account that owns the credentials:
+
+```sh
+sudo -u unyolo-telegram /opt/unyolo/current/bin/unyolo-telegram doctor
 ```
 
-The route keys are `h` for Hugging Face, `g` for GitHub, and `s` for sudo.
-Configuration rejects duplicate or unknown fields, unsupported routes, relative
-secret paths, and malformed endpoints.
-
-### Upgrading from broker-sent cards
+## Upgrading from broker-sent cards
 
 Older releases let each broker send its own cards. Those settings are gone:
 
@@ -72,6 +132,12 @@ Each error names the setting to remove. Rerunning a broker's `setup systemd`
 writes an environment without Telegram and removes the old
 `telegram-bot-token` file from the broker configuration directory, so the bot
 token remains only in `/etc/unyolo-telegram`.
+
+The owner's route configuration also changed: each route names one
+`operator_client_file` instead of `operator_endpoint` and
+`operator_token_file`. Rerun `unyolo setup`, or `unyolo-telegram setup
+systemd`, to write the new configuration. The manual setup removes the old
+`operator-token-<route>` files.
 
 The broker state format also changed: grants no longer carry decision tokens
 or notification records. Each broker's release component declares the new

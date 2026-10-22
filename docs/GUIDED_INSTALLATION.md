@@ -247,6 +247,35 @@ Provider-owned adapters may ask provider-specific questions after the shared flo
 setup path and agent identity. Questions must say what value is needed, where the user can obtain it,
 and how it will be stored. Raw internal secret-slot names must stay in technical details.
 
+## Telegram approvals
+
+On a Linux host with native credential services, the installer then asks whether approval
+requests should go to Telegram:
+
+```text
+Send approval requests to Telegram?
+
+One Telegram bot sends a card for each request to one chat, where you approve or deny it.
+You need the bot token file from BotFather and the chat ID.
+```
+
+When the user accepts, the installer asks for the chat ID. Group and channel IDs are negative.
+Only button presses from this chat can decide a request. The bot token is a credential: the
+installer asks for the path of the token file when it collects credentials, reads the file once,
+and sends the token only to the Telegram component. The intent and the installation record keep
+only the chat ID.
+
+The Telegram owner is a managed approver. Setup creates the noninteractive `unyolo-telegram`
+account, adds it to the operator group of every selected provider, and installs
+`unyolo-telegram.service`. Each provider writes the account's operator credential into the
+account's home as part of its own installation, so the credential never passes through a command
+line or a second store. See [Telegram approval owner](TELEGRAM_INGRESS.md) for the files and the
+one-owner rule.
+
+`unyolo reconfigure` can start Telegram approvals, change the chat, or stop them. Stopping them
+stops the service, removes the operator credentials from every provider, and removes the account
+from the operator groups.
+
 ## Person approving requests
 
 A local credential-service setup defaults to the person running the installer. Advanced options may
@@ -328,6 +357,7 @@ The V1 fields are:
 | `agent` | By goal | Where the agent runs and how it is identified. |
 | `connection` | By goal | The derived local or remote connection method. |
 | `integrations` | No | Client integrations selected by the user. Omission means generic client files only. |
+| `telegram` | No | `{"chat_id": <id>}` sends approval requests to that Telegram chat. It needs native credential services. |
 
 Unknown fields are errors. Provider and integration IDs must be unique and must exist in the
 verified release catalog. `connection_name` uses 1 to 64 characters. It accepts lowercase letters
