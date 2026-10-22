@@ -331,8 +331,6 @@ After installing the binary, create a token file and configure systemd:
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
   --xet-python /opt/hf-broker/xet/bin/python \
-  --telegram-bot-token-file ./telegram-bot-token \
-  --telegram-chat-id 123456789 \
   --client agent-a \
   --operator operator-a \
   --agent-user agent-a \
@@ -350,12 +348,11 @@ operator listeners are separate Unix sockets:
 ```
 
 It prints the broker endpoint plus a secret-safe client setup command and
-never prints the generated broker client secret. The real Hugging Face and
-Telegram tokens stay readable only by the service, and the generated operator
-credential is separate from every agent credential. The setup command persists
+never prints the generated broker client secret. The real Hugging Face token
+stays readable only by the service, and the generated operator credential is
+separate from every agent credential. The setup command persists
 `--xet-python` in the systemd or launchd environment; an interactive export is
-not inherited by the managed service. Omit both Telegram flags
-to run without Telegram; pending requests remain available in the operator
+not inherited by the managed service. Pending requests wait in the operator
 inbox. Use `--dry-run` to preview without writing files.
 
 A fresh setup installs the provider-owned `request-all-agent-operations`
@@ -454,19 +451,13 @@ cursors, so a trusted host can reconnect after a restart without depending on
 Telegram. Cancellation is requester-owned and stays on the authenticated
 agent surface; operators deny pending requests or revoke active grants.
 
-Telegram is optional. It is a notification view over the same durable grant
-store used by the operator inbox; a decision through either path closes the
-same request exactly once. For a service deployment, pass
-`--telegram-bot-token-file` and `--telegram-chat-id` during `setup systemd`.
-The broker sends approval requests to the configured operator chat with the
-shared rich layout, fixed Approve and Deny buttons, and durable terminal status
-edits. Hugging Face code supplies only bounded operation, target, risk,
-warning, and plan facts; unYOLO owns Telegram formatting and escaping. The
-separate `unyolo-telegram` service is the only Bot API poller and sends
-decisions to this broker's authenticated Operator V1 socket. Configure it as described in
-[Telegram approval ingress](../../docs/TELEGRAM_INGRESS.md). Rerunning provider
-setup without both Telegram flags disables Telegram notifications and retires
-the managed token file after the restarted service passes its readiness check.
+Telegram cards are optional and come from `unyolo-telegram`, a separate
+service that is another client of this operator API; a decision through either
+path closes the same request exactly once. hf-broker has no Telegram settings
+and never holds the bot token. Hugging Face code supplies only bounded
+operation, target, risk, warning, and plan facts; unYOLO owns the card layout
+and escaping. Configure the owner as described in
+[Telegram approval owner](../../docs/TELEGRAM_INGRESS.md).
 
 Authenticated clients can also request grants over HTTP. Every request must
 carry a unique `client_request_id`, reused on retries:

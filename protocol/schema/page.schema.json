@@ -127,7 +127,6 @@
         "failure_code": {
           "type": "string",
           "enum": [
-            "invalid_notification",
             "plan_unavailable",
             "plan_mismatch",
             "credential_changed",

@@ -16,9 +16,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/osolmaz/unyolo/agent/api"
 	"github.com/osolmaz/unyolo/agent/runtime"
-	unyoloapprovalnotify "github.com/osolmaz/unyolo/approval/notification"
-	unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
-	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
 	unyoloauth "github.com/osolmaz/unyolo/auth"
 	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
 	"github.com/osolmaz/unyolo/authorization/admission"
@@ -53,23 +50,15 @@ const (
 	lfsActionTTL   = time.Hour
 )
 
-const (
-	grantNotificationClaimLease = 2 * time.Minute
-	grantNotificationClaimWait  = 10 * time.Second
-	grantNotificationClaimPoll  = 50 * time.Millisecond
-	grantReservationGrace       = 30 * time.Second
-)
+const grantReservationGrace = 30 * time.Second
 
 const maxLFSBatchBytes = 1 << 20
 const maxReceivePackReportBytes = 4 << 20
 
 var (
-	errInvalidLFSAction             = errors.New("LFS action is no longer valid")
-	errUnsupportedXet               = errors.New("Xet transfer is not supported by the unYOLO Git listener") //nolint:staticcheck // Xet is a proper name.
-	errGrantStoreUnavailable        = errors.New("grant store unavailable")
-	errGrantNotificationStillQueued = errors.New("grant notification is still being created")
-	errGrantNotificationCanceled    = errors.New("grant notification was canceled")
-	errGrantNotificationUnresolved  = errors.New("grant notification delivery is unresolved")
+	errInvalidLFSAction      = errors.New("LFS action is no longer valid")
+	errUnsupportedXet        = errors.New("Xet transfer is not supported by the unYOLO Git listener") //nolint:staticcheck // Xet is a proper name.
+	errGrantStoreUnavailable = errors.New("grant store unavailable")
 )
 
 // Options configures a broker HTTP server.
@@ -80,8 +69,6 @@ type Options struct {
 	UpstreamBaseURL       string
 	UpstreamRouterBaseURL string
 	Context               context.Context
-	GrantNotifier         unyoloapprovalnotify.Notifier
-	TelegramBaseURL       string
 	OperatorAudit         operatorapi.AuditRecorder
 	Now                   func() time.Time
 	NewLFSActionID        func() (string, error)
@@ -118,7 +105,6 @@ type Server struct {
 	database            *state.Database
 	planValidator       hfplan.Validator
 	credential          *providercredential.Service
-	notifier            unyoloapprovalnotify.Notifier
 	operatorConfigured  bool
 	lifecycleContext    context.Context
 	lifecycleCancel     context.CancelFunc
@@ -158,12 +144,6 @@ type lfsAction struct {
 type grantUse struct {
 	grant grants.Grant
 	ref   string
-}
-
-type lockedPushResult struct {
-	upstreamStatus         int
-	grantsToNotify         []grants.Grant
-	retainedGrantsToNotify []grants.Grant
 }
 
 // New builds a broker HTTP handler.
@@ -228,12 +208,6 @@ func startServer(ctx context.Context, server *Server, opts Options) (*Server, er
 	lifecycleContext, cancel := context.WithCancel(ctx)
 	server.lifecycleContext = lifecycleContext
 	server.lifecycleCancel = cancel
-	if err := server.startTelegram(lifecycleContext, opts); err != nil {
-		cancel()
-		_ = server.database.Close()
-		return nil, err
-	}
-	server.startGrantNotificationSweeper(lifecycleContext)
 	server.startStreamSweeper(lifecycleContext)
 	server.sealedPayloads.Start(lifecycleContext)
 	server.operationRuntime.Start(lifecycleContext)
@@ -461,7 +435,7 @@ func (r *serverResources) configureOperations(opts Options, upstream *url.URL, c
 		return err
 	}
 	r.control, err = controlplane.New(controlplane.Options{
-		Broker: "hf-broker", ApprovalBroker: "Hugging Face", Store: r.grantStore, ClientSecrets: clients,
+		Broker: "hf-broker", Store: r.grantStore, ClientSecrets: clients,
 		OperatorSecrets: namedSecrets(opts.Config.Operators), Presenter: approval.Presenter{}, Audit: opts.OperatorAudit,
 		ActivationValidator: r.planValidator, State: r.database,
 	})
@@ -564,7 +538,6 @@ func (r *serverResources) newServer(opts Options, upstream, routerUpstream *url.
 		database:           r.database,
 		planValidator:      r.planValidator,
 		credential:         opts.Credential,
-		notifier:           opts.GrantNotifier,
 		operatorConfigured: len(opts.Config.Operators) > 0,
 		lfsActions:         map[string]lfsAction{},
 		now:                opts.Now,
@@ -704,24 +677,6 @@ func grantReservationTimeout(hfTimeout time.Duration) time.Duration {
 		return hfgrant.DefaultReservationTimeout
 	}
 	return hfTimeout + grantReservationGrace
-}
-
-func (s *Server) startTelegram(_ context.Context, opts Options) error {
-	if opts.Config.TelegramBotToken == "" {
-		return nil
-	}
-	telegram, err := unyolotelegram.NewWithOptions(opts.Config.TelegramBotToken, opts.Config.TelegramChatID, nil, opts.TelegramBaseURL, unyolotelegram.Options{
-		Route: unyolotelegram.RouteHuggingFace,
-	})
-	if err != nil {
-		return fmt.Errorf("configure Telegram notifier: %w", err)
-	}
-	s.notifier = telegram
-	return nil
-}
-
-func (s *Server) handleTelegramDecision(ctx context.Context, decision unyolonotify.Decision) unyolonotify.DecisionResult {
-	return s.control.HandleDecision(ctx, decision)
 }
 
 func writeHealth(w http.ResponseWriter, r *http.Request) bool {

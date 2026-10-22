@@ -55,8 +55,6 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		ExecutionFailure:    operationExecutionFailure,
 		RecordPolicyRefusal: s.recordOperationPolicyRefusal,
 		RecordOutcome:       s.recordOperationOutcome,
-		Notifier:            s.notifier,
-		ApprovalMessage:     grantApprovalMessage,
 		OperatorConfigured:  s.operatorConfigured,
 		AuthorizationGrace:  operationAuthorizationGrace,
 		Observer:            s.control.Metrics,

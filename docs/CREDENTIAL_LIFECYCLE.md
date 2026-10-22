@@ -2,10 +2,12 @@
 
 unYOLO uses one exact-replacement model for installed credentials. It does
 not keep old and new secrets active together. This applies to broker client and
-operator secrets, provider credentials, Telegram bot tokens, GitHub App keys
-and OAuth secrets, and other protected files managed by broker setup.
+operator secrets, provider credentials, the Telegram bot token, GitHub App
+keys and OAuth secrets, and other protected files managed by setup.
 
-Run the broker's native `setup systemd` or `setup launchd` command again with
+The Telegram bot token belongs only to `unyolo-telegram`; rerun
+`unyolo-telegram setup systemd` to replace it. For a broker, run the broker's
+native `setup systemd` or `setup launchd` command again with
 the complete desired configuration and replacement credential inputs. Setup:
 
 1. validates every input before changing the installation;
@@ -43,7 +45,7 @@ separate, deliberate step.
 | GitHub App private key, client secret, and webhook secret | Exact protected-file replacement | Manual in GitHub App settings after readiness |
 | GitHub development token | Exact protected-file replacement | Manual in GitHub token settings after readiness |
 | Hugging Face user token | Exact protected-file replacement | Manual in Hugging Face token settings after readiness |
-| Telegram bot token | Exact protected-file replacement or retirement | Manual through BotFather after readiness |
+| Telegram bot token (`unyolo-telegram` only) | Exact protected-file replacement | Manual through BotFather after readiness |
 
 unYOLO automates upstream revocation only where the provider exposes a
 supported API and the broker has the exact authority and identifier needed for
@@ -75,8 +77,7 @@ Supply every relevant installed path when using the HF isolation doctor:
 hf-broker doctor isolation \
   --token-file /etc/hf-broker/hf-token \
   --client-secrets-file /etc/hf-broker/secrets \
-  --operator-secrets-file /etc/hf-broker/operator-secrets \
-  --telegram-token-file /etc/hf-broker/telegram-bot-token
+  --operator-secrets-file /etc/hf-broker/operator-secrets
 ```
 
 GitHub doctor derives credential sources from the loaded broker configuration.

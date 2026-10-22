@@ -12,9 +12,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/osolmaz/unyolo/agent/api"
 	"github.com/osolmaz/unyolo/agent/runtime"
-	"github.com/osolmaz/unyolo/approval"
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
 	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
 	"github.com/osolmaz/unyolo/authorization/admission"
 	"github.com/osolmaz/unyolo/authorization/grants"
@@ -33,10 +30,6 @@ import (
 	"github.com/osolmaz/unyolo/transport/http"
 )
 
-type DecisionPoller interface {
-	Poll(context.Context, func(context.Context, notify.Decision) notify.DecisionResult)
-}
-
 type Options struct {
 	Policy             *corepolicy.Policy
 	Catalog            *catalog.Snapshot
@@ -45,8 +38,6 @@ type Options struct {
 	Helper             *executorclient.Client
 	ClientSecrets      map[string]string
 	OperatorSecrets    map[string]string
-	Notifier           approvalnotify.Notifier
-	Poller             DecisionPoller
 	Audit              *audit.Writer
 	Now                func() time.Time
 	OperatorConfigured bool
@@ -63,8 +54,6 @@ type Server struct {
 	identities         plan.IdentityResolver
 	helper             *executorclient.Client
 	validator          plan.Validator
-	notifier           approvalnotify.Notifier
-	poller             DecisionPoller
 	audit              *audit.Writer
 	now                func() time.Time
 	operatorConfigured bool
@@ -77,9 +66,7 @@ type Server struct {
 	agentAPI           *agentapi.Handler
 	lifecycleContext   context.Context
 	lifecycleCancel    context.CancelFunc
-	backgroundWorkers  sync.WaitGroup
 	workerOnce         sync.Once
-	backgroundOnce     sync.Once
 	closeOnce          sync.Once
 	closeErr           error
 }
@@ -158,7 +145,7 @@ func newServerParts(opts Options) (serverParts, error) {
 		return serverParts{}, err
 	}
 	control, err := controlplane.New(controlplane.Options{
-		Broker: "sudo-broker", ApprovalBroker: "sudo", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
+		Broker: "sudo-broker", Store: grantStore, ClientSecrets: opts.ClientSecrets, OperatorSecrets: opts.OperatorSecrets,
 		Presenter: presenter.Presenter{Catalog: opts.Catalog}, ActivationValidator: validator, Audit: opts.Audit, State: opts.Database,
 	})
 	if err != nil {
@@ -180,7 +167,7 @@ func newServerParts(opts Options) (serverParts, error) {
 
 func assembleServer(opts Options, parts serverParts) *Server {
 	return &Server{echo: parts.echo, control: parts.control, policy: opts.Policy, catalog: opts.Catalog, grants: parts.grantStore, plans: parts.plans,
-		identities: opts.Identities, helper: opts.Helper, validator: parts.validator, notifier: opts.Notifier, poller: opts.Poller,
+		identities: opts.Identities, helper: opts.Helper, validator: parts.validator,
 		audit: opts.Audit, now: parts.now, operatorConfigured: opts.OperatorConfigured || len(opts.OperatorSecrets) > 0,
 		database: opts.Database, operations: parts.operationStore, admission: parts.admission, authorization: parts.authorization,
 		operationRegistry: parts.operationRegistry}
@@ -201,7 +188,6 @@ func (s *Server) Close() error {
 		if s.operationRuntime != nil {
 			s.operationRuntime.Wait()
 		}
-		s.backgroundWorkers.Wait()
 		s.closeErr = s.database.Close()
 	})
 	return s.closeErr
@@ -209,62 +195,6 @@ func (s *Server) Close() error {
 
 func (s *Server) Start(ctx context.Context) {
 	s.startOperationRuntime(ctx)
-	s.backgroundOnce.Do(func() {
-		s.startDecisionPoller()
-		s.startNotificationSweeper()
-	})
-}
-
-func (s *Server) startDecisionPoller() {
-	if s.poller == nil {
-		return
-	}
-	s.backgroundWorkers.Add(1)
-	go func() {
-		defer s.backgroundWorkers.Done()
-		s.poller.Poll(s.lifecycleContext, s.control.HandleDecision)
-	}()
-}
-
-func (s *Server) startNotificationSweeper() {
-	if s.notifier == nil {
-		return
-	}
-	s.backgroundWorkers.Add(1)
-	go func() {
-		defer s.backgroundWorkers.Done()
-		s.runNotificationSweeper(s.lifecycleContext)
-	}()
-}
-
-func (s *Server) runNotificationSweeper(ctx context.Context) {
-	s.deliverNotificationStatusUpdates(ctx)
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.deliverNotificationStatusUpdates(ctx)
-		}
-	}
-}
-
-func (s *Server) deliverNotificationStatusUpdates(ctx context.Context) {
-	updates, err := s.grants.StatusUpdatesDue()
-	if err != nil {
-		return
-	}
-	for _, update := range updates {
-		if update.Grant.Notification == nil {
-			continue
-		}
-		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, approval.StatusForUpdate(update)); err != nil {
-			continue
-		}
-		_ = s.grants.MarkNotificationStatus(update.Grant.ID, update.NotificationStatusKey())
-	}
 }
 
 func (s *Server) registerRoutes() {

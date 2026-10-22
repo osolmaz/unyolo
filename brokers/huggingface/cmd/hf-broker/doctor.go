@@ -208,7 +208,6 @@ func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationComma
 	tokenFile := fs.String("token-file", "", "optional upstream HF token file path")
 	clientSecretsFile := fs.String("client-secrets-file", "", "optional broker client secret file path")
 	operatorSecretsFile := fs.String("operator-secrets-file", "", "optional broker operator secret file path")
-	telegramTokenFile := fs.String("telegram-token-file", "", "optional Telegram bot token file path")
 	socket := fs.String("socket", "", "optional broker Unix socket path")
 	jsonOutput := fs.Bool("json", false, "write JSON output")
 	if err := fs.Parse(args); err != nil {
@@ -231,7 +230,7 @@ func parseDoctorIsolation(stderr io.Writer, args []string) (doctorIsolationComma
 			AgentUser: *agentUser, AgentUID: agentUID.value, AgentUIDSet: agentUID.set,
 			AgentPID: agentPIDValue, BrokerPID: *brokerPID, TokenFile: *tokenFile,
 			ClientSecretsFile: *clientSecretsFile, OperatorSecretsFile: *operatorSecretsFile,
-			TelegramTokenFile: *telegramTokenFile, Socket: *socket, HelperPath: helperPath,
+			Socket: *socket, HelperPath: helperPath,
 		},
 		jsonOutput: *jsonOutput,
 	}, nil

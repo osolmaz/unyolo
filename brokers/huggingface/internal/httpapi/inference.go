@@ -387,10 +387,10 @@ func (s *Server) settleInferenceGrant(reserved *grants.UseReservation, attempted
 		return
 	}
 	if !attempted {
-		s.releaseGrantUses([]grants.UseReservation{*reserved})
+		settleGrantUses([]grants.UseReservation{*reserved}, s.grants.ReleaseUse)
 		return
 	}
-	s.updateGrantMessages(s.commitGrantUses([]grants.UseReservation{*reserved}), s.updateGrantUseMessage)
+	settleGrantUses([]grants.UseReservation{*reserved}, s.grants.CommitUse)
 }
 
 func (s *Server) forwardBufferedInference(w http.ResponseWriter, client, operation, target string, response *http.Response) {

@@ -21,46 +21,40 @@ type DecisionRecord struct {
 }
 
 type Grant struct {
-	ID                             string
-	DecisionTokenVerifier          string
-	Client                         string
-	ClientRequestID                string
-	Operation                      string
-	TargetJson                     string
-	AttrsJson                      string
-	MetadataJson                   string
-	PlanDigest                     sql.NullString
-	Reason                         string
-	Status                         string
-	Revision                       int64
-	CreatedAt                      string
-	PendingExpiresAt               string
-	ExpiresAt                      sql.NullString
-	DurationNs                     int64
-	RequestedDurationNs            int64
-	PendingTimeoutNs               int64
-	DecidedAt                      sql.NullString
-	DecidedBy                      string
-	DecidedOnBehalfOf              string
-	FailureCode                    string
-	FailureReference               string
-	FailedAt                       sql.NullString
-	UsedAt                         sql.NullString
-	UsedCount                      int64
-	UseRevision                    int64
-	ReservedCount                  int64
-	ReservedAt                     sql.NullString
-	ReservationRetained            int64
-	ReservationRevision            int64
-	MaxUses                        sql.NullInt64
-	RequestedMaxUses               sql.NullInt64
-	RequestedMaxUsesDefaulted      int64
-	ExpiredFrom                    sql.NullString
-	NotificationJson               sql.NullString
-	NotificationStatus             string
-	NotificationClaimedAt          sql.NullString
-	NotificationClaimUntil         sql.NullString
-	NotificationDeliveryUnresolved int64
+	ID                        string
+	Client                    string
+	ClientRequestID           string
+	Operation                 string
+	TargetJson                string
+	AttrsJson                 string
+	MetadataJson              string
+	PlanDigest                sql.NullString
+	Reason                    string
+	Status                    string
+	Revision                  int64
+	CreatedAt                 string
+	PendingExpiresAt          string
+	ExpiresAt                 sql.NullString
+	DurationNs                int64
+	RequestedDurationNs       int64
+	PendingTimeoutNs          int64
+	DecidedAt                 sql.NullString
+	DecidedBy                 string
+	DecidedOnBehalfOf         string
+	FailureCode               string
+	FailureReference          string
+	FailedAt                  sql.NullString
+	UsedAt                    sql.NullString
+	UsedCount                 int64
+	UseRevision               int64
+	ReservedCount             int64
+	ReservedAt                sql.NullString
+	ReservationRetained       int64
+	ReservationRevision       int64
+	MaxUses                   sql.NullInt64
+	RequestedMaxUses          sql.NullInt64
+	RequestedMaxUsesDefaulted int64
+	ExpiredFrom               sql.NullString
 }
 
 type GrantUse struct {
@@ -83,22 +77,6 @@ type LifecycleEvent struct {
 	Revision    int64
 	OccurredAt  string
 	PayloadJson string
-}
-
-type NotificationOutbox struct {
-	ID             int64
-	GrantID        string
-	Kind           string
-	PayloadJson    string
-	IdempotencyKey string
-	Status         string
-	Attempts       int64
-	AvailableAt    string
-	ClaimedUntil   sql.NullString
-	DeliveredAt    sql.NullString
-	LastErrorCode  string
-	CreatedAt      string
-	UpdatedAt      string
 }
 
 type Operation struct {

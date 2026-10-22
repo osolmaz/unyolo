@@ -14,9 +14,9 @@ runtime directory. The frontend requires and starts after the helper. Other
 brokers and the OpenClaw plugin do not share either identity or state root.
 
 Configuration is rooted at `/etc/sudo-broker`. Catalog and policy are
-root-owned and group-readable by the frontend. Client, operator, and Telegram
-credentials are readable only by the frontend account. The helper receives no
-broker, operator, or Telegram credential.
+root-owned and group-readable by the frontend. Client and operator credentials
+are readable only by the frontend account. The helper receives no broker or
+operator credential. sudo-broker holds no Telegram credential.
 
 ## Installation
 

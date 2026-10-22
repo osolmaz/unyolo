@@ -21,32 +21,26 @@ type redactedExport struct {
 	Grants        []redactedGrant          `json:"grants"`
 	Operations    []redactedOperation      `json:"operations"`
 	Plans         []redactedPlan           `json:"plans"`
-	Notifications []redactedNotification   `json:"notifications"`
 	AuditRefs     []redactedAuditReference `json:"audit_refs"`
 	Decisions     []redactedDecision       `json:"decisions"`
 }
 
 type redactedGrant struct {
-	ID                     string  `json:"id"`
-	Client                 string  `json:"client"`
-	ClientRequestID        string  `json:"client_request_id,omitempty"`
-	Operation              string  `json:"operation"`
-	Status                 string  `json:"status"`
-	Revision               int64   `json:"revision"`
-	CreatedAt              string  `json:"created_at"`
-	PendingExpiresAt       string  `json:"pending_expires_at"`
-	ExpiresAt              *string `json:"expires_at,omitempty"`
-	DecidedAt              *string `json:"decided_at,omitempty"`
-	UsedCount              int64   `json:"used_count"`
-	ReservedCount          int64   `json:"reserved_count"`
-	ReservationRetained    bool    `json:"reservation_retained"`
-	MaxUses                *int64  `json:"max_uses,omitempty"`
-	ExpiredFrom            *string `json:"expired_from,omitempty"`
-	NotificationStatus     string  `json:"notification_status,omitempty"`
-	NotificationUnresolved bool    `json:"notification_delivery_unresolved"`
-	NotificationRenderer   string  `json:"notification_renderer,omitempty"`
-	PresentationDigest     string  `json:"notification_presentation_digest,omitempty"`
-	RenderedDigest         string  `json:"notification_rendered_digest,omitempty"`
+	ID                  string  `json:"id"`
+	Client              string  `json:"client"`
+	ClientRequestID     string  `json:"client_request_id,omitempty"`
+	Operation           string  `json:"operation"`
+	Status              string  `json:"status"`
+	Revision            int64   `json:"revision"`
+	CreatedAt           string  `json:"created_at"`
+	PendingExpiresAt    string  `json:"pending_expires_at"`
+	ExpiresAt           *string `json:"expires_at,omitempty"`
+	DecidedAt           *string `json:"decided_at,omitempty"`
+	UsedCount           int64   `json:"used_count"`
+	ReservedCount       int64   `json:"reserved_count"`
+	ReservationRetained bool    `json:"reservation_retained"`
+	MaxUses             *int64  `json:"max_uses,omitempty"`
+	ExpiredFrom         *string `json:"expired_from,omitempty"`
 }
 
 type redactedOperation struct {
@@ -70,20 +64,6 @@ type redactedPlan struct {
 	CreatedAt  string `json:"created_at"`
 }
 
-type redactedNotification struct {
-	ID            int64   `json:"id"`
-	GrantID       string  `json:"grant_id"`
-	Kind          string  `json:"kind"`
-	Status        string  `json:"status"`
-	Attempts      int64   `json:"attempts"`
-	AvailableAt   string  `json:"available_at"`
-	ClaimedUntil  *string `json:"claimed_until,omitempty"`
-	DeliveredAt   *string `json:"delivered_at,omitempty"`
-	LastErrorCode string  `json:"last_error_code,omitempty"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
-}
-
 type redactedAuditReference struct {
 	Sequence    int64  `json:"sequence"`
 	SubjectKind string `json:"subject_kind"`
@@ -100,8 +80,7 @@ type redactedDecision struct {
 }
 
 // Export writes a deterministic bounded JSON projection without operation
-// payloads, reasons, plan bodies, decision tokens, notification destinations,
-// provider credentials, or command output.
+// payloads, reasons, plan bodies, provider credentials, or command output.
 func (d *Database) Export(ctx context.Context, destination string) error {
 	if err := d.ValidateCurrentFormat(ctx); err != nil {
 		return err
@@ -188,10 +167,7 @@ func (d *Database) populateCoreExport(ctx context.Context, value *redactedExport
 	if err := loadExport(&value.Operations, func() ([]redactedOperation, error) { return d.exportOperations(ctx) }); err != nil {
 		return err
 	}
-	if err := loadExport(&value.Plans, func() ([]redactedPlan, error) { return d.exportPlans(ctx) }); err != nil {
-		return err
-	}
-	return loadExport(&value.Notifications, func() ([]redactedNotification, error) { return d.exportNotifications(ctx) })
+	return loadExport(&value.Plans, func() ([]redactedPlan, error) { return d.exportPlans(ctx) })
 }
 
 func (d *Database) populateAuditExport(ctx context.Context, value *redactedExport) error {
@@ -228,7 +204,7 @@ func (d *Database) exportPlans(ctx context.Context) ([]redactedPlan, error) {
 func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT id, client, client_request_id, operation, status, revision, created_at,
 		pending_expires_at, expires_at, decided_at, used_count, reserved_count, reservation_retained, max_uses,
-		expired_from, notification_status, notification_delivery_unresolved, notification_json FROM grants ORDER BY id LIMIT ?`, maxExportTableRows+1)
+		expired_from FROM grants ORDER BY id LIMIT ?`, maxExportTableRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -236,25 +212,12 @@ func (d *Database) exportGrants(ctx context.Context) ([]redactedGrant, error) {
 	values := make([]redactedGrant, 0)
 	for rows.Next() {
 		var item redactedGrant
-		var expires, decided, expired, notification sql.NullString
+		var expires, decided, expired sql.NullString
 		var maximum sql.NullInt64
 		if err := rows.Scan(&item.ID, &item.Client, &item.ClientRequestID, &item.Operation, &item.Status, &item.Revision,
 			&item.CreatedAt, &item.PendingExpiresAt, &expires, &decided, &item.UsedCount, &item.ReservedCount,
-			&item.ReservationRetained, &maximum, &expired, &item.NotificationStatus, &item.NotificationUnresolved, &notification); err != nil {
+			&item.ReservationRetained, &maximum, &expired); err != nil {
 			return nil, err
-		}
-		if notification.Valid {
-			var reference struct {
-				Renderer           string `json:"renderer"`
-				PresentationDigest string `json:"presentation_digest"`
-				RenderedDigest     string `json:"rendered_digest"`
-			}
-			if err := json.Unmarshal([]byte(notification.String), &reference); err != nil {
-				return nil, errors.New("invalid persisted notification reference")
-			}
-			item.NotificationRenderer = reference.Renderer
-			item.PresentationDigest = reference.PresentationDigest
-			item.RenderedDigest = reference.RenderedDigest
 		}
 		item.ExpiresAt, item.DecidedAt, item.ExpiredFrom, item.MaxUses = stringPointer(expires), stringPointer(decided), stringPointer(expired), exportInt64Pointer(maximum)
 		values = append(values, item)
@@ -278,27 +241,6 @@ func (d *Database) exportOperations(ctx context.Context) ([]redactedOperation, e
 			return nil, err
 		}
 		item.TerminalAt, item.PlanDigest = stringPointer(terminal), stringPointer(digest)
-		values = append(values, item)
-	}
-	return boundedRows(values, rows.Err())
-}
-
-func (d *Database) exportNotifications(ctx context.Context) ([]redactedNotification, error) {
-	rows, err := d.sql.QueryContext(ctx, `SELECT id, grant_id, kind, status, attempts, available_at, claimed_until,
-		delivered_at, last_error_code, created_at, updated_at FROM notification_outbox ORDER BY id LIMIT ?`, maxExportTableRows+1)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	values := make([]redactedNotification, 0)
-	for rows.Next() {
-		var item redactedNotification
-		var claimed, delivered sql.NullString
-		if err := rows.Scan(&item.ID, &item.GrantID, &item.Kind, &item.Status, &item.Attempts, &item.AvailableAt,
-			&claimed, &delivered, &item.LastErrorCode, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, err
-		}
-		item.ClaimedUntil, item.DeliveredAt = stringPointer(claimed), stringPointer(delivered)
 		values = append(values, item)
 	}
 	return boundedRows(values, rows.Err())

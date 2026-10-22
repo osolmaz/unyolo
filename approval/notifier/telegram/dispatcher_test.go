@@ -63,8 +63,7 @@ func TestDispatcherRoutesDecisionThroughOperatorSource(t *testing.T) {
 		t.Fatalf("Handle() = %+v calls=%d", result, source.decideCall)
 	}
 	if source.action != operatorv1.ActionApprove || source.decision.ExpectedRevision != 3 ||
-		source.decision.OnBehalfOf != "telegram:42" || !strings.HasPrefix(source.decision.IdempotencyKey, "telegram-") ||
-		source.decision.Notification != nil {
+		source.decision.OnBehalfOf != "telegram:42" || !strings.HasPrefix(source.decision.IdempotencyKey, "telegram-") {
 		t.Fatalf("operator decision = %+v action=%q", source.decision, source.action)
 	}
 }
@@ -135,10 +134,6 @@ func TestDispatcherDoesNotBlockSharedPollerOnTransientOperatorFailure(t *testing
 	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Answer != notify.AnswerNotFound || result.MessageStatus.Kind != notify.StatusUnavailable {
 		t.Fatalf("not-found Handle() = %+v", result)
 	}
-	source.getErr = &operatorclient.Error{Status: 409, Code: "invalid_decision_token"}
-	if result := dispatcher.Handle(t.Context(), notify.Decision{Route: RouteSudo}); result.Answer != notify.AnswerSuperseded || result.MessageStatus.Kind != notify.StatusSuperseded {
-		t.Fatalf("stale-token Handle() = %+v", result)
-	}
 }
 
 func TestDispatcherAPIErrorResults(t *testing.T) {
@@ -151,7 +146,7 @@ func TestDispatcherAPIErrorResults(t *testing.T) {
 		wantStatus notify.StatusKind
 	}{
 		{name: "current terminal request", apiError: &operatorclient.Error{Current: &terminal}, wantAnswer: notify.AnswerDenied, wantStatus: notify.StatusDenied},
-		{name: "terminal activation failure", apiError: &operatorclient.Error{Code: "invalid_notification", CorrelationID: "failure-ref"}, wantAnswer: notify.AnswerFailed, wantStatus: notify.StatusFailed},
+		{name: "terminal activation failure", apiError: &operatorclient.Error{Code: "plan_mismatch", CorrelationID: "failure-ref"}, wantAnswer: notify.AnswerFailed, wantStatus: notify.StatusFailed},
 		{name: "closed request", apiError: &operatorclient.Error{Code: "invalid_transition"}, wantAnswer: notify.AnswerClosed, wantStatus: notify.StatusClosed},
 		{name: "unknown failure", apiError: &operatorclient.Error{Code: "upstream_unavailable"}, wantAnswer: notify.AnswerUnavailable},
 	}

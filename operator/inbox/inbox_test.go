@@ -36,7 +36,7 @@ func TestProjectionNeverExposesGrantInternals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, protected := range []string{"protected-token-value", "decision_token_verifier", result.DecisionToken} {
+	for _, protected := range []string{"protected-token-value", "decision_token_verifier"} {
 		if strings.Contains(string(encoded), protected) {
 			t.Fatalf("projection leaked %q: %s", protected, encoded)
 		}

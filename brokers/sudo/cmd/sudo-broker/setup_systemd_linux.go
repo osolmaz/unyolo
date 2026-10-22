@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
@@ -29,24 +28,22 @@ const maxSetupFileBytes = 16 << 20
 
 type sudoSystemdOptions struct {
 	unyolosetup.SystemdOptions
-	PolicyFile           string
-	CatalogFile          string
-	HelperBinary         string
-	HelperStateDir       string
-	HelperSocket         string
-	SharedSecret         string
-	OperatorID           string
-	OperatorSecretFile   string
-	OperatorSecret       string
-	OperatorEndpoint     string
-	TelegramBotTokenFile string
-	TelegramChatID       int64
-	Lifecycle            *credentiallifecycle.Reporter
-	helperManaged        bool
+	PolicyFile         string
+	CatalogFile        string
+	HelperBinary       string
+	HelperStateDir     string
+	HelperSocket       string
+	SharedSecret       string
+	OperatorID         string
+	OperatorSecretFile string
+	OperatorSecret     string
+	OperatorEndpoint   string
+	Lifecycle          *credentiallifecycle.Reporter
+	helperManaged      bool
 }
 
 type sudoInstallPaths struct {
-	policy, catalog, secrets, operators, telegram, frontendEnv, helperEnv string
+	policy, catalog, secrets, operators, frontendEnv, helperEnv string
 }
 
 func runSetupSystemd(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -126,8 +123,6 @@ func parseSudoSystemdOptions(args []string, stderr io.Writer, stdin io.Reader) (
 	flags.StringVar(&opts.OperatorID, "operator", opts.OperatorID, "operator identity")
 	flags.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "operator secret source")
 	flags.StringVar(&opts.OperatorEndpoint, "operator-endpoint", opts.OperatorEndpoint, "operator endpoint URI")
-	flags.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "Telegram bot token source")
-	flags.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
 	if err := flags.Parse(args); err != nil {
 		return handleSudoSystemdParseError(err, stderr, output.String())
 	}
@@ -261,17 +256,7 @@ func validateSetupCredentialsAndHelper(opts sudoSystemdOptions) error {
 	if opts.OperatorSecret == opts.SharedSecret {
 		return errors.New("operator secret must differ from the client secret")
 	}
-	if err := validateTelegramSetup(opts); err != nil {
-		return err
-	}
 	return validateTrustedHelperBinary(opts)
-}
-
-func validateTelegramSetup(opts sudoSystemdOptions) error {
-	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
-		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be configured together")
-	}
-	return nil
 }
 
 func validateTrustedHelperBinary(opts sudoSystemdOptions) error {
@@ -292,8 +277,8 @@ func sudoPaths(opts sudoSystemdOptions) sudoInstallPaths {
 	return sudoInstallPaths{
 		policy: filepath.Join(opts.ConfigDir, "policy.json"), catalog: filepath.Join(opts.ConfigDir, "catalog.json"),
 		secrets: filepath.Join(opts.ConfigDir, "secrets"), operators: filepath.Join(opts.ConfigDir, "operator-secrets"),
-		telegram: filepath.Join(opts.ConfigDir, "telegram-bot-token"), frontendEnv: filepath.Join(opts.ConfigDir, "frontend.env"),
-		helperEnv: filepath.Join(opts.ConfigDir, "helper.env"),
+		frontendEnv: filepath.Join(opts.ConfigDir, "frontend.env"),
+		helperEnv:   filepath.Join(opts.ConfigDir, "helper.env"),
 	}
 }
 
@@ -325,17 +310,8 @@ func sudoInstallPlans(opts sudoSystemdOptions, paths sudoInstallPaths) (unyolose
 		frontendSecretFile("operator-secrets", []byte(opts.OperatorID+" = "+opts.OperatorSecret+"\n")),
 		{Area: unyoloservice.ManagedFileConfig, Name: "frontend.env", Data: []byte("# managed by sudo-broker\n"), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 	}
-	if opts.TelegramBotTokenFile != "" {
-		data, readErr := readSetupFile(opts.TelegramBotTokenFile)
-		if readErr != nil {
-			return unyoloservice.SystemdInstallPlan{}, unyoloservice.SystemdInstallPlan{}, readErr
-		}
-		frontendFiles = append(frontendFiles, frontendSecretFile("telegram-bot-token", data))
-	}
-	var removeFiles []unyoloservice.ManagedFileRef
-	if opts.TelegramBotTokenFile == "" {
-		removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: "telegram-bot-token", CredentialClass: "telegram-bot"})
-	}
+	// Older releases installed a bot token here. Only unyolo-telegram holds it now.
+	removeFiles := []unyoloservice.ManagedFileRef{{Area: unyoloservice.ManagedFileConfig, Name: "telegram-bot-token", CredentialClass: "telegram-bot"}}
 	frontendPlan := unyoloservice.SystemdInstallPlan{User: opts.User, Group: opts.Group, ConfigDir: opts.ConfigDir, StateDir: opts.StateDir, SharedStateDir: sharedStateDir,
 		SystemdDir: opts.SystemdDir, UnitName: "sudo-broker.service", NoStart: opts.NoStart, Unit: frontendUnit, Files: frontendFiles, RemoveFiles: removeFiles,
 		AdditionalGroups: activation.Groups, GroupMembers: activation.GroupMembers, SocketUnits: activation.Sockets,
@@ -388,7 +364,7 @@ func sharedStateDirectory(frontend string, helper string) string {
 }
 
 func frontendSecretFile(name string, data []byte) unyoloservice.ManagedFile {
-	classes := map[string]string{"secrets": "broker-client", "operator-secrets": "broker-operator", "telegram-bot-token": "telegram-bot"}
+	classes := map[string]string{"secrets": "broker-client", "operator-secrets": "broker-operator"}
 	return unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: name, Data: data, Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot, CredentialClass: classes[name]}
 }
 
@@ -397,9 +373,6 @@ func frontendExec(opts sudoSystemdOptions, paths sudoInstallPaths) string {
 		"--operator-secrets", paths.operators, "--state", opts.StateDir,
 		"--helper-socket", opts.HelperSocket, "--agent-endpoint", "activation://agent",
 		"--operator-endpoint", "activation://operator"}
-	if opts.TelegramBotTokenFile != "" {
-		values = append(values, "--telegram-token-file", paths.telegram, "--telegram-chat-id", strconv.FormatInt(opts.TelegramChatID, 10))
-	}
 	return strings.Join(values, " ")
 }
 

@@ -25,9 +25,6 @@
     },
     "constraints": {
       "$ref": "#/$defs/Constraints"
-    },
-    "notification": {
-      "$ref": "#/$defs/NotificationDecision"
     }
   },
   "$defs": {
@@ -47,65 +44,6 @@
           ],
           "minimum": 1,
           "maximum": 1000000
-        }
-      }
-    },
-    "NotificationDecision": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "renderer",
-        "decision_token",
-        "chat_id",
-        "message_id",
-        "text",
-        "presentation_json",
-        "presentation_digest",
-        "rendered_digest"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "const": "telegram"
-        },
-        "renderer": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64
-        },
-        "decision_token": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
-        },
-        "chat_id": {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
-        },
-        "message_id": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
-        "text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32768
-        },
-        "presentation_json": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 65536
-        },
-        "presentation_digest": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
-        },
-        "rendered_digest": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
         }
       }
     }

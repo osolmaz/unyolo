@@ -8,7 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
+
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 )
 
 const anonymousFirstHFPolicy = `{"rules":[
@@ -72,8 +73,6 @@ func TestPrivateHuggingFaceFetchFallsBackToApprovedManagedCredential(t *testing.
 	}))
 	defer upstream.Close()
 	handler := newTestHandler(t, t.TempDir(), upstream.URL, &bytes.Buffer{}, anonymousFirstHFPolicy)
-	notifier := &captureGrantNotifier{}
-	handler.notifier = notifier
 
 	path := "/datasets/private/repo.git/git-upload-pack"
 	first := httptest.NewRequest(http.MethodPost, path, strings.NewReader("wants-private"))
@@ -87,11 +86,7 @@ func TestPrivateHuggingFaceFetchFallsBackToApprovedManagedCredential(t *testing.
 	if err != nil || len(grants) != 1 {
 		t.Fatalf("pending grants = %+v, %v", grants, err)
 	}
-	claim, claimed, err := handler.grants.ClaimNotification(grants[0].ID, 5*time.Minute)
-	if err != nil || !claimed {
-		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
-	}
-	if _, err := handler.grants.Approve(claim.Grant.ID, claim.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(handler.grants, grants[0].ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 
@@ -117,8 +112,6 @@ func TestAnonymousHuggingFaceUpstreamFailureDoesNotRequestApproval(t *testing.T)
 			}))
 			defer upstream.Close()
 			handler := newTestHandler(t, t.TempDir(), upstream.URL, &bytes.Buffer{}, anonymousFirstHFPolicy)
-			notifier := &captureGrantNotifier{}
-			handler.notifier = notifier
 			request := httptest.NewRequest(http.MethodGet, "/public/repo.git/info/refs?service=git-upload-pack", nil)
 			request.Header.Set("Authorization", "Bearer "+testSecret)
 			response := httptest.NewRecorder()
@@ -126,9 +119,9 @@ func TestAnonymousHuggingFaceUpstreamFailureDoesNotRequestApproval(t *testing.T)
 			if response.Code != status {
 				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 			}
-			messages, _ := notifier.snapshot()
-			if len(messages) != 0 {
-				t.Fatalf("upstream failure created approval: %+v", messages)
+			approvals := grantCount(t, handler, "agent")
+			if approvals != 0 {
+				t.Fatalf("upstream failure created %d approvals", approvals)
 			}
 		})
 	}
@@ -141,15 +134,13 @@ func TestAnonymousHuggingFaceTransportFailureDoesNotRequestApproval(t *testing.T
 	}))
 	handler := newTestHandler(t, t.TempDir(), upstream.URL, &bytes.Buffer{}, anonymousFirstHFPolicy)
 	upstream.Close()
-	notifier := &captureGrantNotifier{}
-	handler.notifier = notifier
 	request := httptest.NewRequest(http.MethodGet, "/public/repo.git/info/refs?service=git-upload-pack", nil)
 	request.Header.Set("Authorization", "Bearer "+testSecret)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	messages, _ := notifier.snapshot()
-	if response.Code != http.StatusBadGateway || len(messages) != 0 {
-		t.Fatalf("status = %d, approvals = %d", response.Code, len(messages))
+	approvals := grantCount(t, handler, "agent")
+	if response.Code != http.StatusBadGateway || approvals != 0 {
+		t.Fatalf("status = %d, approvals = %d", response.Code, approvals)
 	}
 }
 
@@ -210,16 +201,14 @@ func TestPublicHuggingFaceXetResponseIsRefusedWithoutApproval(t *testing.T) {
 	}))
 	defer upstream.Close()
 	handler := newTestHandler(t, t.TempDir(), upstream.URL, &bytes.Buffer{}, anonymousFirstHFPolicy)
-	notifier := &captureGrantNotifier{}
-	handler.notifier = notifier
 	request := httptest.NewRequest(http.MethodPost, "/datasets/public/repo.git/info/lfs/objects/batch",
 		strings.NewReader(`{"operation":"download","objects":[]}`))
 	request.Header.Set("Authorization", "Bearer "+testSecret)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	messages, _ := notifier.snapshot()
-	if response.Code != http.StatusNotImplemented || len(messages) != 0 {
-		t.Fatalf("status = %d, approvals = %d, body = %q", response.Code, len(messages), response.Body.String())
+	approvals := grantCount(t, handler, "agent")
+	if response.Code != http.StatusNotImplemented || approvals != 0 {
+		t.Fatalf("status = %d, approvals = %d, body = %q", response.Code, approvals, response.Body.String())
 	}
 }
 
@@ -237,14 +226,12 @@ func TestAnonymousHuggingFaceRedirectIsNotFollowedOrEscalated(t *testing.T) {
 	}))
 	defer upstream.Close()
 	handler := newTestHandler(t, t.TempDir(), upstream.URL, &bytes.Buffer{}, anonymousFirstHFPolicy)
-	notifier := &captureGrantNotifier{}
-	handler.notifier = notifier
 	request := httptest.NewRequest(http.MethodGet, "/public/repo.git/info/refs?service=git-upload-pack", nil)
 	request.Header.Set("Authorization", "Bearer "+testSecret)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	messages, _ := notifier.snapshot()
-	if response.Code != http.StatusFound || redirectedCalls.Load() != 0 || len(messages) != 0 {
-		t.Fatalf("status = %d, redirected calls = %d, approvals = %d", response.Code, redirectedCalls.Load(), len(messages))
+	approvals := grantCount(t, handler, "agent")
+	if response.Code != http.StatusFound || redirectedCalls.Load() != 0 || approvals != 0 {
+		t.Fatalf("status = %d, redirected calls = %d, approvals = %d", response.Code, redirectedCalls.Load(), approvals)
 	}
 }

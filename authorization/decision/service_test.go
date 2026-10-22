@@ -3,8 +3,6 @@ package decision
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -12,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/authorization/policy"
@@ -26,7 +23,7 @@ func (o *decisionObserver) OperatorDecision(action, result string) {
 	o.values = append(o.values, action+":"+result)
 }
 
-func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
+func TestServiceUsesValidatorForEveryApproval(t *testing.T) {
 	t.Parallel()
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	calls := 0
@@ -48,9 +45,11 @@ func TestServiceUsesValidatorForRevisionAndTokenApproval(t *testing.T) {
 		t.Fatalf("Decide() = %+v, %v", result, err)
 	}
 	second := create(t, store, "second")
-	approved, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:onur", testTelegramRef())
-	if err != nil || approved.Status != grants.StatusActive || calls != 2 {
-		t.Fatalf("ApproveToken() = %+v, %v calls=%d", approved, err, calls)
+	approved, err := service.Decide(t.Context(), second.Grant.ID, operatorv1.ActionApprove, "operator:onur", operatorv1.Decision{
+		ExpectedRevision: second.Grant.Revision, IdempotencyKey: "decision-2", OnBehalfOf: "telegram:42",
+	})
+	if err != nil || approved.Grant.Status != grants.StatusActive || calls != 2 {
+		t.Fatalf("second Decide() = %+v, %v calls=%d", approved, err, calls)
 	}
 }
 
@@ -78,7 +77,7 @@ func TestServiceReportsBoundedDecisionOutcomes(t *testing.T) {
 	}
 }
 
-func TestServiceAuditsRevisionAndTokenBindings(t *testing.T) {
+func TestServiceAuditsRevisionDecisions(t *testing.T) {
 	t.Parallel()
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
 	var output bytes.Buffer
@@ -93,8 +92,10 @@ func TestServiceAuditsRevisionAndTokenBindings(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	second := create(t, store, "audit-token")
-	if _, err := service.ApproveToken(t.Context(), second.Grant.ID, second.DecisionToken, "telegram:42", testTelegramRef()); err != nil {
+	second := create(t, store, "audit-telegram")
+	if _, err := service.Decide(t.Context(), second.Grant.ID, operatorv1.ActionApprove, "operator:telegram", operatorv1.Decision{
+		ExpectedRevision: second.Grant.Revision, IdempotencyKey: "audit-2", OnBehalfOf: "telegram:42",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n"))
@@ -115,11 +116,8 @@ func TestServiceAuditsRevisionAndTokenBindings(t *testing.T) {
 	if events[0].Extensions["binding"] != "revision" || events[0].Extensions["expected_revision"] != "1" || events[0].Extensions["on_behalf_of"] != "onur" {
 		t.Fatalf("revision audit = %+v", events[0])
 	}
-	if events[1].Extensions["binding"] != "token:telegram" || events[1].Approver != "telegram:42" {
-		t.Fatalf("token audit = %+v", events[1])
-	}
-	if bytes.Contains(output.Bytes(), []byte(second.DecisionToken)) {
-		t.Fatal("audit output leaked a decision token")
+	if events[1].Extensions["binding"] != "revision" || events[1].Approver != "operator:telegram" || events[1].Extensions["on_behalf_of"] != "telegram:42" {
+		t.Fatalf("on-behalf-of audit = %+v", events[1])
 	}
 }
 
@@ -137,20 +135,23 @@ func TestServiceRejectsInvalidInputAndValidatorFailure(t *testing.T) {
 	}); !errors.Is(err, grants.ErrInvalidCommand) {
 		t.Fatalf("invalid constraint error = %v", err)
 	}
-	ref := testTelegramRef()
-	if _, err := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", ref); !errors.Is(err, rejected) {
+	if _, err := service.Decide(t.Context(), created.Grant.ID, operatorv1.ActionApprove, "operator:onur", operatorv1.Decision{
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "approve",
+	}); !errors.Is(err, rejected) {
 		t.Fatalf("validator error = %v", err)
 	}
-	denied, err := service.DenyToken(t.Context(), created.Grant.ID, created.DecisionToken, "operator:onur", ref)
-	if err != nil || denied.Status != grants.StatusDenied {
-		t.Fatalf("DenyToken() = %+v, %v", denied, err)
+	denied, err := service.Decide(t.Context(), created.Grant.ID, operatorv1.ActionDeny, "operator:onur", operatorv1.Decision{
+		ExpectedRevision: created.Grant.Revision, IdempotencyKey: "deny",
+	})
+	if err != nil || denied.Grant.Status != grants.StatusDenied {
+		t.Fatalf("deny Decide() = %+v, %v", denied, err)
 	}
 }
 
-func TestTokenApprovalValidationAndCommitAreAtomic(t *testing.T) {
+func TestApprovalValidationAndCommitAreAtomic(t *testing.T) {
 	t.Parallel()
 	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
-	created := create(t, store, "atomic-token")
+	created := create(t, store, "atomic")
 	validationStarted := make(chan struct{})
 	releaseValidation := make(chan struct{})
 	service, err := New(Options{Store: store, Validator: ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error {
@@ -161,18 +162,17 @@ func TestTokenApprovalValidationAndCommitAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := testTelegramRef()
+	decide := func(action operatorv1.Action, done chan<- error) {
+		_, err := service.Decide(t.Context(), created.Grant.ID, action, "operator:onur", operatorv1.Decision{
+			ExpectedRevision: created.Grant.Revision, IdempotencyKey: "atomic-" + string(action),
+		})
+		done <- err
+	}
 	approveDone := make(chan error, 1)
-	go func() {
-		_, approveErr := service.ApproveToken(t.Context(), created.Grant.ID, created.DecisionToken, "telegram:onur", ref)
-		approveDone <- approveErr
-	}()
+	go decide(operatorv1.ActionApprove, approveDone)
 	<-validationStarted
 	denyDone := make(chan error, 1)
-	go func() {
-		_, denyErr := service.DenyToken(t.Context(), created.Grant.ID, created.DecisionToken, "telegram:onur", ref)
-		denyDone <- denyErr
-	}()
+	go decide(operatorv1.ActionDeny, denyDone)
 	select {
 	case err := <-denyDone:
 		t.Fatalf("concurrent denial completed during activation validation: %v", err)
@@ -180,10 +180,10 @@ func TestTokenApprovalValidationAndCommitAreAtomic(t *testing.T) {
 	}
 	close(releaseValidation)
 	if err := <-approveDone; err != nil {
-		t.Fatalf("ApproveToken() error = %v", err)
+		t.Fatalf("approve Decide() error = %v", err)
 	}
-	if err := <-denyDone; !errors.Is(err, grants.ErrNotPending) {
-		t.Fatalf("DenyToken() error = %v, want ErrNotPending", err)
+	if err := <-denyDone; !errors.Is(err, grants.ErrRevisionConflict) {
+		t.Fatalf("deny Decide() error = %v, want ErrRevisionConflict", err)
 	}
 }
 
@@ -194,18 +194,4 @@ func create(t *testing.T, store *grants.Store, id string) grants.RequestResult {
 		t.Fatal(err)
 	}
 	return result
-}
-
-func testTelegramRef() notify.MessageRef {
-	presentation := `{"grant_id":"test","presentation":{"title":"Test approval","target":"test"}}`
-	text := "<b>Test approval</b>"
-	return notify.MessageRef{
-		Kind: "telegram", Renderer: "telegram-html-v1", ChatID: 1, MessageID: 2, Text: text,
-		PresentationJSON: presentation, PresentationDigest: digest(presentation), RenderedDigest: digest(text),
-	}
-}
-
-func digest(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return "sha256:" + hex.EncodeToString(sum[:])
 }

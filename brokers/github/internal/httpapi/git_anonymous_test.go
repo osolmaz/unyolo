@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	usebudget "github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 	unyoloaudit "github.com/osolmaz/unyolo/telemetry/audit"
@@ -90,18 +91,17 @@ func TestPrivateGitHubFetchFallsBackToApprovedManagedCredential(t *testing.T) {
 		}
 		_, _ = w.Write([]byte("private-pack"))
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/private/repo.git/git-upload-pack", bearerAuth(), []byte("wants-private"))
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if anonymousCalls.Load() != 1 || managedCalls.Load() != 0 {
 		t.Fatalf("calls before approval: anonymous=%d managed=%d", anonymousCalls.Load(), managedCalls.Load())
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	response := <-responses
@@ -121,14 +121,13 @@ func TestAnonymousGitHubUpstreamFailureDoesNotRequestApproval(t *testing.T) {
 			server := newTestServerWithPolicyAndHandler(t, anonymousFirstFetchPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(status)
 			})
-			notifier := &captureNotifier{}
-			server.notifier = notifier
+			server.operatorConfigured = true
 			response := do(t, server, http.MethodGet, "/public/repo.git/info/refs?service=git-upload-pack", bearerAuth())
 			if response.Code != status {
 				t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 			}
-			if len(notifier.messages) != 0 {
-				t.Fatalf("upstream failure created approval: %+v", notifier.messages)
+			if approvalCount(t, server) != 0 {
+				t.Fatalf("upstream failure created %d approvals", approvalCount(t, server))
 			}
 		})
 	}
@@ -140,11 +139,10 @@ func TestAnonymousGitHubTransportFailureDoesNotRequestApproval(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 	server.githubGitClient = &http.Client{Transport: errorRoundTripper{}}
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	response := do(t, server, http.MethodGet, "/public/repo.git/info/refs?service=git-upload-pack", bearerAuth())
-	if response.Code != http.StatusBadGateway || len(notifier.messages) != 0 {
-		t.Fatalf("status = %d, approvals = %+v", response.Code, notifier.messages)
+	if response.Code != http.StatusBadGateway || approvalCount(t, server) != 0 {
+		t.Fatalf("status = %d, approvals = %d", response.Code, approvalCount(t, server))
 	}
 }
 
@@ -188,11 +186,10 @@ func TestAnonymousGitHubRedirectIsNotFollowedOrEscalated(t *testing.T) {
 		w.Header().Set("Location", redirected.URL+"/credential-target")
 		w.WriteHeader(http.StatusFound)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	response := do(t, server, http.MethodGet, "/public/repo.git/info/refs?service=git-upload-pack", bearerAuth())
-	if response.Code != http.StatusFound || redirectedCalls.Load() != 0 || len(notifier.messages) != 0 {
-		t.Fatalf("status = %d, redirected calls = %d, approvals = %d", response.Code, redirectedCalls.Load(), len(notifier.messages))
+	if response.Code != http.StatusFound || redirectedCalls.Load() != 0 || approvalCount(t, server) != 0 {
+		t.Fatalf("status = %d, redirected calls = %d, approvals = %d", response.Code, redirectedCalls.Load(), approvalCount(t, server))
 	}
 }
 

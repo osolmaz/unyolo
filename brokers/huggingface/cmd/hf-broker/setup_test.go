@@ -107,14 +107,14 @@ func TestParseSetupSystemdDefaultsToRequestAllPreset(t *testing.T) {
 	}
 }
 
-func TestParseSetupSystemdRequiresCompleteTelegramConfiguration(t *testing.T) {
+func TestParseSetupSystemdRejectsRemovedTelegramFlags(t *testing.T) {
 	base := requiredSetupArgs("--hf-token-file", "/tmp/hf-token", "--repo", "osolmaz/scraped-news", "--repo-type", "dataset")
 	for _, args := range [][]string{
 		append(base, "--telegram-bot-token-file", "/tmp/telegram-token"),
 		append(base, "--telegram-chat-id", "123"),
 	} {
-		if _, err := parseSetupSystemd(ioDiscard{}, args); err == nil || !strings.Contains(err.Error(), "must be set together") {
-			t.Fatalf("parseSetupSystemd(%v) error = %v", args, err)
+		if _, err := parseSetupSystemd(ioDiscard{}, args); err == nil {
+			t.Fatalf("parseSetupSystemd(%v) accepted a removed flag", args)
 		}
 	}
 }
@@ -456,48 +456,10 @@ func TestUnyoloSystemdInstallPlanKeepsProviderPayloadsTyped(t *testing.T) {
 	}
 }
 
-func TestUnyoloSystemdInstallPlanIncludesTelegramTokenFile(t *testing.T) {
+func TestUnyoloSystemdInstallPlanStartsNarrowPolicy(t *testing.T) {
 	dir := t.TempDir()
 	hfToken := filepath.Join(dir, "hf-token-source")
-	telegramToken := filepath.Join(dir, "telegram-token-source")
 	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(telegramToken, []byte("123:telegram\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	opts := setupSystemdOptions{
-		SystemdOptions: unyolosetup.SystemdOptions{BrokerName: "hf-broker", User: "hf-broker", Group: "hf-broker", ConfigDir: filepath.Join(dir, "etc"), StateDir: filepath.Join(dir, "state"), SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/test", ClientName: "agent-a", Endpoint: testAgentEndpoint, NoStart: true},
-		OperatorName:   "operator-a", OperatorSecret: strings.Repeat("o", 32), OperatorEndpoint: testOperatorEndpoint,
-		HFTokenFile: hfToken, TelegramBotTokenFile: telegramToken, TelegramChatID: 123,
-		Repo: "osolmaz/repo", RepoType: "model", SharedSecret: "abcdefghijklmnopqrstuvwxyz123456",
-	}
-	plan, err := unyoloSystemdInstallPlan(systemdSetupPlan(opts))
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, file := range plan.Files {
-		if file.Name == telegramTokenFileName && file.Owner == unyoloservice.ManagedFileOwnerService && file.Mode == 0o600 {
-			found = true
-		}
-	}
-	if !found || !strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=") {
-		t.Fatalf("telegram token was not installed: %+v", plan.Files)
-	}
-	if len(plan.RemoveFiles) != 2 || plan.ReadyCheck == nil || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
-		t.Fatalf("configured Telegram plan retires files: %+v", plan.RemoveFiles)
-	}
-}
-
-func TestUnyoloSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T) {
-	dir := t.TempDir()
-	hfToken := filepath.Join(dir, "hf-token-source")
-	telegramToken := filepath.Join(dir, "telegram-token-source")
-	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(telegramToken, []byte("123:telegram\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	opts := setupSystemdOptions{
@@ -507,8 +469,8 @@ func TestUnyoloSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T) {
 			SystemdDir: filepath.Join(dir, "systemd"), BinaryPath: "/usr/bin/hf-broker",
 			ClientName: "agent-a", Endpoint: testAgentEndpoint,
 		},
-		HFTokenFile: hfToken, TelegramBotTokenFile: telegramToken, TelegramChatID: 123,
-		Repo: "osolmaz/repo", RepoType: "model", SharedSecret: strings.Repeat("s", 32),
+		HFTokenFile: hfToken,
+		Repo:        "osolmaz/repo", RepoType: "model", SharedSecret: strings.Repeat("s", 32),
 		OperatorName: "operator", OperatorSecret: strings.Repeat("o", 32),
 		OperatorEndpoint: testOperatorEndpoint,
 	}
@@ -520,11 +482,11 @@ func TestUnyoloSystemdInstallPlanStartsNarrowPolicyWithTelegram(t *testing.T) {
 		t.Fatal("narrow policy retirement has no readiness check")
 	}
 	if err := plan.Validate(); err != nil {
-		t.Fatalf("narrow policy with Telegram install plan is invalid: %v", err)
+		t.Fatalf("narrow policy install plan is invalid: %v", err)
 	}
 }
 
-func TestUnyoloSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.T) {
+func TestUnyoloSystemdInstallPlanRetiresOldTelegramToken(t *testing.T) {
 	dir := t.TempDir()
 	hfToken := filepath.Join(dir, "hf-token-source")
 	if err := os.WriteFile(hfToken, []byte("hf_xxx\n"), 0o600); err != nil {
@@ -539,14 +501,14 @@ func TestUnyoloSystemdInstallPlanRetiresTelegramTokenWhenDisabled(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.RemoveFiles) != 3 || !managedFileRefNamed(plan.RemoveFiles, telegramTokenFileName) || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
-		t.Fatalf("disabled Telegram removals = %+v", plan.RemoveFiles)
+	if len(plan.RemoveFiles) != 3 || !managedFileRefNamed(plan.RemoveFiles, retiredTelegramTokenFileName) || !managedFileRefNamed(plan.RemoveFiles, policyProfileFileName) || !managedFileRefNamed(plan.RemoveFiles, policyManifestFileName) {
+		t.Fatalf("retired files = %+v", plan.RemoveFiles)
 	}
 	if plan.ReadyCheck == nil {
-		t.Fatal("disabled Telegram plan has no readiness check")
+		t.Fatal("retiring files requires a readiness check")
 	}
 	if strings.Contains(renderEnvFile(systemdSetupPlan(opts)), "TELEGRAM") {
-		t.Fatal("disabled Telegram remains in the environment")
+		t.Fatal("the broker environment names Telegram")
 	}
 }
 

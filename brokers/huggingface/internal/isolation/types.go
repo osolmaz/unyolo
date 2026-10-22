@@ -37,7 +37,6 @@ type Options struct {
 	TokenFile           string
 	ClientSecretsFile   string
 	OperatorSecretsFile string
-	TelegramTokenFile   string
 	Socket              string
 
 	HelperPath string
@@ -76,7 +75,6 @@ func credentialStatuses(opts Options) []unyolodoctor.CredentialStatus {
 		{"huggingface-access", opts.TokenFile, unyolodoctor.CredentialRevocationManual},
 		{"broker-client", opts.ClientSecretsFile, unyolodoctor.CredentialRevocationLocal},
 		{"broker-operator", opts.OperatorSecretsFile, unyolodoctor.CredentialRevocationLocal},
-		{"telegram-bot", opts.TelegramTokenFile, unyolodoctor.CredentialRevocationManual},
 	} {
 		if value.path != "" {
 			values = append(values, unyolodoctor.CredentialFileStatus(value.class, value.path, now,

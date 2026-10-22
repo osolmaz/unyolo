@@ -3,19 +3,17 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	rootpolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
@@ -25,14 +23,13 @@ import (
 
 func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {
 	dir := t.TempDir()
-	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce, policy.OpGitRefDelete, policy.OpGitTagUpdate))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
 		Audit: testAuditRecorder(),
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir:     filepath.Join(dir, "state"),
@@ -41,7 +38,6 @@ func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {
 		},
 		Scope:           scp,
 		UpstreamBaseURL: "http://127.0.0.1:1",
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +59,9 @@ func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {
 		if resp.StatusCode != http.StatusAccepted {
 			t.Fatalf("%s grant request = %d %q, want 202", tc.operation, resp.StatusCode, text)
 		}
-		if len(notifier.messages) != i+1 || notifier.messages[i].Operation != tc.operation {
-			t.Fatalf("notifier messages = %+v, want operation %s at index %d", notifier.messages, tc.operation, i)
+		items, err := handler.grants.ListForClient("agent")
+		if err != nil || len(items) != i+1 || items[i].Operation != tc.operation {
+			t.Fatalf("grants = %+v, %v, want operation %s at index %d", items, err, tc.operation, i)
 		}
 	}
 
@@ -89,7 +86,6 @@ func TestGrantRequestAcceptsConfiguredGitCapabilities(t *testing.T) {
 
 func TestGrantRequestAcceptsAppendPushWhenRequestable(t *testing.T) {
 	dir := t.TempDir()
-	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(datasetPolicyJSON(testDatasetPolicy{
 		name:       "repo",
 		requestOps: []policy.Operation{policy.OpGitPushAppend},
@@ -99,7 +95,7 @@ func TestGrantRequestAcceptsAppendPushWhenRequestable(t *testing.T) {
 	}
 	handler, err := New(Options{
 		Audit: testAuditRecorder(),
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir:     filepath.Join(dir, "state"),
@@ -108,7 +104,6 @@ func TestGrantRequestAcceptsAppendPushWhenRequestable(t *testing.T) {
 		},
 		Scope:           scp,
 		UpstreamBaseURL: "http://127.0.0.1:1",
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -118,8 +113,8 @@ func TestGrantRequestAcceptsAppendPushWhenRequestable(t *testing.T) {
 
 	body := apiGrantRequestJSON(policy.OpGitPushAppend, "refs/heads/main", "append once", "append-once", 0, 0)
 	resp, text := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("append grant request = %d %s messages=%d, want 202 and one message", resp.StatusCode, text, len(notifier.messages))
+	if resp.StatusCode != http.StatusAccepted || grantCount(t, handler, "agent") != 1 {
+		t.Fatalf("append grant request = %d %s messages=%d, want 202 and one message", resp.StatusCode, text, grantCount(t, handler, "agent"))
 	}
 
 	body = apiGrantRequestJSON(policy.OpGitPushAppend, "refs/replace/abc", "append replace", "", 0, 0)
@@ -140,14 +135,13 @@ func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notifier := &captureGrantNotifier{}
 	handler, err := New(Options{
 		Audit: testAuditRecorder(),
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second,
 		},
-		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier,
+		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -189,9 +183,8 @@ func TestGrantRequestAcceptsExplicitUnlimitedUseBudget(t *testing.T) {
 			t.Fatalf("tri-state idempotency conflict = %d, want 409", resp.StatusCode)
 		}
 	}
-	decision := handler.handleTelegramDecision(t.Context(), telegramGrantDecision(notify.ActionApprove, notifier.messages[0]))
-	if decision.Answer != notify.AnswerApproved || decision.Retry {
-		t.Fatalf("approval = %+v", decision)
+	if _, err := grantstest.Approve(handler.grants, created.ID, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
 	}
 	for index := range 3 {
 		requestID := fmt.Sprintf("api-use-%d", index)
@@ -294,11 +287,10 @@ func TestGrantRequestErrors(t *testing.T) {
 		t.Fatalf("grant with operator inbox = %d, want 202", resp.StatusCode)
 	}
 
-	notifier := &captureGrantNotifier{}
 	if err := handler.Close(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier})
+	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,46 +351,14 @@ func TestGrantRequestErrors(t *testing.T) {
 	if err := handler.Close(); err != nil {
 		t.Fatal(err)
 	}
-	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: failingGrantNotifier{}})
+	handler, err = New(Options{Config: baseCfg, Scope: scp, Audit: audit.New(&auditLog), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	broker.Config.Handler = handler
 	resp, _ = doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(validBody))
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Fatalf("notifier failure status = %d, want 502", resp.StatusCode)
-	}
-}
-
-func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
-	dir := t.TempDir()
-	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce))))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := New(Options{
-		Audit: testAuditRecorder(),
-		Config: config.Config{
-			HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
-			Operators: []config.Client{{Name: "operator", Secret: "operator-secret-abcdefghijklmnopqrstuvwxyz"}},
-			StateDir:  filepath.Join(dir, "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second,
-		},
-		Scope: scp, UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: failingGrantNotifier{},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	broker := httptest.NewServer(handler)
-	defer broker.Close()
-	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "telegram-failed-inbox-pending", 5, 0)
-	resp, responseBody := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("grant request = %d %s, want 202", resp.StatusCode, responseBody)
-	}
-	stored := decodeAPIGrantResponse(t, responseBody)
-	grant, err := handler.grants.Get(stored.ID)
-	if err != nil || grant.Status != grants.StatusPending || !grant.NotificationDeliveryUnresolved {
-		t.Fatalf("stored grant = %+v, err=%v", grant, err)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("no operator channel status = %d, want 503", resp.StatusCode)
 	}
 }
 
@@ -442,9 +402,9 @@ func TestMillionWriteBucketGrantRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+	handler, err := New(Options{Config: config.Config{Operators: testOperators(), HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
-		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: &captureGrantNotifier{}})
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +433,7 @@ func TestForwardWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := handler.grants.Approve(requested.ID, requested.DecisionToken, "operator")
+	approved, err := grantstest.Approve(handler.grants, requested.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,9 +467,9 @@ func TestBucketWindowGrantPersistsExactKeyScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+	handler, err := New(Options{Config: config.Config{Operators: testOperators(), HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
-		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: &captureGrantNotifier{}})
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,10 +501,9 @@ func TestReservedBucketListGrantFiltersObjectsOutsideKeyScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notifier := &captureGrantNotifier{}
-	handler, err := New(Options{Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+	handler, err := New(Options{Config: config.Config{Operators: testOperators(), HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 		StateDir: filepath.Join(t.TempDir(), "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
-		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier})
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,13 +511,12 @@ func TestReservedBucketListGrantFiltersObjectsOutsideKeyScope(t *testing.T) {
 	defer broker.Close()
 	response, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(
 		`{"operation":"bucket.object.list","target":{"kind":"bucket","owner":"acme","name":"artifacts","keys":["runs/**"]},"reason":"inspect run outputs","client_request_id":"bucket-list-runs"}`))
-	if response.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("grant request = %d %s; notifications=%d", response.StatusCode, body, len(notifier.messages))
+	if response.StatusCode != http.StatusAccepted || grantCount(t, handler, "agent") != 1 {
+		t.Fatalf("grant request = %d %s; grants=%d", response.StatusCode, body, grantCount(t, handler, "agent"))
 	}
 	created := decodeAPIGrantResponse(t, body)
-	decision := handler.handleTelegramDecision(t.Context(), telegramGrantDecision(notify.ActionApprove, notifier.messages[0]))
-	if decision.Answer != notify.AnswerApproved || decision.Retry {
-		t.Fatalf("approval = %+v", decision)
+	if _, err := grantstest.Approve(handler.grants, created.ID, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
 	}
 	reserved, err := handler.grants.ReserveUse(created.ID, "bucket-policy-check", created.Operation)
 	if err != nil {
@@ -579,14 +537,13 @@ func TestReservedBucketListGrantFiltersObjectsOutsideKeyScope(t *testing.T) {
 
 func TestAPIGrantsUseJSendAndClientScopedReads(t *testing.T) {
 	dir := t.TempDir()
-	notifier := &captureGrantNotifier{}
 	var auditLog bytes.Buffer
 	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken: testToken,
 			Clients: []config.Client{
 				{Name: "agent", Secret: testSecret},
@@ -599,7 +556,6 @@ func TestAPIGrantsUseJSendAndClientScopedReads(t *testing.T) {
 		Scope:           scp,
 		Audit:           audit.New(&auditLog),
 		UpstreamBaseURL: "http://127.0.0.1:1",
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -617,8 +573,8 @@ func TestAPIGrantsUseJSendAndClientScopedReads(t *testing.T) {
 	if resp.StatusCode != http.StatusAccepted || decodeJSendStatus(t, body) != "success" {
 		t.Fatalf("grant create = %d %s, want 202 success", resp.StatusCode, body)
 	}
-	if len(notifier.messages) != 1 || strings.Contains(body, notifier.messages[0].DecisionToken) {
-		t.Fatalf("grant create messages=%+v body=%s, want one message and no decision token leak", notifier.messages, body)
+	if grantCount(t, handler, "agent") != 1 || strings.Contains(body, "decision_token") {
+		t.Fatalf("grant create grants=%d body=%s, want one grant and no decision token field", grantCount(t, handler, "agent"), body)
 	}
 	created := decodeAPIGrantResponse(t, body)
 	if created.Operation != string(policy.OpGitPushForce) || len(created.Target.Refs) != 1 || created.Target.Refs[0] != "refs/heads/main" {
@@ -672,7 +628,6 @@ func assertAuditContains(t *testing.T, auditText string, values ...string) {
 
 func TestAPIGrantResponsesPersistGrantMode(t *testing.T) {
 	dir := t.TempDir()
-	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(`{"rules":[{
 		"id":"request-force-execution",
 		"effect":"request",
@@ -686,7 +641,7 @@ func TestAPIGrantResponsesPersistGrantMode(t *testing.T) {
 	}
 	handler, err := New(Options{
 		Audit: testAuditRecorder(),
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir:     filepath.Join(dir, "state"),
@@ -695,7 +650,6 @@ func TestAPIGrantResponsesPersistGrantMode(t *testing.T) {
 		},
 		Scope:           scp,
 		UpstreamBaseURL: "http://127.0.0.1:1",
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -737,154 +691,5 @@ func TestGrantExpiresAtStringPtrOmitsNeverActiveExpiredGrant(t *testing.T) {
 	}
 	if got := grantExpiresAtStringPtr(grants.Grant{Status: grants.StatusExpired, ExpiredFrom: grants.StatusActive, ExpiresAt: expiresAt}); got == nil {
 		t.Fatalf("active-expired grant expires_at = nil, want timestamp")
-	}
-}
-
-func TestAPIGrantNotifierFailureIsJSend(t *testing.T) {
-	dir := t.TempDir()
-	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce))))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, err := New(Options{
-		Audit: testAuditRecorder(),
-		Config: config.Config{
-			HFToken:      testToken,
-			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
-			StateDir:     filepath.Join(dir, "state"),
-			MaxPackBytes: 25 * 1024 * 1024,
-			HFTimeout:    10 * time.Second,
-		},
-		Scope:           scp,
-		UpstreamBaseURL: "http://127.0.0.1:1",
-		GrantNotifier:   failingGrantNotifier{},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	broker := httptest.NewServer(handler)
-	defer broker.Close()
-
-	resp, body := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "", 0, 0)))
-	if resp.StatusCode != http.StatusBadGateway || decodeJSendStatus(t, body) != "error" || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
-		t.Fatalf("notifier failure = %d %q %s, want 502 JSend error", resp.StatusCode, resp.Header.Get("Content-Type"), body)
-	}
-	stored, err := handler.grants.ListForClient("agent")
-	if err != nil || len(stored) != 1 || !stored[0].NotificationDeliveryUnresolved || stored[0].NotificationClaimedAt.IsZero() {
-		t.Fatalf("stored notifier failure = %+v err=%v, want one unresolved claim", stored, err)
-	}
-}
-
-func TestGrantNotificationWaitState(t *testing.T) {
-	tests := []struct {
-		name  string
-		grant grants.Grant
-		want  error
-	}{
-		{name: "canceled", grant: grants.Grant{Status: grants.StatusCanceled}, want: errGrantNotificationCanceled},
-		{name: "unresolved", grant: grants.Grant{Status: grants.StatusPending, NotificationDeliveryUnresolved: true}, want: errGrantNotificationUnresolved},
-		{name: "queued", grant: grants.Grant{Status: grants.StatusPending}, want: errGrantNotificationStillQueued},
-		{name: "notified", grant: grants.Grant{Status: grants.StatusPending, Notification: &grants.MessageRef{MessageID: 1}}},
-		{name: "terminal", grant: grants.Grant{Status: grants.StatusDenied}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := grantNotificationWaitState(test.grant); !errors.Is(got, test.want) || (got == nil) != (test.want == nil) {
-				t.Fatalf("grantNotificationWaitState() = %v, want %v", got, test.want)
-			}
-		})
-	}
-}
-
-func TestUnresolvedNotifierFailureSurvivesRestartAndRetriesAfterLease(t *testing.T) {
-	dir := t.TempDir()
-	now := time.Date(2026, 7, 10, 7, 0, 0, 0, time.UTC)
-	var nowMu sync.Mutex
-	nowFunc := func() time.Time {
-		nowMu.Lock()
-		defer nowMu.Unlock()
-		return now
-	}
-	advanceNow := func(duration time.Duration) {
-		nowMu.Lock()
-		defer nowMu.Unlock()
-		now = now.Add(duration)
-	}
-	notifier := newBlockingGrantNotifier()
-	notifier.firstErr = errors.New("notify failed")
-	notifier.releaseSend()
-	scp, err := policy.Parse([]byte(datasetPolicyJSON(grantableDataset("repo", policy.OpGitPushForce))))
-	if err != nil {
-		t.Fatal(err)
-	}
-	stateDir := filepath.Join(dir, "state")
-	newHandler := func() *Server {
-		handler, err := New(Options{
-			Audit: testAuditRecorder(),
-			Config: config.Config{
-				HFToken:      testToken,
-				Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
-				StateDir:     stateDir,
-				MaxPackBytes: 25 * 1024 * 1024,
-				HFTimeout:    10 * time.Second,
-			},
-			Scope:           scp,
-			UpstreamBaseURL: "http://127.0.0.1:1",
-			GrantNotifier:   notifier,
-			Now:             nowFunc,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return handler
-	}
-	body := apiGrantRequestJSON(policy.OpGitPushForce, "refs/heads/main", "recover", "restart-unresolved", 0, 0)
-
-	firstHandler := newHandler()
-	firstBroker := httptest.NewServer(firstHandler)
-	resp, responseBody := doRequest(t, http.MethodPost, firstBroker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	firstBroker.Close()
-	if err := firstHandler.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Fatalf("first request status=%d body=%q, want 502", resp.StatusCode, responseBody)
-	}
-	if notifier.calls() != 1 {
-		t.Fatalf("first notifier calls = %d, want one", notifier.calls())
-	}
-
-	restartedHandler := newHandler()
-	restartedBroker := httptest.NewServer(restartedHandler)
-	started := time.Now()
-	resp, responseBody = doRequest(t, http.MethodPost, restartedBroker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusBadGateway || time.Since(started) >= time.Second {
-		t.Fatalf("restart request status=%d elapsed=%s body=%q, want prompt 502", resp.StatusCode, time.Since(started), responseBody)
-	}
-	if notifier.calls() != 1 {
-		t.Fatalf("restart notifier calls = %d, want no duplicate", notifier.calls())
-	}
-	restartedBroker.Close()
-	if err := restartedHandler.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	advanceNow(grantNotificationClaimLease + time.Second)
-	recoveredHandler := newHandler()
-	t.Cleanup(func() { _ = recoveredHandler.Close() })
-	deadline := time.Now().Add(2 * time.Second)
-	for notifier.calls() < 2 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if notifier.calls() != 2 {
-		t.Fatalf("recovered notifier calls = %d, want two without a client retry", notifier.calls())
-	}
-	tokens := notifier.decisionTokens()
-	if len(tokens) != 2 || tokens[0] == "" || tokens[0] == tokens[1] {
-		t.Fatalf("notification tokens = %+v, want two distinct non-empty tokens", tokens)
-	}
-	stored, err := recoveredHandler.grants.ListForClient("agent")
-	if err != nil || len(stored) != 1 || stored[0].Notification == nil || stored[0].NotificationDeliveryUnresolved {
-		t.Fatalf("stored post-lease grant = %+v err=%v", stored, err)
 	}
 }

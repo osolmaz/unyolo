@@ -28,15 +28,17 @@ const (
 	githubAppClientIDFileName     = "github-app-client-id"
 	githubAppClientSecretFileName = "github-app-client-secret" // #nosec G101 -- config filename.
 	githubWebhookSecretFileName   = "github-webhook-secret"    // #nosec G101 -- this is a config filename, not a secret value.
-	ghTelegramTokenFileName       = "telegram-bot-token"       // #nosec G101 -- this is a config filename, not a secret value.
-	ghSecretsFileName             = "secrets"
-	ghOperatorSecretsFileName     = "operator-secrets"
-	ghScopeFileName               = "scope.json"
-	ghPolicyProfileFileName       = "policy-profile.json"
-	ghPolicyManifestFileName      = "policy-manifest.json"
-	ghEnvFileName                 = "env"
-	ghUnitFileName                = "gh-broker.service"
-	maxGitHubSetupFileBytes       = 16 * 1024 * 1024
+	// ghRetiredTelegramTokenFileName is the bot token file of older releases.
+	// Setup removes it: only unyolo-telegram holds the bot token.
+	ghRetiredTelegramTokenFileName = "telegram-bot-token" // #nosec G101 -- this is a config filename, not a secret value.
+	ghSecretsFileName              = "secrets"
+	ghOperatorSecretsFileName      = "operator-secrets"
+	ghScopeFileName                = "scope.json"
+	ghPolicyProfileFileName        = "policy-profile.json"
+	ghPolicyManifestFileName       = "policy-manifest.json"
+	ghEnvFileName                  = "env"
+	ghUnitFileName                 = "gh-broker.service"
+	maxGitHubSetupFileBytes        = 16 * 1024 * 1024
 )
 
 type systemdPlan struct {
@@ -47,7 +49,6 @@ type systemdPlan struct {
 	appClientIDPath     string
 	appClientSecretPath string
 	webhookSecretPath   string
-	telegramTokenPath   string
 	secretsPath         string
 	operatorSecretsPath string
 	scopePath           string
@@ -114,7 +115,6 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 		appClientIDPath:     filepath.Join(opts.ConfigDir, githubAppClientIDFileName),
 		appClientSecretPath: filepath.Join(opts.ConfigDir, githubAppClientSecretFileName),
 		webhookSecretPath:   filepath.Join(opts.ConfigDir, githubWebhookSecretFileName),
-		telegramTokenPath:   filepath.Join(opts.ConfigDir, ghTelegramTokenFileName),
 		secretsPath:         filepath.Join(opts.ConfigDir, ghSecretsFileName),
 		operatorSecretsPath: filepath.Join(opts.ConfigDir, ghOperatorSecretsFileName),
 		scopePath:           filepath.Join(opts.ConfigDir, ghScopeFileName),
@@ -161,10 +161,7 @@ func unyoloSystemdInstallPlan(plan systemdPlan) (unyoloservice.SystemdInstallPla
 func githubRetiredManagedFiles(plan systemdPlan) []unyoloservice.ManagedFileRef {
 	removeFiles := retiredPolicyFiles(plan)
 	removeFiles = append(removeFiles, retiredCredentialFiles(plan)...)
-	if plan.opts.TelegramBotTokenFile == "" {
-		removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: ghTelegramTokenFileName, CredentialClass: "telegram-bot"})
-	}
-	return removeFiles
+	return append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: ghRetiredTelegramTokenFileName, CredentialClass: "telegram-bot"})
 }
 
 func retiredPolicyFiles(plan systemdPlan) []unyoloservice.ManagedFileRef {
@@ -227,18 +224,7 @@ func githubManagedFiles(plan systemdPlan) ([]unyoloservice.ManagedFile, error) {
 			unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghPolicyManifestFileName, Data: policyFiles.manifest, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
 		)
 	}
-	return appendTelegramCredentialFile(files, plan)
-}
-
-func appendTelegramCredentialFile(files []unyoloservice.ManagedFile, plan systemdPlan) ([]unyoloservice.ManagedFile, error) {
-	if plan.opts.TelegramBotTokenFile == "" {
-		return files, nil
-	}
-	token, err := readRequiredSetupFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
-	if err != nil {
-		return nil, err
-	}
-	return append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: ghTelegramTokenFileName, Data: token, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"}), nil
+	return files, nil
 }
 
 type githubSetupPolicyFiles struct {
@@ -437,10 +423,6 @@ func renderEnvFile(plan systemdPlan) string {
 	if opts.GitEndpoint != "" {
 		body += "GH_BROKER_GIT_ENDPOINT=" + opts.GitEndpoint + "\n"
 	}
-	if opts.TelegramBotTokenFile != "" {
-		body += "GH_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
-			"GH_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
-	}
 	if opts.DevTokenFallback {
 		return body + "GH_BROKER_GITHUB_TOKEN_FILE=" + plan.tokenPath + "\n"
 	}
@@ -606,7 +588,6 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   app id file:     %s
   app private key: %s
   webhook secret:  %s
-  telegram token:  %s
   secrets file:    %s
   operator file:   %s
   scope file:      %s
@@ -617,7 +598,7 @@ func printSystemdDryRun(stdout io.Writer, plan systemdPlan) error {
   git endpoint:    %s
   agent access:    %s (%s)
   operator access: %s (%s)
-%s`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), showPath(plan.opts.TelegramBotTokenFile != "", plan.telegramTokenPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, plan.opts.Endpoint, showPath(plan.opts.GitEndpoint != "", plan.opts.GitEndpoint), plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
+%s`, plan.opts.User, plan.opts.Group, plan.opts.DevTokenFallback, showPath(plan.opts.DevTokenFallback, plan.tokenPath), showPath(!plan.opts.DevTokenFallback, plan.appIDPath), showPath(!plan.opts.DevTokenFallback, plan.appPrivateKeyPath), showPath(!plan.opts.DevTokenFallback, plan.webhookSecretPath), plan.secretsPath, plan.operatorSecretsPath, plan.scopePath, plan.envPath, plan.opts.StateDir, plan.unitPath, plan.opts.Endpoint, showPath(plan.opts.GitEndpoint != "", plan.opts.GitEndpoint), plan.opts.AgentUser, plan.opts.AgentAccessGroup, plan.opts.OperatorUser, plan.opts.OperatorAccessGroup, sockets)
 	if err != nil {
 		return err
 	}

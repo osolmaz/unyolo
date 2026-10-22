@@ -16,8 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
@@ -73,18 +71,7 @@ type testDatasetPolicy struct {
 	grantBounds map[string]int
 }
 
-type grantRequestResult struct {
-	status int
-	body   string
-	err    error
-}
-
-type requestedGrant struct {
-	grants.Grant
-	DecisionToken string
-}
-
-func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, input hfgrant.Input) (requestedGrant, bool, error) {
+func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, input hfgrant.Input) (grants.Grant, bool, error) {
 	t.Helper()
 	if input.ClientRequestID == "" {
 		input.ClientRequestID = strings.NewReplacer("/", "-", " ", "-").Replace(t.Name())
@@ -104,7 +91,7 @@ func requestHFGrant(t *testing.T, store *grants.Store, plans *hfplan.Store, inpu
 			result, created, err = store.Request(request)
 		}
 	}
-	return requestedGrant{Grant: result.Grant, DecisionToken: result.DecisionToken}, created, err
+	return result.Grant, created, err
 }
 
 func testPlanStore(t *testing.T) *hfplan.Store {
@@ -249,19 +236,6 @@ func apiGrantRequestForRepoJSON(operation policy.Operation, repo, ref, reason, c
 		panic(err)
 	}
 	return string(data)
-}
-
-func telegramGrantDecision(action notify.Action, msg approvalnotify.Approval) notify.Decision {
-	return notify.Decision{
-		Action:        action,
-		GrantID:       msg.GrantID,
-		DecisionToken: msg.DecisionToken,
-		ChatID:        123,
-		MessageID:     1,
-		MessageText:   "grant text",
-		OperatorID:    42,
-		OperatorTag:   "operator",
-	}
 }
 
 func decodeAPIGrantResponse(t *testing.T, body string) apiGrantBody {

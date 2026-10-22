@@ -23,20 +23,12 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Date(2026, 7, 13, 2, 0, 0, 0, time.UTC)
-	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant-id", "decision-token", "notification-token")})
+	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant-id")})
 	requested, created, err := store.Request(Request{Client: "bob", ClientRequestID: "request-1", Operation: "repo.create",
 		Target: policy.Target{Kind: "hf", Fields: map[string][]string{"name": {"model/acme/demo"}}}, Reason: "test",
 		Duration: 5 * time.Minute, MaxUses: 2})
 	if err != nil || !created {
 		t.Fatalf("Request() = %+v, %v, %v", requested, created, err)
-	}
-	claim, claimed, err := store.ClaimNotification(requested.Grant.ID, time.Minute)
-	if err != nil || !claimed || claim.DecisionToken != "notification-token" {
-		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
-	}
-	ref := testTelegramMessageRef(2, "approve")
-	if _, recorded, err := store.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref); err != nil || !recorded {
-		t.Fatalf("SetNotificationIfClaimed() = %v, %v", recorded, err)
 	}
 	pending, err := store.Get(requested.Grant.ID)
 	if err != nil {
@@ -57,7 +49,7 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 
 	restarted := NewDatabase(database, Options{Now: func() time.Time { return now }})
 	stored, err := restarted.Get(pending.ID)
-	if err != nil || stored.Status != StatusActive || stored.UsedCount != 1 || stored.Notification == nil || *stored.Notification != ref {
+	if err != nil || stored.Status != StatusActive || stored.UsedCount != 1 {
 		t.Fatalf("restarted Get() = %+v, %v", stored, err)
 	}
 	replay, err := restarted.ApplyOperatorDecision(context.Background(), command, nil)
@@ -68,8 +60,7 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	if err != nil || len(events.Events) != 4 {
 		t.Fatalf("EventsAfter() = %+v, %v", events, err)
 	}
-	var grantsCount, eventsCount, decisionsCount, outboxCount, outboxAttempts int
-	var outboxStatus string
+	var grantsCount, eventsCount, decisionsCount int
 	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM grants").Scan(&grantsCount); err != nil {
 		t.Fatal(err)
 	}
@@ -79,11 +70,8 @@ func TestSQLiteStorePersistsLifecycleAndDecisionReplay(t *testing.T) {
 	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM decision_records").Scan(&decisionsCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*), status, attempts FROM notification_outbox GROUP BY status, attempts").Scan(&outboxCount, &outboxStatus, &outboxAttempts); err != nil {
-		t.Fatal(err)
-	}
-	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 || outboxCount != 1 || outboxStatus != "delivered" || outboxAttempts != 1 {
-		t.Fatalf("SQLite rows = grants %d events %d decisions %d outbox %d/%s/%d", grantsCount, eventsCount, decisionsCount, outboxCount, outboxStatus, outboxAttempts)
+	if grantsCount != 1 || eventsCount != 4 || decisionsCount != 1 {
+		t.Fatalf("SQLite rows = grants %d events %d decisions %d", grantsCount, eventsCount, decisionsCount)
 	}
 }
 
@@ -94,7 +82,7 @@ func TestSQLiteStorePersistsAndReplaysTerminalActivationFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	now := time.Date(2026, 8, 7, 4, 0, 0, 0, time.UTC)
-	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant", "token")})
+	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant")})
 	created, _, err := store.Request(Request{Client: "bob", Operation: "write", Target: policy.Target{Kind: "repo"},
 		Reason: "update", Duration: time.Minute, MaxUses: 1})
 	if err != nil {
@@ -152,7 +140,7 @@ func TestSQLiteStorePersistsUnlimitedUseBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	store := NewDatabase(database, Options{NewID: sequenceIDs("grant", "token", "defaulted-grant", "defaulted-token")})
+	store := NewDatabase(database, Options{NewID: sequenceIDs("grant", "defaulted-grant")})
 	result, created, err := store.Request(Request{
 		Client: "bob", ClientRequestID: "unlimited", Operation: "write",
 		Target: policy.Target{Kind: "repo", Fields: map[string][]string{"name": {"demo"}}},
@@ -224,7 +212,7 @@ func TestRequestWithPlanCommitsAndRollsBackAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
-	store := NewDatabase(database, Options{NewID: sequenceIDs("grant-1", "token-1", "grant-2", "token-2")})
+	store := NewDatabase(database, Options{NewID: sequenceIDs("grant-1", "grant-2")})
 	createdAt := time.Date(2026, 7, 13, 3, 0, 0, 0, time.UTC)
 	canonical := []byte(`{"schema":"provider/v1"}`)
 	digest := plandigest.Digest(canonical)
@@ -252,76 +240,9 @@ func TestRequestWithPlanCommitsAndRollsBackAtomically(t *testing.T) {
 	if _, err := database.Plan(t.Context(), failedDigest); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("rolled-back plan lookup error = %v", err)
 	}
-	var grantsCount, outboxCount int
+	var grantsCount int
 	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM grants").Scan(&grantsCount); err != nil || grantsCount != 1 {
 		t.Fatalf("grant rows after rollback = %d, %v", grantsCount, err)
-	}
-	if err := database.SQL().QueryRowContext(t.Context(), "SELECT count(*) FROM notification_outbox").Scan(&outboxCount); err != nil || outboxCount != 1 {
-		t.Fatalf("outbox rows after rollback = %d, %v", outboxCount, err)
-	}
-}
-
-func TestSQLiteNotificationOutboxRecoversAmbiguousClaim(t *testing.T) {
-	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	now := time.Date(2026, 7, 13, 4, 0, 0, 0, time.UTC)
-	store := NewDatabase(database, Options{Now: func() time.Time { return now }, NewID: sequenceIDs("grant", "token", "claim-1", "claim-2")})
-	requested, _, err := store.Request(Request{Client: "bob", ClientRequestID: "request", Operation: "repo.create",
-		Target: policy.Target{Kind: "test", Fields: map[string][]string{"name": {"repo"}}}, Reason: "test", Duration: time.Minute, MaxUses: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	claim, claimed, err := store.ClaimNotification(requested.Grant.ID, time.Minute)
-	if err != nil || !claimed {
-		t.Fatalf("first claim = %+v, %v, %v", claim, claimed, err)
-	}
-	if _, retained, err := store.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt); err != nil || !retained {
-		t.Fatalf("retain = %v, %v", retained, err)
-	}
-	var status string
-	var attempts int
-	if err := database.SQL().QueryRowContext(t.Context(), "SELECT status, attempts FROM notification_outbox").Scan(&status, &attempts); err != nil || status != "ambiguous" || attempts != 1 {
-		t.Fatalf("ambiguous outbox = %s/%d, %v", status, attempts, err)
-	}
-	if due, err := store.ApprovalNotificationsDue(); err != nil || len(due) != 0 {
-		t.Fatalf("pre-lease ApprovalNotificationsDue() = %+v, %v", due, err)
-	}
-	now = now.Add(time.Minute + time.Second)
-	if due, err := store.ApprovalNotificationsDue(); err != nil || len(due) != 1 || due[0].ID != requested.Grant.ID {
-		t.Fatalf("post-lease ApprovalNotificationsDue() = %+v, %v", due, err)
-	}
-	if _, claimed, err := store.ClaimNotification(requested.Grant.ID, time.Minute); err != nil || !claimed {
-		t.Fatalf("reclaim = %v, %v", claimed, err)
-	}
-	if err := database.SQL().QueryRowContext(t.Context(), "SELECT status, attempts FROM notification_outbox").Scan(&status, &attempts); err != nil || status != "claimed" || attempts != 2 {
-		t.Fatalf("reclaimed outbox = %s/%d, %v", status, attempts, err)
-	}
-}
-
-func TestSQLiteNotificationOutboxStopsAfterBoundedAttempts(t *testing.T) {
-	database, err := state.Open(t.Context(), t.TempDir(), state.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = database.Close() })
-	now := time.Date(2026, 7, 15, 4, 0, 0, 0, time.UTC)
-	store := NewDatabase(database, Options{Now: func() time.Time { return now }})
-	requested, _, err := store.Request(Request{Client: "agent", ClientRequestID: "request", Operation: "repo.create",
-		Target: policy.Target{Kind: "test", Fields: map[string][]string{"name": {"repo"}}}, Reason: "test", MaxUses: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = database.SQL().ExecContext(t.Context(),
-		"UPDATE notification_outbox SET status = 'ambiguous', attempts = ?, available_at = ? WHERE grant_id = ?",
-		maxNotificationAttempts, now.Add(-time.Second).UTC().Format(time.RFC3339Nano), requested.Grant.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if due, err := store.ApprovalNotificationsDue(); err != nil || len(due) != 0 {
-		t.Fatalf("attempt-limited notifications = %+v, %v", due, err)
 	}
 }
 

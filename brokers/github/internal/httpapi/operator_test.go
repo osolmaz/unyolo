@@ -12,6 +12,7 @@ import (
 
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/broker/conformance"
 	"github.com/osolmaz/unyolo/brokers/github/internal/config"
@@ -61,8 +62,8 @@ func TestOperatorHandlerSharesCanonicalGitHubGrantState(t *testing.T) {
 	if err != nil || approved.Status != grants.StatusActive {
 		t.Fatalf("Approve() = %+v, %v", approved, err)
 	}
-	if _, err := server.grants.Deny(result.Grant.ID, result.DecisionToken, "telegram:onur"); !errors.Is(err, grants.ErrNotPending) {
-		t.Fatalf("Telegram replay error = %v", err)
+	if _, err := grantstest.Deny(server.grants, result.Grant.ID, "operator:telegram"); !errors.Is(err, grants.ErrInvalidTransition) {
+		t.Fatalf("late deny error = %v", err)
 	}
 	assertOperatorRejectsClientSecret(t, operatorServer, clientSecret)
 }

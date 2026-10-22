@@ -215,6 +215,21 @@ must verify the callback sender ID, group ID, message binding, request binding,
 action, expiry, and single-use state. It must ignore callbacks from OpenClaw's
 bot and from anonymous chat senders.
 
+### What unyolo-telegram checks
+
+`unyolo-telegram` is the only unYOLO process that holds the bot token; brokers
+have no Telegram access. It mints a random token for each card and stores only
+its digest. It accepts a click only when the click comes from the configured
+chat, matches the chat and message of its own card for that request, carries
+that card's token, and the clicked button still has the label of the clicked
+action. It then decides with the request's expected revision and an idempotency
+key derived from the click.
+
+The label check stops a relabeled keyboard from turning a click on “Deny” into
+an approval. It does not compare the message text, so a token holder that edits
+the text can still mislead the operator about the request. Shared-bot hardened
+mode therefore still needs a router that blocks those edits.
+
 ## Platform matrix
 
 “Direct” means the platform request reaches a trusted verifier before

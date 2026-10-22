@@ -2,8 +2,6 @@ package operatorapi_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -104,58 +102,6 @@ func TestOperatorV1ListDecisionAndReplay(t *testing.T) {
 	}
 }
 
-func TestOperatorV1NotificationDecisionRejectsStaleToken(t *testing.T) {
-	store, _, client := newOperatorServer(t, nil)
-	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
-		Metadata: map[string]string{grants.MetadataMode: "execution"}, Target: policy.Target{Kind: "repository"},
-		Reason: "test", Duration: time.Minute, MaxUses: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-stale",
-		OnBehalfOf: "telegram:42", Notification: testNotificationDecision("wrong")}
-	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); !hasCode(err, "invalid_decision_token") {
-		t.Fatalf("stale token error = %v", err)
-	}
-	command.IdempotencyKey = "telegram-valid"
-	command.Notification.DecisionToken = result.DecisionToken
-	approved, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command)
-	if err != nil || approved.Status != grants.StatusActive || approved.DecidedOnBehalfOf != "telegram:42" {
-		t.Fatalf("notification approval = %+v, %v", approved, err)
-	}
-}
-
-func TestOperatorV1AcceptsBoundedEscapedTelegramText(t *testing.T) {
-	store, _, client := newOperatorServer(t, nil)
-	result, _, err := store.Request(grants.Request{Client: "bob", Operation: "provider.write",
-		Metadata: map[string]string{grants.MetadataMode: "execution"}, Target: policy.Target{Kind: "repository"},
-		Reason: "test", Duration: time.Minute, MaxUses: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := operatorv1.Decision{ExpectedRevision: result.Grant.Revision, IdempotencyKey: "telegram-escaped",
-		OnBehalfOf: "telegram:42", Notification: testNotificationDecision(result.DecisionToken)}
-	command.Notification.Text = strings.Repeat("&amp;", 1_000)
-	command.Notification.RenderedDigest = notificationDigest(command.Notification.Text)
-	if _, err := client.Decide(t.Context(), result.Grant.ID, operatorv1.ActionApprove, command); err != nil {
-		t.Fatalf("escaped Telegram notification = %v", err)
-	}
-}
-
-func testNotificationDecision(token string) *operatorv1.NotificationDecision {
-	presentation := `{"grant_id":"test","presentation":{"title":"Test approval","target":"test"}}`
-	text := "<b>Test approval</b>"
-	return &operatorv1.NotificationDecision{
-		Kind: "telegram", Renderer: "telegram-html-v1", DecisionToken: token, ChatID: 7, MessageID: 8, Text: text,
-		PresentationJSON: presentation, PresentationDigest: notificationDigest(presentation), RenderedDigest: notificationDigest(text),
-	}
-}
-
-func notificationDigest(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
 func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	rejected := errors.New("provider plan invalid")
 	store, server, client := newOperatorServer(t, decision.ActivationValidatorFunc(func(context.Context, grants.Grant, grants.ApprovalConstraints) error { return rejected }))
@@ -172,6 +118,7 @@ func TestOperatorV1StrictInputAndActivationValidation(t *testing.T) {
 	}
 	for name, body := range map[string]string{
 		"removed decision reason": `{"expected_revision":1,"idempotency_key":"reason","decision_reason":"removed"}`,
+		"removed notification":    `{"expected_revision":1,"idempotency_key":"notification","notification":{"kind":"telegram"}}`,
 		"zero duration":           `{"expected_revision":1,"idempotency_key":"zero-duration","constraints":{"duration_seconds":0}}`,
 		"zero uses":               `{"expected_revision":1,"idempotency_key":"zero-uses","constraints":{"max_uses":0}}`,
 	} {

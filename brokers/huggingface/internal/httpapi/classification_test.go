@@ -1,12 +1,9 @@
 package httpapi
 
 import (
-	"context"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 )
@@ -85,33 +82,5 @@ func TestParseGrantTarget(t *testing.T) {
 				t.Fatalf("repoType = %q, want %q", rt.repoType, tc.typ)
 			}
 		})
-	}
-}
-
-func TestNewWithTelegramConfigStartsPoller(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	scp, err := policy.Parse([]byte(emptyPolicyJSON()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = New(Options{
-		Audit:   testAuditRecorder(),
-		Context: ctx,
-		Config: config.Config{
-			HFToken:          testToken,
-			Clients:          []config.Client{{Name: "agent", Secret: testSecret}},
-			StateDir:         t.TempDir(),
-			MaxPackBytes:     25 * 1024 * 1024,
-			HFTimeout:        10 * time.Second,
-			TelegramBotToken: "telegram_token_value",
-			TelegramChatID:   123,
-		},
-		Scope:           scp,
-		UpstreamBaseURL: "http://127.0.0.1:1",
-		TelegramBaseURL: "http://127.0.0.1:1",
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
 	}
 }

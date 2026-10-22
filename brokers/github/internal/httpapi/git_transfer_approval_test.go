@@ -8,6 +8,7 @@ import (
 	"time"
 
 	usebudget "github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 	gitx "github.com/osolmaz/unyolo/git/protocol"
@@ -37,18 +38,17 @@ func TestGitFetchApprovalProxiesAfterApproval(t *testing.T) {
 		upstreamCalls++
 		_, _ = w.Write([]byte("pack"))
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if grant.Operation != "git.fetch" || grant.Reason != "Git fetch requires approval" {
 		t.Fatalf("grant = %+v", grant)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	response := <-responses
@@ -75,15 +75,14 @@ func TestGitFetchApprovalDenied(t *testing.T) {
 	server := newTestServerWithPolicyAndHandler(t, requestFetchPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
-	if _, err := server.grants.Deny(grant.ID, token, "operator"); err != nil {
+	grant := waitForGitApproval(t, server, 1)
+	if _, err := grantstest.Deny(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Deny() error = %v", err)
 	}
 	response := <-responses
@@ -99,14 +98,13 @@ func TestGitFetchRetriesSharePendingApproval(t *testing.T) {
 		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	responses := make(chan *httptest.ResponseRecorder, 2)
 	go func() {
 		responses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	go func() {
 		responses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	}()
@@ -122,7 +120,7 @@ func TestGitFetchRetriesSharePendingApproval(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	for range 2 {
@@ -149,14 +147,13 @@ func TestGitLFSWriteCreatesSeparateApprovalFromFetch(t *testing.T) {
 		w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
 		_, _ = w.Write([]byte(`{"objects":[]}`))
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	fetchResponses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		fetchResponses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-upload-pack", bearerAuth())
 	}()
-	fetchGrant, fetchToken := waitForGitApproval(t, server, notifier, 1)
+	fetchGrant := waitForGitApproval(t, server, 1)
 
 	// A combined fetch+LFS-write rule must not collide the LFS write request
 	// with the pending fetch approval.
@@ -165,18 +162,18 @@ func TestGitLFSWriteCreatesSeparateApprovalFromFetch(t *testing.T) {
 		lfsResponses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(),
 			[]byte(`{"operation":"upload","objects":[]}`))
 	}()
-	lfsGrant, lfsToken := waitForGitApproval(t, server, notifier, 2)
+	lfsGrant := waitForGitApproval(t, server, 2)
 	if lfsGrant.ID == fetchGrant.ID || lfsGrant.Operation != "git.lfs.write" {
 		t.Fatalf("LFS write approval = %+v, want its own grant", lfsGrant)
 	}
-	if _, err := server.grants.Approve(lfsGrant.ID, lfsToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, lfsGrant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	lfsResponse := <-lfsResponses
 	if lfsResponse.Code != http.StatusOK {
 		t.Fatalf("LFS write status = %d, body = %q", lfsResponse.Code, lfsResponse.Body.String())
 	}
-	if _, err := server.grants.Approve(fetchGrant.ID, fetchToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, fetchGrant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	fetchResponse := <-fetchResponses
@@ -203,19 +200,18 @@ func TestGitLFSWriteBatchApprovalProxiesAfterApproval(t *testing.T) {
 		w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
 		_, _ = w.Write([]byte(`{"objects":[{"oid":"` + oid + `","size":4}]}`))
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/info/lfs/objects/batch", bearerAuth(),
 			[]byte(`{"operation":"upload","objects":[{"oid":"`+oid+`","size":4}]}`))
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if grant.Operation != "git.lfs.write" || grant.Reason != "Git LFS write requires approval" {
 		t.Fatalf("grant = %+v", grant)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	response := <-responses
@@ -241,18 +237,17 @@ func TestGitPushAdvertiseApprovalProxiesAfterApproval(t *testing.T) {
 		advertisement = gitx.AppendFlushPkt(advertisement)
 		_, _ = w.Write(advertisement)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- do(t, server, http.MethodGet, "/osolmaz/gh-broker.git/info/refs?service=git-receive-pack", bearerAuth())
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if grant.Operation != "git.push.advertise" || grant.Reason != "Git push discovery requires approval" {
 		t.Fatalf("grant = %+v", grant)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	response := <-responses

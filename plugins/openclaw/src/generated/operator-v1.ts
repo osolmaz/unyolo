@@ -2,7 +2,7 @@
 import type { components } from "./openapi-operator-v1.js";
 
 export const OPERATOR_V1_SCHEMA_SHA256 =
-  "sha256:ab10778e2838f660157b000e442a1b97c5217fd92e66107122451b6894f0b9d3";
+  "sha256:db0e8be0f9d7218e44e81367df7584522c508602fc9aaf0a351405f8fb7c6f2b";
 export const operatorV1 = {
   apiVersion: "unyolo.io/operator/v1",
   statuses: [
@@ -41,8 +41,6 @@ export const operatorV1 = {
     "idempotency_conflict",
     "constraint_exceeded",
     "invalid_transition",
-    "invalid_decision_token",
-    "invalid_notification",
     "plan_unavailable",
     "plan_mismatch",
     "credential_changed",

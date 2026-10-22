@@ -3,7 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -20,10 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
-	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
-	"github.com/osolmaz/unyolo/approval/view"
+	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -31,6 +27,42 @@ import (
 )
 
 func testAuditRecorder() audit.Recorder { return audit.New(io.Discard) }
+
+const testOperatorSecret = "operator-secret-abcdefghijklmnopqrstuvwxyz"
+
+// testOperators configures the operator inbox, the broker's only approval channel.
+func testOperators() []config.Client {
+	return []config.Client{{Name: "operator", Secret: testOperatorSecret}}
+}
+
+// waitForPendingGrant waits until client has count grants and returns the
+// newest one while it is still pending.
+func waitForPendingGrant(t *testing.T, handler *Server, client string, count int) grants.Grant {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		items, err := handler.grants.ListForClient(client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(items) >= count && items[count-1].Status == grants.StatusPending {
+			return items[count-1]
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for pending grant %d of %s", count, client)
+	return grants.Grant{}
+}
+
+// grantCount returns the number of grants that client requested.
+func grantCount(t *testing.T, handler *Server, client string) int {
+	t.Helper()
+	items, err := handler.grants.ListForClient(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(items)
+}
 
 func newTestBroker(t *testing.T, dir, upstreamURL string, auditWriter io.Writer, scopeJSON string) *httptest.Server {
 	t.Helper()
@@ -47,6 +79,7 @@ func newTestHandler(t *testing.T, dir, upstreamURL string, auditWriter io.Writer
 		Config: config.Config{
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
+			Operators:    testOperators(),
 			StateDir:     filepath.Join(dir, "state"),
 			MaxPackBytes: 25 * 1024 * 1024,
 			HFTimeout:    10 * time.Second,
@@ -85,180 +118,6 @@ func (w *writeErrorResponseWriter) WriteHeader(status int) {
 
 func (w *writeErrorResponseWriter) Write([]byte) (int, error) {
 	return 0, errors.New("client connection closed")
-}
-
-type captureGrantNotifier struct {
-	mu       sync.Mutex
-	messages []approvalnotify.Approval
-	updates  []notify.Status
-}
-
-type callbackDuringSendNotifier struct {
-	mu      sync.Mutex
-	server  *Server
-	ref     notify.MessageRef
-	result  notify.DecisionResult
-	updates []notify.Status
-}
-
-func (n *callbackDuringSendNotifier) SendApproval(ctx context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
-	ref, err := unyolotelegram.ApprovalReference(msg, n.ref.ChatID, n.ref.MessageID)
-	if err != nil {
-		return notify.MessageRef{}, err
-	}
-	n.ref = ref
-	result := n.server.handleTelegramDecision(ctx, notify.Decision{
-		Action: notify.ActionApprove, GrantID: msg.GrantID, DecisionToken: msg.DecisionToken,
-		ChatID: n.ref.ChatID, MessageID: n.ref.MessageID, MessageText: n.ref.Text,
-		OperatorID: 42, OperatorTag: "operator",
-	})
-	n.mu.Lock()
-	n.result = result
-	n.mu.Unlock()
-	return n.ref, nil
-}
-
-func testTelegramReference(t *testing.T, grantID string) notify.MessageRef {
-	t.Helper()
-	ref, err := unyolotelegram.ApprovalReference(approvalnotify.Approval{
-		GrantID: grantID, DecisionToken: "test-token", Broker: "Hugging Face", Requester: "agent", Operation: "test.operation", Mode: "window",
-		Reason: "test notification", RequestedDurationSeconds: 60, MaxUses: 1, PendingExpiresAt: time.Now().Add(time.Minute),
-		Presentation: approvalview.Presentation{Risk: approvalview.RiskLow, Title: "Test approval", Target: "test/repository"},
-	}, 1, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return ref
-}
-
-func (n *callbackDuringSendNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.updates = append(n.updates, status)
-	return nil
-}
-
-func (n *callbackDuringSendNotifier) snapshot() (notify.DecisionResult, []notify.Status) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.result, append([]notify.Status(nil), n.updates...)
-}
-
-func (n *captureGrantNotifier) SendApproval(_ context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.messages = append(n.messages, msg)
-	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: len(n.messages), Text: "grant text"}, nil
-}
-
-func (n *captureGrantNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.updates = append(n.updates, status)
-	return nil
-}
-
-func (n *captureGrantNotifier) snapshot() ([]approvalnotify.Approval, []notify.Status) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return append([]approvalnotify.Approval(nil), n.messages...), append([]notify.Status(nil), n.updates...)
-}
-
-type blockingGrantNotifier struct {
-	mu       sync.Mutex
-	messages []approvalnotify.Approval
-	started  chan struct{}
-	release  chan struct{}
-	once     sync.Once
-	err      error
-	firstErr error
-}
-
-func newBlockingGrantNotifier() *blockingGrantNotifier {
-	return &blockingGrantNotifier{
-		started: make(chan struct{}),
-		release: make(chan struct{}),
-	}
-}
-
-func (n *blockingGrantNotifier) SendApproval(ctx context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
-	n.mu.Lock()
-	n.messages = append(n.messages, msg)
-	messageID := len(n.messages)
-	n.mu.Unlock()
-	if messageID == 1 {
-		n.once.Do(func() {
-			close(n.started)
-		})
-		select {
-		case <-n.release:
-		case <-ctx.Done():
-			return notify.MessageRef{}, ctx.Err()
-		}
-	}
-	if messageID == 1 && n.firstErr != nil {
-		return notify.MessageRef{}, n.firstErr
-	}
-	if n.err != nil {
-		return notify.MessageRef{}, n.err
-	}
-	return notify.MessageRef{Kind: "capture", ChatID: 123, MessageID: messageID, Text: "grant text"}, nil
-}
-
-func (*blockingGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
-	return nil
-}
-
-func (n *blockingGrantNotifier) waitForSend(t *testing.T) {
-	t.Helper()
-	select {
-	case <-n.started:
-	case <-time.After(5 * time.Second):
-		t.Fatalf("notifier send did not start")
-	}
-}
-
-func (n *blockingGrantNotifier) releaseSend() {
-	close(n.release)
-}
-
-func (n *blockingGrantNotifier) calls() int {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return len(n.messages)
-}
-
-func (n *blockingGrantNotifier) decisionTokens() []string {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	tokens := make([]string, len(n.messages))
-	for index, message := range n.messages {
-		tokens[index] = message.DecisionToken
-	}
-	return tokens
-}
-
-type zeroMessageGrantNotifier struct {
-	calls int
-}
-
-func (n *zeroMessageGrantNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
-	n.calls++
-	return notify.MessageRef{Kind: "capture", ChatID: 123, Text: "grant text"}, nil
-}
-
-func (*zeroMessageGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
-	return nil
-}
-
-type failingGrantNotifier struct{}
-
-func (failingGrantNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
-	return notify.MessageRef{}, errors.New("notify failed")
-}
-
-func (failingGrantNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
-	return nil
 }
 
 type gitUpstream struct {
@@ -569,26 +428,6 @@ func commitInClone(t *testing.T, clone, filename, contents, message string) {
 func doRequest(t *testing.T, method, requestURL, authorization string, body io.Reader) (*http.Response, string) {
 	t.Helper()
 	return doRequestWithHeaders(t, method, requestURL, authorization, nil, body)
-}
-
-func doGrantRequestForTest(serverURL, body string) grantRequestResult {
-	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/grants", strings.NewReader(body))
-	if err != nil {
-		return grantRequestResult{err: err}
-	}
-	req.Header.Set("Authorization", "Bearer "+testSecret)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return grantRequestResult{err: err}
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return grantRequestResult{err: err}
-	}
-	return grantRequestResult{status: resp.StatusCode, body: string(data)}
 }
 
 func doRequestWithHeaders(t *testing.T, method, requestURL, authorization string, headers map[string]string, body io.Reader) (*http.Response, string) {

@@ -9,14 +9,12 @@ import (
 
 	"github.com/osolmaz/unyolo/agent/api"
 	"github.com/osolmaz/unyolo/agent/v1"
-	"github.com/osolmaz/unyolo/approval/notification"
 	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/operations"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/plan"
-	"github.com/osolmaz/unyolo/brokers/sudo/internal/presenter"
 	"github.com/osolmaz/unyolo/internal/storage/state"
 	"github.com/osolmaz/unyolo/operation/runtime"
 )
@@ -41,9 +39,9 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		},
 		DefinitiveFailure: operations.DefinitiveFailure, ExecutionFailure: operations.ExecutionFailure,
 		RecordPolicyRefusal: s.recordRuntimePolicyRefusal, RecordOutcome: s.recordRuntimeOutcome,
-		Notifier: s.notifier, ApprovalMessage: s.sudoApprovalMessage, OperatorConfigured: s.operatorConfigured,
-		Observer:    s.control.Metrics,
-		Diagnostics: s.control.Diagnostics,
+		OperatorConfigured: s.operatorConfigured,
+		Observer:           s.control.Metrics,
+		Diagnostics:        s.control.Diagnostics,
 	})
 }
 
@@ -107,10 +105,6 @@ func (s *Server) recordRuntimeOutcome(operation agentv1.Operation, value operati
 		}
 	}
 	s.record(value.Authorization, auditDecision, detail, operation.ApprovalID, nil)
-}
-
-func (s *Server) sudoApprovalMessage(ctx context.Context, grant grants.Grant, token string) approvalnotify.Approval {
-	return approvalnotify.Project(ctx, "sudo", presenter.Presenter{Catalog: s.catalog}, grant, token)
 }
 
 func (s *Server) submitAgentOperation(ctx context.Context, client string, request agentv1.SubmitRequest) (agentv1.Operation, bool, error) {

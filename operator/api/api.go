@@ -4,9 +4,7 @@ package operatorapi
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -278,43 +276,12 @@ func (h *handler) decodeDecision(writer http.ResponseWriter, request *http.Reque
 		return false
 	}
 	var input operatorwire.Decision
-	if err := decodeStrictJSON(request, &input); err != nil || !validDecisionConstraints(input.Constraints) ||
-		!validNotificationDecision(input.Notification, input.Constraints) {
+	if err := decodeStrictJSON(request, &input); err != nil || !validDecisionConstraints(input.Constraints) {
 		h.writeError(writer, http.StatusBadRequest, "invalid_request", "decision body is invalid", nil)
 		return false
 	}
 	*command = wireDecision(input)
 	return true
-}
-
-func validNotificationDecision(value *operatorwire.NotificationDecision, constraints *operatorwire.Constraints) bool {
-	if value == nil {
-		return true
-	}
-	return constraints == nil && validNotificationFields(value)
-}
-
-func validNotificationFields(value *operatorwire.NotificationDecision) bool {
-	return validNotificationIdentity(value) && validNotificationPayload(value)
-}
-
-func validNotificationIdentity(value *operatorwire.NotificationDecision) bool {
-	return value.Kind == operatorwire.NotificationDecisionKind("telegram") && value.ChatId != 0 && value.MessageId > 0 &&
-		value.DecisionToken != "" && len(value.DecisionToken) <= 200
-}
-
-func validNotificationPayload(value *operatorwire.NotificationDecision) bool {
-	return value.Renderer != "" && len(value.Renderer) <= 64 && value.Text != "" && len(value.Text) <= 32*1024 &&
-		value.PresentationJson != "" && len(value.PresentationJson) <= 64*1024 &&
-		validNotificationDigest(value.PresentationDigest) && validNotificationDigest(value.RenderedDigest)
-}
-
-func validNotificationDigest(value string) bool {
-	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
-		return false
-	}
-	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
-	return err == nil
 }
 
 func validDecisionConstraints(value *operatorwire.Constraints) bool {
@@ -329,13 +296,6 @@ func wireDecision(input operatorwire.Decision) operatorv1.Decision {
 	}
 	if input.OnBehalfOf != nil {
 		result.OnBehalfOf = *input.OnBehalfOf
-	}
-	if input.Notification != nil {
-		result.Notification = &operatorv1.NotificationDecision{Kind: string(input.Notification.Kind),
-			Renderer: input.Notification.Renderer, DecisionToken: input.Notification.DecisionToken,
-			ChatID: int64(input.Notification.ChatId), MessageID: input.Notification.MessageId, Text: input.Notification.Text,
-			PresentationJSON: input.Notification.PresentationJson, PresentationDigest: input.Notification.PresentationDigest,
-			RenderedDigest: input.Notification.RenderedDigest}
 	}
 	if input.Constraints == nil {
 		return result
@@ -623,8 +583,7 @@ func mappedErrorResponse(err error) (int, string, string, bool) {
 		return http.StatusBadRequest, code, "request is invalid", false
 	case "cursor_expired":
 		return http.StatusGone, code, "cursor is no longer retained", false
-	case "idempotency_conflict", "invalid_transition", "invalid_decision_token", "constraint_exceeded",
-		"invalid_notification", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
+	case "idempotency_conflict", "invalid_transition", "constraint_exceeded", "plan_unavailable", "plan_mismatch", "credential_changed", "credential_insufficient":
 		return http.StatusConflict, code, strings.ReplaceAll(code, "_", " "), false
 	case "storage_unavailable", "temporarily_unavailable":
 		return http.StatusServiceUnavailable, code, "operator request temporarily unavailable", true
@@ -645,7 +604,6 @@ func errorCode(err error) string {
 		{"invalid_request", []error{grants.ErrInvalidCursor, grants.ErrInvalidGrantCursor, grants.ErrInvalidQuery, grants.ErrInvalidCommand}},
 		{"cursor_expired", []error{grants.ErrCursorExpired}},
 		{"idempotency_conflict", []error{grants.ErrIdempotencyConflict}},
-		{"invalid_decision_token", []error{grants.ErrInvalidDecisionToken}},
 		{"constraint_exceeded", []error{grants.ErrConstraintExceeded}},
 		{"invalid_transition", []error{grants.ErrInvalidTransition, grants.ErrNotPending, grants.ErrNotActive}},
 	}

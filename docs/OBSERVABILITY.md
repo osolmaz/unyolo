@@ -78,4 +78,4 @@ Telegram callback authority is observable only as aggregate queue lifecycle.
 The durable inbox stores redacted terminal answers after deleting encrypted
 authority. Operational logs may report callback receipt, retry, terminal state,
 route, update ID, and bounded attempt count. They must not report callback data,
-decision tokens, rendered messages, usernames, or chat IDs.
+card tokens, rendered messages, usernames, or chat IDs.

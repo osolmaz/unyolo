@@ -23,12 +23,11 @@ func TestMetricsExposeOnlyClosedBoundedLabels(t *testing.T) {
 	metrics.OperationSubmitted("created")
 	metrics.OperationExecuted("succeeded", 250*time.Millisecond)
 	metrics.OperatorDecision("approve", "committed")
-	metrics.NotificationDelivered("delivered")
 	response := httptest.NewRecorder()
 	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := response.Body.String()
 	for _, want := range []string{"unyolo_admission_requests_total", `broker="test-broker"`, `code="other"`,
-		"unyolo_operation_execution_seconds", "unyolo_operator_decisions_total", "unyolo_notification_deliveries_total"} {
+		"unyolo_operation_execution_seconds", "unyolo_operator_decisions_total"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics omitted %q:\n%s", want, body)
 		}
@@ -50,7 +49,6 @@ func (s fakeStateSource) OperationalStats(context.Context) (state.OperationalSta
 func TestMetricsCollectDurableStateWithoutUnboundedLabels(t *testing.T) {
 	metrics, err := New("test-broker", fakeStateSource{stats: state.OperationalStats{
 		PendingApprovals: 2, QueuedOperations: 3, ExecutingOperations: 4,
-		PendingNotifications: 5, UnresolvedNotifications: 6,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -61,8 +59,7 @@ func TestMetricsCollectDurableStateWithoutUnboundedLabels(t *testing.T) {
 	for _, want := range []string{
 		"unyolo_database_healthy", `unyolo_database_healthy{broker="test-broker"} 1`,
 		`queue="approvals_pending"} 2`, `queue="operations_queued"} 3`,
-		`queue="operations_executing"} 4`, `queue="notifications_pending"} 5`,
-		`queue="notifications_unresolved"} 6`,
+		`queue="operations_executing"} 4`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics omitted %q:\n%s", want, body)
@@ -102,15 +99,14 @@ func TestDiagnosticsShareBoundedMetricsAndStructuredRedaction(t *testing.T) {
 	diagnostics.WorkerConfigured(8)
 	diagnostics.OperationStarted(strings.Repeat("x", 160), "critical", 8)
 	diagnostics.OperationFinished(strings.Repeat("x", 160), "critical", "failed", "operation_upstream_rate_limited-secret", time.Second)
-	diagnostics.NotificationAttempt("grant-1", "failed", "notification_unavailable-secret")
-	diagnostics.Retry("grant-1", "notification")
+	diagnostics.Retry("grant-1", "provider")
 
 	response := httptest.NewRecorder()
 	metrics.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := response.Body.String()
 	for _, want := range []string{
-		"unyolo_dependency_healthy", `dependency="provider"} 0`, `dependency="notification"} 0`,
-		"unyolo_dependency_requests_total", `error_category="rate_limited"`, `error_category="unavailable"`,
+		"unyolo_dependency_healthy", `dependency="provider"} 0`,
+		"unyolo_dependency_requests_total", `error_category="rate_limited"`,
 		"unyolo_dependency_retries_total", "unyolo_worker_active", "unyolo_worker_limit",
 	} {
 		if !strings.Contains(body, want) {
@@ -142,6 +138,5 @@ func TestErrorCategoryUsesOnlyClosedStableClasses(t *testing.T) {
 	var diagnostics *Diagnostics
 	diagnostics.OperationStarted("ignored", "low", 1)
 	diagnostics.OperationFinished("ignored", "low", "failed", "unknown", 0)
-	diagnostics.NotificationAttempt("ignored", "failed", "unknown")
 	diagnostics.Retry("ignored", "provider")
 }

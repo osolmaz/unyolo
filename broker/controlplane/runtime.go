@@ -2,14 +2,9 @@
 package controlplane
 
 import (
-	"context"
 	"errors"
 	"net/http"
 
-	"github.com/osolmaz/unyolo/approval"
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
-	"github.com/osolmaz/unyolo/approval/notifier/telegram"
 	"github.com/osolmaz/unyolo/approval/view"
 	"github.com/osolmaz/unyolo/auth"
 	"github.com/osolmaz/unyolo/authorization/decision"
@@ -24,7 +19,6 @@ import (
 // Options provides broker-owned policy vocabulary and presentation to the shared runtime.
 type Options struct {
 	Broker              string
-	ApprovalBroker      string
 	Store               *grants.Store
 	ClientSecrets       map[string]string
 	OperatorSecrets     map[string]string
@@ -35,49 +29,14 @@ type Options struct {
 	State               *state.Database
 }
 
-var errNotificationIdentity = errors.New("notification identity conflict")
-
-// HandleDecision applies one approval-channel callback through the configured decider.
-func (r *Runtime) HandleDecision(ctx context.Context, decision notify.Decision) notify.DecisionResult {
-	grant, err := r.Store.Get(decision.GrantID)
-	if err == nil && grant.Status != grants.StatusPending {
-		return approval.CompletedDecisionResult(grant)
-	}
-	if err == nil && decision.Notification == nil {
-		ref, referenceErr := r.decisionReference(ctx, grant, decision)
-		if errors.Is(referenceErr, errNotificationIdentity) {
-			return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusClosed}, ClearButtons: true}
-		}
-		if referenceErr != nil {
-			return notify.DecisionResult{Answer: notify.AnswerUnavailable, Retry: true}
-		}
-		decision.Notification = &ref
-	}
-	return approval.HandleDecision(ctx, r.Decider, decision)
-}
-
-func (r *Runtime) decisionReference(ctx context.Context, grant grants.Grant, decision notify.Decision) (notify.MessageRef, error) {
-	if grant.Notification != nil && grant.Notification.Kind == "telegram" {
-		if grant.Notification.ChatID != decision.ChatID || grant.Notification.MessageID != decision.MessageID {
-			return notify.MessageRef{}, errNotificationIdentity
-		}
-		return *grant.Notification, nil
-	}
-	message := approvalnotify.Project(ctx, r.approvalBroker, r.presenter, grant, decision.DecisionToken)
-	return telegram.ApprovalReference(message, decision.ChatID, decision.MessageID)
-}
-
 // Runtime contains the shared state and protected HTTP surfaces for one broker.
 type Runtime struct {
 	Store           *grants.Store
 	Clients         *auth.Authenticator
 	OperatorHandler http.Handler
-	Decider         approval.Decider
 	Decisions       *decision.Service
 	Metrics         *observability.Metrics
 	Diagnostics     *observability.Diagnostics
-	approvalBroker  string
-	presenter       approvalview.Presenter
 }
 
 // New validates and assembles one broker control plane.
@@ -107,13 +66,8 @@ func New(options Options) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	decider := channelDecider{service: decisions}
-	approvalBroker := options.ApprovalBroker
-	if approvalBroker == "" {
-		approvalBroker = options.Broker
-	}
-	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decider: decider, Decisions: decisions,
-		Metrics: metrics, Diagnostics: diagnostics, approvalBroker: approvalBroker, presenter: options.Presenter}, nil
+	return &Runtime{Store: options.Store, Clients: clients, OperatorHandler: handler, Decisions: decisions,
+		Metrics: metrics, Diagnostics: diagnostics}, nil
 }
 
 func operatorHandler(options Options, decisions *decision.Service, metrics *observability.Metrics) (http.Handler, error) {
@@ -132,14 +86,4 @@ func operatorHandler(options Options, decisions *decision.Service, metrics *obse
 		Inbox: inbox, Decisions: decisions, Authorize: operators.AuthenticateRequest, Broker: options.Broker, Audit: options.Audit,
 		NewCorrelationID: options.NewCorrelationID, Metrics: metrics.Handler(),
 	})
-}
-
-type channelDecider struct{ service *decision.Service }
-
-func (d channelDecider) Approve(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	return d.service.ApproveToken(ctx, id, token, actor, ref)
-}
-
-func (d channelDecider) Deny(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	return d.service.DenyToken(ctx, id, token, actor, ref)
 }

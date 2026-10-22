@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/osolmaz/unyolo/credential/lifecycle"
@@ -124,10 +123,6 @@ func hfLaunchdEnvironment(plan systemdPlan) map[string]string {
 	}
 	if plan.opts.GitEndpoint != "" {
 		values["HF_BROKER_GIT_ENDPOINT"] = plan.opts.GitEndpoint
-	}
-	if plan.opts.TelegramBotTokenFile != "" {
-		values["HF_BROKER_TELEGRAM_BOT_TOKEN_FILE"] = plan.telegramTokenPath
-		values["HF_BROKER_TELEGRAM_CHAT_ID"] = strconv.FormatInt(plan.opts.TelegramChatID, 10)
 	}
 	return values
 }

@@ -3,14 +3,11 @@ package decision
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"math"
 	"strconv"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/operator/v1"
@@ -83,13 +80,6 @@ func (s *Service) Decide(ctx context.Context, id string, action operatorv1.Actio
 		IdempotencyKey: command.IdempotencyKey,
 		Constraints:    constraints, CorrelationID: command.CorrelationID,
 	}
-	if command.Notification != nil {
-		decision.DecisionToken = command.Notification.DecisionToken
-		decision.Notification = &notify.MessageRef{Kind: command.Notification.Kind, Renderer: command.Notification.Renderer,
-			ChatID: command.Notification.ChatID, MessageID: command.Notification.MessageID, Text: command.Notification.Text,
-			PresentationJSON: command.Notification.PresentationJSON, PresentationDigest: command.Notification.PresentationDigest,
-			RenderedDigest: command.Notification.RenderedDigest}
-	}
 	result, decisionErr := s.store.ApplyOperatorDecision(ctx, decision, s.validate)
 	auditPrevious, auditCurrent := result.Previous, result.Grant
 	if auditPrevious.ID == "" {
@@ -119,38 +109,6 @@ func (s *Service) validate(ctx context.Context, grant grants.Grant, constraints 
 		return nil
 	}
 	return s.validator.ValidateActivation(ctx, grant, constraints)
-}
-
-// ApproveToken applies a single-use notification-channel approval through the canonical decision path.
-func (s *Service) ApproveToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	return s.decideToken(ctx, id, token, actor, ref, operatorv1.ActionApprove)
-}
-
-// DenyToken applies a single-use notification-channel denial through the canonical decision path.
-func (s *Service) DenyToken(ctx context.Context, id, token, actor string, ref notify.MessageRef) (grants.Grant, error) {
-	return s.decideToken(ctx, id, token, actor, ref, operatorv1.ActionDeny)
-}
-
-func (s *Service) decideToken(ctx context.Context, id, token, actor string, ref notify.MessageRef, action operatorv1.Action) (grants.Grant, error) {
-	current, err := s.store.Get(id)
-	if err != nil {
-		return grants.Grant{}, err
-	}
-	digest := sha256.Sum256([]byte(ref.Kind + "\x00" + id + "\x00" + string(action) + "\x00" + token))
-	command := operatorv1.Decision{
-		ExpectedRevision: current.Revision, Binding: "token:" + ref.Kind,
-		IdempotencyKey: "notification-" + base64.RawURLEncoding.EncodeToString(digest[:]),
-		Notification: &operatorv1.NotificationDecision{
-			Kind: ref.Kind, Renderer: ref.Renderer, DecisionToken: token, ChatID: ref.ChatID, MessageID: ref.MessageID,
-			Text: ref.Text, PresentationJSON: ref.PresentationJSON, PresentationDigest: ref.PresentationDigest,
-			RenderedDigest: ref.RenderedDigest,
-		},
-	}
-	result, err := s.Decide(ctx, id, action, actor, command)
-	if errors.Is(err, grants.ErrInvalidTransition) {
-		err = grants.ErrNotPending
-	}
-	return result.Grant, err
 }
 
 func (s *Service) observe(action string, err error, replay bool) {
@@ -224,7 +182,6 @@ func decisionErrorCode(err error) string {
 		errors []error
 	}{
 		{"not_found", []error{grants.ErrNotFound}},
-		{"invalid_decision_token", []error{grants.ErrInvalidDecisionToken}},
 		{"idempotency_conflict", []error{grants.ErrIdempotencyConflict}},
 		{"constraint_exceeded", []error{grants.ErrConstraintExceeded}},
 		{"invalid_transition", []error{grants.ErrInvalidTransition, grants.ErrNotPending, grants.ErrNotActive}},

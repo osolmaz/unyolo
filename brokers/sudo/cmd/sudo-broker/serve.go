@@ -11,11 +11,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notification"
-	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
 	"github.com/osolmaz/unyolo/authorization/admission"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
@@ -41,8 +40,6 @@ type serveOptions struct {
 	helperSocket     string
 	agentEndpoint    endpoint.Endpoint
 	operatorEndpoint *endpoint.Endpoint
-	telegramToken    string
-	telegramChatID   int64
 	admissionConfig  string
 	tlsCertificate   string
 	tlsPrivateKey    string
@@ -167,15 +164,13 @@ func parseServeOptions(args []string) (serveOptions, error) {
 	var agentEndpoint, operatorEndpoint string
 	flags.StringVar(&agentEndpoint, "agent-endpoint", "", "agent endpoint URI")
 	flags.StringVar(&operatorEndpoint, "operator-endpoint", "", "operator endpoint URI")
-	flags.StringVar(&opts.telegramToken, "telegram-token-file", "", "private Telegram bot token file")
-	flags.Int64Var(&opts.telegramChatID, "telegram-chat-id", 0, "Telegram approval chat id")
 	flags.StringVar(&opts.admissionConfig, "admission-config", "", "absolute admission limits JSON")
 	flags.StringVar(&opts.tlsCertificate, "tls-cert-file", "", "TLS server certificate")
 	flags.StringVar(&opts.tlsPrivateKey, "tls-key-file", "", "TLS server private key")
 	var networkExposure string
 	flags.StringVar(&networkExposure, "network-exposure", "", "set to allow for reviewed network listeners")
 	flags.BoolVar(&opts.development, "development", false, "enable foreground development path rules")
-	if err := flags.Parse(args); err != nil {
+	if err := parseServeFlags(flags, args); err != nil {
 		return serveOptions{}, err
 	}
 	if err := validateServeRequiredFlags(flags.NArg(), opts, agentEndpoint); err != nil {
@@ -249,11 +244,34 @@ func validateServeSecurityOptions(opts serveOptions) error {
 }
 
 func validateServeApproverOptions(opts serveOptions) error {
-	if (opts.telegramToken == "") != (opts.telegramChatID == 0) {
-		return errors.New("telegram token file and chat id must be configured together")
+	if opts.operatorSecrets == "" {
+		return errors.New("an operator credential is required")
 	}
-	if opts.operatorSecrets == "" && opts.telegramToken == "" {
-		return errors.New("an operator credential or Telegram approval channel is required")
+	return nil
+}
+
+// parseServeFlags names a removed flag before the flag package reports it as
+// unknown.
+func parseServeFlags(flags *flag.FlagSet, args []string) error {
+	if err := rejectRemovedServeFlags(args); err != nil {
+		return err
+	}
+	return flags.Parse(args)
+}
+
+// removedServeFlags are serve flags that no longer exist. Approval cards come
+// from unyolo-telegram, which owns the Telegram bot.
+var removedServeFlags = []string{"telegram-token-file", "telegram-chat-id"}
+
+func rejectRemovedServeFlags(args []string) error {
+	for _, arg := range args {
+		if arg == "--" {
+			return nil
+		}
+		name, _, _ := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if strings.HasPrefix(arg, "-") && slices.Contains(removedServeFlags, name) {
+			return fmt.Errorf("--%s is no longer supported: unyolo-telegram sends approval cards; remove it from the sudo-broker unit", name)
+		}
 	}
 	return nil
 }
@@ -285,16 +303,10 @@ func buildServerWithValidator(opts serveOptions, stderr io.Writer, validateRootF
 		return nil, err
 	}
 	helper := &executorclient.Client{SocketPath: opts.helperSocket, Timeout: 10 * time.Second}
-	notifier, err := loadTelegramNotifier(opts)
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	notifierService, poller := notifierDependencies(notifier)
 	server, err := routes.New(routes.Options{
 		Policy: loaded.policy, Catalog: loaded.snapshot, Database: database,
 		Identities: plan.SystemIdentityResolver{}, Helper: helper, ClientSecrets: loaded.clients, OperatorSecrets: loaded.operators,
-		Notifier: notifierService, Poller: poller, Audit: audit.New(stderr), OperatorConfigured: len(loaded.operators) > 0,
+		Audit: audit.New(stderr), OperatorConfigured: len(loaded.operators) > 0,
 		Admission: loaded.admission,
 	})
 	if err != nil {
@@ -336,7 +348,7 @@ func loadServeInputs(opts serveOptions) (serveInputs, error) {
 }
 
 func validateServeInputFiles(opts serveOptions, validateRootFile func(string) error) error {
-	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.telegramToken, opts.admissionConfig, opts.tlsCertificate, opts.tlsPrivateKey} {
+	for _, path := range []string{opts.policyPath, opts.catalogPath, opts.secretsPath, opts.operatorSecrets, opts.admissionConfig, opts.tlsCertificate, opts.tlsPrivateKey} {
 		if path == "" {
 			continue
 		}
@@ -352,26 +364,6 @@ func loadOperatorSecrets(path string) (map[string]string, error) {
 		return map[string]string{}, nil
 	}
 	return secretfile.Parse(path)
-}
-
-func loadTelegramNotifier(opts serveOptions) (*unyolotelegram.Client, error) {
-	if opts.telegramToken == "" {
-		return nil, nil
-	}
-	data, err := os.ReadFile(opts.telegramToken) // #nosec G304 -- validated operator-configured root-owned path.
-	if err != nil {
-		return nil, err
-	}
-	return unyolotelegram.NewWithOptions(strings.TrimSpace(string(data)), opts.telegramChatID, nil, "", unyolotelegram.Options{
-		Route: unyolotelegram.RouteSudo,
-	})
-}
-
-func notifierDependencies(notifier *unyolotelegram.Client) (approvalnotify.Notifier, routes.DecisionPoller) {
-	if notifier == nil {
-		return nil, nil
-	}
-	return notifier, nil
 }
 
 const (

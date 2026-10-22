@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,12 +8,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
-	ghapproval "github.com/osolmaz/unyolo/brokers/github/internal/approval"
 	"github.com/osolmaz/unyolo/brokers/github/internal/ghplan"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/security"
@@ -22,12 +18,6 @@ import (
 )
 
 const maxGrantRequestBodyBytes int64 = 32 * 1024
-
-const (
-	grantNotificationClaimLease = 2 * time.Minute
-	grantNotificationWait       = 10 * time.Second
-	grantNotificationPoll       = 50 * time.Millisecond
-)
 
 type grantCreateRequest struct {
 	ClientRequestID string            `json:"client_request_id"`
@@ -73,12 +63,8 @@ func (s *Server) createGrant(c echo.Context) error {
 	if err != nil {
 		return grantStoreHTTPError(err)
 	}
-	stored, ref, err := s.notifyPendingGrant(c, plan, result.Grant.ID)
-	if err != nil {
-		return err
-	}
 	s.audit(c, plan.request, "requires_grant", "operator approval requested", 0, plan.decision.MatchedRuleIDs)
-	return c.JSON(grantCreateStatus(created), map[string]any{"grant": apiGrantFromStore(stored), "notification": apiNotification(ref)})
+	return c.JSON(grantCreateStatus(created), map[string]any{"grant": apiGrantFromStore(result.Grant)})
 }
 
 func (s *Server) requestGrant(request grants.Request) (grants.RequestResult, bool, error) {
@@ -137,7 +123,7 @@ func (s *Server) planGrantCreate(c echo.Context) (grantCreatePlan, error) {
 }
 
 func (s *Server) validateGrantCreateChannelAndOperation(payload grantCreateRequest) error {
-	if s.notifier == nil && !s.operatorConfigured {
+	if !s.operatorConfigured {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "approval channel is not configured")
 	}
 	if !protocolGrantOperation(payload.Operation) {
@@ -190,119 +176,6 @@ func (p grantCreatePlan) storeRequest() grants.Request {
 		Duration:        p.duration,
 		PendingTimeout:  p.pendingTimeout,
 		MaxUses:         p.maxUses,
-	}
-}
-
-func (s *Server) notifyPendingGrant(c echo.Context, plan grantCreatePlan, id string) (grants.Grant, notify.MessageRef, error) {
-	existing, err := s.grants.Get(id)
-	if err != nil {
-		return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not inspect operator notification")
-	}
-	if existing.Notification != nil {
-		return existing, *existing.Notification, nil
-	}
-	if existing.Status != grants.StatusPending {
-		return existing, notify.MessageRef{}, nil
-	}
-	if s.notifier == nil {
-		return existing, notify.MessageRef{}, nil
-	}
-	return s.claimAndSendGrantNotification(c, plan, id)
-}
-
-func (s *Server) claimAndSendGrantNotification(c echo.Context, plan grantCreatePlan, id string) (grants.Grant, notify.MessageRef, error) {
-	claim, claimed, err := s.grants.ClaimNotification(id, grantNotificationClaimLease)
-	if err != nil {
-		return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not claim operator notification")
-	}
-	if !claimed {
-		return s.waitForGrantNotification(c.Request().Context(), id)
-	}
-	ref, err := s.notifier.SendApproval(c.Request().Context(), grantApprovalMessage(c.Request().Context(), claim.Grant, claim.DecisionToken))
-	if err != nil {
-		s.audit(c, plan.request, "error", "could not notify operator", 0, plan.decision.MatchedRuleIDs)
-		if s.operatorConfigured {
-			return s.keepGrantInOperatorInbox(id, claim.Grant.NotificationClaimedAt, "could not notify operator")
-		}
-		return failNotificationClaim(s.grants.RetainNotificationClaim, id, claim.Grant.NotificationClaimedAt, "could not notify operator")
-	}
-	return s.recordGrantNotification(c.Request().Context(), id, claim, ref)
-}
-
-func (s *Server) recordGrantNotification(ctx context.Context, id string, claim grants.NotificationClaim, ref notify.MessageRef) (grants.Grant, notify.MessageRef, error) {
-	if ref.MessageID <= 0 {
-		return s.handleNotificationRecordFailure(id, claim.Grant.NotificationClaimedAt, true)
-	}
-	stored, recorded, err := s.grants.SetNotificationIfClaimed(id, claim.Grant.NotificationClaimedAt, ref)
-	if err != nil {
-		return s.handleNotificationRecordFailure(id, claim.Grant.NotificationClaimedAt, false)
-	}
-	if recorded {
-		return stored, ref, nil
-	}
-	if shouldSupersedeNotification(stored.Notification, ref) {
-		_ = s.notifier.UpdateStatus(ctx, ref, notify.Status{Kind: notify.StatusSuperseded})
-	}
-	return s.waitForGrantNotification(ctx, id)
-}
-
-func (s *Server) handleNotificationRecordFailure(id string, claimedAt time.Time, cancel bool) (grants.Grant, notify.MessageRef, error) {
-	const message = "could not record operator notification"
-	if s.operatorConfigured {
-		return s.keepGrantInOperatorInbox(id, claimedAt, message)
-	}
-	if cancel {
-		return failNotificationClaim(s.grants.CancelIfNotificationClaimed, id, claimedAt, message)
-	}
-	return failNotificationClaim(s.grants.RetainNotificationClaim, id, claimedAt, message)
-}
-
-func (s *Server) keepGrantInOperatorInbox(id string, claimedAt time.Time, message string) (grants.Grant, notify.MessageRef, error) {
-	stored, _, err := s.grants.RetainNotificationClaim(id, claimedAt)
-	if err != nil {
-		return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, message)
-	}
-	return stored, notify.MessageRef{}, nil
-}
-
-func failNotificationClaim(
-	action func(string, time.Time) (grants.Grant, bool, error),
-	id string,
-	claimedAt time.Time,
-	message string,
-) (grants.Grant, notify.MessageRef, error) {
-	_, _, _ = action(id, claimedAt)
-	return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, message)
-}
-
-func (s *Server) waitForGrantNotification(ctx context.Context, id string) (grants.Grant, notify.MessageRef, error) {
-	return s.waitForGrantNotificationFor(ctx, id, grantNotificationWait, grantNotificationPoll)
-}
-
-func (s *Server) waitForGrantNotificationFor(ctx context.Context, id string, wait time.Duration, poll time.Duration) (grants.Grant, notify.MessageRef, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, wait)
-	defer cancel()
-	ticker := time.NewTicker(poll)
-	defer ticker.Stop()
-	for {
-		grant, err := s.grants.Get(id)
-		if err != nil {
-			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "could not confirm operator notification")
-		}
-		if grant.Notification != nil {
-			return grant, *grant.Notification, nil
-		}
-		if grant.NotificationDeliveryUnresolved {
-			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification delivery is unresolved")
-		}
-		if grant.Status != grants.StatusPending {
-			return grant, notify.MessageRef{}, nil
-		}
-		select {
-		case <-waitCtx.Done():
-			return grants.Grant{}, notify.MessageRef{}, echo.NewHTTPError(http.StatusBadGateway, "operator notification is still pending")
-		case <-ticker.C:
-		}
 	}
 }
 
@@ -411,17 +284,6 @@ func apiTarget(target corepolicy.Target) policy.Target {
 		Owner: corepolicy.FirstValue(target.Fields["owner"]),
 		Name:  corepolicy.FirstValue(target.Fields["name"]),
 	}
-}
-
-func apiNotification(ref notify.MessageRef) map[string]any {
-	if ref.Kind == "" {
-		return nil
-	}
-	return map[string]any{"kind": ref.Kind, "chat_id": ref.ChatID, "message_id": ref.MessageID}
-}
-
-func grantApprovalMessage(ctx context.Context, grant grants.Grant, decisionToken string) approvalnotify.Approval {
-	return approvalnotify.Project(ctx, "GitHub", ghapproval.Presenter{}, grant, decisionToken)
 }
 
 func flattenCoreValues(values map[string][]string) map[string]string {

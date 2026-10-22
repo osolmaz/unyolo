@@ -26,7 +26,6 @@ func (s *Store) closeForClient(id, client string, required, next Status) (Grant,
 		grant.Status = next
 		grant.DecidedAt = s.opts.Now().UTC()
 		grant.DecidedBy = client
-		clearNotificationClaim(&grant)
 		data.Grants[index], out = grant, grant
 		return nil
 	})

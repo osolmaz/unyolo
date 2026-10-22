@@ -18,8 +18,6 @@ import (
 	"github.com/osolmaz/unyolo/agent/conformance"
 	"github.com/osolmaz/unyolo/agent/runtime"
 	"github.com/osolmaz/unyolo/agent/v1"
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/sudo/internal/catalog"
@@ -243,7 +241,7 @@ func TestConcurrentSudoReplayCreatesOneGrant(t *testing.T) {
 	}
 }
 
-func TestReadinessAndNotificationFailure(t *testing.T) {
+func TestReadinessAndApprovalChannel(t *testing.T) {
 	server, _, closeServer := testServer(t)
 	defer closeServer()
 	response := httptest.NewRecorder()
@@ -259,16 +257,9 @@ func TestReadinessAndNotificationFailure(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("offline readiness = %d", response.Code)
 	}
-	server.notifier = errorNotifier{}
 	server.operatorConfigured = false
 	resetOperationRuntime(t, server)
-	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("notify-failure"))
-	if err != nil || operation.State != agentv1.StateFailed {
-		t.Fatalf("notification failure = %#v, %v", operation, err)
-	}
-	server.notifier = nil
-	resetOperationRuntime(t, server)
-	operation, _, err = server.submitAgentOperation(t.Context(), "bob", validSubmission("no-approval-channel"))
+	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("no-approval-channel"))
 	if err != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_channel_not_configured" {
 		t.Fatalf("missing approval channel = %#v, %v", operation, err)
 	}
@@ -425,89 +416,7 @@ func TestSudoApprovalTransitionsAndRecovery(t *testing.T) {
 	}
 }
 
-func TestSudoTelegramNotificationIsIdempotent(t *testing.T) {
-	server, _, closeServer := testServer(t)
-	defer closeServer()
-	memory := &approvalnotify.Memory{}
-	server.notifier = memory
-	resetOperationRuntime(t, server)
-	first, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("notified"))
-	if err != nil || first.ApprovalID == "" || len(memory.Messages) != 1 {
-		t.Fatalf("notified operation = %#v, messages = %d, %v", first, len(memory.Messages), err)
-	}
-	second, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("notified"))
-	if err != nil || second.ID != first.ID || len(memory.Messages) != 1 {
-		t.Fatalf("replay = %#v, messages = %d, %v", second, len(memory.Messages), err)
-	}
-}
-
-func TestSudoDeliversDurableNotificationStatus(t *testing.T) {
-	server, _, closeServer := testServer(t)
-	defer closeServer()
-	notifier := &retryStatusNotifier{}
-	server.notifier = notifier
-	resetOperationRuntime(t, server)
-	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("durable-status"))
-	if err != nil || operation.ApprovalID == "" || len(notifier.Messages) != 1 {
-		t.Fatalf("submit = %#v messages=%d err=%v", operation, len(notifier.Messages), err)
-	}
-	grant, err := server.grants.Get(operation.ApprovalID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = server.control.Decisions.Decide(t.Context(), grant.ID, operatorv1.ActionDeny, "operator:onur", operatorv1.Decision{
-		ExpectedRevision: grant.Revision,
-		IdempotencyKey:   "durable-status-deny",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server.deliverNotificationStatusUpdates(t.Context())
-	server.deliverNotificationStatusUpdates(t.Context())
-	if notifier.attempts != 2 || len(notifier.Statuses) != 1 || notifier.Statuses[0].Kind != notify.StatusDenied {
-		t.Fatalf("notification attempts=%d statuses=%v", notifier.attempts, notifier.Statuses)
-	}
-	stored, err := server.grants.Get(grant.ID)
-	if err != nil || stored.NotificationStatus != string(grants.StatusDenied) {
-		t.Fatalf("stored grant = %#v err=%v", stored, err)
-	}
-}
-
-func TestSudoNotificationSweeperStopsWithContext(t *testing.T) {
-	server, _, closeServer := testServer(t)
-	defer closeServer()
-	server.notifier = &approvalnotify.Memory{}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	server.runNotificationSweeper(ctx)
-}
-
-type retryStatusNotifier struct {
-	approvalnotify.Memory
-	attempts int
-}
-
-func (n *retryStatusNotifier) UpdateStatus(ctx context.Context, ref notify.MessageRef, status notify.Status) error {
-	n.attempts++
-	if n.attempts == 1 {
-		return errors.New("telegram unavailable")
-	}
-	return n.Memory.UpdateStatus(ctx, ref, status)
-}
-
-func TestSudoNotificationFallbackAndPolicyBounds(t *testing.T) {
-	server, _, closeServer := testServer(t)
-	defer closeServer()
-	server.notifier = errorNotifier{}
-	resetOperationRuntime(t, server)
-	operation, _, err := server.submitAgentOperation(t.Context(), "bob", validSubmission("operator-fallback"))
-	if err != nil || operation.State != agentv1.StatePending || operation.ApprovalID == "" {
-		t.Fatalf("operator fallback = %#v, %v", operation, err)
-	}
-	grant, err := server.grants.Get(operation.ApprovalID)
-	if err != nil || grant.NotificationClaimedAt.IsZero() {
-		t.Fatalf("retained notification = %#v, %v", grant, err)
-	}
+func TestSudoRuntimeGrantBoundsRejectInvalidPolicy(t *testing.T) {
 	for _, bounds := range []*corepolicy.GrantPolicy{
 		{Mode: string(corepolicy.GrantModeWindow), DefaultMaxUses: 1, MaxUses: 1},
 		{Mode: string(corepolicy.GrantModeExecution), DefaultMinutes: 2, MaxMinutes: 1, RequestTTLMinutes: 1, DefaultMaxUses: 1, MaxUses: 1},
@@ -517,49 +426,6 @@ func TestSudoNotificationFallbackAndPolicyBounds(t *testing.T) {
 		if _, _, _, err := sudoRuntimeGrantBounds(preparation, corepolicy.GrantMode(bounds.Mode)); err == nil {
 			t.Fatalf("invalid bounds accepted: %#v", bounds)
 		}
-	}
-}
-
-func TestServerStartPollsDecisions(t *testing.T) {
-	server, _, closeServer := testServer(t)
-	defer closeServer()
-	poller := &fakePoller{called: make(chan struct{}, 1)}
-	server.poller = poller
-	ctx, cancel := context.WithCancel(t.Context())
-	server.Start(ctx)
-	select {
-	case <-poller.called:
-	case <-time.After(time.Second):
-		t.Fatal("decision poller did not start")
-	}
-	cancel()
-}
-
-func TestServerCloseStopsPollerWithLiveStartContext(t *testing.T) {
-	server, _, closeServer := testServer(t)
-	defer closeServer()
-	poller := &fakePoller{called: make(chan struct{}, 1), stopped: make(chan struct{})}
-	server.poller = poller
-	server.Start(context.Background())
-	select {
-	case <-poller.called:
-	case <-time.After(time.Second):
-		t.Fatal("decision poller did not start")
-	}
-	done := make(chan error, 1)
-	go func() { done <- server.Close() }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Close did not join the decision poller")
-	}
-	select {
-	case <-poller.stopped:
-	default:
-		t.Fatal("decision poller remained active after Close")
 	}
 }
 
@@ -702,26 +568,4 @@ func (f *fakeHelper) dial(_ context.Context, _, _ string) (net.Conn, error) {
 			executorprotocol.Outcome{Started: true, ExitCode: 0, Stdout: []byte("scaled")}))
 	}()
 	return client, nil
-}
-
-type errorNotifier struct{}
-
-func (errorNotifier) SendApproval(context.Context, approvalnotify.Approval) (notify.MessageRef, error) {
-	return notify.MessageRef{}, errors.New("offline")
-}
-func (errorNotifier) UpdateStatus(context.Context, notify.MessageRef, notify.Status) error {
-	return nil
-}
-
-type fakePoller struct {
-	called  chan struct{}
-	stopped chan struct{}
-}
-
-func (p *fakePoller) Poll(ctx context.Context, _ func(context.Context, notify.Decision) notify.DecisionResult) {
-	p.called <- struct{}{}
-	<-ctx.Done()
-	if p.stopped != nil {
-		close(p.stopped)
-	}
 }

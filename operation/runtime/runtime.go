@@ -14,8 +14,6 @@ import (
 	"github.com/osolmaz/unyolo/agent/api"
 	"github.com/osolmaz/unyolo/agent/runtime"
 	"github.com/osolmaz/unyolo/agent/v1"
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization"
 	"github.com/osolmaz/unyolo/authorization/activation"
 	"github.com/osolmaz/unyolo/authorization/admission"
@@ -28,10 +26,7 @@ const (
 	defaultAuthorizationGrace = 30 * time.Second
 	defaultWorkerInterval     = 500 * time.Millisecond
 	defaultWorkerConcurrency  = 8
-	defaultNotificationLease  = 2 * time.Minute
 )
-
-var errApprovalNotificationClaimed = errors.New("approval notification is already claimed")
 
 // Preparation is the immutable provider plan context selected by the shared
 // lifecycle. The provider encodes it into its v1 plan and canonical grant.
@@ -60,7 +55,6 @@ type Failure struct {
 type Observer interface {
 	OperationSubmitted(result string)
 	OperationExecuted(result string, elapsed time.Duration)
-	NotificationDelivered(result string)
 }
 
 // Diagnostics receives secret-safe lifecycle context for structured logs and
@@ -69,7 +63,6 @@ type Diagnostics interface {
 	WorkerConfigured(workerLimit int)
 	OperationStarted(correlationID, operationClass string, workerLimit int)
 	OperationFinished(correlationID, operationClass, result, errorCode string, elapsed time.Duration)
-	NotificationAttempt(correlationID, result, errorCode string)
 	Retry(correlationID, dependency string)
 }
 
@@ -98,14 +91,11 @@ type Options[I, P, A any] struct {
 	ExecutionFailure    func(error, error) Failure
 	RecordPolicyRefusal func(agentv1.Operation, P, policy.Decision, string)
 	RecordOutcome       func(agentv1.Operation, P, string, string, int)
-	Notifier            approvalnotify.Notifier
-	ApprovalMessage     func(context.Context, grants.Grant, string) approvalnotify.Approval
 	OperatorConfigured  bool
 	Now                 func() time.Time
 	AuthorizationGrace  time.Duration
 	WorkerInterval      time.Duration
 	WorkerConcurrency   int
-	NotificationLease   time.Duration
 	Observer            Observer
 	Diagnostics         Diagnostics
 }
@@ -147,9 +137,6 @@ func defaultRuntimeTiming[I, P, A any](options Options[I, P, A]) Options[I, P, A
 	}
 	if options.WorkerConcurrency <= 0 {
 		options.WorkerConcurrency = defaultWorkerConcurrency
-	}
-	if options.NotificationLease <= 0 {
-		options.NotificationLease = defaultNotificationLease
 	}
 	return options
 }
@@ -372,7 +359,7 @@ func (r *Runtime[I, P, A]) submitPending(ctx context.Context, submission agentop
 		return operation, true, nil //nolint:nilerr // The durable operation carries the terminal storage failure.
 	}
 	lock.Unlock()
-	return r.bindApproval(ctx, bound, result.Request.Grant), true, nil
+	return r.bindApproval(bound, result.Request.Grant), true, nil
 }
 
 func (r *Runtime[I, P, A]) createPending(submission agentops.Submit, adapter Adapter[I, P, A], plan P) (agentv1.Operation, bool, error) {
@@ -478,105 +465,13 @@ func (r *Runtime[I, P, A]) abandonApproval(id, client string) error {
 	return r.cancelGrant(grant, client)
 }
 
-func (r *Runtime[I, P, A]) bindApproval(ctx context.Context, operation agentv1.Operation, grant grants.Grant) agentv1.Operation {
-	if r.options.Notifier != nil && r.options.ApprovalMessage != nil {
-		if err := r.notifyApproval(ctx, grant); err != nil {
-			if errors.Is(err, errApprovalNotificationClaimed) || r.options.OperatorConfigured {
-				return operation
-			}
-			return r.failUnnotified(operation, grant, "approval_notification_failed", "Could not notify the operator")
-		}
-		return operation
-	}
+// bindApproval leaves a new approval pending in the operator inbox. Without an
+// operator channel nobody could decide it, so the operation fails at once.
+func (r *Runtime[I, P, A]) bindApproval(operation agentv1.Operation, grant grants.Grant) agentv1.Operation {
 	if !r.options.OperatorConfigured {
 		return r.failUnnotified(operation, grant, "approval_channel_not_configured", "Approval channel is not configured")
 	}
 	return operation
-}
-
-func (r *Runtime[I, P, A]) notifyApproval(ctx context.Context, grant grants.Grant) error {
-	r.observeNotificationRetry(grant)
-	claim, done, err := r.claimNotification(grant)
-	if err != nil {
-		r.observeNotification(grant.ID, "claimed", "notification_claim_failed")
-		return err
-	}
-	if done {
-		r.observeNotification(grant.ID, "already_recorded", "")
-		return nil
-	}
-	ref, err := r.options.Notifier.SendApproval(ctx, r.options.ApprovalMessage(ctx, claim.Grant, claim.DecisionToken))
-	if err = validateNotificationReference(ref, err); err != nil {
-		r.observeNotification(grant.ID, "failed", "notification_unavailable")
-		return r.settleNotificationFailure(claim, err)
-	}
-	if err := r.recordNotification(claim, ref); err != nil {
-		r.observeNotification(grant.ID, "failed", "notification_store_failed")
-		return err
-	}
-	r.observeNotification(grant.ID, "delivered", "")
-	return nil
-}
-
-func (r *Runtime[I, P, A]) observeNotificationRetry(grant grants.Grant) {
-	if !grant.NotificationClaimedAt.IsZero() && r.options.Diagnostics != nil {
-		r.options.Diagnostics.Retry(grant.ID, "notification")
-	}
-}
-
-func (r *Runtime[I, P, A]) observeNotification(correlationID, result, errorCode string) {
-	if r.options.Observer != nil {
-		r.options.Observer.NotificationDelivered(result)
-	}
-	if r.options.Diagnostics != nil {
-		r.options.Diagnostics.NotificationAttempt(correlationID, result, errorCode)
-	}
-}
-
-func (r *Runtime[I, P, A]) claimNotification(grant grants.Grant) (grants.NotificationClaim, bool, error) {
-	claim, claimed, err := r.options.Grants.ClaimNotification(grant.ID, r.options.NotificationLease)
-	if err != nil {
-		return grants.NotificationClaim{}, false, err
-	}
-	if !claimed {
-		if r.notificationRecorded(grant.ID) {
-			return grants.NotificationClaim{}, true, nil
-		}
-		return grants.NotificationClaim{}, false, errApprovalNotificationClaimed
-	}
-	return claim, false, nil
-}
-
-func (r *Runtime[I, P, A]) notificationRecorded(grantID string) bool {
-	current, err := r.options.Grants.Get(grantID)
-	return err == nil && current.Notification != nil
-}
-
-func (r *Runtime[I, P, A]) recordNotification(claim grants.NotificationClaim, ref notify.MessageRef) error {
-	current, recorded, err := r.options.Grants.SetNotificationIfClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt, ref)
-	if err != nil || !recorded && current.Notification == nil {
-		return r.settleNotificationFailure(claim, err)
-	}
-	return nil
-}
-
-func validateNotificationReference(ref notify.MessageRef, err error) error {
-	if err != nil {
-		return err
-	}
-	if ref.MessageID <= 0 {
-		return errors.New("approval notification reference is invalid")
-	}
-	return nil
-}
-
-func (r *Runtime[I, P, A]) settleNotificationFailure(claim grants.NotificationClaim, cause error) error {
-	if r.options.OperatorConfigured {
-		_, _, err := r.options.Grants.RetainNotificationClaim(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
-		return errors.Join(cause, err)
-	}
-	_, _, err := r.options.Grants.CancelIfNotificationClaimed(claim.Grant.ID, claim.Grant.NotificationClaimedAt)
-	return errors.Join(cause, err)
 }
 
 func (r *Runtime[I, P, A]) failUnnotified(operation agentv1.Operation, grant grants.Grant, code, message string) agentv1.Operation {
@@ -648,7 +543,7 @@ func (r *Runtime[I, P, A]) Advance(ctx context.Context, operation agentv1.Operat
 	if err != nil {
 		return
 	}
-	current = r.advancePendingApproval(ctx, current)
+	current = r.advancePendingApproval(current)
 	if current.State != agentv1.StateApproved {
 		return
 	}

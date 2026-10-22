@@ -17,13 +17,13 @@ import (
 
 	"github.com/osolmaz/unyolo/agent/conformance"
 	"github.com/osolmaz/unyolo/agent/v1"
-	unyoloapprovalnotify "github.com/osolmaz/unyolo/approval/notification"
-	unyolonotify "github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/approval"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
+	"github.com/osolmaz/unyolo/operator/inbox"
 	"github.com/osolmaz/unyolo/operator/v1"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 )
@@ -483,35 +483,38 @@ func TestAgentRepoCreateApprovalExecutesOnce(t *testing.T) {
 	}
 }
 
-func TestAgentRepoCreateSendsNotifierOnlyApproval(t *testing.T) {
+func TestAgentRepoCreateApprovalPresentsImmutablePlan(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	notifier := &unyoloapprovalnotify.Memory{}
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
 	defer cancel()
 	defer server.Close()
 	body := `{"idempotency_key":"notify","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"notify operator"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 	var operation agentv1.Operation
-	if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil || len(notifier.Messages) != 1 {
-		t.Fatalf("submit = %d %#v, notifications = %d", response.StatusCode, operation, len(notifier.Messages))
+	if response.StatusCode != http.StatusAccepted || json.Unmarshal([]byte(text), &operation) != nil {
+		t.Fatalf("submit = %d %#v", response.StatusCode, operation)
 	}
 	grant, err := handler.grants.Get(operation.ApprovalID)
-	if err != nil || grant.Notification == nil {
-		t.Fatalf("grant notification = %#v, %v", grant.Notification, err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	message := notifier.Messages[0]
-	if !strings.Contains(message.Presentation.Title, "Create Hugging Face repository") ||
-		!strings.Contains(message.Presentation.Summary, "Create private dataset alice/data") ||
-		message.Presentation.PlanHash != grant.Metadata[hfplan.MetadataDigest] {
-		t.Fatalf("approval message omitted immutable operation details: %+v", message.Presentation)
+	inbox, err := operatorinbox.New(handler.grants, approval.Presenter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := inbox.Get(t.Context(), operation.ApprovalID)
+	if err != nil || !strings.Contains(request.Presentation.Title, "Create Hugging Face repository") ||
+		!strings.Contains(request.Presentation.Summary, "Create private dataset alice/data") ||
+		request.Presentation.PlanHash != grant.Metadata[hfplan.MetadataDigest] {
+		t.Fatalf("operator request omitted immutable operation details: %+v, %v", request.Presentation, err)
 	}
 }
 
 func TestAgentRequesterCancelsPendingOperationAndApproval(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, &unyoloapprovalnotify.Memory{})
+	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
 	defer cancel()
 	defer server.Close()
 	body := `{"idempotency_key":"cancel-pending","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"cancel this request"}`
@@ -572,8 +575,7 @@ func TestGrantCancellationFailureIsNotDiscarded(t *testing.T) {
 func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	notifier := &contextCheckingNotifier{}
-	server, handler, cancelServer := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
+	server, handler, cancelServer := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
 	defer cancelServer()
 	defer server.Close()
 	ctx, cancelRequest := context.WithCancel(context.Background())
@@ -584,35 +586,21 @@ func TestAgentRepoCreateApprovalOutlivesRequestContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	operation, created, err := handler.submitAgentOperation(ctx, "agent", request)
-	if err != nil || !created || operation.State != agentv1.StatePending || !notifier.sent {
-		t.Fatalf("submit = %#v, %v, created = %v, sent = %v", operation, err, created, notifier.sent)
+	if err != nil || !created || operation.State != agentv1.StatePending {
+		t.Fatalf("submit = %#v, %v, created = %v", operation, err, created)
 	}
 }
 
-type contextCheckingNotifier struct{ sent bool }
-
-func (n *contextCheckingNotifier) SendApproval(ctx context.Context, _ unyoloapprovalnotify.Approval) (unyolonotify.MessageRef, error) {
-	if err := ctx.Err(); err != nil {
-		return unyolonotify.MessageRef{}, err
-	}
-	n.sent = true
-	return unyolonotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
-}
-
-func (*contextCheckingNotifier) UpdateStatus(context.Context, unyolonotify.MessageRef, unyolonotify.Status) error {
-	return nil
-}
-
-func TestAgentRepoCreateFailsClosedWhenNotifierFails(t *testing.T) {
+func TestAgentRepoCreateFailsClosedWithoutOperatorChannel(t *testing.T) {
 	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "data")
 	defer upstream.Close()
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, failingGrantNotifier{})
+	server, handler, cancel := newAgentOperationTestServerWithOperators(t, upstream.URL, nil, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"data"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`)
 	defer cancel()
 	defer server.Close()
 	body := `{"idempotency_key":"notify-failure","operation":"repo.create","target":{"kind":"repo","type":"dataset","owner":"alice","name":"data"},"arguments":{"visibility":"private"},"reason":"notify operator"}`
 	response, text := doRequest(t, http.MethodPost, server.URL+agentOperationsPath, "Bearer "+testSecret, strings.NewReader(body))
 	var operation agentv1.Operation
-	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_notification_failed" {
+	if response.StatusCode != http.StatusOK || json.Unmarshal([]byte(text), &operation) != nil || operation.State != agentv1.StateFailed || operation.Error == nil || operation.Error.Code != "approval_channel_not_configured" {
 		t.Fatalf("submit = %d %#v", response.StatusCode, operation)
 	}
 	values, err := handler.grants.ListForClient("agent")
@@ -670,73 +658,6 @@ func TestAgentRepoCreateAllowAndValidation(t *testing.T) {
 	if got := waitForTestOperation(t, server.URL, operation.ID); got.State != agentv1.StateSucceeded {
 		t.Fatalf("allow operation = %#v", got)
 	}
-}
-
-func TestAgentApprovalBindingPrecedesNotification(t *testing.T) {
-	upstream := newAbsentRepoUpstream(t, "alice", "dataset", "serialized")
-	defer upstream.Close()
-	notifier := &blockingApprovalNotifier{entered: make(chan struct{}), release: make(chan struct{})}
-	server, handler, cancel := newAgentOperationTestServer(t, upstream.URL, `{"rules":[{"id":"create","effect":"request","clients":["agent"],"operations":["repo.create"],"targets":[{"kind":"repo","type":"dataset","owner":"alice","name":"serialized"}],"attrs":{"visibility":"private"},"grant_policy":{"mode":"execution","default_minutes":5,"max_minutes":5,"request_ttl_minutes":5,"default_max_uses":1,"max_uses":1}}]}`, notifier)
-	defer cancel()
-	defer server.Close()
-
-	request := agentv1.SubmitRequest{IdempotencyKey: "serialized", Operation: "repo.create",
-		Target:    json.RawMessage(`{"kind":"repo","type":"dataset","owner":"alice","name":"serialized"}`),
-		Arguments: json.RawMessage(`{"visibility":"private"}`), Reason: "serialize plan binding"}
-	type submitResult struct {
-		operation agentv1.Operation
-		created   bool
-		err       error
-	}
-	result := make(chan submitResult, 1)
-	go func() {
-		operation, created, err := handler.submitAgentOperation(t.Context(), "agent", request)
-		result <- submitResult{operation: operation, created: created, err: err}
-	}()
-	select {
-	case <-notifier.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("approval notifier was not called")
-	}
-
-	unfinished, err := handler.operations.ListUnfinished()
-	if err != nil || len(unfinished) != 1 || unfinished[0].PlanDigest == "" || unfinished[0].ApprovalID == "" {
-		t.Fatalf("operation before notification = %#v, %v", unfinished, err)
-	}
-	handler.advanceOperations(t.Context())
-	current, err := handler.operations.GetByID(unfinished[0].ID)
-	if err != nil || current.State != agentv1.StatePending {
-		t.Fatalf("operation advanced before approval: %#v, %v", current, err)
-	}
-	select {
-	case completed := <-result:
-		t.Fatalf("submission returned before notification completed: %#v", completed)
-	default:
-	}
-	close(notifier.release)
-	completed := <-result
-	if completed.err != nil || !completed.created || completed.operation.PlanDigest == "" || completed.operation.ApprovalID == "" {
-		t.Fatalf("submit = %#v", completed)
-	}
-}
-
-type blockingApprovalNotifier struct {
-	entered chan struct{}
-	release chan struct{}
-}
-
-func (n *blockingApprovalNotifier) SendApproval(ctx context.Context, _ unyoloapprovalnotify.Approval) (unyolonotify.MessageRef, error) {
-	close(n.entered)
-	select {
-	case <-n.release:
-		return unyolonotify.MessageRef{Kind: "test", ChatID: 1, MessageID: 1}, nil
-	case <-ctx.Done():
-		return unyolonotify.MessageRef{}, ctx.Err()
-	}
-}
-
-func (*blockingApprovalNotifier) UpdateStatus(context.Context, unyolonotify.MessageRef, unyolonotify.Status) error {
-	return nil
 }
 
 func TestAgentRepoCreateConcurrentIdempotentAllow(t *testing.T) {
@@ -920,24 +841,23 @@ func TestAgentRepoCreateUpstreamFailures(t *testing.T) {
 	}
 }
 
-func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string, notifiers ...unyoloapprovalnotify.Notifier) (*httptest.Server, *Server, context.CancelFunc) {
+func newAgentOperationTestServer(t *testing.T, upstreamURL, scopeJSON string) (*httptest.Server, *Server, context.CancelFunc) {
+	t.Helper()
+	return newAgentOperationTestServerWithOperators(t, upstreamURL, []config.Client{{Name: "operator", Secret: testOtherSecret}}, scopeJSON)
+}
+
+func newAgentOperationTestServerWithOperators(t *testing.T, upstreamURL string, operators []config.Client, scopeJSON string) (*httptest.Server, *Server, context.CancelFunc) {
 	t.Helper()
 	scope, err := policy.Parse([]byte(scopeJSON))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	operators := []config.Client{{Name: "operator", Secret: testOtherSecret}}
-	var notifier unyoloapprovalnotify.Notifier
-	if len(notifiers) > 0 {
-		notifier = notifiers[0]
-		operators = nil
-	}
 	handler, err := New(Options{Config: config.Config{
 		HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 		Operators: operators, StateDir: filepath.Join(t.TempDir(), "state"),
 		MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 5 * time.Second,
-	}, Scope: scope, Audit: audit.New(io.Discard), UpstreamBaseURL: upstreamURL, Context: ctx, GrantNotifier: notifier})
+	}, Scope: scope, Audit: audit.New(io.Discard), UpstreamBaseURL: upstreamURL, Context: ctx})
 	if err != nil {
 		cancel()
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/osolmaz/unyolo/agent/v1"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hubclient"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/operations"
@@ -25,7 +26,7 @@ func TestOperationOutcomeAuditBindsPlanPolicyAndApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := store.Approve(requested.Grant.ID, requested.DecisionToken, "onur")
+	approved, err := grantstest.Approve(store, requested.Grant.ID, "onur")
 	if err != nil {
 		t.Fatal(err)
 	}

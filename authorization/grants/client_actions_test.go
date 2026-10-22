@@ -21,7 +21,7 @@ func TestClientGrantActionsEnforceOwnerAndStateAtomically(t *testing.T) {
 	}
 
 	activeRequest := requestTestGrant(t, store, "client-revoke", 1)
-	active, err := store.Approve(activeRequest.Grant.ID, activeRequest.DecisionToken, "operator")
+	active, err := approveForTest(store, activeRequest.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}

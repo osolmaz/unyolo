@@ -78,10 +78,10 @@ func (s *Server) reserveHeld(c echo.Context, request policy.Request, decision po
 	return heldAuthorization{request: request, decision: decision, reserved: reserved}, nil
 }
 
-// waitForHeldApproval requests one operator approval, notifies the operator,
-// and waits for the decision. It returns the active grant id.
+// waitForHeldApproval requests one operator approval and waits for the
+// decision. It returns the active grant id.
 func (s *Server) waitForHeldApproval(c echo.Context, request policy.Request, approvalDecision policy.Decision, requestDigest string) (string, error) {
-	if s.notifier == nil && !s.operatorConfigured {
+	if !s.operatorConfigured {
 		return "", echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
 	}
 	grantRequest, err := s.prepareHeldGrantRequest(request, approvalDecision, requestDigest)
@@ -91,10 +91,6 @@ func (s *Server) waitForHeldApproval(c echo.Context, request policy.Request, app
 	result, err := s.requestGitGrant(grantRequest)
 	if err != nil {
 		return "", echo.NewHTTPError(http.StatusInternalServerError, "could not create approval")
-	}
-	plan := grantCreatePlan{request: request, decision: approvalDecision}
-	if _, _, err := s.notifyPendingGrant(c, plan, result.Grant.ID); err != nil {
-		return "", err
 	}
 	s.audit(c, request, "requires_grant", "operator approval requested", 0, approvalDecision.MatchedRuleIDs)
 	approved, err := s.waitForGitGrantDecision(c.Request().Context(), result.Grant.ID)

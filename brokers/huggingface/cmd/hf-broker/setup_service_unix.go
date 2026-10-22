@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
@@ -22,16 +21,18 @@ import (
 )
 
 const (
-	hfTokenFileName         = "hf-token"
-	telegramTokenFileName   = "telegram-bot-token" // #nosec G101 -- this is a filename, not a credential.
-	secretsFileName         = "secrets"
-	operatorSecretsFileName = "operator-secrets"
-	scopeFileName           = "scope.json"
-	policyProfileFileName   = "policy-profile.json"
-	policyManifestFileName  = "policy-manifest.json"
-	envFileName             = "env"
-	unitFileName            = "hf-broker.service"
-	maxHFTokenBytes         = 64 * 1024
+	hfTokenFileName = "hf-token"
+	// retiredTelegramTokenFileName is the bot token file of older releases.
+	// Setup removes it: only unyolo-telegram holds the bot token.
+	retiredTelegramTokenFileName = "telegram-bot-token" // #nosec G101 -- this is a filename, not a credential.
+	secretsFileName              = "secrets"
+	operatorSecretsFileName      = "operator-secrets"
+	scopeFileName                = "scope.json"
+	policyProfileFileName        = "policy-profile.json"
+	policyManifestFileName       = "policy-manifest.json"
+	envFileName                  = "env"
+	unitFileName                 = "hf-broker.service"
+	maxHFTokenBytes              = 64 * 1024
 )
 
 func runSetupSystemd(ctx context.Context, stdout io.Writer, opts setupSystemdOptions) error {
@@ -78,7 +79,6 @@ type systemdPlan struct {
 	policyManifestPath  string
 	envPath             string
 	unitPath            string
-	telegramTokenPath   string
 	operatorSecretsPath string
 }
 
@@ -92,7 +92,6 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 		policyManifestPath:  filepath.Join(opts.ConfigDir, policyManifestFileName),
 		envPath:             filepath.Join(opts.ConfigDir, envFileName),
 		unitPath:            filepath.Join(opts.SystemdDir, unitFileName),
-		telegramTokenPath:   filepath.Join(opts.ConfigDir, telegramTokenFileName),
 		operatorSecretsPath: filepath.Join(opts.ConfigDir, operatorSecretsFileName),
 	}
 }
@@ -131,19 +130,8 @@ func unyoloSystemdInstallPlan(plan systemdPlan) (unyoloservice.SystemdInstallPla
 		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: scopeFileName, Data: policyFiles.scope, Mode: 0o644, Owner: unyoloservice.ManagedFileOwnerRoot},
 		unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: envFileName, Data: []byte(renderEnvFile(plan)), Mode: 0o640, Owner: unyoloservice.ManagedFileOwnerRoot},
 	)
-	var readyCheck unyoloservice.ReadinessCheck
-	if plan.opts.TelegramBotTokenFile != "" {
-		telegramToken, readErr := readSetupTokenFile(plan.opts.TelegramBotTokenFile, "--telegram-bot-token-file")
-		if readErr != nil {
-			return unyoloservice.SystemdInstallPlan{}, readErr
-		}
-		files = append(files, unyoloservice.ManagedFile{Area: unyoloservice.ManagedFileConfig, Name: telegramTokenFileName, Data: telegramToken, Mode: 0o600, Owner: unyoloservice.ManagedFileOwnerService, CredentialClass: "telegram-bot"})
-	} else {
-		removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: telegramTokenFileName, CredentialClass: "telegram-bot"})
-	}
-	if len(removeFiles) > 0 {
-		readyCheck = unyoloservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
-	}
+	removeFiles = append(removeFiles, unyoloservice.ManagedFileRef{Area: unyoloservice.ManagedFileConfig, Name: retiredTelegramTokenFileName, CredentialClass: "telegram-bot"})
+	readyCheck := unyoloservice.EndpointReadyCheck(plan.opts.Endpoint, "/healthz")
 	return unyoloservice.SystemdInstallPlan{
 		User:             plan.opts.User,
 		Group:            plan.opts.Group,
@@ -429,13 +417,8 @@ func renderEnvFile(plan systemdPlan) string {
 	if opts.GitEndpoint != "" {
 		body += "HF_BROKER_GIT_ENDPOINT=" + opts.GitEndpoint + "\n"
 	}
-	body += "HF_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
+	return body + "HF_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +
 		"HF_BROKER_OPERATOR_ENDPOINT=activation://operator\n"
-	if opts.TelegramBotTokenFile != "" {
-		body += "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE=" + plan.telegramTokenPath + "\n" +
-			"HF_BROKER_TELEGRAM_CHAT_ID=" + strconv.FormatInt(opts.TelegramChatID, 10) + "\n"
-	}
-	return body
 }
 
 func systemdUnit(plan systemdPlan) unyoloservice.SystemdUnit {

@@ -1,4 +1,5 @@
-// Package notify defines broker approval notification interfaces.
+// Package notify defines the approval card decisions and statuses that the
+// Telegram owner exchanges with its dispatcher.
 package notify
 
 import (
@@ -12,18 +13,6 @@ const (
 	ActionApprove Action = "approve"
 	ActionDeny    Action = "deny"
 )
-
-// MessageRef identifies an editable notification.
-type MessageRef struct {
-	Kind               string `json:"kind"`
-	Renderer           string `json:"renderer"`
-	ChatID             int64  `json:"chat_id"`
-	MessageID          int    `json:"message_id"`
-	Text               string `json:"text"`
-	PresentationJSON   string `json:"presentation_json"`
-	PresentationDigest string `json:"presentation_digest"`
-	RenderedDigest     string `json:"rendered_digest"`
-}
 
 // Answer identifies one fixed callback answer rendered by the channel.
 type Answer string
@@ -58,7 +47,6 @@ const (
 	StatusConsumed       StatusKind = "consumed"
 	StatusRevoked        StatusKind = "revoked"
 	StatusCanceled       StatusKind = "canceled"
-	StatusRetained       StatusKind = "retained"
 	StatusUsedActive     StatusKind = "used_active"
 	StatusSuperseded     StatusKind = "superseded"
 	StatusUnavailable    StatusKind = "unavailable"
@@ -87,10 +75,9 @@ type Decision struct {
 	MessageID     int
 	MessageText   string
 	// ButtonText is the label of the clicked button as Telegram reports it.
-	ButtonText   string
-	Notification *MessageRef
-	OperatorID   int64
-	OperatorTag  string
+	ButtonText  string
+	OperatorID  int64
+	OperatorTag string
 }
 
 // DecisionResult is the callback answer returned after an operator decision.

@@ -45,7 +45,7 @@ func (s *Server) authorizeReceivePackTransaction(
 	authorized []authorizedReceivePackRequest,
 	requestable []requestableReceivePackRequest,
 ) ([]authorizedReceivePackRequest, *receivePackApproval, error) {
-	request, decision, err := s.prepareReceivePackTransaction(c, body, commands, authorized, requestable)
+	request, err := s.prepareReceivePackTransaction(c, body, commands, authorized, requestable)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -53,9 +53,8 @@ func (s *Server) authorizeReceivePackTransaction(
 	if err != nil {
 		return nil, nil, echo.NewHTTPError(http.StatusInternalServerError, "could not create Git push approval")
 	}
-	plan := grantCreatePlan{request: requestable[0].Request, decision: decision}
-	if err := s.notifyReceivePackApproval(c, plan, result.Grant.ID, requestable); err != nil {
-		return nil, nil, err
+	for _, item := range requestable {
+		s.audit(c, item.Request, "requires_grant", "operator approval requested", 0, item.Decision.MatchedRuleIDs)
 	}
 	approved, err := s.waitForGitGrantDecision(c.Request().Context(), result.Grant.ID)
 	if err != nil {
@@ -69,16 +68,6 @@ func (s *Server) authorizeReceivePackTransaction(
 	}
 	applyReceivePackGrant(authorized, approved.ID)
 	return authorized, nil, nil
-}
-
-func (s *Server) notifyReceivePackApproval(c echo.Context, plan grantCreatePlan, grantID string, items []requestableReceivePackRequest) error {
-	if _, _, err := s.notifyPendingGrant(c, plan, grantID); err != nil {
-		return err
-	}
-	for _, item := range items {
-		s.audit(c, item.Request, "requires_grant", "operator approval requested", 0, item.Decision.MatchedRuleIDs)
-	}
-	return nil
 }
 
 func (s *Server) waitForGitGrantDecision(ctx context.Context, grantID string) (grants.Grant, error) {
@@ -127,20 +116,20 @@ func (s *Server) prepareReceivePackTransaction(
 	commands []receivePackCommand,
 	authorized []authorizedReceivePackRequest,
 	items []requestableReceivePackRequest,
-) (grants.Request, policy.Decision, error) {
-	if s.notifier == nil && !s.operatorConfigured {
-		return grants.Request{}, policy.Decision{}, echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
+) (grants.Request, error) {
+	if !s.operatorConfigured {
+		return grants.Request{}, echo.NewHTTPError(http.StatusServiceUnavailable, errGitApprovalChannelUnavailable.Error())
 	}
 	duration, pendingTimeout, mode, err := receivePackApprovalBounds(items)
 	if err != nil {
-		return grants.Request{}, policy.Decision{}, echo.NewHTTPError(http.StatusForbidden, err.Error())
+		return grants.Request{}, echo.NewHTTPError(http.StatusForbidden, err.Error())
 	}
 	attrs := receivePackTransactionAttrs(body, commands, authorized)
 	ruleIDs := receivePackRequestRuleIDs(items)
 	target := policy.CoreTarget(items[0].Request.Target)
 	requestID, err := s.gitTransactionRequestID(items[0].Request.Client, target, attrs, ruleIDs)
 	if err != nil {
-		return grants.Request{}, policy.Decision{}, err
+		return grants.Request{}, err
 	}
 	request := grants.Request{
 		Client: items[0].Request.Client, ClientRequestID: requestID,
@@ -149,7 +138,7 @@ func (s *Server) prepareReceivePackTransaction(
 		Reason:   "Git push transaction requires approval", Duration: duration, PendingTimeout: pendingTimeout,
 		MaxUses: usebudget.Limit(1), MaxUsesSpecified: true,
 	}
-	return request, policy.Decision{Effect: policy.EffectRequest, MatchedRuleIDs: ruleIDs}, nil
+	return request, nil
 }
 
 func receivePackApprovalBounds(items []requestableReceivePackRequest) (time.Duration, time.Duration, corepolicy.GrantMode, error) {

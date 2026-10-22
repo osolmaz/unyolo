@@ -99,26 +99,13 @@ type Constraints struct {
 	MaxUses         usebudget.Optional `json:"max_uses,omitempty"`
 }
 
-type NotificationDecision struct {
-	Kind               string `json:"kind"`
-	Renderer           string `json:"renderer"`
-	DecisionToken      string `json:"decision_token"`
-	ChatID             int64  `json:"chat_id"`
-	MessageID          int    `json:"message_id"`
-	Text               string `json:"text"`
-	PresentationJSON   string `json:"presentation_json"`
-	PresentationDigest string `json:"presentation_digest"`
-	RenderedDigest     string `json:"rendered_digest"`
-}
-
 type Decision struct {
-	ExpectedRevision int64                 `json:"expected_revision"`
-	IdempotencyKey   string                `json:"idempotency_key"`
-	OnBehalfOf       string                `json:"on_behalf_of,omitempty"`
-	Constraints      *Constraints          `json:"constraints,omitempty"`
-	Notification     *NotificationDecision `json:"notification,omitempty"`
-	CorrelationID    string                `json:"-"`
-	Binding          string                `json:"-"`
+	ExpectedRevision int64        `json:"expected_revision"`
+	IdempotencyKey   string       `json:"idempotency_key"`
+	OnBehalfOf       string       `json:"on_behalf_of,omitempty"`
+	Constraints      *Constraints `json:"constraints,omitempty"`
+	CorrelationID    string       `json:"-"`
+	Binding          string       `json:"-"`
 }
 
 type Event struct {

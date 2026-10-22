@@ -97,9 +97,8 @@ func TestInlineCredentialChecksAreInconclusive(t *testing.T) {
 		SharedSecret:        "inline-client-secret",
 		GitHubToken:         "inline-github-token",
 		GitHubWebhookSecret: "inline-webhook-secret",
-		TelegramBotToken:    "inline-telegram-token",
 	})
-	if len(checks) != 4 {
+	if len(checks) != 3 {
 		t.Fatalf("inline checks = %+v", checks)
 	}
 	for _, check := range checks {
@@ -110,7 +109,6 @@ func TestInlineCredentialChecksAreInconclusive(t *testing.T) {
 	if checks := inlineCredentialChecks(config.Config{ // #nosec G101 -- synthetic values exercise source classification only.
 		SharedSecret: "file-client-secret", SecretsFile: "/etc/gh-broker/secrets",
 		GitHubToken: "file-github-token", GitHubTokenFile: "/etc/gh-broker/github-token",
-		TelegramBotToken: "file-telegram-token", TelegramBotTokenFile: "/etc/gh-broker/telegram-bot-token",
 	}); len(checks) != 0 {
 		t.Fatalf("file credential checks = %+v", checks)
 	}

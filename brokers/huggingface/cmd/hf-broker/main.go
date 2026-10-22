@@ -231,7 +231,7 @@ func buildHTTPHandler(ctx context.Context, stdout io.Writer, cfg config.Config) 
 		}
 	}
 	return httpapi.New(httpapi.Options{Config: cfg, Scope: pol, Audit: auditRecorder, Context: ctx,
-		UpstreamBaseURL: cfg.UpstreamHubURL, UpstreamRouterBaseURL: cfg.UpstreamRouterURL, TelegramBaseURL: cfg.TelegramAPIBase,
+		UpstreamBaseURL: cfg.UpstreamHubURL, UpstreamRouterBaseURL: cfg.UpstreamRouterURL,
 		OperatorAudit: auditRecorder, Credential: credential})
 }
 

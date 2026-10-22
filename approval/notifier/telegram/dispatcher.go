@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval"
-	"github.com/osolmaz/unyolo/approval/notification"
 	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/approval/view"
 	"github.com/osolmaz/unyolo/authorization/grants"
@@ -139,7 +137,7 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	updated, err := source.Decide(ctx, current.ID, action, operatorv1.Decision{
 		ExpectedRevision: current.Revision,
 		IdempotencyKey:   callbackIdempotencyKey(decision),
-		OnBehalfOf:       approval.Actor(decision),
+		OnBehalfOf:       operatorActor(decision),
 	})
 	if err != nil {
 		return dispatcherErrorResult(err)
@@ -147,10 +145,25 @@ func (d *Dispatcher) Handle(ctx context.Context, decision notify.Decision) notif
 	return completedDecisionResult(updated)
 }
 
-func semanticApproval(request operatorv1.Request, route, token string) (approvalnotify.Approval, error) {
+// operatorActor returns the stable audit identity of the Telegram operator
+// who clicked a card.
+func operatorActor(decision notify.Decision) string {
+	if decision.OperatorID != 0 {
+		return fmt.Sprintf("telegram:%d", decision.OperatorID)
+	}
+	if decision.OperatorTag != "" {
+		return "telegram:@" + decision.OperatorTag
+	}
+	if decision.Approver != "" {
+		return decision.Approver
+	}
+	return "telegram"
+}
+
+func semanticApproval(request operatorv1.Request, route, token string) (Approval, error) {
 	broker := routeBrokerNames[route]
 	if broker == "" || request.PendingExpiresAt == nil {
-		return approvalnotify.Approval{}, errors.New("pending notification presentation is unavailable")
+		return Approval{}, errors.New("pending notification presentation is unavailable")
 	}
 	facts := make([]approvalview.Fact, len(request.Presentation.Facts))
 	for index, fact := range request.Presentation.Facts {
@@ -160,7 +173,7 @@ func semanticApproval(request operatorv1.Request, route, token string) (approval
 	for index, warning := range request.Presentation.Warnings {
 		warnings[index] = approvalview.Warning{Severity: approvalview.Risk(warning.Severity), Text: warning.Text}
 	}
-	return approvalnotify.Approval{
+	return Approval{
 		GrantID: request.ID, DecisionToken: token, Broker: broker, Requester: request.Requester,
 		Operation: request.Operation, Mode: request.Mode, Reason: request.RequestReason,
 		RequestedDurationSeconds: request.RequestedDurationSeconds,
@@ -195,7 +208,7 @@ func logicalDecisionKey(decision notify.Decision) string {
 }
 
 var terminalDispatcherFailureCodes = map[string]struct{}{
-	"invalid_notification": {}, "plan_unavailable": {}, "plan_mismatch": {},
+	"plan_unavailable": {}, "plan_mismatch": {},
 	"credential_changed": {}, "credential_insufficient": {},
 }
 
@@ -217,9 +230,6 @@ func dispatcherAPIErrorResult(apiError *operatorclient.Error) notify.DecisionRes
 	}
 	if apiError.Status == 404 {
 		return notify.DecisionResult{Answer: notify.AnswerNotFound, MessageStatus: notify.Status{Kind: notify.StatusUnavailable}}
-	}
-	if apiError.Code == "invalid_decision_token" {
-		return notify.DecisionResult{Answer: notify.AnswerSuperseded, MessageStatus: notify.Status{Kind: notify.StatusSuperseded}}
 	}
 	if _, terminal := terminalDispatcherFailureCodes[apiError.Code]; terminal {
 		return notify.DecisionResult{Answer: notify.AnswerFailed, MessageStatus: notify.Status{
@@ -259,6 +269,9 @@ func statusForRequest(request operatorv1.Request) notify.Status {
 		grants.StatusConsumed: notify.StatusConsumed, grants.StatusRevoked: notify.StatusRevoked,
 		grants.StatusCanceled: notify.StatusCanceled,
 	}[request.Status]
+	if status.Kind == notify.StatusActive && request.UsedCount > 0 {
+		status.Kind = notify.StatusUsedActive
+	}
 	if status.Kind == "" {
 		status.Kind = notify.StatusClosed
 	}

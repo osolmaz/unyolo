@@ -88,12 +88,12 @@ func TestRenderStatusCoversLifecycle(t *testing.T) {
 	tests := []notify.Status{
 		{Kind: notify.StatusActive}, {Kind: notify.StatusDenied}, {Kind: notify.StatusPendingExpired},
 		{Kind: notify.StatusActiveExpired}, {Kind: notify.StatusConsumed}, {Kind: notify.StatusRevoked},
-		{Kind: notify.StatusCanceled}, {Kind: notify.StatusRetained},
+		{Kind: notify.StatusCanceled},
 		{Kind: notify.StatusUsedActive, UsedCount: 2, MaxUses: usebudget.Limit(5)},
 		{Kind: notify.StatusUsedActive, UsedCount: 2, MaxUses: usebudget.Unlimited},
 		{Kind: notify.StatusSuperseded}, {Kind: notify.StatusUnavailable}, {Kind: notify.StatusClosed},
 		{Kind: notify.StatusFailed},
-		{Kind: notify.StatusFailed, FailureCode: "invalid_notification", FailureReference: "failure<&>"},
+		{Kind: notify.StatusFailed, FailureCode: "plan_mismatch", FailureReference: "failure<&>"},
 	}
 	seen := map[string]bool{}
 	for _, status := range tests {
@@ -134,8 +134,8 @@ func TestRenderApprovalEscapesMarkupAndReservesTerminalSpace(t *testing.T) {
 	if strings.Contains(first, `<script>`) || strings.Contains(first, `<b onclick=`) || !strings.Contains(first, "&lt;script&gt;") {
 		t.Fatalf("dynamic markup was not escaped: %s", first)
 	}
-	if visibleLength(first) > maxTelegramText-terminalReserve || visibleLength(withDecisionStatus(first, notify.Status{Kind: notify.StatusRetained})) > maxTelegramText {
-		t.Fatalf("rendered message lengths pending=%d terminal=%d", visibleLength(first), visibleLength(withDecisionStatus(first, notify.Status{Kind: notify.StatusRetained})))
+	if visibleLength(first) > maxTelegramText-terminalReserve || visibleLength(withDecisionStatus(first, notify.Status{Kind: notify.StatusUnavailable})) > maxTelegramText {
+		t.Fatalf("rendered message lengths pending=%d terminal=%d", visibleLength(first), visibleLength(withDecisionStatus(first, notify.Status{Kind: notify.StatusUnavailable})))
 	}
 	if len(first) > 32*1024 {
 		t.Fatalf("raw rendered message length = %d", len(first))

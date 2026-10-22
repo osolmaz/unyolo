@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/broker/controlplane"
 	"github.com/osolmaz/unyolo/operator/client"
@@ -39,7 +38,6 @@ func RunOperatorV1(t *testing.T, fixture Fixture) {
 	assertRejectedCredential(t, server, fixture.ClientToken)
 	assertRejectedCredential(t, server, "unknown-operator-secret-abcdefghijklmnopqrstuvwxyz")
 	assertOperatorLifecycle(t, fixture, server, created)
-	assertTokenLifecycle(t, fixture)
 	assertTerminalTransitions(t, fixture, server)
 }
 
@@ -124,22 +122,6 @@ func assertOperatorLifecycle(t *testing.T, fixture Fixture, server *httptest.Ser
 	})
 	if err != nil || revoked.Status != grants.StatusRevoked {
 		t.Fatalf("operator revoke = %+v, %v", revoked, err)
-	}
-}
-
-func assertTokenLifecycle(t *testing.T, fixture Fixture) {
-	t.Helper()
-	created := requestGrantWithSuffix(t, fixture, "token")
-	result := fixture.Runtime.HandleDecision(t.Context(), notify.Decision{
-		Action: notify.ActionApprove, GrantID: created.Grant.ID, DecisionToken: created.DecisionToken,
-		ChatID: 1, MessageID: 2, OperatorID: 42,
-	})
-	if result.Retry || result.Answer != notify.AnswerApproved {
-		t.Fatalf("token approval = %+v", result)
-	}
-	current, err := fixture.Runtime.Store.Get(created.Grant.ID)
-	if err != nil || current.Status != grants.StatusActive || current.DecidedBy != "telegram:42" {
-		t.Fatalf("token grant = %+v, %v", current, err)
 	}
 }
 

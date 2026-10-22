@@ -247,8 +247,8 @@ migrate, or convert a database while checking, backing up, or exporting it.
 Backup uses SQLite's consistent backup API and publishes a private database plus
 checksum manifest. Restore validates format, integrity, checksum, size,
 ownership, and modes before replacing offline state. Export is deterministic
-and bounded; it omits operation inputs and results, reasons, plan bodies,
-decision tokens, notification destinations, and credential material.
+and bounded; it omits operation inputs and results, reasons, plan bodies, and
+credential material.
 
 ## Ownership Rule
 

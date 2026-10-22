@@ -1,4 +1,6 @@
-// Package telegram implements a reusable Telegram approval notifier.
+// Package telegram is unYOLO's single Telegram owner. It sends the approval
+// cards of every broker, reads the button clicks, and decides through each
+// broker's Operator V1 API.
 package telegram
 
 import (
@@ -12,16 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notification"
 	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/transport/http"
 )
 
 const (
-	defaultBaseURL            = "https://api.telegram.org"
-	callbackPrefix            = "bk"
-	defaultPollTimeoutSeconds = 30
-	defaultRoute              = "d"
+	defaultBaseURL     = "https://api.telegram.org"
+	callbackPrefix     = "bk"
+	pollTimeoutSeconds = 30
 )
 
 const (
@@ -53,38 +53,21 @@ func buttonText(action notify.Action) string {
 	}
 }
 
-// Options configures Telegram approval behavior.
-type Options struct {
-	PollTimeoutSeconds int
-	Route              string
-}
-
-// Client sends approval messages through Telegram Bot API.
+// Client talks to the Telegram Bot API for one operator chat.
 type Client struct {
-	token              string
-	chatID             int64
-	baseURL            string
-	client             *http.Client
-	pollTimeoutSeconds int
-	route              string
-	retryDelay         time.Duration
+	token   string
+	chatID  int64
+	baseURL string
+	client  *http.Client
 }
 
 // New returns a Telegram client.
 func New(token string, chatID int64, httpClient *http.Client, baseURL string) (*Client, error) {
-	return NewWithOptions(token, chatID, httpClient, baseURL, Options{})
-}
-
-// NewWithOptions returns a Telegram client with custom status behavior.
-func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL string, opts Options) (*Client, error) {
 	if strings.TrimSpace(token) == "" {
 		return nil, errors.New("telegram bot token is required")
 	}
 	if chatID == 0 {
 		return nil, errors.New("telegram chat id is required")
-	}
-	if opts.Route != "" && !validRoute(opts.Route) {
-		return nil, errors.New("telegram callback route must be one lowercase letter")
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -92,50 +75,14 @@ func NewWithOptions(token string, chatID int64, httpClient *http.Client, baseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
-	opts = normalizeOptions(opts)
-	return &Client{
-		token:              token,
-		chatID:             chatID,
-		baseURL:            strings.TrimRight(baseURL, "/"),
-		client:             httpClient,
-		pollTimeoutSeconds: opts.PollTimeoutSeconds,
-		route:              opts.Route,
-		retryDelay:         time.Second,
-	}, nil
+	return &Client{token: token, chatID: chatID, baseURL: strings.TrimRight(baseURL, "/"), client: httpClient}, nil
 }
 
-func normalizeOptions(opts Options) Options {
-	opts.PollTimeoutSeconds = positiveOrDefault(opts.PollTimeoutSeconds, defaultPollTimeoutSeconds)
-	opts.Route = routeOrDefault(opts.Route)
-	return opts
-}
-
-func positiveOrDefault(value int, fallback int) int {
-	if value <= 0 {
-		return fallback
-	}
-	return value
-}
-
-func routeOrDefault(route string) string {
-	if !validRoute(route) {
-		return defaultRoute
-	}
-	return route
-}
-
-// SendApproval sends one approval message with approve/deny buttons.
-func (c *Client) SendApproval(ctx context.Context, approval approvalnotify.Approval) (notify.MessageRef, error) {
-	return c.sendCard(ctx, c.route, approval)
-}
-
-func (c *Client) sendCard(ctx context.Context, route string, approval approvalnotify.Approval) (notify.MessageRef, error) {
-	if strings.TrimSpace(approval.GrantID) == "" || strings.TrimSpace(approval.DecisionToken) == "" {
-		return notify.MessageRef{}, errors.New("approval grant id and decision token are required")
-	}
-	text, err := RenderApproval(approval)
-	if err != nil {
-		return notify.MessageRef{}, err
+// sendCard sends one rendered approval card with approve and deny buttons and
+// returns the chat and message that Telegram assigned to it.
+func (c *Client) sendCard(ctx context.Context, route, requestID, token, text string) (int64, int, error) {
+	if strings.TrimSpace(requestID) == "" || strings.TrimSpace(token) == "" {
+		return 0, 0, errors.New("approval card request id and token are required")
 	}
 	payload := map[string]any{
 		"chat_id":    c.chatID,
@@ -143,44 +90,28 @@ func (c *Client) sendCard(ctx context.Context, route string, approval approvalno
 		"parse_mode": "HTML",
 		"reply_markup": map[string]any{
 			"inline_keyboard": [][]map[string]string{{
-				{"text": approveButtonText, "callback_data": callbackData(route, notify.ActionApprove, approval.GrantID, approval.DecisionToken)},
-				{"text": denyButtonText, "callback_data": callbackData(route, notify.ActionDeny, approval.GrantID, approval.DecisionToken)},
+				{"text": approveButtonText, "callback_data": callbackData(route, notify.ActionApprove, requestID, token)},
+				{"text": denyButtonText, "callback_data": callbackData(route, notify.ActionDeny, requestID, token)},
 			}},
 		},
 	}
 	var response messageResponse
 	if err := c.post(ctx, "sendMessage", payload, &response); err != nil {
-		return notify.MessageRef{}, err
+		return 0, 0, err
+	}
+	if response.Result.MessageID <= 0 {
+		return 0, 0, errors.New("telegram returned no message id for the approval card")
 	}
 	chatID := response.Result.Chat.ID
 	if chatID == 0 {
 		chatID = c.chatID
 	}
-	return approvalReference(approval, chatID, response.Result.MessageID, text), nil
+	return chatID, response.Result.MessageID, nil
 }
 
-// ApprovalReference reconstructs the canonical durable reference for a sent
-// approval after an ambiguous notification delivery.
-func ApprovalReference(approval approvalnotify.Approval, chatID int64, messageID int) (notify.MessageRef, error) {
-	text, err := RenderApproval(approval)
-	if err != nil {
-		return notify.MessageRef{}, err
-	}
-	if chatID == 0 || messageID <= 0 {
-		return notify.MessageRef{}, errors.New("telegram message identity is invalid")
-	}
-	return approvalReference(approval, chatID, messageID, text), nil
-}
-
-func approvalReference(approval approvalnotify.Approval, chatID int64, messageID int, text string) notify.MessageRef {
-	return notify.MessageRef{Kind: "telegram", Renderer: rendererID, ChatID: chatID, MessageID: messageID, Text: text,
-		PresentationJSON: approvalnotify.SnapshotJSON(approval), PresentationDigest: approvalnotify.PresentationDigest(approval),
-		RenderedDigest: renderedDigest(text)}
-}
-
-// UpdateStatus edits an existing approval message status.
-func (c *Client) UpdateStatus(ctx context.Context, ref notify.MessageRef, status notify.Status) error {
-	err := c.editMessageStatus(ctx, ref.ChatID, ref.MessageID, ref.Text, status)
+// updateCard shows a request status on its card and removes the buttons.
+func (c *Client) updateCard(ctx context.Context, chatID int64, messageID int, text string, status notify.Status) error {
+	err := c.editMessageStatus(ctx, chatID, messageID, text, status)
 	if errors.Is(err, errMessageNotModified) {
 		return nil
 	}
@@ -199,22 +130,10 @@ func (c *Client) clearDecisionButtons(ctx context.Context, decision notify.Decis
 	return c.post(ctx, "editMessageReplyMarkup", payload, &response)
 }
 
-// Poll runs Telegram long polling until ctx is canceled.
-func (c *Client) Poll(ctx context.Context, handler func(context.Context, notify.Decision) notify.DecisionResult) {
-	var offset int64
-	for ctx.Err() == nil {
-		var err error
-		offset, err = c.PollOnce(ctx, offset, handler)
-		if err != nil {
-			wait(ctx, c.retryDelay)
-		}
-	}
-}
-
 func (c *Client) getUpdates(ctx context.Context, offset int64) ([]telegramUpdate, error) {
 	payload := map[string]any{
 		"offset":          offset,
-		"timeout":         c.pollTimeoutSeconds,
+		"timeout":         pollTimeoutSeconds,
 		"allowed_updates": []string{"callback_query"},
 	}
 	var response updatesResponse
@@ -254,11 +173,6 @@ func (c *Client) editMessageStatus(ctx context.Context, chatID int64, messageID 
 	return c.post(ctx, "editMessageText", payload, &response)
 }
 
-// CallbackData encodes one button callback.
-func CallbackData(action notify.Action, grantID string, token string) string {
-	return callbackData(defaultRoute, action, grantID, token)
-}
-
 func callbackData(route string, action notify.Action, grantID string, token string) string {
 	var actionCode string
 	switch action {
@@ -276,12 +190,6 @@ func callbackData(route string, action notify.Action, grantID string, token stri
 		encodeCallbackPart(grantID),
 		encodeCallbackPart(token),
 	}, ":")
-}
-
-// ParseCallbackData decodes one callback_data value.
-func ParseCallbackData(data string) (notify.Action, string, string, bool) {
-	_, action, grantID, token, ok := parseCallbackData(data)
-	return action, grantID, token, ok
 }
 
 func parseCallbackData(data string) (string, notify.Action, string, string, bool) {

@@ -56,7 +56,6 @@ func TestLoadRejectsMalformedPresentValues(t *testing.T) {
 		"GH_BROKER_GITHUB_STREAM_TIMEOUT":  "-1",
 		"GH_BROKER_MAX_RECEIVE_PACK_BYTES": "0",
 		"GH_BROKER_GITHUB_USER_ID":         "bad",
-		"GH_BROKER_TELEGRAM_CHAT_ID":       "0",
 		"GH_BROKER_NETWORK_EXPOSURE":       "yes",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -203,14 +202,13 @@ func TestLoadReadsGitHubAppCredentialFiles(t *testing.T) {
 	}
 }
 
-func TestLoadReadsTelegramTokenFile(t *testing.T) {
-	dir := t.TempDir()
-	values := developmentValues()
-	values["GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"] = writeFile(t, dir, "telegram", "telegram-token\n")
-	values["GH_BROKER_TELEGRAM_CHAT_ID"] = "-1001234567890"
-	cfg, err := LoadFromLookup(mapLookup(values))
-	if err != nil || cfg.TelegramBotToken != "telegram-token" || cfg.TelegramChatID != -1001234567890 {
-		t.Fatalf("Telegram config = %+v, %v", cfg, err)
+func TestLoadRejectsRemovedTelegramSettings(t *testing.T) {
+	for _, name := range removedSettings {
+		values := developmentValues()
+		values[name] = ""
+		if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), "unyolo-telegram") {
+			t.Fatalf("LoadFromLookup(%s) error = %v, want a removed setting error", name, err)
+		}
 	}
 }
 

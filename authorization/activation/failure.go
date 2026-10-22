@@ -7,9 +7,8 @@ import "errors"
 type Code string
 
 const (
-	CodeInvalidNotification Code = "invalid_notification"
-	CodePlanUnavailable     Code = "plan_unavailable"
-	CodePlanMismatch        Code = "plan_mismatch"
+	CodePlanUnavailable Code = "plan_unavailable"
+	CodePlanMismatch    Code = "plan_mismatch"
 	// #nosec G101 -- closed error identifiers, not credential material.
 	CodeCredentialChanged Code = "credential_changed"
 	// #nosec G101 -- closed error identifiers, not credential material.
@@ -24,13 +23,12 @@ const (
 type Stage string
 
 const (
-	StageNotification Stage = "notification"
-	StagePlan         Stage = "plan"
-	StageCredential   Stage = "credential"
-	StageConstraints  Stage = "constraints"
-	StageStorage      Stage = "storage"
-	StageDependency   Stage = "dependency"
-	StageInternal     Stage = "internal"
+	StagePlan        Stage = "plan"
+	StageCredential  Stage = "credential"
+	StageConstraints Stage = "constraints"
+	StageStorage     Stage = "storage"
+	StageDependency  Stage = "dependency"
+	StageInternal    Stage = "internal"
 )
 
 type specification struct {
@@ -39,7 +37,6 @@ type specification struct {
 }
 
 var specifications = map[Code]specification{
-	CodeInvalidNotification:    {stage: StageNotification},
 	CodePlanUnavailable:        {stage: StagePlan},
 	CodePlanMismatch:           {stage: StagePlan},
 	CodeCredentialChanged:      {stage: StageCredential},

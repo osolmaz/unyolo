@@ -127,10 +127,6 @@ func ghLaunchdEnvironment(plan systemdPlan) map[string]string {
 		values["GH_BROKER_GIT_ENDPOINT"] = plan.opts.GitEndpoint
 	}
 	addGHLaunchdCredentials(values, plan)
-	if plan.opts.TelegramBotTokenFile != "" {
-		values["GH_BROKER_TELEGRAM_BOT_TOKEN_FILE"] = plan.telegramTokenPath
-		values["GH_BROKER_TELEGRAM_CHAT_ID"] = strconv.FormatInt(plan.opts.TelegramChatID, 10)
-	}
 	return values
 }
 

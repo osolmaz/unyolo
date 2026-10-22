@@ -97,7 +97,7 @@ func TestGeneratedWindowGrantAuthorizesTwoIndependentOperations(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"number":42,"state":"open","url":"https://api.github.test/pulls/42"}`))
 	})
-	server.notifier = &captureNotifier{}
+	server.operatorConfigured = true
 	runtime, err := server.newOperationRuntime()
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestAdminMergeRequiresApprovalAndExecutesExactRevision(t *testing.T) {
 			t.Fatalf("unexpected upstream request %s", request.URL.Path)
 		}
 	})
-	server.notifier = &captureNotifier{}
+	server.operatorConfigured = true
 	runtime, err := server.newOperationRuntime()
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestGeneratedAgentCancellation(t *testing.T) {
 	requestServer := newTestServerWithPolicyAndHandler(t, generatedRequestPolicy(t), func(http.ResponseWriter, *http.Request) {
 		t.Fatal("pending operation reached upstream")
 	})
-	requestServer.notifier = &captureNotifier{}
+	requestServer.operatorConfigured = true
 	runtime, err := requestServer.newOperationRuntime()
 	if err != nil {
 		t.Fatal(err)

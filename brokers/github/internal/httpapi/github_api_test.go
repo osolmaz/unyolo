@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	usebudget "github.com/osolmaz/unyolo/authorization/budget"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
@@ -75,13 +76,12 @@ func compatPolicy(t *testing.T) *policy.Policy {
 	return brokerPolicy
 }
 
-func newCompatServer(t *testing.T) (*Server, *fakeGitHubAPI, *captureNotifier) {
+func newCompatServer(t *testing.T) (*Server, *fakeGitHubAPI) {
 	t.Helper()
 	fake := &fakeGitHubAPI{node: `{"data":{"node":{"__typename":"PullRequest","number":5,"repository":{"name":"gh-broker","owner":{"login":"osolmaz"}}}}}`}
 	server := newTestServerWithPolicyAndHandler(t, compatPolicy(t), fake.handler(t))
-	notifier := &captureNotifier{}
-	server.notifier = notifier
-	return server, fake, notifier
+	server.operatorConfigured = true
+	return server, fake
 }
 
 func tokenAuth() string { return "token " + testSharedSecret }
@@ -97,7 +97,7 @@ func graphQLRequest(t *testing.T, query string, variables map[string]any) []byte
 
 func TestGitHubRESTForwardsAllowedRead(t *testing.T) {
 	t.Parallel()
-	server, fake, _ := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	response := doWithHeaders(t, server, http.MethodGet, "/api/v3/repos/osolmaz/gh-broker/pulls/5?per_page=10",
 		map[string]string{"Authorization": tokenAuth(), "Accept": "application/vnd.github.v3.diff"}, nil)
 	if response.Code != http.StatusOK || response.Body.String() != `{"ok":true}` {
@@ -119,7 +119,7 @@ func TestGitHubRESTForwardsAllowedRead(t *testing.T) {
 
 func TestGitHubCompatibleRoutesRequireClientSecret(t *testing.T) {
 	t.Parallel()
-	server, fake, _ := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	for authorization, status := range map[string]int{"": http.StatusUnauthorized, "token wrong-secret": http.StatusForbidden} {
 		for _, path := range []string{"/api/v3/repos/osolmaz/gh-broker/pulls/5", "/api/graphql"} {
 			method := http.MethodGet
@@ -141,7 +141,7 @@ func TestGitHubCompatibleRoutesRequireClientSecret(t *testing.T) {
 
 func TestGitHubRESTRefusesBeforeUpstream(t *testing.T) {
 	t.Parallel()
-	server, fake, _ := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	cases := []struct {
 		method, path string
 		status       int
@@ -170,18 +170,18 @@ func TestGitHubRESTRefusesBeforeUpstream(t *testing.T) {
 
 func TestGitHubRESTHoldsRequestUntilApproval(t *testing.T) {
 	t.Parallel()
-	server, fake, notifier := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	body := []byte(`{"title":"Work","head":"bob/work","base":"main"}`)
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/api/v3/repos/osolmaz/gh-broker/pulls", tokenAuth(), body)
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if grant.Operation != "pull_request.create" || !strings.HasPrefix(grant.Reason, "GitHub API request requires approval: ") ||
 		grant.Attrs["base_ref"][0] != "refs/heads/main" || grant.Attrs["head_ref"][0] != "refs/heads/bob/work" || grant.Attrs["request_digest"] != nil {
 		t.Fatalf("grant = %+v", grant)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	response := <-responses
@@ -197,13 +197,13 @@ func TestGitHubRESTHoldsRequestUntilApproval(t *testing.T) {
 
 func TestGitHubRESTApprovalDenialReturnsForbidden(t *testing.T) {
 	t.Parallel()
-	server, fake, notifier := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/api/v3/repos/osolmaz/gh-broker/pulls", tokenAuth(), []byte(`{"head":"x","base":"main"}`))
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
-	if _, err := server.grants.Deny(grant.ID, token, "operator"); err != nil {
+	grant := waitForGitApproval(t, server, 1)
+	if _, err := grantstest.Deny(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	response := <-responses
@@ -214,7 +214,7 @@ func TestGitHubRESTApprovalDenialReturnsForbidden(t *testing.T) {
 
 func TestGitHubGraphQLForwardsIntrospectionAndRepositoryReads(t *testing.T) {
 	t.Parallel()
-	server, fake, _ := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	introspection := graphQLRequest(t, `{ PullRequest: __type(name: "PullRequest") { fields { name } } }`, nil)
 	read := graphQLRequest(t, `query($owner: String!) { viewer { login } repository(owner: $owner, name: "gh-broker") { id } }`,
 		map[string]any{"owner": "osolmaz"})
@@ -239,20 +239,20 @@ func TestGitHubGraphQLForwardsIntrospectionAndRepositoryReads(t *testing.T) {
 
 func TestGitHubGraphQLMutationResolvesSubjectAndBindsExecutionApproval(t *testing.T) {
 	t.Parallel()
-	server, fake, notifier := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	body := graphQLRequest(t, `mutation($input: MergePullRequestInput!) { mergePullRequest(input: $input) { pullRequest { merged } } }`,
 		map[string]any{"input": map[string]any{"pullRequestId": "PR_5", "mergeMethod": "SQUASH"}})
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body)
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	target := grant.Target.Fields
 	if grant.Operation != "pull_request.merge" || grant.Attrs["merge_method"][0] != "squash" || len(grant.Attrs["request_digest"]) != 1 ||
 		target["owner"][0] != "osolmaz" || target["repo"][0] != "gh-broker" || target["number"][0] != "5" {
 		t.Fatalf("grant = %+v", grant)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	if response := <-responses; response.Code != http.StatusOK {
@@ -265,7 +265,7 @@ func TestGitHubGraphQLMutationResolvesSubjectAndBindsExecutionApproval(t *testin
 
 func TestGitHubGraphQLRefusesUnservedRequests(t *testing.T) {
 	t.Parallel()
-	server, fake, _ := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	fake.node = `{"data":{"node":null}}`
 	cases := map[string]int{
 		`mutation { addStar(input: {starrableId: "x"}) { clientMutationId } }`:                http.StatusForbidden,
@@ -339,18 +339,17 @@ func TestGitHubGraphQLExecutionReadApprovalBindsTheDocument(t *testing.T) {
 	}
 	fake := &fakeGitHubAPI{}
 	server := newTestServerWithPolicyAndHandler(t, brokerPolicy, fake.handler(t))
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	body := graphQLRequest(t, `{ repository(owner: "osolmaz", name: "gh-broker") { id } }`, nil)
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body)
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if grant.Operation != string(policy.OperationGraphQLRead) || len(grant.Attrs["request_digest"]) != 1 {
 		t.Fatalf("grant = %+v", grant)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	if response := <-responses; response.Code != http.StatusOK || len(fake.recorded()) != 1 {
@@ -360,7 +359,7 @@ func TestGitHubGraphQLExecutionReadApprovalBindsTheDocument(t *testing.T) {
 
 func TestGitHubGraphQLNodeReadResolvesItsRepository(t *testing.T) {
 	t.Parallel()
-	server, fake, _ := newCompatServer(t)
+	server, fake := newCompatServer(t)
 	body := graphQLRequest(t, `query($id: ID!) { node(id: $id) { ... on PullRequest { statusCheckRollup: commits(last: 1) { totalCount } } } }`,
 		map[string]any{"id": "PR_5"})
 	if response := doWithBody(t, server, http.MethodPost, "/api/graphql", tokenAuth(), body); response.Code != http.StatusOK {

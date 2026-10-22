@@ -71,9 +71,10 @@ unyolo may contain:
 - grant policy bounds
 - pending, active, expired, consumed, denied, and revoked grant states
 - grant idempotency, expiry, use budgets, and reservations
-- approval request, decision-token, callback, and revocation workflow
-- bounded semantic approval presentation and notifier interfaces
-- reusable canonical Telegram rendering, transport, and callback handling
+- approval request, revision-bound decision, and revocation workflow
+- bounded semantic approval presentation
+- the Telegram approval owner: card rendering, sending, editing, and callback
+  handling
 - safe audit field helpers
 - strict config decoding helpers
 - atomic file storage and lock helpers

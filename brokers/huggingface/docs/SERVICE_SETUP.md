@@ -32,20 +32,11 @@ printf '%s\n' 'hf_...' > ./hf-token
 chmod 600 ./hf-token
 ```
 
-For Telegram approvals, also create a local bot-token file:
-
-```sh
-printf '%s\n' '123456:bot-token' > ./telegram-bot-token
-chmod 600 ./telegram-bot-token
-```
-
 Then configure the broker service:
 
 ```sh
 sudo hf-broker setup systemd \
   --hf-token-file ./hf-token \
-  --telegram-bot-token-file ./telegram-bot-token \
-  --telegram-chat-id 123456789 \
   --client agent-a \
   --operator operator-a \
   --agent-user agent-a \
@@ -56,7 +47,6 @@ The setup command creates:
 
 ```text
 /etc/hf-broker/hf-token
-/etc/hf-broker/telegram-bot-token
 /etc/hf-broker/secrets
 /etc/hf-broker/operator-secrets
 /etc/hf-broker/policy-profile.json
@@ -122,18 +112,14 @@ agent and operator sockets under `/run/unyolo/huggingface/`, with access
 controlled by distinct groups. Agents receive neither the operator credential
 nor access to the operator socket through their client configuration.
 
-When Telegram is configured, its token is copied to
-`/etc/hf-broker/telegram-bot-token` with the same ownership and mode. The
-service environment contains the token-file path and operator chat ID, never
-the token value. The broker uses it only to send approval messages and durable
-status updates. Install the single shared callback receiver as described in
-[Telegram approval ingress](../../../docs/TELEGRAM_INGRESS.md).
+hf-broker has no Telegram settings. For Telegram approval cards, install
+`unyolo-telegram` as described in
+[Telegram approval owner](../../../docs/TELEGRAM_INGRESS.md); it holds the only
+copy of the bot token and decides through the operator socket.
 
-Rerun setup without both Telegram flags to disable Telegram. Setup writes the
-Telegram-free environment, restarts the service, waits for `/healthz`, and only
-then removes `/etc/hf-broker/telegram-bot-token`. A failed restart or readiness
-check leaves the token file in place for recovery. `--no-start` also preserves
-the token file because the new configuration has not been activated.
+Older releases stored a bot token at `/etc/hf-broker/telegram-bot-token`.
+Rerunning setup writes an environment without Telegram, restarts the service,
+waits for `/healthz`, and then removes that file.
 
 The broker client secret is stored in:
 

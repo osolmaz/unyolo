@@ -8,12 +8,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/unyolo/approval"
-	"github.com/osolmaz/unyolo/approval/notification"
-	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
-	"github.com/osolmaz/unyolo/brokers/github/internal/config"
 	"github.com/osolmaz/unyolo/brokers/github/internal/policy"
 )
 
@@ -26,25 +22,10 @@ func stateDir(value string) string {
 	return value
 }
 
-func configuredNotifier(cfg config.Config) (approvalnotify.Notifier, *unyolotelegram.Client, error) {
-	if cfg.TelegramBotToken == "" && cfg.TelegramChatID == 0 {
-		return nil, nil, nil
-	}
-	telegram, err := unyolotelegram.NewWithOptions(cfg.TelegramBotToken, cfg.TelegramChatID, nil, "", unyolotelegram.Options{
-		Route: unyolotelegram.RouteGitHub,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return telegram, nil, nil
-}
-
 func (s *Server) Start(ctx context.Context) {
 	s.startOperationRuntime(ctx)
 	s.sealedPayloads.Start(s.lifecycleContext)
 	s.startStreamSweeper(s.lifecycleContext)
-	s.startTelegram(s.lifecycleContext)
-	s.startNotificationSweeper(s.lifecycleContext)
 }
 
 func (s *Server) startStreamSweeper(ctx context.Context) {
@@ -63,59 +44,6 @@ func (s *Server) startStreamSweeper(ctx context.Context) {
 			}
 		}
 	}()
-}
-
-func (s *Server) startTelegram(ctx context.Context) {
-	if s.telegram != nil {
-		s.backgroundWorkers.Add(1)
-		go func() {
-			defer s.backgroundWorkers.Done()
-			s.telegram.Poll(ctx, s.control.HandleDecision)
-		}()
-	}
-}
-
-func (s *Server) startNotificationSweeper(ctx context.Context) {
-	if s.notifier != nil {
-		s.backgroundWorkers.Add(1)
-		go func() {
-			defer s.backgroundWorkers.Done()
-			s.runGrantNotificationSweeper(ctx)
-		}()
-	}
-}
-
-func (s *Server) runGrantNotificationSweeper(ctx context.Context) {
-	s.deliverGrantStatusUpdates(ctx)
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.deliverGrantStatusUpdates(ctx)
-		}
-	}
-}
-
-func (s *Server) deliverGrantStatusUpdates(ctx context.Context) {
-	updates, err := s.grants.StatusUpdatesDue()
-	if err != nil {
-		s.logger.Error("inspect grant notification updates", "error", err)
-		return
-	}
-	for _, update := range updates {
-		if update.Grant.Notification == nil {
-			continue
-		}
-		if err := s.notifier.UpdateStatus(ctx, *update.Grant.Notification, approval.StatusForUpdate(update)); err != nil {
-			continue
-		}
-		if err := s.grants.MarkNotificationStatus(update.Grant.ID, update.NotificationStatusKey()); err != nil {
-			s.logger.Error("record grant notification update", "error", err)
-		}
-	}
 }
 
 func (s *Server) settleFailedExecution(c echo.Context, reserved []grants.UseReservation, executionErr error) error {

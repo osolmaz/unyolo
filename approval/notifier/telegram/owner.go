@@ -55,11 +55,11 @@ func NewOwner(client *Client, inbox *Inbox, routes map[string]CardSource) (*Owne
 }
 
 func newCardToken() (string, error) {
-	data := make([]byte, cardTokenBytes)
-	if _, err := rand.Read(data); err != nil {
+	var data [cardTokenBytes]byte
+	if _, err := rand.Read(data[:]); err != nil {
 		return "", fmt.Errorf("generate telegram card token: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(data), nil
+	return base64.RawURLEncoding.EncodeToString(data[:]), nil
 }
 
 // Run follows every route until ctx ends. A failing route retries on its own
@@ -88,14 +88,9 @@ func (o *Owner) runRoute(ctx context.Context, route string, source CardSource) {
 // follow applies events from the stored cursor. Without a cursor, or after
 // the broker dropped it, it first rebuilds the cards from a fresh list.
 func (o *Owner) follow(ctx context.Context, route string, source CardSource) error {
-	cursor, err := o.inbox.eventCursor(ctx, route)
+	cursor, err := o.startCursor(ctx, route, source)
 	if err != nil {
 		return err
-	}
-	if cursor == "" {
-		if cursor, err = o.resync(ctx, route, source); err != nil {
-			return err
-		}
 	}
 	stream, err := source.Watch(ctx, cursor)
 	if cursorExpired(err) {
@@ -105,6 +100,22 @@ func (o *Owner) follow(ctx context.Context, route string, source CardSource) err
 		return err
 	}
 	defer func() { _ = stream.Close() }()
+	return o.applyEvents(ctx, route, source, stream)
+}
+
+// startCursor returns the stored event cursor, or the cursor of a fresh
+// resync when none is stored.
+func (o *Owner) startCursor(ctx context.Context, route string, source CardSource) (string, error) {
+	cursor, err := o.inbox.eventCursor(ctx, route)
+	if err != nil || cursor != "" {
+		return cursor, err
+	}
+	return o.resync(ctx, route, source)
+}
+
+// applyEvents applies each event and stores its cursor only after the card
+// matches the request, so a restart repeats an unfinished event.
+func (o *Owner) applyEvents(ctx context.Context, route string, source CardSource, stream operatorv1.EventStream) error {
 	for {
 		event, err := stream.Receive(ctx)
 		if err != nil {
@@ -127,6 +138,19 @@ func cursorExpired(err error) bool {
 // resync sends cards for every pending request, settles every unfinished card,
 // and returns the event cursor that continues after the listed state.
 func (o *Owner) resync(ctx context.Context, route string, source CardSource) (string, error) {
+	eventCursor, err := o.applyPendingRequests(ctx, route, source)
+	if err != nil {
+		return "", err
+	}
+	if err := o.settleUnfinished(ctx, route, source); err != nil {
+		return "", err
+	}
+	return eventCursor, o.inbox.saveEventCursor(ctx, route, eventCursor)
+}
+
+// applyPendingRequests sends a card for every pending request, page by page,
+// and returns the event cursor of the first page.
+func (o *Owner) applyPendingRequests(ctx context.Context, route string, source CardSource) (string, error) {
 	eventCursor := ""
 	query := operatorv1.Query{Status: grants.StatusGroupPending}
 	for {
@@ -137,10 +161,8 @@ func (o *Owner) resync(ctx context.Context, route string, source CardSource) (st
 		if eventCursor == "" {
 			eventCursor = page.EventCursor
 		}
-		for _, request := range page.Requests {
-			if err := o.applyRequest(ctx, route, request); err != nil {
-				return "", err
-			}
+		if err := o.applyRequests(ctx, route, page.Requests); err != nil {
+			return "", err
 		}
 		if page.NextCursor == "" {
 			break
@@ -150,10 +172,16 @@ func (o *Owner) resync(ctx context.Context, route string, source CardSource) (st
 	if eventCursor == "" {
 		return "", errors.New("operator request list has no event cursor")
 	}
-	if err := o.settleUnfinished(ctx, route, source); err != nil {
-		return "", err
+	return eventCursor, nil
+}
+
+func (o *Owner) applyRequests(ctx context.Context, route string, requests []operatorv1.Request) error {
+	for _, request := range requests {
+		if err := o.applyRequest(ctx, route, request); err != nil {
+			return err
+		}
 	}
-	return eventCursor, o.inbox.saveEventCursor(ctx, route, eventCursor)
+	return nil
 }
 
 func (o *Owner) settleUnfinished(ctx context.Context, route string, source CardSource) error {
@@ -188,16 +216,23 @@ func (o *Owner) applyRequest(ctx context.Context, route string, request operator
 	if err != nil {
 		return err
 	}
+	if request.Status != grants.StatusPending {
+		return o.settleCard(ctx, request, existing, found)
+	}
+	if found && existing.State != cardSending {
+		return nil
+	}
+	return o.send(ctx, route, request)
+}
+
+// settleCard shows a decided request on its card. A card that Telegram never
+// confirmed has no message to edit, so it only closes.
+func (o *Owner) settleCard(ctx context.Context, request operatorv1.Request, existing card, found bool) error {
 	switch {
-	case request.Status == grants.StatusPending:
-		if found && existing.State != cardSending {
-			return nil
-		}
-		return o.send(ctx, route, request)
 	case !found || existing.State == cardClosed:
 		return nil
 	case existing.State == cardSending:
-		return o.inbox.closeCard(ctx, route, request.ID)
+		return o.inbox.closeCard(ctx, existing.Route, existing.RequestID)
 	default:
 		return o.updateCard(ctx, existing, statusForRequest(request), finalStatus(request.Status))
 	}
@@ -220,16 +255,15 @@ func (o *Owner) send(ctx context.Context, route string, request operatorv1.Reque
 	if err != nil || !reserved {
 		return err
 	}
-	ref, err := o.client.sendCard(ctx, route, semantic)
+	chatID, messageID, err := o.client.sendCard(ctx, route, request.ID, token, text)
 	if err != nil {
 		return err
 	}
-	return o.inbox.openCard(ctx, route, request.ID, ref.ChatID, ref.MessageID)
+	return o.inbox.openCard(ctx, route, request.ID, chatID, messageID)
 }
 
 func (o *Owner) updateCard(ctx context.Context, existing card, status notify.Status, final bool) error {
-	ref := notify.MessageRef{ChatID: existing.ChatID, MessageID: existing.MessageID, Text: existing.Text}
-	if err := o.client.UpdateStatus(ctx, ref, status); err != nil {
+	if err := o.client.updateCard(ctx, existing.ChatID, existing.MessageID, existing.Text, status); err != nil {
 		return err
 	}
 	if !final {

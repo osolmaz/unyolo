@@ -22,7 +22,6 @@ import (
 	"github.com/osolmaz/unyolo/authorization/admission"
 	"github.com/osolmaz/unyolo/internal/config/secretfile"
 	"github.com/osolmaz/unyolo/transport/endpoint"
-	clienthttp "github.com/osolmaz/unyolo/transport/http/client"
 )
 
 // MinSecretBytes is the minimum accepted client secret length.
@@ -66,15 +65,15 @@ type Config struct {
 	UpstreamHubURL     string
 	UpstreamRouterURL  string
 	XetPython          string
-	TelegramBotToken   string
-	TelegramAPIBase    string
-	TelegramChatID     int64
 	Admission          admission.Config
 }
 
 // Load reads and validates configuration from getenv (normally
 // os.Getenv). It reads the secrets file, if configured, from disk.
 func Load(getenv func(string) string) (Config, error) {
+	if err := rejectRemovedSettings(getenv); err != nil {
+		return Config{}, err
+	}
 	cfg, err := loadBaseConfig(getenv)
 	if err != nil {
 		return Config{}, err
@@ -121,10 +120,20 @@ func loadConfigSections(getenv func(string) string, cfg *Config) error {
 	if err := loadRuntime(getenv, cfg); err != nil {
 		return err
 	}
-	if err := loadNumeric(getenv, cfg); err != nil {
-		return err
+	return loadNumeric(getenv, cfg)
+}
+
+// removedSettings are broker settings that no longer exist. Approval cards
+// come from unyolo-telegram, which owns the Telegram bot.
+var removedSettings = []string{"TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN_FILE", "TELEGRAM_CHAT_ID", "TELEGRAM_API_BASE"}
+
+func rejectRemovedSettings(getenv func(string) string) error {
+	for _, suffix := range removedSettings {
+		if brokerEnv(getenv, suffix) != "" {
+			return fmt.Errorf("%s is no longer supported: unyolo-telegram sends approval cards; remove it from the broker environment", brokerEnvName(suffix))
+		}
 	}
-	return loadTelegram(getenv, cfg)
+	return nil
 }
 
 func clientNames(clients []Client) []string {
@@ -320,53 +329,6 @@ func loadNumeric(getenv func(string) string, cfg *Config) error {
 		cfg.HFTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 	return nil
-}
-
-func loadTelegram(getenv func(string) string, cfg *Config) error {
-	token, err := loadTelegramToken(getenv)
-	if err != nil {
-		return err
-	}
-	cfg.TelegramBotToken = token
-	cfg.TelegramAPIBase, err = loadTelegramAPIBase(brokerEnv(getenv, "TELEGRAM_API_BASE"))
-	if err != nil {
-		return err
-	}
-	cfg.TelegramChatID, err = loadTelegramChatID(
-		cfg.TelegramBotToken,
-		cfg.TelegramAPIBase,
-		brokerEnv(getenv, "TELEGRAM_CHAT_ID"),
-	)
-	return err
-}
-
-func loadTelegramChatID(token, apiBase, raw string) (int64, error) {
-	if token == "" && raw == "" && apiBase == "" {
-		return 0, nil
-	}
-	if token == "" || raw == "" {
-		return 0, fmt.Errorf("%s and %s must be set together", brokerEnvName("TELEGRAM_BOT_TOKEN"), brokerEnvName("TELEGRAM_CHAT_ID"))
-	}
-	chatID, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || chatID == 0 {
-		return 0, fmt.Errorf("%s: expected a non-zero integer", brokerEnvName("TELEGRAM_CHAT_ID"))
-	}
-	return chatID, nil
-}
-
-func loadTelegramAPIBase(value string) (string, error) {
-	if value == "" {
-		return "", nil
-	}
-	parsed, err := clienthttp.ParseBaseURL(value)
-	if err != nil {
-		return "", fmt.Errorf("%s is invalid: %w", brokerEnvName("TELEGRAM_API_BASE"), err)
-	}
-	return strings.TrimRight(parsed.String(), "/"), nil
-}
-
-func loadTelegramToken(getenv func(string) string) (string, error) {
-	return loadSecretValue(getenv, "TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN_FILE")
 }
 
 func loadSecretValue(getenv func(string) string, valueSuffix, fileSuffix string) (string, error) {

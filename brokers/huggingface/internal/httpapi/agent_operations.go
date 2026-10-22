@@ -58,8 +58,6 @@ func (s *Server) newOperationRuntime() (*operations.Runtime, error) {
 		ExecutionFailure:    operationExecutionFailure,
 		RecordPolicyRefusal: s.recordOperationPolicyRefusal,
 		RecordOutcome:       s.recordOperationOutcome,
-		Notifier:            s.notifier,
-		ApprovalMessage:     grantApprovalMessage,
 		OperatorConfigured:  s.operatorConfigured,
 		Now:                 s.utcNow,
 		AuthorizationGrace:  operationAuthorizationGrace,
@@ -388,8 +386,6 @@ func (s *Server) cancelGrantForClient(grant grants.Grant, client string) error {
 func (s *Server) reconcileInterruptedOperation(ctx context.Context, operation agentv1.Operation) {
 	s.operationRuntime.ReconcileInterrupted(ctx, operation)
 }
-
-func (s *Server) advanceOperations(ctx context.Context) { s.operationRuntime.AdvanceAll(ctx) }
 
 func (s *Server) advanceOperation(ctx context.Context, operation agentv1.Operation) {
 	s.operationRuntime.Advance(ctx, operation)

@@ -13,7 +13,7 @@ import (
 func TestGrantUseIdentityIsIdempotentAndConflictSafe(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "identity", 2)
-	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := approveForTest(store, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestGrantUseIdentityIsIdempotentAndConflictSafe(t *testing.T) {
 	}
 
 	other := requestTestGrant(t, store, "other-grant", 2)
-	if _, err := store.Approve(other.Grant.ID, other.DecisionToken, "operator"); err != nil {
+	if _, err := approveForTest(store, other.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.ReserveUse(other.Grant.ID, "operation-1", other.Grant.Operation); !errors.Is(err, ErrUseIdentityConflict) {
@@ -183,7 +183,7 @@ func TestGrantAndUseLifecycleDeadlines(t *testing.T) {
 func TestReleasedGrantUseCanBeSafelyReacquired(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "released-retry", 1)
-	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := approveForTest(store, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestConcurrentGrantUseReservationsStopAtFiniteBudget(t *testing.T) {
 	const limit = 8
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	result := requestTestGrant(t, store, "concurrent-budget", limit)
-	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := approveForTest(store, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestRestartSettlesOwningReservationAfterEarlierUse(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
 	store := New(path, Options{})
 	result := requestTestGrant(t, store, "restart-owner", 3)
-	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := approveForTest(store, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}

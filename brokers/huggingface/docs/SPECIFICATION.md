@@ -38,8 +38,8 @@ unYOLO owns:
 - grant lifecycle
 - approval workflow
 - audit-safe metadata helpers
-- notifier interfaces
-- reusable Telegram transport and callback handling
+- the Telegram approval owner (`unyolo-telegram`), a separate operator API
+  client
 - strict config/storage helpers
 - privileged service account, managed-file, ownership, systemd unit, and
   activation helpers
@@ -103,7 +103,7 @@ agent ── shared secret ──> hf-broker ── HF write token ──> huggi
                             ├─ Git smart-HTTP and LFS/Xet
                             ├─ repository reads and inference
                             ├─ agent grant requests
-                            └─ separate operator API and Telegram approvals
+                            └─ separate operator API (also used by unyolo-telegram)
 ```
 
 Configuration: environment for broker secrets (`HF_BROKER_SHARED_SECRET`
@@ -339,20 +339,13 @@ until an operator resolves it. A retained reservation
 quarantines the entire grant: no remaining use budget can authorize another
 operation until the ambiguous result is resolved.
 
-### Notification state
+### Operator notifications
 
-Notifier message metadata (`chat_id`, `message_id`, notifier kind) is stored
-with the grant so restarts can still update operator messages. The generic
-approval, notifier metadata, and Telegram transport belong in unYOLO;
-hf-broker keeps the HF-specific message summary. Telegram messages are
-updated when a request is approved, denied, used, expired, revoked, or fails
-during execution. A verified callback can atomically recover missing notifier
-metadata after an ambiguous send in the same durable transaction as the grant
-decision. The unYOLO Telegram ingress commits callbacks through Operator V1.
-A durable write failure leaves the callback unanswered and its Telegram update
-pending for retry. After a successful transaction, the ingress acknowledges the
-callback and removes the buttons; restart-safe broker status delivery writes the
-authoritative terminal text.
+hf-broker stores no notification state. Every request change is a durable
+lifecycle event on the operator API. `unyolo-telegram` follows those events,
+keeps its own record of the cards it sent, and updates a card when its request
+is approved, denied, used, expired, revoked, or fails during execution.
+hf-broker keeps only the HF-specific presentation fields.
 
 Operator prompts must show:
 
@@ -386,8 +379,7 @@ at least:
 ```
 
 Audit lines never include upstream tokens, broker client secrets,
-Telegram tokens, request bodies that may contain secrets, pack contents,
-or object payloads.
+request bodies that may contain secrets, pack contents, or object payloads.
 
 ### Approval channels
 
@@ -405,23 +397,18 @@ Two operator surfaces are supported:
    own pending requests through the authenticated Agent API. Agent client
    credentials cannot use the operator listener.
 
-2. **Telegram.** The grant
-   request is sent as a Telegram message to the operator's chat,
-   carrying the request's operation class, target, duration, and
-   reason, with inline Approve / Deny buttons. The decision
-   authenticates through the bot conversation itself: the bot token and
-   the operator's chat id are configured on the broker host, the shared
-   ingress accepts a decision only from that chat id, and nothing about the
-   flow travels over a URL the agent could forge. Telegram gives two-way
-   interaction with
-   a single bot token and no server-side callback to host. One unYOLO-owned
-   ingress long-polls the Bot API and dispatches over authenticated Operator V1,
-   so it works from behind the Tailnet with no
-   inbound exposure. Deny requires no action: unapproved requests expire
-   on their own.
+2. **Telegram.** `unyolo-telegram` sends each pending request to the
+   operator's chat as a card with the request's operation class, target,
+   duration, and reason, and inline Approve / Deny buttons. It is the only
+   process that holds the bot token; hf-broker has no Telegram settings. The
+   owner accepts a click only from the configured chat and only for its own
+   card, and decides through the operator API with the request's revision.
+   Nothing about the flow travels over a URL the agent could forge. The owner
+   long-polls the Bot API, so it works from behind the Tailnet with no inbound
+   exposure. Deny requires no action: unapproved requests expire on their own.
 
-The reusable operator API and Telegram transport belong in unYOLO. hf-broker
-owns only the HF-specific prompt text and safe presentation fields.
+The operator API and the Telegram owner belong in unYOLO. hf-broker owns only
+the HF-specific presentation fields.
 
 ## Audit
 
@@ -488,10 +475,6 @@ stays free of HTTP framework types so it is unit-testable without a server.
 | `HF_BROKER_HF_TIMEOUT` | no | upstream request timeout seconds, default `120` |
 | `HF_BROKER_UPSTREAM_HUB_URL` | no | Hub origin, default `https://huggingface.co`; intended for tests or private mirrors |
 | `HF_BROKER_UPSTREAM_ROUTER_URL` | no | Router origin, default `https://router.huggingface.co`; intended for tests or private gateways |
-| `HF_BROKER_TELEGRAM_BOT_TOKEN` | no | bot token for approval channel |
-| `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` | no | path to a broker-only Telegram bot token file; preferred for same-host services and mutually exclusive with the inline token |
-| `HF_BROKER_TELEGRAM_API_BASE` | no | optional Telegram-compatible Bot API base; remote bases require HTTPS and loopback bases may use HTTP |
-| `HF_BROKER_TELEGRAM_CHAT_ID` | no | the single operator chat id decisions are accepted from |
 
 Startup validation fails closed: missing endpoints or paths, unsafe network
 exposure, missing required secret, setting both

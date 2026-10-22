@@ -16,7 +16,7 @@ import (
 
 func TestLifecycleIdempotencyAndUseBudget(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
-	ids := []string{"grant-1", "token-1", "token-2"}
+	ids := []string{"grant-1"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
 	req := Request{
 		Client:          "bob",
@@ -32,14 +32,14 @@ func TestLifecycleIdempotencyAndUseBudget(t *testing.T) {
 		t.Fatalf("Request() = %+v created=%v err=%v, want created grant", result, created, err)
 	}
 	grant := result.Grant
-	decisionToken := assertIdempotency(t, store, req, grant.ID)
+	assertIdempotency(t, store, req, grant.ID)
 
-	approved, err := store.Approve(grant.ID, decisionToken, "telegram:1")
+	approved, err := approveForTest(store, grant.ID, "telegram:1")
 	if err != nil || approved.Status != StatusActive {
 		t.Fatalf("Approve() = %+v err=%v, want active", approved, err)
 	}
-	if _, err := store.Deny(grant.ID, decisionToken, "telegram:1"); !errors.Is(err, ErrNotPending) {
-		t.Fatalf("replayed Deny() error = %v, want ErrNotPending", err)
+	if _, err := denyForTest(store, grant.ID, "telegram:1"); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("Deny(approved) error = %v, want ErrInvalidTransition", err)
 	}
 
 	overlays, err := store.ActivePolicyGrants()
@@ -77,7 +77,7 @@ func TestPendingCapacityPreservesReplayAndOtherClients(t *testing.T) {
 
 func TestListForClientExpiresAndFiltersGrants(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
-	ids := []string{"grant-1", "token-1", "grant-2", "token-2"}
+	ids := []string{"grant-1", "grant-2"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
 	firstReq := Request{
 		Client:          "bob",
@@ -118,7 +118,7 @@ func TestListForClientExpiresAndFiltersGrants(t *testing.T) {
 
 func TestApprovedIdempotentRetryKeepsOriginalDuration(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
-	ids := []string{"grant-1", "token-1"}
+	ids := []string{"grant-1"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
 	req := Request{
 		Client:          "bob",
@@ -134,7 +134,7 @@ func TestApprovedIdempotentRetryKeepsOriginalDuration(t *testing.T) {
 	}
 	grant := result.Grant
 	now = now.Add(time.Minute)
-	if _, err := store.Approve(grant.ID, result.DecisionToken, "telegram:1"); err != nil {
+	if _, err := approveForTest(store, grant.ID, "telegram:1"); err != nil {
 		t.Fatal(err)
 	}
 	retry, created, err := store.Request(req)
@@ -144,7 +144,7 @@ func TestApprovedIdempotentRetryKeepsOriginalDuration(t *testing.T) {
 }
 
 func TestIdempotentRetryIgnoresValueOrder(t *testing.T) {
-	ids := []string{"grant-1", "token-1", "token-2"}
+	ids := []string{"grant-1"}
 	store := newDeterministicStore(t, time.Now, &ids)
 	request := Request{
 		Client:          "bob",
@@ -256,78 +256,6 @@ func TestLoadRejectsLegacyScalarGrantValues(t *testing.T) {
 	}
 }
 
-func TestPendingIdempotentRetryRefreshesDecisionToken(t *testing.T) {
-	ids := []string{"grant-1", "token-1", "token-2"}
-	store := newDeterministicStore(t, time.Now, &ids)
-	req := Request{
-		Client:          "bob",
-		ClientRequestID: "shell-debug",
-		Operation:       "session.shell",
-		Target:          policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
-		Reason:          "debug deploy",
-	}
-	first, created, err := store.Request(req)
-	if err != nil || !created {
-		t.Fatalf("first Request() = %+v created=%v err=%v, want created", first, created, err)
-	}
-	retry, created, err := store.Request(req)
-	if err != nil || created || retry.Grant.ID != first.Grant.ID || retry.DecisionToken == "" {
-		t.Fatalf("retry Request() = %+v created=%v err=%v, want same grant with token", retry, created, err)
-	}
-	if _, err := store.Approve(first.Grant.ID, first.DecisionToken, "telegram:1"); !errors.Is(err, ErrInvalidDecisionToken) {
-		t.Fatalf("Approve(old token) error = %v, want ErrInvalidDecisionToken", err)
-	}
-	if _, err := store.Approve(first.Grant.ID, retry.DecisionToken, "telegram:1"); err != nil {
-		t.Fatalf("Approve(refreshed token) error = %v", err)
-	}
-}
-
-func TestDecisionTokenExpiryAndRevoke(t *testing.T) {
-	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
-	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
-	result, _, err := store.Request(Request{
-		Client:    "bob",
-		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
-		Reason:    "debug deploy",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	grant := result.Grant
-	if _, err := store.Approve(grant.ID, "wrong", "telegram:1"); !errors.Is(err, ErrInvalidDecisionToken) {
-		t.Fatalf("Approve(wrong token) error = %v, want ErrInvalidDecisionToken", err)
-	}
-	approved, err := store.Approve(grant.ID, result.DecisionToken, "telegram:1")
-	if err != nil {
-		t.Fatalf("Approve() error = %v", err)
-	}
-	revoked, err := store.Revoke(approved.ID, "operator")
-	if err != nil || revoked.Status != StatusRevoked {
-		t.Fatalf("Revoke() = %+v err=%v, want revoked", revoked, err)
-	}
-}
-
-func TestDecisionTokenRequiresExactMatch(t *testing.T) {
-	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
-	result, _, err := store.Request(Request{
-		Client:    "bob",
-		Operation: "session.shell",
-		Target:    policy.Target{Kind: "user", Fields: map[string][]string{"name": {"deploy"}}},
-		Reason:    "debug deploy",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	grant := result.Grant
-	if _, err := store.Approve(grant.ID, result.DecisionToken+"suffix", "telegram:1"); !errors.Is(err, ErrInvalidDecisionToken) {
-		t.Fatalf("Approve(suffixed token) error = %v, want ErrInvalidDecisionToken", err)
-	}
-	if _, err := store.Approve(grant.ID, result.DecisionToken, "telegram:1"); err != nil {
-		t.Fatalf("Approve(exact token) error = %v", err)
-	}
-}
-
 func TestApproveSetsExpiryFromApprovalTime(t *testing.T) {
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{Now: func() time.Time { return now }})
@@ -345,7 +273,7 @@ func TestApproveSetsExpiryFromApprovalTime(t *testing.T) {
 		t.Fatalf("pending ExpiresAt = %s, want zero", result.Grant.ExpiresAt)
 	}
 	now = now.Add(4 * time.Minute)
-	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "telegram:1")
+	approved, err := approveForTest(store, result.Grant.ID, "telegram:1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,10 +301,10 @@ func TestRequestDefaultsPendingTimeoutToPolicyTTL(t *testing.T) {
 	}
 }
 
-func TestDecisionTokenIsNotSerialized(t *testing.T) {
+func TestPendingGrantSerializesNoAccessTimes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "grants.json")
 	now := time.Date(2026, 7, 8, 1, 2, 3, 0, time.UTC)
-	ids := []string{"grant-1", "token-1"}
+	ids := []string{"grant-1"}
 	store := New(path, Options{
 		Now: nowFunc(now),
 		NewID: func(int) (string, error) {
@@ -398,17 +326,12 @@ func TestDecisionTokenIsNotSerialized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertNoRawDecisionToken(t, string(serialized), result.DecisionToken)
 	assertNoPendingAccessTimes(t, string(serialized))
 	state, err := os.ReadFile(path) // #nosec G304 -- test reads its own temp state file.
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertNoRawDecisionToken(t, string(state), result.DecisionToken)
 	assertNoPendingAccessTimes(t, string(state))
-	if !strings.Contains(string(state), "decision_token_verifier") {
-		t.Fatalf("state file does not contain decision token verifier: %s", string(state))
-	}
 }
 
 func TestLateDecisionPersistsExpiredStatus(t *testing.T) {
@@ -424,8 +347,8 @@ func TestLateDecisionPersistsExpiredStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(11 * time.Minute)
-	if _, err := store.Approve(expiring.Grant.ID, expiring.DecisionToken, "telegram:1"); !errors.Is(err, ErrNotPending) {
-		t.Fatalf("Approve(expired) error = %v, want ErrNotPending", err)
+	if _, err := approveForTest(store, expiring.Grant.ID, "telegram:1"); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("Approve(expired) error = %v, want ErrInvalidTransition", err)
 	}
 	data, err := store.load()
 	if err != nil {
@@ -454,7 +377,7 @@ func TestLifecyclePreparationReportsPersistenceFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Approve(result.Grant.ID, result.DecisionToken, "telegram:1"); err != nil {
+	if _, err := approveForTest(store, result.Grant.ID, "telegram:1"); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Minute)
@@ -549,7 +472,7 @@ func TestReleaseUseRestoresOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	grant := result.Grant
-	if _, err := store.Approve(grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := approveForTest(store, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.ReserveUse(grant.ID, "released-use", grant.Operation); err != nil {
@@ -587,13 +510,6 @@ func nowFunc(now time.Time) func() time.Time {
 	return func() time.Time { return now }
 }
 
-func assertNoRawDecisionToken(t *testing.T, data string, token string) {
-	t.Helper()
-	if strings.Contains(data, `"decision_token":`) || strings.Contains(data, token) {
-		t.Fatalf("serialized grant leaked raw decision token: %s", data)
-	}
-}
-
 func assertNoPendingAccessTimes(t *testing.T, data string) {
 	t.Helper()
 	for _, forbidden := range []string{`"expires_at"`, `"decided_at"`, `"used_at"`, "0001-01-01T00:00:00Z"} {
@@ -603,14 +519,11 @@ func assertNoPendingAccessTimes(t *testing.T, data string) {
 	}
 }
 
-func assertIdempotency(t *testing.T, store *Store, req Request, grantID string) string {
+func assertIdempotency(t *testing.T, store *Store, req Request, grantID string) {
 	t.Helper()
 	retry, created, err := store.Request(req)
 	if err != nil || created || retry.Grant.ID != grantID {
 		t.Fatalf("retry Request() = %+v created=%v err=%v, want same grant", retry, created, err)
-	}
-	if retry.DecisionToken == "" {
-		t.Fatalf("retry Request() DecisionToken is empty")
 	}
 	req.Duration = 10 * time.Minute
 	if _, _, err := store.Request(req); !errors.Is(err, ErrIdempotencyConflict) {
@@ -626,7 +539,6 @@ func assertIdempotency(t *testing.T, store *Store, req Request, grantID string) 
 	if _, _, err := store.Request(req); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("conflicting Request() error = %v, want ErrIdempotencyConflict", err)
 	}
-	return retry.DecisionToken
 }
 
 func assertUseBudget(t *testing.T, store *Store, grantID string) {

@@ -47,13 +47,12 @@ const (
 )
 
 var (
-	ErrNotFound             = errors.New("grant not found")
-	ErrInvalidDecisionToken = errors.New("invalid grant decision token")
-	ErrNotPending           = errors.New("grant is not pending")
-	ErrNotActive            = errors.New("grant is not active")
-	ErrIdempotencyConflict  = errors.New("idempotency conflict")
-	ErrUnsupportedState     = errors.New("unsupported grant state")
-	ErrCapacity             = errors.New("grant pending capacity reached")
+	ErrNotFound            = errors.New("grant not found")
+	ErrNotPending          = errors.New("grant is not pending")
+	ErrNotActive           = errors.New("grant is not active")
+	ErrIdempotencyConflict = errors.New("idempotency conflict")
+	ErrUnsupportedState    = errors.New("unsupported grant state")
+	ErrCapacity            = errors.New("grant pending capacity reached")
 )
 
 // Status is a grant lifecycle state.
@@ -88,12 +87,9 @@ type Request struct {
 	MaxUsesDefaulted bool
 }
 
-// RequestResult returns the durable grant plus the raw one-time decision token
-// needed to notify approvers. The token is not part of Grant and is omitted from
-// JSON so grant/status responses do not leak approval authority.
+// RequestResult returns the durable grant for one request.
 type RequestResult struct {
-	Grant         Grant  `json:"grant"`
-	DecisionToken string `json:"-"`
+	Grant Grant `json:"grant"`
 }
 
 // ImmutablePlan is the provider-neutral envelope committed with a grant.
@@ -107,7 +103,6 @@ type ImmutablePlan struct {
 // Grant is one durable approval record.
 type Grant struct {
 	ID                        string              `json:"id"`
-	DecisionTokenVerifier     string              `json:"decision_token_verifier"`
 	Client                    string              `json:"client"`
 	ClientRequestID           string              `json:"client_request_id,omitempty"`
 	Operation                 string              `json:"operation"`
@@ -140,13 +135,6 @@ type Grant struct {
 	RequestedMaxUses          usebudget.Limit     `json:"requested_max_uses"`
 	RequestedMaxUsesDefaulted bool                `json:"requested_max_uses_defaulted"`
 	ExpiredFrom               Status              `json:"expired_from,omitempty"`
-	Notification              *MessageRef         `json:"notification,omitempty"`
-	NotificationStatus        string              `json:"notification_status,omitempty"`
-	NotificationClaimedAt     time.Time           `json:"notification_claimed_at,omitzero"`
-	NotificationClaimUntil    time.Time           `json:"notification_claim_until,omitzero"`
-	// NotificationDeliveryUnresolved records an ambiguous send attempt until
-	// the current claim is completed or reclaimed.
-	NotificationDeliveryUnresolved bool `json:"notification_delivery_unresolved,omitempty"`
 }
 
 type fileData struct {
@@ -268,20 +256,22 @@ func (s *Store) request(req Request, plan *state.PlanRecord) (RequestResult, boo
 	created := false
 	err = s.updateWithPlan(plan, func(data *fileData) error {
 		s.expireDue(data)
-		if index, existing, ok := findIdempotent(data.Grants, req); ok {
-			var existingErr error
-			out, existingErr = s.idempotentRequest(data, index, existing, req)
-			return existingErr
+		if existing, ok := findIdempotent(data.Grants, req); ok {
+			if !sameRequest(existing, req) {
+				return ErrIdempotencyConflict
+			}
+			out = RequestResult{Grant: existing}
+			return nil
 		}
 		if !s.pendingCapacityAvailable(data.Grants, req.Client) {
 			return ErrCapacity
 		}
-		grant, decisionToken, err := s.newGrant(req)
+		grant, err := s.newGrant(req)
 		if err != nil {
 			return err
 		}
 		data.Grants = append(data.Grants, grant)
-		out = RequestResult{Grant: grant, DecisionToken: decisionToken}
+		out = RequestResult{Grant: grant}
 		created = true
 		return nil
 	})
@@ -303,22 +293,6 @@ func (s *Store) pendingCapacityAvailable(values []Grant, client string) bool {
 		}
 	}
 	return clientPending < s.opts.MaxPendingPerClient && globalPending < s.opts.MaxPendingGlobal
-}
-
-func (s *Store) idempotentRequest(data *fileData, index int, existing Grant, req Request) (RequestResult, error) {
-	if !sameRequest(existing, req) {
-		return RequestResult{}, ErrIdempotencyConflict
-	}
-	result := RequestResult{Grant: existing}
-	if existing.Status != StatusPending || existing.Notification != nil || !existing.NotificationClaimedAt.IsZero() {
-		return result, nil
-	}
-	refreshed, decisionToken, err := s.refreshDecisionToken(existing)
-	if err != nil {
-		return RequestResult{}, err
-	}
-	data.Grants[index] = refreshed
-	return RequestResult{Grant: refreshed, DecisionToken: decisionToken}, nil
 }
 
 // Revoke closes an active grant.
@@ -511,19 +485,14 @@ func normalizeRequestUseLimit(req Request) (Request, error) {
 	return req, nil
 }
 
-func (s *Store) newGrant(req Request) (Grant, string, error) {
+func (s *Store) newGrant(req Request) (Grant, error) {
 	id, err := s.opts.NewID(16)
 	if err != nil {
-		return Grant{}, "", err
-	}
-	token, err := s.opts.NewID(12)
-	if err != nil {
-		return Grant{}, "", err
+		return Grant{}, err
 	}
 	now := s.opts.Now().UTC()
 	return Grant{
 		ID:                        id,
-		DecisionTokenVerifier:     decisionTokenVerifier(token),
 		Client:                    req.Client,
 		ClientRequestID:           req.ClientRequestID,
 		Operation:                 req.Operation,
@@ -540,27 +509,7 @@ func (s *Store) newGrant(req Request) (Grant, string, error) {
 		MaxUses:                   req.MaxUses,
 		RequestedMaxUses:          req.MaxUses,
 		RequestedMaxUsesDefaulted: req.MaxUsesDefaulted,
-	}, token, nil
-}
-
-func (s *Store) refreshDecisionToken(grant Grant) (Grant, string, error) {
-	token, err := s.opts.NewID(12)
-	if err != nil {
-		return Grant{}, "", err
-	}
-	grant.DecisionTokenVerifier = decisionTokenVerifier(token)
-	return grant, token, nil
-}
-
-func (s *Store) durationFromGrant(grant Grant) time.Duration {
-	duration := grant.Duration
-	if duration <= 0 {
-		duration = grant.ExpiresAt.Sub(grant.CreatedAt)
-	}
-	if duration <= 0 || duration > s.opts.MaxDuration {
-		return s.opts.DefaultDuration
-	}
-	return duration
+	}, nil
 }
 
 func (s *Store) update(mutator func(*fileData) error) error {
@@ -635,7 +584,7 @@ func (s *Store) saveWithPlan(data fileData, plan *state.PlanRecord) error {
 			return errors.New("grant SQLite snapshot is unavailable")
 		}
 		before := *s.loadedSnapshot
-		after, err := fileDataToSQLite(data, before.Outbox, s.opts.Now().UTC())
+		after, err := fileDataToSQLite(data)
 		if err != nil {
 			return err
 		}
@@ -701,20 +650,7 @@ func validateLoadedGrant(grant Grant, seen map[string]bool) error {
 }
 
 func validateLoadedGrantData(grant Grant) error {
-	if err := validateLoadedGrantMaps(grant); err != nil {
-		return err
-	}
-	return validateLoadedNotification(grant.Notification)
-}
-
-func validateLoadedNotification(ref *MessageRef) error {
-	if ref == nil {
-		return nil
-	}
-	if err := validateMessageRef(*ref); err != nil {
-		return fmt.Errorf("%w: invalid grant notification: %w", ErrUnsupportedState, err)
-	}
-	return nil
+	return validateLoadedGrantMaps(grant)
 }
 
 func validateLoadedGrantMaps(grant Grant) error {
@@ -731,7 +667,7 @@ func validateLoadedGrantMaps(grant Grant) error {
 }
 
 func validGrantIdentity(grant Grant, seen map[string]bool) bool {
-	return grant.ID != "" && !seen[grant.ID] && grant.DecisionTokenVerifier != "" && grant.Client != "" &&
+	return grant.ID != "" && !seen[grant.ID] && grant.Client != "" &&
 		grant.Operation != "" && grant.Target.Kind != "" && grant.Reason != ""
 }
 
@@ -775,7 +711,6 @@ func (s *Store) expireDue(data *fileData) bool {
 			grant.ExpiredFrom = grant.Status
 			grant.Status = StatusExpired
 			grant.DecidedAt = now
-			grant.NotificationDeliveryUnresolved = false
 		case grant.Status == StatusActive && !now.Before(grant.ExpiresAt):
 			grant.ExpiredFrom = grant.Status
 			grant.Status = StatusExpired

@@ -146,13 +146,6 @@ func (s *Server) handleAPIGrantCreate(w http.ResponseWriter, r *http.Request, cl
 		s.record(client, "grant_request", targetNameFromPolicy(req.Target), audit.DecisionRefused, reason, 0)
 		return
 	}
-	if s.notifier != nil && grantNeedsNotification(grant) {
-		var notified bool
-		grant, notified = s.notifyAPIGrantIfClaimed(w, r, client, grant)
-		if !notified {
-			return
-		}
-	}
 	writeJSendSuccess(w, http.StatusAccepted, map[string]any{"grant": apiGrantFromStore(grant, req.Target)})
 	s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionAllowed, "pending", 0)
 }
@@ -167,7 +160,7 @@ func (s *Server) requireApprovalChannel(w http.ResponseWriter, client string) bo
 }
 
 func (s *Server) hasApprovalChannel() bool {
-	return s.notifier != nil || s.operatorConfigured
+	return s.operatorConfigured
 }
 
 func readAPIGrantRequest(w http.ResponseWriter, r *http.Request) (apiGrantRequestBody, bool) {
@@ -347,77 +340,6 @@ func apiGrantListFromStore(grantsForClient []grants.Grant, statusFilter string) 
 		}
 	}
 	return out
-}
-
-func (s *Server) notifyAPIGrantIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant) (grants.Grant, bool) {
-	claim, claimed, err := s.grants.ClaimNotification(grant.ID, grantNotificationClaimLease)
-	if err != nil {
-		writeJSendError(w, http.StatusBadGateway, "could not claim operator notification", "internal_error")
-		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, "could not claim operator notification", 0)
-		return grants.Grant{}, false
-	}
-	if !claimed {
-		return s.waitForAPIGrantNotificationResponse(w, r, client, grant, grant.ID)
-	}
-	return s.notifyAPICreatedGrant(w, r, client, claim)
-}
-
-func (s *Server) cancelAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
-	updated, canceled, err := s.grants.CancelIfNotificationClaimed(grant.ID, grant.NotificationClaimedAt)
-	if err != nil {
-		writeJSendError(w, http.StatusBadGateway, reason, "internal_error")
-		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
-		return grants.Grant{}, false
-	}
-	if canceled || updated.Status == grants.StatusCanceled {
-		writeJSendError(w, http.StatusBadGateway, reason, "upstream_error")
-		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
-		return grants.Grant{}, false
-	}
-	return s.resolveAPIPendingGrantNotification(w, r, client, grant, updated)
-}
-
-func (s *Server) retainAPIGrantNotificationIfClaimed(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, reason string) (grants.Grant, bool) {
-	updated, retained, err := s.grants.RetainNotificationClaim(grant.ID, grant.NotificationClaimedAt)
-	if err != nil {
-		writeJSendError(w, http.StatusBadGateway, reason, "internal_error")
-		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
-		return grants.Grant{}, false
-	}
-	if retained || updated.NotificationDeliveryUnresolved {
-		writeJSendError(w, http.StatusBadGateway, reason, "upstream_error")
-		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, reason, 0)
-		return grants.Grant{}, false
-	}
-	return s.resolveAPIPendingGrantNotification(w, r, client, grant, updated)
-}
-
-func (s *Server) resolveAPIPendingGrantNotification(w http.ResponseWriter, r *http.Request, client string, original, current grants.Grant) (grants.Grant, bool) {
-	if !grantNeedsNotification(current) {
-		return current, true
-	}
-	return s.waitForAPIGrantNotificationResponse(w, r, client, original, original.ID)
-}
-
-func (s *Server) waitForAPIGrantNotificationResponse(w http.ResponseWriter, r *http.Request, client string, grant grants.Grant, id string) (grants.Grant, bool) {
-	current, err := s.waitForGrantNotification(r.Context(), id)
-	if err != nil {
-		status, message, code := apiGrantNotificationWaitError(err)
-		writeJSendError(w, status, message, code)
-		s.record(client, "grant_request", hfgrant.Target(grant), audit.DecisionRefused, message, 0)
-		return grants.Grant{}, false
-	}
-	return current, true
-}
-
-func apiGrantNotificationWaitError(err error) (int, string, string) {
-	if errors.Is(err, errGrantNotificationCanceled) || errors.Is(err, errGrantNotificationUnresolved) {
-		return http.StatusBadGateway, "could not notify operator", "upstream_error"
-	}
-	if errors.Is(err, errGrantNotificationStillQueued) {
-		return http.StatusBadGateway, "operator notification is still pending", "internal_error"
-	}
-	return http.StatusBadGateway, "could not confirm operator notification", "internal_error"
 }
 
 func (s *Server) handleAPIGrantGet(w http.ResponseWriter, r *http.Request, client string) {

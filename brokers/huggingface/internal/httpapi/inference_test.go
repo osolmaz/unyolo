@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -315,7 +316,7 @@ func TestInferenceWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := handler.grants.Approve(requested.ID, requested.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(handler.grants, requested.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	first := inferenceRequestToBroker(t, broker, body)

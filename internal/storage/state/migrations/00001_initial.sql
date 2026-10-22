@@ -1,10 +1,10 @@
 -- +goose Up
 CREATE TABLE state_contract (
     singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
-    contract TEXT NOT NULL CHECK(contract = 'unyolo-state-v1-terminal-grant-failures')
+    contract TEXT NOT NULL CHECK(contract = 'unyolo-state-v1-telegram-owner')
 ) STRICT;
 
-INSERT INTO state_contract (singleton, contract) VALUES (1, 'unyolo-state-v1-terminal-grant-failures');
+INSERT INTO state_contract (singleton, contract) VALUES (1, 'unyolo-state-v1-telegram-owner');
 
 CREATE TABLE plans (
     digest TEXT PRIMARY KEY CHECK(length(digest) = 64),
@@ -15,7 +15,6 @@ CREATE TABLE plans (
 
 CREATE TABLE grants (
     id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 128),
-    decision_token_verifier TEXT NOT NULL CHECK(length(decision_token_verifier) BETWEEN 1 AND 256),
     client TEXT NOT NULL CHECK(length(client) BETWEEN 1 AND 128),
     client_request_id TEXT NOT NULL DEFAULT '' CHECK(length(client_request_id) <= 128),
     operation TEXT NOT NULL CHECK(length(operation) BETWEEN 1 AND 128),
@@ -48,12 +47,7 @@ CREATE TABLE grants (
     max_uses INTEGER CHECK(max_uses BETWEEN 1 AND 1000000),
     requested_max_uses INTEGER CHECK(requested_max_uses BETWEEN 1 AND 1000000),
     requested_max_uses_defaulted INTEGER NOT NULL DEFAULT 0 CHECK(requested_max_uses_defaulted IN (0,1)),
-    expired_from TEXT,
-    notification_json TEXT CHECK(notification_json IS NULL OR (length(notification_json) BETWEEN 2 AND 16384 AND json_valid(notification_json))),
-    notification_status TEXT NOT NULL DEFAULT '' CHECK(length(notification_status) <= 256),
-    notification_claimed_at TEXT,
-    notification_claim_until TEXT,
-    notification_delivery_unresolved INTEGER NOT NULL DEFAULT 0 CHECK(notification_delivery_unresolved IN (0,1))
+    expired_from TEXT
 ) STRICT;
 
 CREATE INDEX grants_status_created_idx ON grants(status, created_at DESC, id DESC);
@@ -127,26 +121,7 @@ CREATE TABLE decision_records (
     UNIQUE(request_id, action, idempotency_key)
 ) STRICT;
 
-CREATE TABLE notification_outbox (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    grant_id TEXT NOT NULL REFERENCES grants(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK(length(kind) BETWEEN 1 AND 64),
-    payload_json TEXT NOT NULL CHECK(length(payload_json) BETWEEN 2 AND 16384 AND json_valid(payload_json)),
-    idempotency_key TEXT NOT NULL UNIQUE CHECK(length(idempotency_key) BETWEEN 1 AND 256),
-    status TEXT NOT NULL CHECK(status IN ('pending','claimed','delivered','ambiguous','canceled')),
-    attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
-    available_at TEXT NOT NULL,
-    claimed_until TEXT,
-    delivered_at TEXT,
-    last_error_code TEXT NOT NULL DEFAULT '' CHECK(length(last_error_code) <= 128),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-) STRICT;
-
-CREATE INDEX notification_outbox_due_idx ON notification_outbox(status, available_at, id);
-
 -- +goose Down
-DROP TABLE notification_outbox;
 DROP TABLE decision_records;
 DROP TABLE lifecycle_events;
 DROP TABLE operations;

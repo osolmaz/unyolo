@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -20,18 +19,14 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/osolmaz/unyolo/approval"
-	"github.com/osolmaz/unyolo/approval/notification"
-	"github.com/osolmaz/unyolo/approval/notifier"
-	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	"github.com/osolmaz/unyolo/brokers/github/internal/config"
 	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 	"github.com/osolmaz/unyolo/brokers/github/internal/opcatalog"
@@ -671,7 +666,7 @@ func TestDenyOverridesActiveGrant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, result.Grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	response := doWithBody(
@@ -726,7 +721,7 @@ func TestExecutionGrantOnlyAuthorizesExactNativeRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := grantstest.Approve(server.grants, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,7 +759,7 @@ func TestNativeWindowGrantChargesIndependentIdenticalCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := grantstest.Approve(server.grants, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,19 +790,18 @@ func TestGitReceivePackWaitsForApprovalAndContinues(t *testing.T) {
 		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	body := receivePackCreate("refs/tags/v1.0.0")
 
 	responses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
-	if len(notifier.messages) != 1 || upstreamCalls != 0 {
-		t.Fatalf("notifications = %d, upstream calls = %d, want 1/0", len(notifier.messages), upstreamCalls)
+	grant := waitForGitApproval(t, server, 1)
+	if approvalCount(t, server) != 1 || upstreamCalls != 0 {
+		t.Fatalf("notifications = %d, upstream calls = %d, want 1/0", approvalCount(t, server), upstreamCalls)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	response := <-responses
@@ -831,8 +825,7 @@ func TestGitReceivePackGroupsAtomicMultiRefApproval(t *testing.T) {
 		forwarded, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	body := pktLine(oid("1") + " " + oid("2") + " refs/heads/bob/update\x00report-status atomic\n")
 	body = append(body, pktLine(oid("3")+" "+zeroOID()+" refs/heads/bob/delete\n")...)
 	body = append(body, []byte("0000")...)
@@ -841,7 +834,7 @@ func TestGitReceivePackGroupsAtomicMultiRefApproval(t *testing.T) {
 	go func() {
 		responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
-	grant, token := waitForGitApproval(t, server, notifier, 1)
+	grant := waitForGitApproval(t, server, 1)
 	if got := grant.Attrs["ref"]; !reflect.DeepEqual(got, []string{"refs/heads/bob/delete", "refs/heads/bob/update"}) {
 		t.Fatalf("grouped refs = %v", got)
 	}
@@ -852,15 +845,15 @@ func TestGitReceivePackGroupsAtomicMultiRefApproval(t *testing.T) {
 	if len(commands) != 2 || !strings.HasPrefix(commands[0], "000000 git.push.force ") || !strings.HasPrefix(commands[1], "000001 git.ref.delete ") {
 		t.Fatalf("ordered commands = %v", commands)
 	}
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	response := <-responses
 	if response.Code != http.StatusOK || !bytes.Equal(forwarded, body) {
 		t.Fatalf("status=%d forwarded exact body=%t", response.Code, bytes.Equal(forwarded, body))
 	}
-	if len(notifier.messages) != 1 {
-		t.Fatalf("notifications = %d", len(notifier.messages))
+	if approvalCount(t, server) != 1 {
+		t.Fatalf("notifications = %d", approvalCount(t, server))
 	}
 }
 
@@ -871,16 +864,15 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 		upstreamCalls++
 		w.WriteHeader(http.StatusOK)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	body := receivePackCreate("refs/tags/v1.0.0")
 
 	firstResponses := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		firstResponses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
-	firstGrant, firstToken := waitForGitApproval(t, server, notifier, 1)
-	if _, err := server.grants.Deny(firstGrant.ID, firstToken, "operator"); err != nil {
+	firstGrant := waitForGitApproval(t, server, 1)
+	if _, err := grantstest.Deny(server.grants, firstGrant.ID, "operator"); err != nil {
 		t.Fatalf("Deny() error = %v", err)
 	}
 	first := <-firstResponses
@@ -891,8 +883,8 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 	go func() {
 		secondResponses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 	}()
-	secondGrant, secondToken := waitForGitApproval(t, server, notifier, 2)
-	if _, err := server.grants.Approve(secondGrant.ID, secondToken, "operator"); err != nil {
+	secondGrant := waitForGitApproval(t, server, 2)
+	if _, err := grantstest.Approve(server.grants, secondGrant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	second := <-secondResponses
@@ -906,8 +898,8 @@ func TestGitReceivePackCreatesFreshApprovalAfterDenial(t *testing.T) {
 	if items[1].ClientRequestID != items[0].ClientRequestID+"-2" || items[1].ID == items[0].ID {
 		t.Fatalf("renewed grant = %+v, previous = %+v", items[1], items[0])
 	}
-	if len(notifier.messages) != 2 {
-		t.Fatalf("notifications = %d, want 2", len(notifier.messages))
+	if approvalCount(t, server) != 2 {
+		t.Fatalf("notifications = %d, want 2", approvalCount(t, server))
 	}
 }
 
@@ -965,8 +957,7 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 		upstreamCalls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
+	server.operatorConfigured = true
 	body := receivePackCreate("refs/tags/v1.0.0")
 	responses := make(chan *httptest.ResponseRecorder, 2)
 	for range 2 {
@@ -974,8 +965,8 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 			responses <- doWithBody(t, server, http.MethodPost, "/osolmaz/gh-broker.git/git-receive-pack", bearerAuth(), body)
 		}()
 	}
-	grant, token := waitForGitApproval(t, server, notifier, 1)
-	if _, err := server.grants.Approve(grant.ID, token, "operator"); err != nil {
+	grant := waitForGitApproval(t, server, 1)
+	if _, err := grantstest.Approve(server.grants, grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	var successful, refused int
@@ -998,8 +989,8 @@ func TestConcurrentGitReceivePackRequestsReuseApproval(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Status != grants.StatusConsumed {
 		t.Fatalf("transaction grants = %+v, error = %v", items, err)
 	}
-	if len(notifier.messages) != 1 || upstreamCalls.Load() != 1 || successful != 1 || refused != 1 {
-		t.Fatalf("notifications=%d upstream=%d success=%d refused=%d", len(notifier.messages), upstreamCalls.Load(), successful, refused)
+	if approvalCount(t, server) != 1 || upstreamCalls.Load() != 1 || successful != 1 || refused != 1 {
+		t.Fatalf("notifications=%d upstream=%d success=%d refused=%d", approvalCount(t, server), upstreamCalls.Load(), successful, refused)
 	}
 }
 
@@ -1071,202 +1062,9 @@ func TestGrantBackedReceivePackCommitFailureReturnsError(t *testing.T) {
 	assertGrantUseState(t, server, grantID, grants.StatusActive, 0, 0)
 }
 
-func TestTelegramApprovalActivatesGrant(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	telegramState := &fakeTelegramState{chatID: 123, messageID: 77}
-	telegramAPI := httptest.NewServer(fakeTelegramHandler(t, telegramState))
-	t.Cleanup(telegramAPI.Close)
-	telegram, err := unyolotelegram.NewWithOptions("bot-token", telegramState.chatID, telegramAPI.Client(), telegramAPI.URL, unyolotelegram.Options{
-		PollTimeoutSeconds: 1,
-	})
-	if err != nil {
-		t.Fatalf("NewWithOptions() error = %v", err)
-	}
-	server.notifier = telegram
-	server.telegram = telegram
-
-	created := createTelegramPullRequestGrant(t, server, telegramState)
-	stored, err := server.grants.Get(created.ID)
-	if err != nil {
-		t.Fatalf("Get(%q) error = %v", created.ID, err)
-	}
-	if stored.Notification == nil || stored.Notification.ChatID != telegramState.chatID || stored.Notification.MessageID != telegramState.messageID {
-		t.Fatalf("notification = %+v, want persisted Telegram message", stored.Notification)
-	}
-	pollTelegramApproval(t, telegram, server)
-	server.deliverGrantStatusUpdates(context.Background())
-	assertGrantActiveAfterTelegram(t, server, created.ID, telegramState)
-}
-
-func TestGrantNotificationIsIdempotent(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	notifier := &captureNotifier{}
-	server.notifier = notifier
-
-	first := createGrant(t, server, "same-request", "open the work PR")
-	second := createGrant(t, server, "same-request", "open the work PR")
-	if first.Code != http.StatusCreated || second.Code != http.StatusOK {
-		t.Fatalf("statuses = %d, %d, want 201 then 200", first.Code, second.Code)
-	}
-	if len(notifier.messages) != 1 {
-		t.Fatalf("messages = %d, want exactly one", len(notifier.messages))
-	}
-	if decodeGrantResponse(t, first).ID != decodeGrantResponse(t, second).ID {
-		t.Fatal("idempotent request returned different grants")
-	}
-}
-
-func TestUnresolvedGrantNotificationReclaimsAfterLease(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	notifier := &captureNotifier{}
-	server.notifier = notifier
-	now := time.Date(2026, 7, 10, 1, 2, 3, 0, time.UTC)
-	grant, claim := createUnresolvedNotificationClaim(t, server, func() time.Time { return now })
-	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/grants", http.NoBody)
-	echoContext := server.echo.NewContext(request, httptest.NewRecorder())
-
-	if _, _, err := server.notifyPendingGrant(echoContext, grantCreatePlan{}, grant.ID); err == nil {
-		t.Fatal("notifyPendingGrant() error = nil, want unresolved delivery")
-	}
-	if len(notifier.messages) != 0 {
-		t.Fatalf("messages = %d, want no duplicate send", len(notifier.messages))
-	}
-	assertUnresolvedNotificationClaim(t, server, grant.ID, claim.Grant.NotificationClaimedAt)
-	now = now.Add(30 * time.Second)
-	stored, ref, err := server.notifyPendingGrant(echoContext, grantCreatePlan{}, grant.ID)
-	assertReclaimedNotification(t, stored, ref, notifier, claim.DecisionToken, err)
-}
-
-func createUnresolvedNotificationClaim(t *testing.T, server *Server, now func() time.Time) (grants.Grant, grants.NotificationClaim) {
-	t.Helper()
-	server.grants = grants.NewDatabase(server.database, grants.Options{Now: now})
-	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	claim, claimed, err := server.grants.ClaimNotification(result.Grant.ID, 30*time.Second)
-	if err != nil || !claimed {
-		t.Fatalf("ClaimNotification() = %+v, %v, %v", claim, claimed, err)
-	}
-	if _, retained, err := server.grants.RetainNotificationClaim(result.Grant.ID, claim.Grant.NotificationClaimedAt); err != nil || !retained {
-		t.Fatalf("RetainNotificationClaim() retained=%v err=%v", retained, err)
-	}
-	return result.Grant, claim
-}
-
-func assertUnresolvedNotificationClaim(t *testing.T, server *Server, id string, claimedAt time.Time) {
-	t.Helper()
-	stored, err := server.grants.Get(id)
-	if err != nil {
-		t.Fatalf("Get(%q) error = %v", id, err)
-	}
-	if stored.Status != grants.StatusPending || !stored.NotificationDeliveryUnresolved || !stored.NotificationClaimedAt.Equal(claimedAt) {
-		t.Fatalf("grant = %+v, want original unresolved claim", stored)
-	}
-}
-
-func assertReclaimedNotification(t *testing.T, stored grants.Grant, ref notify.MessageRef, notifier *captureNotifier, oldToken string, err error) {
-	t.Helper()
-	if err != nil || stored.Notification == nil || ref.MessageID <= 0 || len(notifier.messages) != 1 {
-		t.Fatalf("reclaimed notify = grant:%+v ref:%+v messages:%d err:%v", stored, ref, len(notifier.messages), err)
-	}
-	if notifier.token == oldToken {
-		t.Fatal("reclaimed notification reused the original decision token")
-	}
-}
-
-func TestGrantNotificationFailureRetainsRequest(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	server.notifier = &captureNotifier{sendErr: errors.New("telegram unavailable")}
-
-	response := createGrant(t, server, "failed-notification", "open the work PR")
-	if response.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, body = %s, want bad gateway", response.Code, response.Body.String())
-	}
-	stored, err := server.grants.ListForClient("bob")
-	if err != nil {
-		t.Fatalf("ListForClient() error = %v", err)
-	}
-	if len(stored) != 1 || stored[0].Status != grants.StatusPending || !stored[0].NotificationDeliveryUnresolved {
-		t.Fatalf("grants = %+v, want one unresolved pending grant", stored)
-	}
-}
-
-func TestInvalidGrantNotificationReferenceCancelsRequest(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	server.notifier = &captureNotifier{invalidRef: true}
-
-	response := createGrant(t, server, "invalid-notification", "open the work PR")
-	if response.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, body = %s, want bad gateway", response.Code, response.Body.String())
-	}
-	stored, err := server.grants.ListForClient("bob")
-	if err != nil {
-		t.Fatalf("ListForClient() error = %v", err)
-	}
-	if len(stored) != 1 || stored[0].Status != grants.StatusCanceled {
-		t.Fatalf("grants = %+v, want one canceled grant", stored)
-	}
-}
-
-func TestGrantStatusDeliverySurvivesRestart(t *testing.T) {
-	t.Parallel()
-	stateDir := t.TempDir()
-	cfg := config.Config{ClientID: "bob", SharedSecret: testSharedSecret, GitHubToken: testGitHubToken, GitHubTokenFile: "/protected/github-token", StateDir: stateDir}
-	brokerPolicy := requestPRPolicy(t)
-	server, err := New(cfg, brokerPolicy)
-	if err != nil {
-		t.Fatalf("New(first) error = %v", err)
-	}
-	createdNotifier := &captureNotifier{}
-	server.notifier = createdNotifier
-	created := createGrant(t, server, "restart-status", "open the work PR")
-	if created.Code != http.StatusCreated {
-		t.Fatalf("grant create status = %d, body = %s", created.Code, created.Body.String())
-	}
-	grant := decodeGrantResponse(t, created)
-	approveGrant(t, server, grant.ID, createdNotifier.token)
-	if err := server.Close(); err != nil {
-		t.Fatalf("Close(first) error = %v", err)
-	}
-
-	restarted, err := New(cfg, brokerPolicy)
-	if err != nil {
-		t.Fatalf("New(restarted) error = %v", err)
-	}
-	t.Cleanup(func() { _ = restarted.Close() })
-	statusNotifier := &captureNotifier{}
-	restarted.notifier = statusNotifier
-	restarted.deliverGrantStatusUpdates(context.Background())
-	restarted.deliverGrantStatusUpdates(context.Background())
-	if len(statusNotifier.statuses) != 1 || statusNotifier.statuses[0].Kind != notify.StatusActive {
-		t.Fatalf("statuses = %+v, want one durable active update", statusNotifier.statuses)
-	}
-	stored, err := restarted.grants.Get(grant.ID)
-	if err != nil {
-		t.Fatalf("Get(%q) error = %v", grant.ID, err)
-	}
-	if stored.NotificationStatus != string(grants.StatusActive) {
-		t.Fatalf("notification status = %q, want active", stored.NotificationStatus)
-	}
-}
-
 func TestServerCloseStopsOwnedWorkersWithLiveStartContext(t *testing.T) {
 	server := newTestServer(t)
-	server.notifier = &captureNotifier{}
+	server.operatorConfigured = true
 	server.Start(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- server.Close() }()
@@ -1280,34 +1078,6 @@ func TestServerCloseStopsOwnedWorkersWithLiveStartContext(t *testing.T) {
 	}
 }
 
-func TestRetainedGrantUseUpdatesOperator(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	notifier := &captureNotifier{}
-	server.notifier = notifier
-	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	if _, err := server.grants.SetNotification(result.Grant.ID, notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 9}); err != nil {
-		t.Fatalf("SetNotification() error = %v", err)
-	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
-		t.Fatalf("Approve() error = %v", err)
-	}
-	if _, err := server.grants.ReserveUse(result.Grant.ID, "retained-status-use", result.Grant.Operation); err != nil {
-		t.Fatalf("ReserveUse() error = %v", err)
-	}
-	if _, err := server.grants.RetainUse(result.Grant.ID, "retained-status-use"); err != nil {
-		t.Fatalf("RetainUse() error = %v", err)
-	}
-
-	server.deliverGrantStatusUpdates(context.Background())
-	if len(notifier.statuses) != 1 || notifier.statuses[0].Kind != notify.StatusRetained {
-		t.Fatalf("statuses = %+v, want retained-use warning", notifier.statuses)
-	}
-}
-
 func TestRetainingMultiUseGrantPreservesRemainingAccess(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -1317,7 +1087,7 @@ func TestRetainingMultiUseGrantPreservesRemainingAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, result.Grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	reserved, err := server.grants.ReserveUse(result.Grant.ID, "multi-retained-use", result.Grant.Operation)
@@ -1347,7 +1117,7 @@ func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, result.Grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	reserved, err := server.grants.ReserveUse(result.Grant.ID, "predispatch-use", result.Grant.Operation)
@@ -1365,68 +1135,6 @@ func TestPreDispatchFailureReleasesGrantUse(t *testing.T) {
 	assertGrantUseState(t, server, result.Grant.ID, grants.StatusActive, 0, 0)
 }
 
-func TestGrantStatusDeliveryRetriesFailedEdit(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	notifier := &captureNotifier{updateErr: errors.New("telegram unavailable")}
-	server.notifier = notifier
-	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	if _, err := server.grants.SetNotification(result.Grant.ID, notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 10}); err != nil {
-		t.Fatalf("SetNotification() error = %v", err)
-	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
-		t.Fatalf("Approve() error = %v", err)
-	}
-
-	server.deliverGrantStatusUpdates(context.Background())
-	notifier.updateErr = nil
-	server.deliverGrantStatusUpdates(context.Background())
-	server.deliverGrantStatusUpdates(context.Background())
-	if len(notifier.statuses) != 1 || notifier.statuses[0].Kind != notify.StatusActive {
-		t.Fatalf("statuses = %+v, want one successful retry", notifier.statuses)
-	}
-}
-
-func TestGrantStatusUsesSharedStates(t *testing.T) {
-	t.Parallel()
-	lifecycle := map[grants.Status]notify.StatusKind{
-		grants.StatusActive:   notify.StatusActive,
-		grants.StatusDenied:   notify.StatusDenied,
-		grants.StatusExpired:  notify.StatusActiveExpired,
-		grants.StatusConsumed: notify.StatusConsumed,
-		grants.StatusRevoked:  notify.StatusRevoked,
-		grants.StatusCanceled: notify.StatusCanceled,
-		grants.StatusPending:  notify.StatusClosed,
-	}
-	for status, want := range lifecycle {
-		if got := approval.StatusForUpdate(grants.StatusUpdate{Status: status}); got.Kind != want {
-			t.Errorf("StatusForUpdate(%q) = %+v, want %q", status, got, want)
-		}
-	}
-	used := grants.Grant{Status: grants.StatusActive, MaxUses: 3, UsedCount: 1}
-	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got.Kind != notify.StatusUsedActive || got.UsedCount != 1 {
-		t.Errorf("used status = %+v", got)
-	}
-	used = grants.Grant{Status: grants.StatusActive, MaxUses: 2, UsedCount: 1, ReservedCount: 1}
-	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateUsed, Grant: used}); got.ReservedCount != 1 {
-		t.Errorf("reserved used status = %+v", got)
-	}
-	used.ReservationRetained = true
-	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation, Grant: used}); got.Kind != notify.StatusRetained {
-		t.Errorf("retained used status = %+v", got)
-	}
-	used.Status = grants.StatusConsumed
-	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateUsedExpired, Grant: used}); got.Kind != notify.StatusConsumed {
-		t.Errorf("closed used status = %+v", got)
-	}
-	if got := approval.StatusForUpdate(grants.StatusUpdate{Kind: grants.StatusUpdateRetainedReservation}); got.Kind != notify.StatusRetained {
-		t.Errorf("retained status = %+v", got)
-	}
-}
-
 func TestReleaseReservedGrantUse(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
@@ -1434,7 +1142,7 @@ func TestReleaseReservedGrantUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, result.Grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	reserved, err := server.grants.ReserveUse(result.Grant.ID, "released-use", result.Grant.Operation)
@@ -1443,135 +1151,6 @@ func TestReleaseReservedGrantUse(t *testing.T) {
 	}
 	server.releaseGrantUses([]grants.UseReservation{reserved})
 	assertGrantUseState(t, server, result.Grant.ID, grants.StatusActive, 0, 0)
-}
-
-func TestWaitForGrantNotificationHonorsCancellation(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, _, err := server.waitForGrantNotification(ctx, result.Grant.ID); err == nil {
-		t.Fatal("waitForGrantNotification() error = nil, want cancellation")
-	}
-}
-
-func TestWaitForGrantNotificationReturnsStoredReference(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	result, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	ref := notify.MessageRef{Kind: "test", ChatID: 1, MessageID: 11}
-	if _, err := server.grants.SetNotification(result.Grant.ID, ref); err != nil {
-		t.Fatalf("SetNotification() error = %v", err)
-	}
-	stored, got, err := server.waitForGrantNotificationFor(context.Background(), result.Grant.ID, time.Second, time.Millisecond)
-	if err != nil || stored.ID != result.Grant.ID || got != ref {
-		t.Fatalf("notified wait = grant:%+v ref:%+v err:%v", stored, got, err)
-	}
-}
-
-func TestWaitForGrantNotificationReturnsTerminalGrant(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	terminal, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request(terminal) error = %v", err)
-	}
-	if err := server.grants.Cancel(terminal.Grant.ID); err != nil {
-		t.Fatalf("Cancel() error = %v", err)
-	}
-	stored, got, err := server.waitForGrantNotificationFor(context.Background(), terminal.Grant.ID, time.Second, time.Millisecond)
-	if err != nil || stored.Status != grants.StatusCanceled || got.MessageID != 0 {
-		t.Fatalf("terminal wait = grant:%+v ref:%+v err:%v", stored, got, err)
-	}
-}
-
-func TestWaitForGrantNotificationRejectsMissingGrant(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	if _, _, err := server.waitForGrantNotificationFor(context.Background(), "missing", time.Second, time.Millisecond); err == nil {
-		t.Fatal("missing wait error = nil")
-	}
-}
-
-func TestWaitForGrantNotificationTimesOut(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	pending, _, err := server.requestGrant(grantsRequestForMainPush(t))
-	if err != nil {
-		t.Fatalf("Request(timeout) error = %v", err)
-	}
-	if _, _, err := server.waitForGrantNotificationFor(context.Background(), pending.Grant.ID, time.Millisecond, time.Millisecond); err == nil {
-		t.Fatal("timeout wait error = nil")
-	}
-}
-
-func TestGrantNotificationSweeperStopsWithContext(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	server.notifier = &captureNotifier{}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	server.runGrantNotificationSweeper(ctx)
-}
-
-func approveGrant(t *testing.T, server *Server, grantID string, token string) {
-	t.Helper()
-	decision := server.control.HandleDecision(context.Background(), notify.Decision{
-		Action:        notify.ActionApprove,
-		GrantID:       grantID,
-		DecisionToken: token,
-		OperatorID:    42,
-		ChatID:        1,
-		MessageID:     1,
-		MessageText:   "approval",
-	})
-	if decision.Answer != notify.AnswerApproved {
-		t.Fatalf("telegram decision = %+v, want approval", decision)
-	}
-}
-
-func createTelegramPullRequestGrant(t *testing.T, server *Server, state *fakeTelegramState) apiGrant {
-	t.Helper()
-	response := createGrant(t, server, "telegram-pr-1", "telegram approval")
-	if response.Code != http.StatusCreated {
-		t.Fatalf("grant create status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if state.callbackData == "" {
-		t.Fatal("fake Telegram did not capture callback data")
-	}
-	return decodeGrantResponse(t, response)
-}
-
-func pollTelegramApproval(t *testing.T, telegram *unyolotelegram.Client, server *Server) {
-	t.Helper()
-	nextOffset, err := telegram.PollOnce(context.Background(), 0, server.control.HandleDecision)
-	if err != nil {
-		t.Fatalf("PollOnce() error = %v", err)
-	}
-	if nextOffset != 2 {
-		t.Fatalf("next offset = %d, want 2", nextOffset)
-	}
-}
-
-func assertGrantActiveAfterTelegram(t *testing.T, server *Server, grantID string, state *fakeTelegramState) {
-	t.Helper()
-	get := do(t, server, http.MethodGet, "/api/grants/"+grantID, bearerAuth())
-	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `"status":"active"`) {
-		t.Fatalf("grant get after telegram = %d %s, want active", get.Code, get.Body.String())
-	}
-	if !state.answered {
-		t.Fatal("fake Telegram callback was not answered")
-	}
-	if !strings.Contains(strings.Join(state.edits, "\n"), "Approved. Access is active.") {
-		t.Fatalf("telegram edits = %q, want approval status edit", state.edits)
-	}
 }
 
 func TestGetGrantDirect(t *testing.T) {
@@ -1616,44 +1195,16 @@ func createGrant(t *testing.T, server *Server, requestID string, reason string) 
 	return doWithBody(t, server, http.MethodPost, "/api/grants", bearerAuth(), []byte(body))
 }
 
-func TestOperatorInboxSurvivesTelegramNotificationFailure(t *testing.T) {
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	server.operatorConfigured = true
-	server.notifier = &captureNotifier{sendErr: errors.New("notify failed")}
-	response := createGrant(t, server, "operator-inbox-notify-failed", "open the work PR")
-	if response.Code != http.StatusCreated {
-		t.Fatalf("grant create status = %d, body=%s", response.Code, response.Body.String())
-	}
-	created := decodeGrantResponse(t, response)
-	stored, err := server.grants.Get(created.ID)
-	if err != nil || stored.Status != grants.StatusPending || !stored.NotificationDeliveryUnresolved {
-		t.Fatalf("stored grant = %+v, err=%v", stored, err)
-	}
-}
-
-func decodeGrantResponse(t *testing.T, response *httptest.ResponseRecorder) apiGrant {
-	t.Helper()
-	var payload struct {
-		Grant apiGrant `json:"grant"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode grant response: %v", err)
-	}
-	return payload.Grant
-}
-
 func TestGrantCreateRejectsInvalidRequests(t *testing.T) {
 	t.Parallel()
 	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
-	noNotifier := createGrant(t, server, "missing-notifier", "reason")
-	if noNotifier.Code != http.StatusServiceUnavailable {
-		t.Fatalf("no notifier status = %d, want service unavailable", noNotifier.Code)
+	noOperator := createGrant(t, server, "missing-operator", "reason")
+	if noOperator.Code != http.StatusServiceUnavailable {
+		t.Fatalf("no operator status = %d, want service unavailable", noOperator.Code)
 	}
-	server.notifier = &captureNotifier{}
+	server.operatorConfigured = true
 	cases := map[string]struct {
 		body string
 		want int
@@ -1727,11 +1278,11 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	})
 	body := `{"client_request_id":"request-1","operation":"git.push.force","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"attrs":{"ref":"refs/heads/bob/work"},"reason":"force push work branch","minutes":5}`
-	noNotifier := newBodyContext(t, server, body)
-	if _, err := server.planGrantCreate(noNotifier); err == nil {
-		t.Fatal("planGrantCreate(no notifier) error = nil, want service unavailable")
+	noOperator := newBodyContext(t, server, body)
+	if _, err := server.planGrantCreate(noOperator); err == nil {
+		t.Fatal("planGrantCreate(no operator) error = nil, want service unavailable")
 	}
-	server.notifier = &captureNotifier{}
+	server.operatorConfigured = true
 	plan, err := server.planGrantCreate(newBodyContext(t, server, body))
 	if err != nil {
 		t.Fatalf("planGrantCreate() error = %v", err)
@@ -1742,83 +1293,6 @@ func TestPlanGrantCreateDirect(t *testing.T) {
 	notRequestable := `{"client_request_id":"request-2","operation":"git.fetch","target":{"kind":"repo","owner":"osolmaz","name":"gh-broker"},"reason":"fetch"}`
 	if _, err := server.planGrantCreate(newBodyContext(t, server, notRequestable)); err == nil {
 		t.Fatal("planGrantCreate(not requestable) error = nil, want forbidden")
-	}
-}
-
-func TestTelegramDecisionDenyAndErrors(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	result, _, err := server.requestGrant(grants.Request{
-		Client:          "bob",
-		ClientRequestID: "deny-pr",
-		Operation:       string(policy.Operation("pull_request.create")),
-		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
-		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
-		Reason:          "deny test",
-		Duration:        5 * time.Minute,
-		PendingTimeout:  time.Minute,
-		MaxUses:         1,
-	})
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	denied := server.control.HandleDecision(context.Background(), notify.Decision{
-		Action:        notify.ActionDeny,
-		GrantID:       result.Grant.ID,
-		DecisionToken: result.DecisionToken,
-		OperatorTag:   "operator",
-		ChatID:        1,
-		MessageID:     1,
-		MessageText:   "approval",
-	})
-	if denied.Answer != notify.AnswerDenied {
-		t.Fatalf("deny decision = %+v, want denied", denied)
-	}
-	replay := server.control.HandleDecision(context.Background(), notify.Decision{
-		Action:        notify.ActionApprove,
-		GrantID:       result.Grant.ID,
-		DecisionToken: result.DecisionToken,
-		ChatID:        1,
-		MessageID:     1,
-		MessageText:   "approval",
-	})
-	if replay.Answer != notify.AnswerAlreadyDenied || replay.MessageStatus.Kind != notify.StatusDenied {
-		t.Fatalf("replay decision = %+v, want already denied", replay)
-	}
-}
-
-func TestDenyTelegramGrantDirect(t *testing.T) {
-	t.Parallel()
-	server := newTestServerWithPolicyAndHandler(t, requestPRPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
-	result, _, err := server.requestGrant(grants.Request{
-		Client:          "bob",
-		ClientRequestID: "deny-direct",
-		Operation:       string(policy.Operation("pull_request.create")),
-		Target:          policy.CoreTarget(policy.Target{Kind: "repo", Owner: "osolmaz", Name: "gh-broker"}),
-		Attrs:           map[string][]string{"ref": {"refs/heads/bob/work"}, "head_ref": {"refs/heads/bob/work"}, "base_ref": {"refs/heads/main"}},
-		Reason:          "deny direct",
-		Duration:        5 * time.Minute,
-		PendingTimeout:  time.Minute,
-		MaxUses:         1,
-	})
-	if err != nil {
-		t.Fatalf("Request() error = %v", err)
-	}
-	decision := server.control.HandleDecision(context.Background(), notify.Decision{
-		Action:        notify.ActionDeny,
-		GrantID:       result.Grant.ID,
-		DecisionToken: result.DecisionToken,
-		OperatorTag:   "operator",
-		ChatID:        1,
-		MessageID:     1,
-		MessageText:   "approval",
-	})
-	if decision.Answer != notify.AnswerDenied || decision.Retry {
-		t.Fatalf("handleTelegramDecision() = %+v, want denied status", decision)
 	}
 }
 
@@ -1962,8 +1436,6 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 		GitHubToken:         testGitHubToken,
 		GitHubTokenFile:     "/protected/github-token",
 		StateDir:            t.TempDir(),
-		TelegramBotToken:    "bot-token",
-		TelegramChatID:      123,
 		GitHubHTTPTimeout:   7 * time.Second,
 		GitHubStreamTimeout: 13 * time.Second,
 		MaxReceivePackBytes: 99,
@@ -1980,9 +1452,6 @@ func TestNewConfiguresGitHubHTTPTimeoutAndReceivePackLimit(t *testing.T) {
 	}
 	if server.maxReceivePackBytes != 99 {
 		t.Fatalf("max receive-pack bytes = %d, want 99", server.maxReceivePackBytes)
-	}
-	if server.notifier == nil || server.telegram != nil {
-		t.Fatal("telegram notifier must be send-only; ingress owns polling")
 	}
 }
 
@@ -2281,14 +1750,6 @@ func newTestServer(t *testing.T) *Server {
 	})
 }
 
-func newTestServerWithStateDir(t *testing.T, stateDir string) *Server {
-	t.Helper()
-	return newTestServerWithPolicyAndHandlerInStateDir(t, testBrokerPolicy(t), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("proxied"))
-	}, stateDir)
-}
-
 func newTestServerWithHandler(t *testing.T, handler http.HandlerFunc) *Server {
 	t.Helper()
 	return newTestServerWithPolicyAndHandler(t, testBrokerPolicy(t), handler)
@@ -2447,7 +1908,7 @@ func approveMainPushGrant(t *testing.T, server *Server) string {
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
-	if _, err := server.grants.Approve(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(server.grants, result.Grant.ID, "operator"); err != nil {
 		t.Fatalf("Approve() error = %v", err)
 	}
 	return result.Grant.ID
@@ -2464,43 +1925,7 @@ func assertGrantUseState(t *testing.T, server *Server, grantID string, status gr
 	}
 }
 
-type captureNotifier struct {
-	mu         sync.Mutex
-	messages   []approvalnotify.Approval
-	statuses   []notify.Status
-	token      string
-	sendErr    error
-	updateErr  error
-	invalidRef bool
-}
-
-func (n *captureNotifier) SendApproval(_ context.Context, msg approvalnotify.Approval) (notify.MessageRef, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.sendErr != nil {
-		return notify.MessageRef{}, n.sendErr
-	}
-	n.token = msg.DecisionToken
-	stored := msg
-	stored.DecisionToken = ""
-	n.messages = append(n.messages, stored)
-	if n.invalidRef {
-		return notify.MessageRef{}, nil
-	}
-	return notify.MessageRef{Kind: "test", ChatID: 1, MessageID: len(n.messages), Text: msg.Presentation.Title}, nil
-}
-
-func (n *captureNotifier) UpdateStatus(_ context.Context, _ notify.MessageRef, status notify.Status) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.updateErr != nil {
-		return n.updateErr
-	}
-	n.statuses = append(n.statuses, status)
-	return nil
-}
-
-func waitForGitApproval(t *testing.T, server *Server, notifier *captureNotifier, count int) (grants.Grant, string) {
+func waitForGitApproval(t *testing.T, server *Server, count int) grants.Grant {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -2508,114 +1933,23 @@ func waitForGitApproval(t *testing.T, server *Server, notifier *captureNotifier,
 		if err != nil {
 			t.Fatal(err)
 		}
-		notifier.mu.Lock()
-		messageCount, token := len(notifier.messages), notifier.token
-		notifier.mu.Unlock()
-		if len(items) >= count && messageCount >= count && items[count-1].Status == grants.StatusPending && token != "" {
-			return items[count-1], token
+		if len(items) >= count && items[count-1].Status == grants.StatusPending {
+			return items[count-1]
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for Git approval %d", count)
-	return grants.Grant{}, ""
+	return grants.Grant{}
 }
 
-type fakeTelegramState struct {
-	chatID       int64
-	messageID    int
-	callbackData string
-	messageText  string
-	updateSent   bool
-	answered     bool
-	edits        []string
-}
-
-func fakeTelegramHandler(t *testing.T, state *fakeTelegramState) http.HandlerFunc {
+// approvalCount returns the number of approvals that the test client requested.
+func approvalCount(t *testing.T, server *Server) int {
 	t.Helper()
-	return func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
-			payload := decodeJSONMap(t, r)
-			state.messageText, _ = payload["text"].(string)
-			state.callbackData = firstCallbackData(t, payload)
-			writeTelegramJSON(t, w, map[string]any{
-				"ok": true,
-				"result": map[string]any{
-					"message_id": state.messageID,
-					"chat":       map[string]any{"id": state.chatID},
-				},
-			})
-		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
-			result := []map[string]any{}
-			if state.callbackData != "" && !state.updateSent {
-				state.updateSent = true
-				result = append(result, map[string]any{
-					"update_id": 1,
-					"callback_query": map[string]any{
-						"id":   "callback-1",
-						"data": state.callbackData,
-						"from": map[string]any{"id": 42, "username": "operator"},
-						"message": map[string]any{
-							"message_id": state.messageID,
-							"text":       state.messageText,
-							"chat":       map[string]any{"id": state.chatID},
-						},
-					},
-				})
-			}
-			writeTelegramJSON(t, w, map[string]any{"ok": true, "result": result})
-		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
-			state.answered = true
-			writeTelegramJSON(t, w, map[string]any{"ok": true, "result": true})
-		case strings.HasSuffix(r.URL.Path, "/editMessageText"):
-			payload := decodeJSONMap(t, r)
-			if text, _ := payload["text"].(string); text != "" {
-				state.edits = append(state.edits, text)
-			}
-			writeTelegramJSON(t, w, map[string]any{"ok": true, "result": true})
-		default:
-			t.Fatalf("unexpected Telegram path %s", r.URL.Path)
-		}
+	items, err := server.grants.ListForClient("bob")
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func decodeJSONMap(t *testing.T, r *http.Request) map[string]any {
-	t.Helper()
-	var payload map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode Telegram payload: %v", err)
-	}
-	return payload
-}
-
-func firstCallbackData(t *testing.T, payload map[string]any) string {
-	t.Helper()
-	replyMarkup, ok := payload["reply_markup"].(map[string]any)
-	if !ok {
-		t.Fatalf("reply_markup missing from payload: %+v", payload)
-	}
-	keyboard, ok := replyMarkup["inline_keyboard"].([]any)
-	if !ok || len(keyboard) == 0 {
-		t.Fatalf("inline_keyboard missing from payload: %+v", payload)
-	}
-	row, ok := keyboard[0].([]any)
-	if !ok || len(row) == 0 {
-		t.Fatalf("inline_keyboard row missing from payload: %+v", payload)
-	}
-	button, ok := row[0].(map[string]any)
-	if !ok {
-		t.Fatalf("button missing from payload: %+v", payload)
-	}
-	callbackData, _ := button["callback_data"].(string)
-	return callbackData
-}
-
-func writeTelegramJSON(t *testing.T, w http.ResponseWriter, payload map[string]any) {
-	t.Helper()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		t.Fatalf("write Telegram response: %v", err)
-	}
+	return len(items)
 }
 
 func testBrokerPolicy(t *testing.T) *policy.Policy {

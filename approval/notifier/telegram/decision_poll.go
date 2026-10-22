@@ -1,66 +1,8 @@
 package telegram
 
 import (
-	"context"
-	"errors"
-	"html"
-
 	"github.com/osolmaz/unyolo/approval/notifier"
 )
-
-// ErrDecisionRetry reports that a decision handler asked Telegram polling to
-// leave the current update pending for a later durable retry.
-var ErrDecisionRetry = errors.New("telegram decision requires retry")
-
-// PollOnce fetches and handles one Telegram update batch.
-func (c *Client) PollOnce(ctx context.Context, offset int64, handler func(context.Context, notify.Decision) notify.DecisionResult) (int64, error) {
-	updates, err := c.getUpdates(ctx, offset)
-	if err != nil {
-		return offset, err
-	}
-	nextOffset := offset
-	for _, update := range updates {
-		decision, ok := parseDecision(update)
-		if !ok {
-			nextOffset = offsetAfterUpdate(nextOffset, update.UpdateID)
-			continue
-		}
-		if c.handleDecision(ctx, decision, handler) {
-			return nextOffset, ErrDecisionRetry
-		}
-		nextOffset = offsetAfterUpdate(nextOffset, update.UpdateID)
-	}
-	return nextOffset, nil
-}
-
-func offsetAfterUpdate(offset, updateID int64) int64 {
-	if updateID >= offset {
-		return updateID + 1
-	}
-	return offset
-}
-
-func (c *Client) handleDecision(ctx context.Context, decision notify.Decision, handler func(context.Context, notify.Decision) notify.DecisionResult) bool {
-	result := notify.DecisionResult{Answer: notify.AnswerIgnored}
-	if decision.ChatID == c.chatID {
-		result = c.normalizeDecisionResult(handler(ctx, decision))
-		if result.Retry {
-			return true
-		}
-		if result.MessageStatus.Kind != "" {
-			_ = c.answerCallback(ctx, decision.CallbackID, answerText(result.Answer))
-			_ = c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, html.EscapeString(decision.MessageText), result.MessageStatus)
-			return false
-		}
-		if result.ClearButtons {
-			_ = c.answerCallback(ctx, decision.CallbackID, answerText(result.Answer))
-			_ = c.clearDecisionButtons(ctx, decision)
-			return false
-		}
-	}
-	_ = c.answerCallback(ctx, decision.CallbackID, answerText(result.Answer))
-	return false
-}
 
 func parseDecision(update telegramUpdate) (notify.Decision, bool) {
 	if update.CallbackQuery == nil {

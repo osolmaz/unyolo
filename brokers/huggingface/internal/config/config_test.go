@@ -128,11 +128,10 @@ func TestLoadValidatesSecretsAndNumbers(t *testing.T) {
 		{name: "plaintext upstream", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_UPSTREAM_HUB_URL": "http://127.0.0.1:9000"}, want: "HF_BROKER_UPSTREAM_HUB_URL"},
 		{name: "operator endpoint missing", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_ENDPOINT": ""}, want: "HF_BROKER_OPERATOR_ENDPOINT"},
 		{name: "shared endpoint", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_OPERATOR_SHARED_SECRET": "operator-secret-abcdefghijklmnopqrstuvwxyz", "HF_BROKER_OPERATOR_ENDPOINT": "tcp://127.0.0.1:32191"}, want: "must differ"},
-		{name: "telegram token without chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "HF_BROKER_TELEGRAM"},
-		{name: "bad telegram chat", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "chat"}, want: "HF_BROKER_TELEGRAM_CHAT_ID"},
-		{name: "telegram base without token", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_API_BASE": "https://telegram.example"}, want: "HF_BROKER_TELEGRAM"},
-		{name: "plaintext remote telegram base", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "1", "HF_BROKER_TELEGRAM_API_BASE": "http://telegram.example"}, want: "HF_BROKER_TELEGRAM_API_BASE"},
-		{name: "telegram base query", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value", "HF_BROKER_TELEGRAM_CHAT_ID": "1", "HF_BROKER_TELEGRAM_API_BASE": "https://telegram.example?"}, want: "HF_BROKER_TELEGRAM_API_BASE"},
+		{name: "removed TELEGRAM_BOT_TOKEN", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN": "telegram_token_value"}, want: "HF_BROKER_TELEGRAM_BOT_TOKEN is no longer supported"},
+		{name: "removed TELEGRAM_BOT_TOKEN_FILE", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": "/tmp/telegram-token"}, want: "HF_BROKER_TELEGRAM_BOT_TOKEN_FILE is no longer supported"},
+		{name: "removed TELEGRAM_CHAT_ID", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_CHAT_ID": "1"}, want: "HF_BROKER_TELEGRAM_CHAT_ID is no longer supported"},
+		{name: "removed TELEGRAM_API_BASE", env: map[string]string{"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456", "HF_BROKER_TELEGRAM_API_BASE": "https://telegram.example"}, want: "HF_BROKER_TELEGRAM_API_BASE is no longer supported"},
 		{name: "token pasted into token file", env: map[string]string{"HF_BROKER_HF_TOKEN_FILE": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456"}, want: "HF_BROKER_HF_TOKEN_FILE"},
 	}
 	for _, tc := range tests {
@@ -227,9 +226,6 @@ func TestLoadOverrides(t *testing.T) {
 		"HF_BROKER_UPSTREAM_HUB_URL":    "https://hub.example.test",
 		"HF_BROKER_UPSTREAM_ROUTER_URL": "https://router.example.test",
 		"HF_BROKER_XET_PYTHON":          "/opt/hf-broker/bin/python",
-		"HF_BROKER_TELEGRAM_BOT_TOKEN":  "telegram_token_value",
-		"HF_BROKER_TELEGRAM_API_BASE":   "http://127.0.0.1:8080/client/unyolo/",
-		"HF_BROKER_TELEGRAM_CHAT_ID":    "12345",
 	}
 	cfg, err := Load(testGetenv(env))
 	if err != nil {
@@ -244,38 +240,15 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.UpstreamHubURL != "https://hub.example.test" || cfg.UpstreamRouterURL != "https://router.example.test" || cfg.XetPython != "/opt/hf-broker/bin/python" {
 		t.Fatalf("upstream overrides not applied: %+v", cfg)
 	}
-	if cfg.TelegramBotToken != "telegram_token_value" || cfg.TelegramAPIBase != "http://127.0.0.1:8080/client/unyolo" || cfg.TelegramChatID != 12345 {
-		t.Fatalf("telegram config not applied: %+v", cfg)
-	}
 }
 
-func TestLoadTelegramTokenFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "telegram-token")
-	if err := os.WriteFile(path, []byte("telegram_file_token\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	env := map[string]string{
-		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": path, "HF_BROKER_TELEGRAM_CHAT_ID": "12345",
-	}
-	cfg, err := Load(testGetenv(env))
-	if err != nil || cfg.TelegramBotToken != "telegram_file_token" || cfg.TelegramChatID != 12345 {
-		t.Fatalf("Load(token file) cfg=%+v err=%v", cfg, err)
-	}
-	env["HF_BROKER_TELEGRAM_BOT_TOKEN"] = "inline"
-	if _, err := Load(testGetenv(env)); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("Load(inline and file) error = %v", err)
-	}
-}
-
-func TestLoadTelegramTokenFileRejectsOversizedSecret(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "telegram-token")
+func TestLoadTokenFileRejectsOversizedSecret(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hf-token")
 	if err := os.WriteFile(path, []byte(strings.Repeat("x", maxSecretFileBytes+1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	env := map[string]string{
-		"HF_BROKER_HF_TOKEN": "hf_token_value", "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
-		"HF_BROKER_TELEGRAM_BOT_TOKEN_FILE": path, "HF_BROKER_TELEGRAM_CHAT_ID": "12345",
+		"HF_BROKER_HF_TOKEN_FILE": path, "HF_BROKER_SHARED_SECRET": "abcdefghijklmnopqrstuvwxyz123456",
 	}
 	_, err := Load(testGetenv(env))
 	if err == nil || !strings.Contains(err.Error(), "exceeds") || strings.Contains(err.Error(), path) {

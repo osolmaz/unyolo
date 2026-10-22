@@ -22,7 +22,6 @@ type doctorOptions struct {
 	helperSocket    string
 	clientSecrets   string
 	operatorSecrets string
-	telegramToken   string
 	jsonOutput      bool
 	helperTimeout   time.Duration
 }
@@ -87,7 +86,7 @@ func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, e
 	opts := doctorOptions{serviceUser: "sudo-broker", catalogPath: "/etc/sudo-broker/catalog.json",
 		helperState: "/var/lib/sudo-broker/helper", helperSocket: "/run/sudo-broker/helper.sock",
 		clientSecrets: "/etc/sudo-broker/secrets", operatorSecrets: "/etc/sudo-broker/operator-secrets",
-		telegramToken: "/etc/sudo-broker/telegram-bot-token", helperTimeout: 3 * time.Second}
+		helperTimeout: 3 * time.Second}
 	var output strings.Builder
 	flags := flag.NewFlagSet("sudo-broker doctor host", flag.ContinueOnError)
 	flags.SetOutput(&output)
@@ -98,7 +97,6 @@ func parseDoctorOptions(args []string, stderr io.Writer) (doctorOptions, bool, e
 	flags.StringVar(&opts.helperSocket, "helper-socket", opts.helperSocket, "helper Unix socket")
 	flags.StringVar(&opts.clientSecrets, "client-secrets-file", opts.clientSecrets, "broker client secret file")
 	flags.StringVar(&opts.operatorSecrets, "operator-secrets-file", opts.operatorSecrets, "broker operator secret file")
-	flags.StringVar(&opts.telegramToken, "telegram-token-file", opts.telegramToken, "Telegram bot token file")
 	flags.DurationVar(&opts.helperTimeout, "helper-timeout", opts.helperTimeout, "helper readiness timeout")
 	flags.BoolVar(&opts.jsonOutput, "json", false, "emit JSON")
 	if err := flags.Parse(args); err != nil {
@@ -122,7 +120,7 @@ func validateDoctorFlagValues(extraArgs int, opts doctorOptions) error {
 }
 
 func validateDoctorPaths(opts doctorOptions) error {
-	for _, value := range []string{opts.catalogPath, opts.helperState, opts.helperSocket, opts.clientSecrets, opts.operatorSecrets, opts.telegramToken} {
+	for _, value := range []string{opts.catalogPath, opts.helperState, opts.helperSocket, opts.clientSecrets, opts.operatorSecrets} {
 		if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 			return errors.New("doctor paths must be absolute and normalized")
 		}
@@ -181,7 +179,6 @@ func sudoDoctorReportWith(ctx context.Context, opts doctorOptions, deps doctorDe
 	credentials := []doctor.CredentialStatus{
 		doctor.CredentialFileStatus("broker-client", opts.clientSecrets, time.Now().UTC(), doctor.DefaultCredentialRotationAge, time.Time{}, doctor.CredentialRevocationLocal),
 		doctor.CredentialFileStatus("broker-operator", opts.operatorSecrets, time.Now().UTC(), doctor.DefaultCredentialRotationAge, time.Time{}, doctor.CredentialRevocationLocal),
-		doctor.CredentialFileStatus("telegram-bot", opts.telegramToken, time.Now().UTC(), doctor.DefaultCredentialRotationAge, time.Time{}, doctor.CredentialRevocationManual),
 	}
 	return doctor.WithCredentials(report, credentials...), nil
 }

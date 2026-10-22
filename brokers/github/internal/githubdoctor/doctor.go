@@ -56,7 +56,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options) (unyolodoctor.Rep
 
 func localSecretChecks(cfg config.Config, agent unyolodoctor.Identity) []unyolodoctor.Check {
 	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubAppClientSecretFile, cfg.GitHubWebhookSecretFile,
-		cfg.SecretsFile, cfg.OperatorSecretsFile, cfg.TelegramBotTokenFile}
+		cfg.SecretsFile, cfg.OperatorSecretsFile}
 	checks := make([]unyolodoctor.Check, 0, len(paths)*5)
 	for _, path := range paths {
 		if path != "" {
@@ -69,14 +69,13 @@ func localSecretChecks(cfg config.Config, agent unyolodoctor.Identity) []unyolod
 
 func localCredentialStatuses(cfg config.Config, now time.Time) []unyolodoctor.CredentialStatus {
 	const rotateAfter = unyolodoctor.DefaultCredentialRotationAge
-	values := make([]unyolodoctor.CredentialStatus, 0, 7)
+	values := make([]unyolodoctor.CredentialStatus, 0, 6)
 	values = appendCredentialFileStatus(values, "broker-client", cfg.SecretsFile, now, rotateAfter, unyolodoctor.CredentialRevocationLocal)
 	values = appendCredentialFileStatus(values, "broker-operator", cfg.OperatorSecretsFile, now, rotateAfter, unyolodoctor.CredentialRevocationLocal)
 	values = appendCredentialFileStatus(values, "github-development", cfg.GitHubTokenFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
 	values = appendCredentialFileStatus(values, "github-app-private-key", cfg.GitHubAppPrivateKeyFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
 	values = appendCredentialFileStatus(values, "github-app-client-secret", cfg.GitHubAppClientSecretFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
 	values = appendCredentialFileStatus(values, "github-webhook", cfg.GitHubWebhookSecretFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
-	values = appendCredentialFileStatus(values, "telegram-bot", cfg.TelegramBotTokenFile, now, rotateAfter, unyolodoctor.CredentialRevocationManual)
 	return appendInlineCredentialStatuses(values, cfg)
 }
 
@@ -96,7 +95,6 @@ func appendInlineCredentialStatuses(values []unyolodoctor.CredentialStatus, cfg 
 		{"github-development", cfg.GitHubToken, cfg.GitHubTokenFile, unyolodoctor.CredentialRevocationManual},
 		{"github-app-client-secret", cfg.GitHubAppClientSecret, cfg.GitHubAppClientSecretFile, unyolodoctor.CredentialRevocationManual},
 		{"github-webhook", cfg.GitHubWebhookSecret, cfg.GitHubWebhookSecretFile, unyolodoctor.CredentialRevocationManual},
-		{"telegram-bot", cfg.TelegramBotToken, cfg.TelegramBotTokenFile, unyolodoctor.CredentialRevocationManual},
 	}
 	for _, item := range inline {
 		if item.value != "" && item.file == "" {
@@ -145,12 +143,11 @@ func storedCredentialCheck(status unyolodoctor.CheckStatus) *unyolodoctor.Check 
 }
 
 func inlineCredentialChecks(cfg config.Config) []unyolodoctor.Check {
-	checks := make([]unyolodoctor.Check, 0, 5)
+	checks := make([]unyolodoctor.Check, 0, 4)
 	checks = appendInlineCredentialCheck(checks, cfg.SharedSecret != "" && cfg.SecretsFile == "", "broker_client_secret")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubToken != "" && cfg.GitHubTokenFile == "", "github_token")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubWebhookSecret != "" && cfg.GitHubWebhookSecretFile == "", "github_webhook_secret")
 	checks = appendInlineCredentialCheck(checks, cfg.GitHubAppClientSecret != "" && cfg.GitHubAppClientSecretFile == "", "github_app_client_secret")
-	checks = appendInlineCredentialCheck(checks, cfg.TelegramBotToken != "" && cfg.TelegramBotTokenFile == "", "telegram_bot_token")
 	return checks
 }
 

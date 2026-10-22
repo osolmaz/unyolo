@@ -114,7 +114,6 @@ func TestSetupPathAndOptionHelpers(t *testing.T) {
 		func(value *sudoSystemdOptions) { value.OperatorEndpoint = value.Endpoint },
 		func(value *sudoSystemdOptions) { value.OperatorID = "bad=name" },
 		func(value *sudoSystemdOptions) { value.OperatorSecret = value.SharedSecret },
-		func(value *sudoSystemdOptions) { value.TelegramBotTokenFile = "/token" },
 	} {
 		changed := opts
 		mutate(&changed)
@@ -145,7 +144,7 @@ func TestManagedHelperSkipsDuplicateSymlinkRejectingValidation(t *testing.T) {
 	}
 }
 
-func TestSetupFileAndTelegramBranches(t *testing.T) {
+func TestSetupFileBranchesAndDryRun(t *testing.T) {
 	directory := t.TempDir()
 	empty := filepath.Join(directory, "empty")
 	if err := os.WriteFile(empty, nil, 0o600); err != nil {
@@ -166,18 +165,16 @@ func TestSetupFileAndTelegramBranches(t *testing.T) {
 	}
 	catalogPath := filepath.Join(directory, "catalog.json")
 	policyPath := filepath.Join(directory, "policy.json")
-	tokenPath := filepath.Join(directory, "telegram-token")
 	_ = os.WriteFile(catalogPath, []byte(`{"version":1,"commands":[{"id":"true","executable":"/usr/bin/true","arguments":[],"target_users":["root"],"working_directory":"/","timeout_seconds":5,"max_output_bytes":100}]}`), 0o600)
 	_ = os.WriteFile(policyPath, []byte(`{"rules":[{"id":"request","effect":"request","clients":["bob"],"operations":["exec.command"],"targets":[{"kind":"user","name":"root"}],"attrs":{"command_id":["true"]},"grant_policy":{"mode":"execution","default_minutes":1,"max_minutes":1,"request_ttl_minutes":1,"default_max_uses":1,"max_uses":1}}]}`), 0o600)
-	_ = os.WriteFile(tokenPath, []byte("token"), 0o600)
 	var output bytes.Buffer
 	if err := runSetupSystemd(context.Background(), []string{"--dry-run", "--binary", "/usr/bin/true", "--helper-binary", "/usr/bin/true",
 		"--client", "agent-a", "--operator", "operator-a", "--agent-user", "agent-user", "--operator-user", "operator-user",
-		"--catalog-file", catalogPath, "--policy-file", policyPath, "--telegram-bot-token-file", tokenPath, "--telegram-chat-id", "1"}, &output, &bytes.Buffer{}); err != nil {
+		"--catalog-file", catalogPath, "--policy-file", policyPath}, &output, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "--telegram-token-file") {
-		t.Fatalf("Telegram dry-run = %s", output.String())
+	if !strings.Contains(output.String(), "--operator-secrets") || strings.Contains(output.String(), "telegram") {
+		t.Fatalf("dry-run = %s", output.String())
 	}
 }
 

@@ -294,86 +294,75 @@ func (q *Queries) InsertDecisionRecord(ctx context.Context, arg InsertDecisionRe
 
 const insertGrant = `-- name: InsertGrant :exec
 INSERT INTO grants (
-    id, decision_token_verifier, client, client_request_id, operation,
+    id, client, client_request_id, operation,
     target_json, attrs_json, metadata_json, plan_digest, reason, status,
     revision, created_at, pending_expires_at, expires_at, duration_ns,
     requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
     decided_on_behalf_of, failure_code, failure_reference, failed_at,
     used_at, used_count, use_revision, reserved_count, reserved_at,
     reservation_retained, reservation_revision,
-	max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json,
-    notification_status, notification_claimed_at, notification_claim_until,
-    notification_delivery_unresolved
+    max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-	?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 `
 
 type InsertGrantParams struct {
-	ID                             string
-	DecisionTokenVerifier          string
-	Client                         string
-	ClientRequestID                string
-	Operation                      string
-	TargetJson                     string
-	AttrsJson                      string
-	MetadataJson                   string
-	PlanDigest                     sql.NullString
-	Reason                         string
-	Status                         string
-	Revision                       int64
-	CreatedAt                      string
-	PendingExpiresAt               string
-	ExpiresAt                      sql.NullString
-	DurationNs                     int64
-	RequestedDurationNs            int64
-	PendingTimeoutNs               int64
-	DecidedAt                      sql.NullString
-	DecidedBy                      string
-	DecidedOnBehalfOf              string
-	FailureCode                    string
-	FailureReference               string
-	FailedAt                       sql.NullString
-	UsedAt                         sql.NullString
-	UsedCount                      int64
-	UseRevision                    int64
-	ReservedCount                  int64
-	ReservedAt                     sql.NullString
-	ReservationRetained            int64
-	ReservationRevision            int64
-	MaxUses                        sql.NullInt64
-	RequestedMaxUses               sql.NullInt64
-	RequestedMaxUsesDefaulted      int64
-	ExpiredFrom                    sql.NullString
-	NotificationJson               sql.NullString
-	NotificationStatus             string
-	NotificationClaimedAt          sql.NullString
-	NotificationClaimUntil         sql.NullString
-	NotificationDeliveryUnresolved int64
+	ID                        string
+	Client                    string
+	ClientRequestID           string
+	Operation                 string
+	TargetJson                string
+	AttrsJson                 string
+	MetadataJson              string
+	PlanDigest                sql.NullString
+	Reason                    string
+	Status                    string
+	Revision                  int64
+	CreatedAt                 string
+	PendingExpiresAt          string
+	ExpiresAt                 sql.NullString
+	DurationNs                int64
+	RequestedDurationNs       int64
+	PendingTimeoutNs          int64
+	DecidedAt                 sql.NullString
+	DecidedBy                 string
+	DecidedOnBehalfOf         string
+	FailureCode               string
+	FailureReference          string
+	FailedAt                  sql.NullString
+	UsedAt                    sql.NullString
+	UsedCount                 int64
+	UseRevision               int64
+	ReservedCount             int64
+	ReservedAt                sql.NullString
+	ReservationRetained       int64
+	ReservationRevision       int64
+	MaxUses                   sql.NullInt64
+	RequestedMaxUses          sql.NullInt64
+	RequestedMaxUsesDefaulted int64
+	ExpiredFrom               sql.NullString
 }
 
 // InsertGrant
 //
 //	INSERT INTO grants (
-//	    id, decision_token_verifier, client, client_request_id, operation,
+//	    id, client, client_request_id, operation,
 //	    target_json, attrs_json, metadata_json, plan_digest, reason, status,
 //	    revision, created_at, pending_expires_at, expires_at, duration_ns,
 //	    requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
 //	    decided_on_behalf_of, failure_code, failure_reference, failed_at,
 //	    used_at, used_count, use_revision, reserved_count, reserved_at,
 //	    reservation_retained, reservation_revision,
-//		max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json,
-//	    notification_status, notification_claimed_at, notification_claim_until,
-//	    notification_delivery_unresolved
+//	    max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from
 //	) VALUES (
 //	    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-//		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+//	    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 //	)
 func (q *Queries) InsertGrant(ctx context.Context, arg InsertGrantParams) error {
 	_, err := q.db.ExecContext(ctx, insertGrant,
 		arg.ID,
-		arg.DecisionTokenVerifier,
 		arg.Client,
 		arg.ClientRequestID,
 		arg.Operation,
@@ -407,11 +396,6 @@ func (q *Queries) InsertGrant(ctx context.Context, arg InsertGrantParams) error 
 		arg.RequestedMaxUses,
 		arg.RequestedMaxUsesDefaulted,
 		arg.ExpiredFrom,
-		arg.NotificationJson,
-		arg.NotificationStatus,
-		arg.NotificationClaimedAt,
-		arg.NotificationClaimUntil,
-		arg.NotificationDeliveryUnresolved,
 	)
 	return err
 }
@@ -482,52 +466,6 @@ func (q *Queries) InsertGrantUse(ctx context.Context, arg InsertGrantUseParams) 
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.SettledAt,
-	)
-	return err
-}
-
-const insertNotificationOutbox = `-- name: InsertNotificationOutbox :exec
-INSERT INTO notification_outbox (
-    grant_id, kind, payload_json, idempotency_key, status, attempts,
-    available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-type InsertNotificationOutboxParams struct {
-	GrantID        string
-	Kind           string
-	PayloadJson    string
-	IdempotencyKey string
-	Status         string
-	Attempts       int64
-	AvailableAt    string
-	ClaimedUntil   sql.NullString
-	DeliveredAt    sql.NullString
-	LastErrorCode  string
-	CreatedAt      string
-	UpdatedAt      string
-}
-
-// InsertNotificationOutbox
-//
-//	INSERT INTO notification_outbox (
-//	    grant_id, kind, payload_json, idempotency_key, status, attempts,
-//	    available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at
-//	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-func (q *Queries) InsertNotificationOutbox(ctx context.Context, arg InsertNotificationOutboxParams) error {
-	_, err := q.db.ExecContext(ctx, insertNotificationOutbox,
-		arg.GrantID,
-		arg.Kind,
-		arg.PayloadJson,
-		arg.IdempotencyKey,
-		arg.Status,
-		arg.Attempts,
-		arg.AvailableAt,
-		arg.ClaimedUntil,
-		arg.DeliveredAt,
-		arg.LastErrorCode,
-		arg.CreatedAt,
-		arg.UpdatedAt,
 	)
 	return err
 }
@@ -717,12 +655,12 @@ func (q *Queries) ListGrantUses(ctx context.Context) ([]GrantUse, error) {
 }
 
 const listGrants = `-- name: ListGrants :many
-SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, failure_code, failure_reference, failed_at, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
+SELECT id, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, failure_code, failure_reference, failed_at, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from FROM grants ORDER BY created_at, id
 `
 
 // ListGrants
 //
-//	SELECT id, decision_token_verifier, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, failure_code, failure_reference, failed_at, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json, notification_status, notification_claimed_at, notification_claim_until, notification_delivery_unresolved FROM grants ORDER BY created_at, id
+//	SELECT id, client, client_request_id, operation, target_json, attrs_json, metadata_json, plan_digest, reason, status, revision, created_at, pending_expires_at, expires_at, duration_ns, requested_duration_ns, pending_timeout_ns, decided_at, decided_by, decided_on_behalf_of, failure_code, failure_reference, failed_at, used_at, used_count, use_revision, reserved_count, reserved_at, reservation_retained, reservation_revision, max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from FROM grants ORDER BY created_at, id
 func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
 	rows, err := q.db.QueryContext(ctx, listGrants)
 	if err != nil {
@@ -734,7 +672,6 @@ func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
 		var i Grant
 		if err := rows.Scan(
 			&i.ID,
-			&i.DecisionTokenVerifier,
 			&i.Client,
 			&i.ClientRequestID,
 			&i.Operation,
@@ -768,55 +705,6 @@ func (q *Queries) ListGrants(ctx context.Context) ([]Grant, error) {
 			&i.RequestedMaxUses,
 			&i.RequestedMaxUsesDefaulted,
 			&i.ExpiredFrom,
-			&i.NotificationJson,
-			&i.NotificationStatus,
-			&i.NotificationClaimedAt,
-			&i.NotificationClaimUntil,
-			&i.NotificationDeliveryUnresolved,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listNotificationOutbox = `-- name: ListNotificationOutbox :many
-SELECT id, grant_id, kind, payload_json, idempotency_key, status, attempts, available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at FROM notification_outbox ORDER BY id
-`
-
-// ListNotificationOutbox
-//
-//	SELECT id, grant_id, kind, payload_json, idempotency_key, status, attempts, available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at FROM notification_outbox ORDER BY id
-func (q *Queries) ListNotificationOutbox(ctx context.Context) ([]NotificationOutbox, error) {
-	rows, err := q.db.QueryContext(ctx, listNotificationOutbox)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []NotificationOutbox{}
-	for rows.Next() {
-		var i NotificationOutbox
-		if err := rows.Scan(
-			&i.ID,
-			&i.GrantID,
-			&i.Kind,
-			&i.PayloadJson,
-			&i.IdempotencyKey,
-			&i.Status,
-			&i.Attempts,
-			&i.AvailableAt,
-			&i.ClaimedUntil,
-			&i.DeliveredAt,
-			&i.LastErrorCode,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -975,17 +863,13 @@ const operationalStats = `-- name: OperationalStats :one
 SELECT
     CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
     CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
-    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
-    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
-    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications
+    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations
 `
 
 type OperationalStatsRow struct {
-	PendingApprovals        int64
-	QueuedOperations        int64
-	ExecutingOperations     int64
-	PendingNotifications    int64
-	UnresolvedNotifications int64
+	PendingApprovals    int64
+	QueuedOperations    int64
+	ExecutingOperations int64
 }
 
 // OperationalStats
@@ -993,19 +877,11 @@ type OperationalStatsRow struct {
 //	SELECT
 //	    CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
 //	    CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
-//	    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
-//	    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
-//	    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications
+//	    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations
 func (q *Queries) OperationalStats(ctx context.Context) (OperationalStatsRow, error) {
 	row := q.db.QueryRowContext(ctx, operationalStats)
 	var i OperationalStatsRow
-	err := row.Scan(
-		&i.PendingApprovals,
-		&i.QueuedOperations,
-		&i.ExecutingOperations,
-		&i.PendingNotifications,
-		&i.UnresolvedNotifications,
-	)
+	err := row.Scan(&i.PendingApprovals, &i.QueuedOperations, &i.ExecutingOperations)
 	return i, err
 }
 
@@ -1039,7 +915,7 @@ func (q *Queries) PutPlan(ctx context.Context, arg PutPlanParams) error {
 
 const updateGrant = `-- name: UpdateGrant :execrows
 UPDATE grants SET
-    decision_token_verifier = ?, client = ?, client_request_id = ?, operation = ?,
+    client = ?, client_request_id = ?, operation = ?,
     target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
     status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
     duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
@@ -1047,60 +923,52 @@ UPDATE grants SET
     failure_reference = ?, failed_at = ?, used_at = ?, used_count = ?,
     use_revision = ?, reserved_count = ?, reserved_at = ?,
     reservation_retained = ?, reservation_revision = ?, max_uses = ?,
-	requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?, notification_json = ?,
-    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
-    notification_delivery_unresolved = ?
+    requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?
 WHERE id = ? AND revision = ?
 `
 
 type UpdateGrantParams struct {
-	DecisionTokenVerifier          string
-	Client                         string
-	ClientRequestID                string
-	Operation                      string
-	TargetJson                     string
-	AttrsJson                      string
-	MetadataJson                   string
-	PlanDigest                     sql.NullString
-	Reason                         string
-	Status                         string
-	Revision                       int64
-	CreatedAt                      string
-	PendingExpiresAt               string
-	ExpiresAt                      sql.NullString
-	DurationNs                     int64
-	RequestedDurationNs            int64
-	PendingTimeoutNs               int64
-	DecidedAt                      sql.NullString
-	DecidedBy                      string
-	DecidedOnBehalfOf              string
-	FailureCode                    string
-	FailureReference               string
-	FailedAt                       sql.NullString
-	UsedAt                         sql.NullString
-	UsedCount                      int64
-	UseRevision                    int64
-	ReservedCount                  int64
-	ReservedAt                     sql.NullString
-	ReservationRetained            int64
-	ReservationRevision            int64
-	MaxUses                        sql.NullInt64
-	RequestedMaxUses               sql.NullInt64
-	RequestedMaxUsesDefaulted      int64
-	ExpiredFrom                    sql.NullString
-	NotificationJson               sql.NullString
-	NotificationStatus             string
-	NotificationClaimedAt          sql.NullString
-	NotificationClaimUntil         sql.NullString
-	NotificationDeliveryUnresolved int64
-	ID                             string
-	Revision_2                     int64
+	Client                    string
+	ClientRequestID           string
+	Operation                 string
+	TargetJson                string
+	AttrsJson                 string
+	MetadataJson              string
+	PlanDigest                sql.NullString
+	Reason                    string
+	Status                    string
+	Revision                  int64
+	CreatedAt                 string
+	PendingExpiresAt          string
+	ExpiresAt                 sql.NullString
+	DurationNs                int64
+	RequestedDurationNs       int64
+	PendingTimeoutNs          int64
+	DecidedAt                 sql.NullString
+	DecidedBy                 string
+	DecidedOnBehalfOf         string
+	FailureCode               string
+	FailureReference          string
+	FailedAt                  sql.NullString
+	UsedAt                    sql.NullString
+	UsedCount                 int64
+	UseRevision               int64
+	ReservedCount             int64
+	ReservedAt                sql.NullString
+	ReservationRetained       int64
+	ReservationRevision       int64
+	MaxUses                   sql.NullInt64
+	RequestedMaxUses          sql.NullInt64
+	RequestedMaxUsesDefaulted int64
+	ExpiredFrom               sql.NullString
+	ID                        string
+	Revision_2                int64
 }
 
 // UpdateGrant
 //
 //	UPDATE grants SET
-//	    decision_token_verifier = ?, client = ?, client_request_id = ?, operation = ?,
+//	    client = ?, client_request_id = ?, operation = ?,
 //	    target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
 //	    status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
 //	    duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
@@ -1108,13 +976,10 @@ type UpdateGrantParams struct {
 //	    failure_reference = ?, failed_at = ?, used_at = ?, used_count = ?,
 //	    use_revision = ?, reserved_count = ?, reserved_at = ?,
 //	    reservation_retained = ?, reservation_revision = ?, max_uses = ?,
-//		requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?, notification_json = ?,
-//	    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
-//	    notification_delivery_unresolved = ?
+//	    requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?
 //	WHERE id = ? AND revision = ?
 func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updateGrant,
-		arg.DecisionTokenVerifier,
 		arg.Client,
 		arg.ClientRequestID,
 		arg.Operation,
@@ -1148,11 +1013,6 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (int64
 		arg.RequestedMaxUses,
 		arg.RequestedMaxUsesDefaulted,
 		arg.ExpiredFrom,
-		arg.NotificationJson,
-		arg.NotificationStatus,
-		arg.NotificationClaimedAt,
-		arg.NotificationClaimUntil,
-		arg.NotificationDeliveryUnresolved,
 		arg.ID,
 		arg.Revision_2,
 	)
@@ -1196,59 +1056,6 @@ func (q *Queries) UpdateGrantUse(ctx context.Context, arg UpdateGrantUseParams) 
 		arg.SettledAt,
 		arg.RequestID,
 		arg.Revision_2,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const updateNotificationOutbox = `-- name: UpdateNotificationOutbox :execrows
-UPDATE notification_outbox SET
-    kind = ?, payload_json = ?, idempotency_key = ?, status = ?, attempts = ?,
-    available_at = ?, claimed_until = ?, delivered_at = ?, last_error_code = ?, updated_at = ?
-WHERE id = ? AND grant_id = ? AND status = ? AND attempts = ?
-`
-
-type UpdateNotificationOutboxParams struct {
-	Kind           string
-	PayloadJson    string
-	IdempotencyKey string
-	Status         string
-	Attempts       int64
-	AvailableAt    string
-	ClaimedUntil   sql.NullString
-	DeliveredAt    sql.NullString
-	LastErrorCode  string
-	UpdatedAt      string
-	ID             int64
-	GrantID        string
-	Status_2       string
-	Attempts_2     int64
-}
-
-// UpdateNotificationOutbox
-//
-//	UPDATE notification_outbox SET
-//	    kind = ?, payload_json = ?, idempotency_key = ?, status = ?, attempts = ?,
-//	    available_at = ?, claimed_until = ?, delivered_at = ?, last_error_code = ?, updated_at = ?
-//	WHERE id = ? AND grant_id = ? AND status = ? AND attempts = ?
-func (q *Queries) UpdateNotificationOutbox(ctx context.Context, arg UpdateNotificationOutboxParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, updateNotificationOutbox,
-		arg.Kind,
-		arg.PayloadJson,
-		arg.IdempotencyKey,
-		arg.Status,
-		arg.Attempts,
-		arg.AvailableAt,
-		arg.ClaimedUntil,
-		arg.DeliveredAt,
-		arg.LastErrorCode,
-		arg.UpdatedAt,
-		arg.ID,
-		arg.GrantID,
-		arg.Status_2,
-		arg.Attempts_2,
 	)
 	if err != nil {
 		return 0, err

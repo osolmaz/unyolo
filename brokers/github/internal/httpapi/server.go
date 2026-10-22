@@ -20,8 +20,6 @@ import (
 	"github.com/osolmaz/unyolo/agent/api"
 	"github.com/osolmaz/unyolo/agent/runtime"
 	"github.com/osolmaz/unyolo/agent/v1"
-	"github.com/osolmaz/unyolo/approval/notification"
-	unyolotelegram "github.com/osolmaz/unyolo/approval/notifier/telegram"
 	unyoloauth "github.com/osolmaz/unyolo/auth"
 	unyoloauthorization "github.com/osolmaz/unyolo/authorization"
 	"github.com/osolmaz/unyolo/authorization/admission"
@@ -67,8 +65,6 @@ type Server struct {
 	sealedPayloads      *sealedpayload.Service
 	credentialStore     *credentialstore.Store
 	streamStore         *streamstore.Store
-	notifier            approvalnotify.Notifier
-	telegram            *unyolotelegram.Client
 	githubCredentials   *githubauth.Manager
 	githubUserID        int64
 	githubWebhookSecret string
@@ -159,7 +155,7 @@ func newServerSkeleton(
 ) *Server {
 	return &Server{
 		echo: newEcho(), policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
-		database: core.database, operations: operationStore, admission: admissionController, notifier: core.notifier, telegram: core.telegram,
+		database: core.database, operations: operationStore, admission: admissionController,
 		githubCredentials: github.appSource, githubWebhookSecret: github.webhookSecret,
 		credentialStore: github.credentialStore, githubUserID: cfg.GitHubUserID,
 		githubClient: github.client, githubGitClient: github.gitClient,
@@ -302,8 +298,6 @@ type coreDependencies struct {
 	audit              *unyoloaudit.Writer
 	control            *controlplane.Runtime
 	auth               security.TokenAuth
-	notifier           approvalnotify.Notifier
-	telegram           *unyolotelegram.Client
 	credentialResolver *currentGitHubCredentialResolver
 }
 
@@ -329,13 +323,8 @@ func newCoreDependencies(cfg config.Config) (coreDependencies, error) {
 		_ = database.Close()
 		return coreDependencies{}, err
 	}
-	notifier, telegram, err := configuredNotifier(cfg)
-	if err != nil {
-		_ = database.Close()
-		return coreDependencies{}, err
-	}
 	return coreDependencies{database: database, grants: grantStore, plans: plans, validator: validator, audit: auditWriter,
-		control: control, auth: auth, notifier: notifier, telegram: telegram, credentialResolver: credentialResolver}, nil
+		control: control, auth: auth, credentialResolver: credentialResolver}, nil
 }
 
 type currentGitHubCredentialResolver struct {
@@ -408,7 +397,7 @@ func githubCredentialMode(cfg config.Config) string {
 
 func newControlPlane(cfg config.Config, grantStore *grants.Store, planValidator ghplan.Validator, auditWriter *unyoloaudit.Writer) (*controlplane.Runtime, security.TokenAuth, error) {
 	control, err := controlplane.New(controlplane.Options{
-		Broker: "gh-broker", ApprovalBroker: "GitHub", Store: grantStore,
+		Broker: "gh-broker", Store: grantStore,
 		ClientSecrets: cfg.EffectiveClientSecrets(), OperatorSecrets: cfg.EffectiveOperatorSecrets(),
 		Presenter: approval.Presenter{}, ActivationValidator: planValidator, Audit: auditWriter, State: grantStore.Database(),
 	})

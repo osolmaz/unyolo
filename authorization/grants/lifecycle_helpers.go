@@ -82,16 +82,16 @@ func findGrant(grants []Grant, id string) (int, Grant, error) {
 	return -1, Grant{}, ErrNotFound
 }
 
-func findIdempotent(grants []Grant, req Request) (int, Grant, bool) {
+func findIdempotent(grants []Grant, req Request) (Grant, bool) {
 	if req.ClientRequestID == "" {
-		return -1, Grant{}, false
+		return Grant{}, false
 	}
-	for index, grant := range grants {
+	for _, grant := range grants {
 		if grant.Client == req.Client && grant.ClientRequestID == req.ClientRequestID && grant.Status != StatusCanceled {
-			return index, grant, true
+			return grant, true
 		}
 	}
-	return -1, Grant{}, false
+	return Grant{}, false
 }
 
 func sameRequest(grant Grant, req Request) bool {

@@ -49,8 +49,6 @@ type setupSystemdOptions struct {
 	OperatorSecret            string
 	OperatorEndpoint          string
 	GitEndpoint               string
-	TelegramBotTokenFile      string
-	TelegramChatID            int64
 	DevTokenFallback          bool
 	CommandRunner             unyoloservice.CommandRunner
 	Lifecycle                 *credentiallifecycle.Reporter
@@ -181,8 +179,6 @@ func bindGitHubSystemdFlags(fs *flag.FlagSet, opts *setupSystemdOptions) {
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
 	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/unyolo/github/operator/broker.sock", "operator inbox endpoint URI")
 	fs.StringVar(&opts.GitEndpoint, "git-endpoint", "", "explicit loopback TCP endpoint for native Git clients")
-	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
-	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 }
 
 func parseGitHubSystemdFlags(fs *flag.FlagSet, stderr io.Writer, flagOutput *strings.Builder, args []string) (bool, error) {
@@ -223,7 +219,6 @@ func validateSetupSystemdOptions(opts setupSystemdOptions) error {
 		func(value setupSystemdOptions) error { return value.Validate() },
 		validateSetupSystemdCredentialOptions,
 		validateSetupSystemdClientOptions,
-		validateTelegramSetupOptions,
 		validateSetupOperatorCredentials,
 		validateSetupOperatorListener,
 		validateSetupGitListener,
@@ -242,13 +237,6 @@ func validateSetupGitListener(opts setupSystemdOptions) error {
 	}
 	if err := clientconfig.ValidateGitEndpoint(opts.GitEndpoint); err != nil {
 		return fmt.Errorf("--git-endpoint: %w", err)
-	}
-	return nil
-}
-
-func validateTelegramSetupOptions(opts setupSystemdOptions) error {
-	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
-		return errors.New("--telegram-bot-token-file and --telegram-chat-id must be set together")
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	corepolicy "github.com/osolmaz/unyolo/authorization/policy"
 )
 
@@ -30,7 +31,7 @@ func TestHFPushTransactionRequestIDIncludesTarget(t *testing.T) {
 	if err != nil || reused != first {
 		t.Fatalf("pending request ID = %q, %v", reused, err)
 	}
-	if _, err := server.grants.Deny(result.Grant.ID, result.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Deny(server.grants, result.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	next, err := server.hfPushTransactionRequestID("agent", "dataset/one/repo", "sha256:test", []string{"rule"})

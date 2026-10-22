@@ -1,8 +1,6 @@
 package telegram
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
@@ -12,14 +10,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/osolmaz/unyolo/approval/notification"
 	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/approval/view"
 	"github.com/osolmaz/unyolo/authorization/budget"
 )
 
 const (
-	rendererID       = "telegram-html-v1"
 	maxTelegramText  = 4096
 	terminalReserve  = 192
 	maxRenderedFacts = 6
@@ -33,7 +29,7 @@ type renderLimits struct {
 }
 
 // RenderApproval renders one semantic approval using unYOLO's canonical Telegram layout.
-func RenderApproval(approval approvalnotify.Approval) (string, error) {
+func RenderApproval(approval Approval) (string, error) {
 	if err := validateApproval(approval); err != nil {
 		return "", err
 	}
@@ -98,7 +94,7 @@ func reduceLimit(value *int, step, minimum int) bool {
 	return true
 }
 
-func validateApproval(approval approvalnotify.Approval) error {
+func validateApproval(approval Approval) error {
 	if !validApprovalIdentity(approval) {
 		return errors.New("approval identity is invalid")
 	}
@@ -111,18 +107,18 @@ func validateApproval(approval approvalnotify.Approval) error {
 	return approvalview.Validate(approval.Presentation)
 }
 
-func validApprovalIdentity(approval approvalnotify.Approval) bool {
+func validApprovalIdentity(approval Approval) bool {
 	return safeLine(approval.Broker, 200, true) && safeLine(approval.Requester, 80, true) &&
 		safeLine(approval.Operation, 500, true)
 }
 
 func validApprovalMode(mode string) bool { return mode == "window" || mode == "execution" }
 
-func validApprovalBounds(approval approvalnotify.Approval) bool {
+func validApprovalBounds(approval Approval) bool {
 	return safeText(approval.Reason, 2_000) && approval.RequestedDurationSeconds > 0 && !approval.PendingExpiresAt.IsZero()
 }
 
-func renderPending(approval approvalnotify.Approval, limits renderLimits) string {
+func renderPending(approval Approval, limits renderLimits) string {
 	var sections []string
 	sections = append(sections, "🔐 <b>Approval needed for "+escaped(approval.Broker, limits.broker)+"</b>")
 	sections = append(sections, strings.Join([]string{
@@ -154,7 +150,7 @@ func renderPending(approval approvalnotify.Approval, limits renderLimits) string
 	return strings.Join(sections, "\n\n")
 }
 
-func renderDetails(approval approvalnotify.Approval, factCount int) string {
+func renderDetails(approval Approval, factCount int) string {
 	if factCount == 0 && approval.Presentation.PlanHash == "" {
 		return ""
 	}
@@ -171,7 +167,7 @@ func renderDetails(approval approvalnotify.Approval, factCount int) string {
 	return strings.Join(lines, "\n")
 }
 
-func renderAccess(approval approvalnotify.Approval, reasonLimit int) string {
+func renderAccess(approval Approval, reasonLimit int) string {
 	return strings.Join([]string{
 		"📝 <b>Reason:</b> " + escaped(approval.Reason, reasonLimit),
 		"⏱️ <b>Access:</b> " + durationText(approval.RequestedDurationSeconds),
@@ -284,11 +280,6 @@ func safeText(value string, maximum int) bool {
 	return true
 }
 
-func renderedDigest(text string) string {
-	digest := sha256.Sum256([]byte(text))
-	return "sha256:" + hex.EncodeToString(digest[:])
-}
-
 var terminalStatusText = map[notify.StatusKind]string{
 	notify.StatusActive:         "✅ Approved. Access is active.",
 	notify.StatusDenied:         "❌ Denied. Access was not granted.",
@@ -297,7 +288,6 @@ var terminalStatusText = map[notify.StatusKind]string{
 	notify.StatusConsumed:       "✅ Used. Access is now closed.",
 	notify.StatusRevoked:        "🚫 Revoked. Access is closed.",
 	notify.StatusCanceled:       "🚫 Canceled. The approval request is closed.",
-	notify.StatusRetained:       "⚠️ Result is ambiguous. Access is closed pending operator review.",
 	notify.StatusSuperseded:     "⚠️ Superseded. Use the latest approval message.",
 	notify.StatusUnavailable:    "⚠️ Unavailable. The approval request no longer exists.",
 }
@@ -318,9 +308,6 @@ func renderStatus(status notify.Status) string {
 
 func renderFailedStatus(status notify.Status) string {
 	message := "⚠️ Approval failed because the request is no longer valid. Create a new request."
-	if status.FailureCode == "invalid_notification" {
-		message = "⚠️ Approval message could not be verified. Create a new request."
-	}
 	if status.FailureReference != "" {
 		message += " Reference: " + html.EscapeString(status.FailureReference)
 	}

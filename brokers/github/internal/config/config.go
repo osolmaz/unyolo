@@ -51,9 +51,6 @@ type Config struct {
 	GitHubWebBaseURL          string
 	ScopeFile                 string
 	StateDir                  string
-	TelegramBotToken          string
-	TelegramBotTokenFile      string
-	TelegramChatID            int64
 	GitHubHTTPTimeout         time.Duration
 	GitHubStreamTimeout       time.Duration
 	MaxReceivePackBytes       int64
@@ -67,6 +64,9 @@ func Load() (Config, error) {
 // LoadFromLookup loads configuration from an injected environment lookup.
 func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	env := environment{lookup: lookup}
+	if err := rejectRemovedSettings(env); err != nil {
+		return Config{}, err
+	}
 	cfg, development, networkExposure, err := loadBaseConfig(env)
 	if err != nil {
 		return Config{}, err
@@ -151,7 +151,6 @@ func loadBaseConfig(env environment) (Config, bool, bool, error) {
 		StateDir:                  env.value("GH_BROKER_STATE_DIR", ""),
 		TLSCertificateFile:        env.value("GH_BROKER_TLS_CERT_FILE", ""),
 		TLSPrivateKeyFile:         env.value("GH_BROKER_TLS_KEY_FILE", ""),
-		TelegramBotTokenFile:      env.value("GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", ""),
 	}
 	if err := loadNumericEnvironment(env, &cfg); err != nil {
 		return Config{}, false, false, err
@@ -181,6 +180,19 @@ func loadAdmissionConfig(env environment, cfg *Config) error {
 		return fmt.Errorf("GH_BROKER_ADMISSION_CONFIG: %w", err)
 	}
 	cfg.Admission = loaded
+	return nil
+}
+
+// removedSettings are broker settings that no longer exist. Approval cards
+// come from unyolo-telegram, which owns the Telegram bot.
+var removedSettings = []string{"GH_BROKER_TELEGRAM_BOT_TOKEN_FILE", "GH_BROKER_TELEGRAM_CHAT_ID"}
+
+func rejectRemovedSettings(env environment) error {
+	for _, name := range removedSettings {
+		if _, found := env.lookup(name); found {
+			return fmt.Errorf("%s is no longer supported: unyolo-telegram sends approval cards; remove it from the broker environment", name)
+		}
+	}
 	return nil
 }
 
@@ -235,9 +247,6 @@ func loadNumericEnvironment(env environment, cfg *Config) error {
 	if cfg.GitHubUserID, err = env.positiveInt("GH_BROKER_GITHUB_USER_ID", 0, true); err != nil {
 		return err
 	}
-	if cfg.TelegramChatID, err = env.nonzeroInt("GH_BROKER_TELEGRAM_CHAT_ID", 0); err != nil {
-		return err
-	}
 	if cfg.GitHubHTTPTimeout, err = env.duration("GH_BROKER_GITHUB_HTTP_TIMEOUT", 30*time.Second, false); err != nil {
 		return err
 	}
@@ -260,18 +269,6 @@ func (e environment) positiveInt(name string, fallback int64, allowZero bool) (i
 	return parsed, nil
 }
 
-func (e environment) nonzeroInt(name string, fallback int64) (int64, error) {
-	value, ok := e.lookup(name)
-	if !ok {
-		return fallback, nil
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed == 0 {
-		return 0, fmt.Errorf("%s must be a non-zero integer", name)
-	}
-	return parsed, nil
-}
-
 func (e environment) duration(name string, fallback time.Duration, allowZero bool) (time.Duration, error) {
 	seconds, err := e.positiveInt(name, int64(fallback/time.Second), allowZero)
 	if err != nil {
@@ -283,7 +280,6 @@ func (e environment) duration(name string, fallback time.Duration, allowZero boo
 func (c *Config) loadCredentialFiles() error {
 	loaders := []func() error{
 		c.loadGitHubTokenFile, c.loadGitHubAppFiles, c.loadGitHubAppClientFiles, c.loadGitHubWebhookSecretFile,
-		c.loadTelegramBotTokenFile,
 	}
 	for _, load := range loaders {
 		if err := load(); err != nil {
@@ -298,10 +294,6 @@ func (c *Config) loadGitHubAppClientFiles() error {
 		return err
 	}
 	return loadOptionalSecretFile(&c.GitHubAppClientSecret, c.GitHubAppClientSecretFile, "github app client secret file")
-}
-
-func (c *Config) loadTelegramBotTokenFile() error {
-	return loadOptionalSecretFile(&c.TelegramBotToken, c.TelegramBotTokenFile, "telegram bot token file")
 }
 
 func (c *Config) loadGitHubTokenFile() error {
@@ -425,7 +417,6 @@ func (c Config) Validate() error {
 		productionPaths(c),
 		tlsFiles(c),
 		upstreamOrigins(c),
-		telegramPair(c.TelegramBotToken, c.TelegramChatID),
 		positiveDuration(c.GitHubHTTPTimeout, "GH_BROKER_GITHUB_HTTP_TIMEOUT must be positive"),
 		optionalPositiveDuration(c.GitHubStreamTimeout, "GH_BROKER_GITHUB_STREAM_TIMEOUT must be positive"),
 		positiveInt64(c.MaxReceivePackBytes, "GH_BROKER_MAX_RECEIVE_PACK_BYTES must be positive"),
@@ -610,16 +601,6 @@ func appUserSelector(c Config) error {
 	}
 	if c.GitHubAppClientID == "" && c.GitHubUserID != 0 {
 		return errors.New("GH_BROKER_GITHUB_USER_ID requires GitHub App user credentials")
-	}
-	return nil
-}
-
-func telegramPair(token string, chatID int64) error {
-	if token == "" && chatID == 0 {
-		return nil
-	}
-	if token == "" || chatID == 0 {
-		return errors.New("a Telegram bot token and GH_BROKER_TELEGRAM_CHAT_ID must be set together")
 	}
 	return nil
 }

@@ -1,26 +1,22 @@
-# Telegram approval ingress
+# Telegram approval owner
 
-unYOLO uses one `unyolo-telegram` ingress process for each Telegram Bot API
-endpoint. By default, that endpoint is the physical Telegram bot. It can also
-be a loopback router endpoint when another application shares the same physical
-bot. Provider brokers supply bounded semantic approval data and send durable
-status updates, but they do not format Telegram HTML or call `getUpdates`. The
-shared Telegram renderer owns layout, escaping, emoji, fixed Approve and Deny
-buttons, terminal wording, and message limits. The ingress owns its update
-offset and routes button decisions to the owning broker over its authenticated
-Operator V1 Unix socket.
+`unyolo-telegram` is the only unYOLO process that talks to the Telegram Bot
+API. It holds the only copy of the bot token. For every installed broker it
+sends the approval cards, edits them when a request changes, reads the button
+clicks, and decides through that broker's Operator V1 API. Brokers contain no
+Telegram code and no Telegram settings. The operator inbox stays the source of
+truth: a card is a view of a request in that inbox.
 
-Telegram has one bot-wide update queue, so a deployment needs one deterministic
-upstream owner. Running a poller in every broker races offsets and loses update
-ownership. When OpenClaw also uses the bot, the owner must route separate local
-queues. Hardened mode also requires that owner to protect unYOLO messages from
-OpenClaw's outbound Bot API calls.
+Telegram has one bot-wide update queue, so a bot needs one deterministic owner.
+Run exactly one `unyolo-telegram` for each bot. When OpenClaw also uses the
+bot, the owner must route separate local queues. Hardened mode also requires
+that owner to protect unYOLO messages from OpenClaw's outbound Bot API calls.
 
 ## Linux setup
 
 Install and configure each provider broker first. Keep the raw operator secret
-files supplied to their setup commands. Then configure the shared ingress with
-the same bot token and chat ID:
+files supplied to their setup commands. Then configure the owner with the bot
+token and chat ID:
 
 ```sh
 sudo unyolo-telegram setup systemd \
@@ -62,19 +58,108 @@ The route keys are `h` for Hugging Face, `g` for GitHub, and `s` for sudo.
 Configuration rejects duplicate or unknown fields, unsupported routes, relative
 secret paths, and malformed endpoints.
 
+### Upgrading from broker-sent cards
+
+Older releases let each broker send its own cards. Those settings are gone:
+
+- `gh-broker` refuses to start while `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` or
+  `GH_BROKER_TELEGRAM_CHAT_ID` is set.
+- `hf-broker` refuses to start while any `HF_BROKER_TELEGRAM_*` setting is
+  set.
+- `sudo-broker serve` refuses `--telegram-token-file` and `--telegram-chat-id`.
+
+Each error names the setting to remove. Rerunning a broker's `setup systemd`
+writes an environment without Telegram and removes the old
+`telegram-bot-token` file from the broker configuration directory, so the bot
+token remains only in `/etc/unyolo-telegram`.
+
+The broker state format also changed: grants no longer carry decision tokens
+or notification records. A broker started on older state reports that fresh
+state is required.
+
+## Cards
+
+The owner follows each broker's Operator V1 event stream from a cursor that it
+stores in its SQLite inbox.
+
+- Without a stored cursor, it lists the broker's pending requests, sends a card
+  for each request that has none, and settles every card it has not finished.
+  It then stores the event cursor that the list returned.
+- For each event, it reads the request, makes the card match it, and only then
+  stores the event's cursor. A restart repeats an unfinished event instead of
+  skipping it.
+- When the broker no longer retains the stored cursor, the owner clears it and
+  rebuilds from a fresh list.
+- When a request no longer exists, its card shows that the request is
+  unavailable.
+
+Each request has at most one card. Before sending, the owner records the card
+as `sending` with a new card token. After Telegram confirms the message, the
+owner records the chat and message and marks the card `open`. If the owner
+stops between those two steps, Telegram may hold a message that the owner never
+recorded. The next pass sends a new card with a new token, and the earlier
+message's buttons stop working.
+
+An approved request keeps an open card so that later uses can appear on it.
+Approved, used, denied, expired, revoked, canceled, and failed requests show
+their state and lose their buttons. A request that can no longer change closes
+its card. Closed cards are kept for 30 days to answer late clicks.
+
+The shared renderer owns layout, escaping, emoji, the fixed Approve and Deny
+buttons, terminal wording, and message limits. Dynamic broker values are
+HTML-escaped, bounded without splitting UTF-8, and cannot supply markup, button
+labels, callback answers, or status prose.
+
+## Clicks
+
+Each card carries its own random 12-byte token in the button data. The owner
+stores only a SHA-256 digest of it. A click is accepted only when all of these
+hold:
+
+- it comes from the configured chat;
+- the owner has an open or closed card for that route and request;
+- the chat and message match the card;
+- the token matches the card's digest;
+- the clicked button's label is the label of the clicked action.
+
+A click that fails these checks is answered as superseded and makes no
+decision. An accepted click decides through the owning broker's Operator V1 API
+with the request's expected revision, an idempotency key derived from the
+click, and the Telegram operator as `on_behalf_of`. A repeated click returns
+the current state and makes no second decision.
+
+An accepted button tap is first committed to the inbox together with the next
+Telegram update offset. The callback is encrypted with AES-GCM before it
+reaches storage. Only then does the owner answer Telegram and dispatch the
+decision. Transient broker or socket failures leave the callback pending in
+the inbox with bounded exponential retry. Entries are dispatched separately, so
+one unavailable route does not block healthy routes. Restart resumes pending
+callbacks before fetching more updates. Terminal and expired records erase
+their nonce and ciphertext while keeping redacted lifecycle evidence.
+
+Setup creates the inbox encryption key once and preserves it on every rerun.
+The key is readable only by the service. Losing or rotating it while callbacks
+are pending makes those callbacks unreadable rather than falling back to
+plaintext.
+
+Every route exposes its exact generated Operator V1 contract digest and build
+identity. The owner compares that digest before each poll batch. A missing or
+different digest exits without consuming another Telegram update, allowing the
+service manager or bundle rollback to repair the host. Provider credentials and
+agent credentials are never available to the owner.
+
 ## Sharing a physical bot
 
 Sharing the unrestricted token with an untrusted application is not safe for
 approvals. A token holder can recover inline button data, change the keyboard,
-and turn a real Deny click into an Approve callback. An OpenClaw relay can also
-invent the parsed callback and sender fields it sends to unYOLO. See [Chat
-approval security](CHAT_APPROVAL_SECURITY.md#telegram) for the full analysis.
+and change the message text. An OpenClaw relay can also invent the parsed
+callback and sender fields it sends to unYOLO. See [Chat approval
+security](CHAT_APPROVAL_SECURITY.md#telegram) for the full analysis.
 
 Trusted direct mode needs no mux because it treats OpenClaw as an operator.
-Hardened mode needs a routing process outside OpenClaw. The routing function
-could be added to `unyolo-telegram`, but `unyolo-telegram` does not currently
-forward ordinary Telegram events to OpenClaw. Its custom API base expects an
-external router.
+Hardened mode needs a routing process outside OpenClaw. `unyolo-telegram` does
+not forward ordinary Telegram events to OpenClaw. Its custom API base expects
+an external router.
 
 Give unYOLO its own local client token and API base only after that router meets
 the message-ownership requirements below. The command then has this form:
@@ -95,57 +180,11 @@ only for loopback addresses.
 A local token and exclusive callback queue are insufficient by themselves. The
 router must reserve unYOLO callback prefixes and track ownership of messages
 sent by each client. It must prevent OpenClaw from reading or changing unYOLO
-approval markup through methods such as `getChat`, `pinChatMessage`,
-`editMessageReplyMarkup`, delete, copy, and forward operations. It must also
-keep approval callback envelopes away from OpenClaw. unYOLO must reject a
-callback when its message ID, rendered content, or keyboard differs from the
-stored approval.
+approval messages through methods such as `getChat`, `pinChatMessage`,
+`editMessageText`, `editMessageReplyMarkup`, delete, copy, and forward
+operations. It must also keep approval callback envelopes away from OpenClaw.
 
 A compatibility proxy that forwards ordinary Bot API methods unchanged provides
 update fan-out, not a hardened boundary between OpenClaw and unYOLO. Do not call
 shared-bot mode hardened until message-tampering tests pass against the real
 router and Telegram service.
-
-The broker that sends approval messages must use the same local token and API
-base. HF Broker accepts `HF_BROKER_TELEGRAM_BOT_TOKEN_FILE` together with
-`HF_BROKER_TELEGRAM_API_BASE` for this purpose.
-
-Setup creates the inbox encryption key once and preserves it on every rerun.
-The key is readable only by the ingress service. Losing or rotating it while
-callbacks are pending makes those callbacks unreadable rather than falling
-back to plaintext authority.
-
-## Decision behavior
-
-An accepted button tap is first committed to the ingress SQLite inbox together
-with the next Telegram update offset. The decision token is encrypted with
-AES-GCM before it reaches storage. Only then does the ingress answer Telegram
-with neutral receipt text and dispatch through the owning broker's Operator V1
-API. It renders the typed terminal state and removes both buttons in the same
-edit where possible. The broker's
-durable notification outbox then reconciles the authoritative terminal render
-from the exact stored pending message. Repeated or concurrent taps return the
-current terminal state and cannot create a second decision.
-
-Every pending notification stores the normalized semantic snapshot, exact
-rendered HTML, renderer identity, and separate SHA-256 digests. The opaque
-decision token is used only in the callback payload and is not retained in the
-semantic snapshot. Dynamic provider values are HTML-escaped, bounded without
-splitting UTF-8, and cannot supply markup, button labels, callback answers, or
-status prose.
-
-Transient broker or socket failures leave the callback pending in the inbox
-with bounded exponential retry. Entries are dispatched separately, so one
-unavailable route does not block healthy routes. Restart resumes pending
-callbacks from SQLite before fetching more updates. A durable decision followed
-by a Telegram edit failure retries idempotently until the terminal render and
-button removal converge. Terminal and expired records erase their nonce,
-ciphertext, and decision token while retaining redacted lifecycle evidence.
-
-Every route exposes its exact generated Operator V1 contract digest and build
-identity. The ingress compares that digest before each poll batch. A missing or
-different digest exits without consuming another Telegram update, allowing the
-service manager or bundle rollback to repair the host. Temporary route outages
-still enter the durable per-route retry path. A wrong chat cannot decide a
-grant. Provider credentials and agent credentials are never available to the
-ingress.

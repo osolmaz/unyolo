@@ -5,9 +5,7 @@ SELECT 1;
 SELECT
     CAST((SELECT COUNT(*) FROM grants WHERE status = 'pending') AS INTEGER) AS pending_approvals,
     CAST((SELECT COUNT(*) FROM operations WHERE state IN ('pending', 'approved')) AS INTEGER) AS queued_operations,
-    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations,
-    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status IN ('pending', 'claimed')) AS INTEGER) AS pending_notifications,
-    CAST((SELECT COUNT(*) FROM notification_outbox WHERE status = 'ambiguous') AS INTEGER) AS unresolved_notifications;
+    CAST((SELECT COUNT(*) FROM operations WHERE state = 'executing') AS INTEGER) AS executing_operations;
 
 -- name: PutPlan :exec
 INSERT INTO plans (digest, schema_name, canonical, created_at)
@@ -27,24 +25,22 @@ SELECT * FROM grants ORDER BY created_at, id;
 
 -- name: InsertGrant :exec
 INSERT INTO grants (
-    id, decision_token_verifier, client, client_request_id, operation,
+    id, client, client_request_id, operation,
     target_json, attrs_json, metadata_json, plan_digest, reason, status,
     revision, created_at, pending_expires_at, expires_at, duration_ns,
     requested_duration_ns, pending_timeout_ns, decided_at, decided_by,
     decided_on_behalf_of, failure_code, failure_reference, failed_at,
     used_at, used_count, use_revision, reserved_count, reserved_at,
     reservation_retained, reservation_revision,
-	max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from, notification_json,
-    notification_status, notification_claimed_at, notification_claim_until,
-    notification_delivery_unresolved
+    max_uses, requested_max_uses, requested_max_uses_defaulted, expired_from
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-	?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 );
 
 -- name: UpdateGrant :execrows
 UPDATE grants SET
-    decision_token_verifier = ?, client = ?, client_request_id = ?, operation = ?,
+    client = ?, client_request_id = ?, operation = ?,
     target_json = ?, attrs_json = ?, metadata_json = ?, plan_digest = ?, reason = ?,
     status = ?, revision = ?, created_at = ?, pending_expires_at = ?, expires_at = ?,
     duration_ns = ?, requested_duration_ns = ?, pending_timeout_ns = ?, decided_at = ?,
@@ -52,9 +48,7 @@ UPDATE grants SET
     failure_reference = ?, failed_at = ?, used_at = ?, used_count = ?,
     use_revision = ?, reserved_count = ?, reserved_at = ?,
     reservation_retained = ?, reservation_revision = ?, max_uses = ?,
-	requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?, notification_json = ?,
-    notification_status = ?, notification_claimed_at = ?, notification_claim_until = ?,
-    notification_delivery_unresolved = ?
+    requested_max_uses = ?, requested_max_uses_defaulted = ?, expired_from = ?
 WHERE id = ? AND revision = ?;
 
 -- name: ListGrantUses :many
@@ -91,21 +85,6 @@ INSERT INTO decision_records (
     scope, request_id, action, idempotency_key, command_hash,
     result_json, previous_json, event_cursor, committed_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-
--- name: ListNotificationOutbox :many
-SELECT * FROM notification_outbox ORDER BY id;
-
--- name: InsertNotificationOutbox :exec
-INSERT INTO notification_outbox (
-    grant_id, kind, payload_json, idempotency_key, status, attempts,
-    available_at, claimed_until, delivered_at, last_error_code, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-
--- name: UpdateNotificationOutbox :execrows
-UPDATE notification_outbox SET
-    kind = ?, payload_json = ?, idempotency_key = ?, status = ?, attempts = ?,
-    available_at = ?, claimed_until = ?, delivered_at = ?, last_error_code = ?, updated_at = ?
-WHERE id = ? AND grant_id = ? AND status = ? AND attempts = ?;
 
 -- name: InsertOperation :exec
 INSERT INTO operations (

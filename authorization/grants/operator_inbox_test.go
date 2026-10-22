@@ -14,7 +14,7 @@ import (
 
 func TestQueryGrantsPaginatesDeterministically(t *testing.T) {
 	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
-	ids := []string{"grant-a", "token-a", "grant-c", "token-c", "grant-b", "token-b"}
+	ids := []string{"grant-a", "grant-c", "grant-b"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
 	for _, requestID := range []string{"a", "c", "b"} {
 		request := testOperatorRequest(requestID)
@@ -290,7 +290,7 @@ func TestEventValidationAndStatusKinds(t *testing.T) {
 
 func TestOperatorDecisionReconcilesExpiryAndApprovalBounds(t *testing.T) {
 	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
-	ids := []string{"grant-expire", "token-expire", "grant-bounds", "token-bounds"}
+	ids := []string{"grant-expire", "grant-bounds"}
 	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
 	expiring, _, err := store.Request(testOperatorRequest("expire"))
 	if err != nil {
@@ -408,7 +408,7 @@ func TestWaitForDecisionReturnsApprovedGrant(t *testing.T) {
 		done <- grant
 	}()
 
-	if _, err := store.Approve(requested.Grant.ID, requested.DecisionToken, "operator"); err != nil {
+	if _, err := approveForTest(store, requested.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -426,7 +426,7 @@ func TestWaitForDecisionReturnsApprovedGrant(t *testing.T) {
 func TestWaitForDecisionReturnsImmediateTerminalGrant(t *testing.T) {
 	store := New(filepath.Join(t.TempDir(), "grants.json"), Options{})
 	requested := requestTestGrant(t, store, "wait-denied", 1)
-	if _, err := store.Deny(requested.Grant.ID, requested.DecisionToken, "operator"); err != nil {
+	if _, err := denyForTest(store, requested.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	grant, err := store.WaitForDecision(t.Context(), requested.Grant.ID)

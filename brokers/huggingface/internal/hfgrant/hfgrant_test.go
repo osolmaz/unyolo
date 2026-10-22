@@ -9,6 +9,7 @@ import (
 
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
 	hfpolicy "github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
 	"github.com/osolmaz/unyolo/internal/storage/state"
@@ -128,7 +129,7 @@ func TestStoredGrantAccessorsAndMatching(t *testing.T) {
 	if _, err := GetForClient(store, "bob", "missing"); err == nil {
 		t.Fatal("GetForClient() returned a missing grant")
 	}
-	approved, err := store.Approve(result.Grant.ID, result.DecisionToken, "operator")
+	approved, err := grantstest.Approve(store, result.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}

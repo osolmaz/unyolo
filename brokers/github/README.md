@@ -44,8 +44,8 @@ sudo gh-broker setup systemd \
 Setup writes protected files under `/etc/gh-broker` (`secrets`,
 `operator-secrets`, the GitHub credential files, `scope.json`, `env`),
 installs the systemd unit and sockets, and starts the service. It never
-places broker client secrets, operator secrets, GitHub credentials, or
-Telegram credentials directly in the env file. The agent and operator APIs
+places broker client secrets, operator secrets, or GitHub credentials
+directly in the env file. The agent and operator APIs
 use distinct Unix sockets by default; use `--endpoint`, `--operator-endpoint`,
 and `--operator-secret-file` to select deployment-owned endpoints or preserve
 an existing operator credential. Use `--no-start` to write files without
@@ -75,12 +75,10 @@ sudo gh-broker setup systemd \
   --operator-user operator-a
 ```
 
-Add Telegram notifications with `--telegram-bot-token-file ./telegram-bot-token`
-and `--telegram-chat-id 123456789`. The token is copied to a service-owned
-protected file; pending requests remain available in the operator inbox
-without Telegram. Run the separate `unyolo-telegram` ingress to receive
-button decisions; provider services never compete for the shared bot's update
-offset. See [Telegram approval ingress](../../docs/TELEGRAM_INGRESS.md).
+Pending requests wait in the operator inbox. For Telegram approval cards, run
+`unyolo-telegram`; it is the only process that holds the bot token, and it
+sends the cards and decides through the operator API. gh-broker has no
+Telegram settings. See [Telegram approval owner](../../docs/TELEGRAM_INGRESS.md).
 
 Write a client config file for an agent account:
 
@@ -415,12 +413,11 @@ POST /api/operator/v1/requests/{id}/revoke
 ```
 
 Authenticate the operator listener with the separate credential from
-`/etc/gh-broker/operator-secrets`. Agent credentials cannot use it. Telegram
-is an optional notification view over the same durable request, so a decision
-through either path closes the same state exactly once. GitHub supplies the
-bounded operation and target along with its risk and warnings. It also supplies
-generated projection facts. unYOLO renders the shared Telegram HTML, controls, callback
-answers, and terminal states.
+`/etc/gh-broker/operator-secrets`. Agent credentials cannot use it.
+`unyolo-telegram` is another client of this API, so a decision through either
+path closes the same state exactly once. GitHub supplies the bounded operation
+and target along with its risk and warnings. It also supplies generated
+projection facts. unYOLO renders the Telegram cards from that projection.
 
 ## GitHub CLI without a token
 
@@ -509,12 +506,11 @@ Deployment safety settings:
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds;
   `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds;
   `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.
-- `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` enable
-  Telegram notifications. Telegram tokens are loaded only from protected
-  files.
+- `GH_BROKER_TELEGRAM_BOT_TOKEN_FILE` and `GH_BROKER_TELEGRAM_CHAT_ID` are
+  no longer supported. gh-broker refuses to start while either is set.
 - Audit logs record the client and operation with its target, outcome, and
   matching rule IDs. They never include tokens, cookies, request bodies, PR bodies, pack
-  contents, diffs, or any GitHub or Telegram credential material.
+  contents, diffs, or any GitHub credential material.
 
 See [.env.example](.env.example) for the full annotated environment.
 

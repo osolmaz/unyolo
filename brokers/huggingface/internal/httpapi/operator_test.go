@@ -12,6 +12,7 @@ import (
 
 	"github.com/osolmaz/unyolo/authorization/budget"
 	unyologrants "github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	unyolopolicy "github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/broker/conformance"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
@@ -100,8 +101,8 @@ func TestOperatorHandlerSharesCanonicalHFGrantState(t *testing.T) {
 	if err != nil || approved.Status != unyologrants.StatusActive {
 		t.Fatalf("Approve() = %+v, %v", approved, err)
 	}
-	if _, err := server.grants.Deny(result.Grant.ID, result.DecisionToken, "telegram:onur"); !errors.Is(err, unyologrants.ErrNotPending) {
-		t.Fatalf("Telegram replay error = %v", err)
+	if _, err := grantstest.Deny(server.grants, result.Grant.ID, "operator:telegram"); !errors.Is(err, unyologrants.ErrInvalidTransition) {
+		t.Fatalf("late deny error = %v", err)
 	}
 
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, operatorServer.URL+"/api/operator/v1/requests", nil)

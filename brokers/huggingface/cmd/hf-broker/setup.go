@@ -33,8 +33,6 @@ type setupSystemdOptions struct {
 	unyolosetup.SystemdOptions
 	HFTokenFile           string
 	XetPython             string
-	TelegramBotTokenFile  string
-	TelegramChatID        int64
 	Repo                  string
 	RepoType              string
 	PolicyPreset          string
@@ -123,8 +121,6 @@ func parseSetupSystemdInput(stderr io.Writer, stdin io.Reader, args []string) (s
 	fs.Var(&opts.ProtectedRepos, "protect-repo", "exact TYPE:OWNER/NAME repository to deny; repeatable")
 	fs.BoolVar(&opts.ResetDeniedOperations, "reset-denied-operations", false, "discard installed deny overrides before applying --deny-operation flags")
 	fs.BoolVar(&opts.ReplacePolicy, "replace-policy", false, "replace an existing managed policy")
-	fs.StringVar(&opts.TelegramBotTokenFile, "telegram-bot-token-file", "", "file containing the Telegram bot token")
-	fs.Int64Var(&opts.TelegramChatID, "telegram-chat-id", 0, "Telegram operator chat id")
 	fs.StringVar(&opts.OperatorName, "operator", "", "operator identity for the protected inbox")
 	fs.StringVar(&opts.OperatorSecretFile, "operator-secret-file", "", "file containing the operator inbox secret")
 	fs.StringVar(&opts.OperatorEndpoint, "operator-endpoint", "unix:///run/unyolo/huggingface/operator/broker.sock", "operator inbox endpoint URI")
@@ -179,9 +175,6 @@ func validateSetupRequired(opts setupSystemdOptions) error {
 	}
 	if opts.XetPython == "" || strings.ContainsAny(opts.XetPython, " \t\r\n\x00") {
 		return exitError{code: 64, message: "--xet-python must be one command name or path without whitespace"}
-	}
-	if (opts.TelegramBotTokenFile == "") != (opts.TelegramChatID == 0) {
-		return exitError{code: 64, message: "--telegram-bot-token-file and --telegram-chat-id must be set together"}
 	}
 	if opts.GitEndpoint != "" {
 		if err := clientconfig.ValidateGitEndpoint(opts.GitEndpoint); err != nil {

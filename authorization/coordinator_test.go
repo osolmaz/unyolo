@@ -8,6 +8,7 @@ import (
 
 	"github.com/osolmaz/unyolo/authorization/budget"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	"github.com/osolmaz/unyolo/authorization/policy"
 	"github.com/osolmaz/unyolo/internal/storage/state"
 	"github.com/osolmaz/unyolo/operation/digest"
@@ -86,7 +87,7 @@ func TestCoordinatorExplicitRequestIgnoresActiveGrant(t *testing.T) {
 	if err != nil || !first.Created {
 		t.Fatalf("first request = %+v, %v", first, err)
 	}
-	if _, err := coordinator.grants.Approve(first.Request.Grant.ID, first.Request.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(coordinator.grants, first.Request.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	second, err := coordinator.RequestApproval(request, fixedIntent(intent))
@@ -106,7 +107,7 @@ func TestCoordinatorActiveGrantModeFiltersReusableAuthority(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		approved, err := coordinator.grants.Approve(result.Grant.ID, result.DecisionToken, "operator")
+		approved, err := grantstest.Approve(coordinator.grants, result.Grant.ID, "operator")
 		if err != nil {
 			t.Fatal(err)
 		}

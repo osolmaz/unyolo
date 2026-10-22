@@ -99,7 +99,6 @@ func (e BrokerEventKind) Valid() bool {
 const (
 	BrokerRequestFailureCodeCredentialChanged      BrokerRequestFailureCode = "credential_changed"
 	BrokerRequestFailureCodeCredentialInsufficient BrokerRequestFailureCode = "credential_insufficient"
-	BrokerRequestFailureCodeInvalidNotification    BrokerRequestFailureCode = "invalid_notification"
 	BrokerRequestFailureCodePlanMismatch           BrokerRequestFailureCode = "plan_mismatch"
 	BrokerRequestFailureCodePlanUnavailable        BrokerRequestFailureCode = "plan_unavailable"
 )
@@ -110,8 +109,6 @@ func (e BrokerRequestFailureCode) Valid() bool {
 	case BrokerRequestFailureCodeCredentialChanged:
 		return true
 	case BrokerRequestFailureCodeCredentialInsufficient:
-		return true
-	case BrokerRequestFailureCodeInvalidNotification:
 		return true
 	case BrokerRequestFailureCodePlanMismatch:
 		return true
@@ -146,8 +143,6 @@ const (
 	ErrorCodeForbidden              ErrorCode = "forbidden"
 	ErrorCodeIdempotencyConflict    ErrorCode = "idempotency_conflict"
 	ErrorCodeInternalError          ErrorCode = "internal_error"
-	ErrorCodeInvalidDecisionToken   ErrorCode = "invalid_decision_token"
-	ErrorCodeInvalidNotification    ErrorCode = "invalid_notification"
 	ErrorCodeInvalidRequest         ErrorCode = "invalid_request"
 	ErrorCodeInvalidTransition      ErrorCode = "invalid_transition"
 	ErrorCodeMethodNotAllowed       ErrorCode = "method_not_allowed"
@@ -176,10 +171,6 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeIdempotencyConflict:
 		return true
 	case ErrorCodeInternalError:
-		return true
-	case ErrorCodeInvalidDecisionToken:
-		return true
-	case ErrorCodeInvalidNotification:
 		return true
 	case ErrorCodeInvalidRequest:
 		return true
@@ -218,21 +209,6 @@ func (e GrantMode) Valid() bool {
 	case Execution:
 		return true
 	case Window:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for NotificationDecisionKind.
-const (
-	Telegram NotificationDecisionKind = "telegram"
-)
-
-// Valid indicates whether the value is a known member of the NotificationDecisionKind enum.
-func (e NotificationDecisionKind) Valid() bool {
-	switch e {
-	case Telegram:
 		return true
 	default:
 		return false
@@ -433,11 +409,10 @@ type Constraints struct {
 
 // Decision defines model for Decision.
 type Decision struct {
-	Constraints      *Constraints          `json:"constraints,omitempty"`
-	ExpectedRevision int                   `json:"expected_revision"`
-	IdempotencyKey   string                `json:"idempotency_key"`
-	Notification     *NotificationDecision `json:"notification,omitempty"`
-	OnBehalfOf       *string               `json:"on_behalf_of,omitempty"`
+	Constraints      *Constraints `json:"constraints,omitempty"`
+	ExpectedRevision int          `json:"expected_revision"`
+	IdempotencyKey   string       `json:"idempotency_key"`
+	OnBehalfOf       *string      `json:"on_behalf_of,omitempty"`
 }
 
 // Descriptor defines model for Descriptor.
@@ -481,22 +456,6 @@ type Health struct {
 	ContractDigest string `json:"contract_digest"`
 	Status         string `json:"status"`
 }
-
-// NotificationDecision defines model for NotificationDecision.
-type NotificationDecision struct {
-	ChatId             int                      `json:"chat_id"`
-	DecisionToken      string                   `json:"decision_token"`
-	Kind               NotificationDecisionKind `json:"kind"`
-	MessageId          int                      `json:"message_id"`
-	PresentationDigest string                   `json:"presentation_digest"`
-	PresentationJson   string                   `json:"presentation_json"`
-	RenderedDigest     string                   `json:"rendered_digest"`
-	Renderer           string                   `json:"renderer"`
-	Text               string                   `json:"text"`
-}
-
-// NotificationDecisionKind defines model for NotificationDecision.Kind.
-type NotificationDecisionKind string
 
 // Presentation defines model for Presentation.
 type Presentation struct {

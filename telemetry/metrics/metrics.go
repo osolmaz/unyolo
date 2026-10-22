@@ -30,7 +30,6 @@ type Metrics struct {
 	executions    *prometheus.CounterVec
 	executionTime *prometheus.HistogramVec
 	decisions     *prometheus.CounterVec
-	notifications *prometheus.CounterVec
 	dependencies  *prometheus.GaugeVec
 	upstream      *prometheus.CounterVec
 	retries       *prometheus.CounterVec
@@ -58,12 +57,10 @@ func New(broker string, source StateSource) (*Metrics, error) {
 			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120}}, []string{"result"}),
 		decisions: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_operator_decisions_total",
 			Help: "Operator decision outcomes.", ConstLabels: labels}, []string{"action", "result"}),
-		notifications: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_notification_deliveries_total",
-			Help: "Approval notification delivery outcomes.", ConstLabels: labels}, []string{"result"}),
 		dependencies: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "unyolo_dependency_healthy",
 			Help: "Last observed health of a bounded runtime dependency.", ConstLabels: labels}, []string{"dependency"}),
 		upstream: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_dependency_requests_total",
-			Help: "Provider and notification dependency outcomes.", ConstLabels: labels}, []string{"dependency", "result", "error_category"}),
+			Help: "Provider dependency outcomes.", ConstLabels: labels}, []string{"dependency", "result", "error_category"}),
 		retries: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "unyolo_dependency_retries_total",
 			Help: "Durable retry attempts by bounded dependency.", ConstLabels: labels}, []string{"dependency"}),
 		workerActive: prometheus.NewGauge(prometheus.GaugeOpts{Name: "unyolo_worker_active",
@@ -72,7 +69,7 @@ func New(broker string, source StateSource) (*Metrics, error) {
 			Help: "Configured provider operation worker capacity.", ConstLabels: labels}),
 	}
 	metrics.registry.MustRegister(metrics.admissions, metrics.submissions, metrics.executions,
-		metrics.executionTime, metrics.decisions, metrics.notifications, metrics.dependencies,
+		metrics.executionTime, metrics.decisions, metrics.dependencies,
 		metrics.upstream, metrics.retries, metrics.workerActive, metrics.workerLimit)
 	if source != nil {
 		metrics.registry.MustRegister(newStateCollector(labels, source))
@@ -105,14 +102,9 @@ func (m *Metrics) OperationExecuted(result string, elapsed time.Duration) {
 	m.executionTime.WithLabelValues(result).Observe(max(0, elapsed.Seconds()))
 }
 
-// OperatorDecision records one revision- or token-bound decision.
+// OperatorDecision records one revision-bound decision.
 func (m *Metrics) OperatorDecision(action, result string) {
 	m.decisions.WithLabelValues(closedValue(action, decisionActions), closedValue(result, decisionResults)).Inc()
-}
-
-// NotificationDelivered records one approval delivery attempt.
-func (m *Metrics) NotificationDelivered(result string) {
-	m.notifications.WithLabelValues(closedValue(result, notificationResults)).Inc()
 }
 
 func (m *Metrics) operationStarted(limit int) {
@@ -125,10 +117,6 @@ func (m *Metrics) operationFinished(result, category string) {
 	m.recordDependency("provider", result, category)
 }
 
-func (m *Metrics) notificationAttempt(result, category string) {
-	m.recordDependency("notification", result, category)
-}
-
 func (m *Metrics) dependencyRetry(dependency string) {
 	m.retries.WithLabelValues(closedValue(dependency, dependencyNames)).Inc()
 }
@@ -139,7 +127,7 @@ func (m *Metrics) recordDependency(dependency, result, category string) {
 	category = closedValue(category, errorCategories)
 	m.upstream.WithLabelValues(dependency, result, category).Inc()
 	switch result {
-	case "succeeded", "reconciled", "delivered":
+	case "succeeded", "reconciled":
 		m.dependencies.WithLabelValues(dependency).Set(1)
 	case "failed", "ambiguous":
 		m.dependencies.WithLabelValues(dependency).Set(0)
@@ -155,11 +143,8 @@ var submissionResults = map[string]struct{}{"created": {}, "replayed": {}, "reje
 var executionResults = map[string]struct{}{"succeeded": {}, "failed": {}, "reconciled": {}, "ambiguous": {}}
 var decisionActions = map[string]struct{}{"approve": {}, "deny": {}}
 var decisionResults = map[string]struct{}{"committed": {}, "replayed": {}, "rejected": {}}
-var notificationResults = map[string]struct{}{"delivered": {}, "failed": {}, "claimed": {}, "already_recorded": {}}
-var dependencyNames = map[string]struct{}{"provider": {}, "notification": {}, "privileged_helper": {}}
-var dependencyResults = map[string]struct{}{
-	"succeeded": {}, "failed": {}, "ambiguous": {}, "reconciled": {}, "delivered": {}, "claimed": {}, "already_recorded": {},
-}
+var dependencyNames = map[string]struct{}{"provider": {}, "privileged_helper": {}}
+var dependencyResults = map[string]struct{}{"succeeded": {}, "failed": {}, "ambiguous": {}, "reconciled": {}}
 var errorCategories = map[string]struct{}{
 	"none": {}, "authentication": {}, "authorization": {}, "canceled": {}, "conflict": {}, "invalid_response": {},
 	"rate_limited": {}, "rejected": {}, "storage": {}, "timeout": {}, "unavailable": {}, "other": {},
@@ -203,11 +188,9 @@ func (c *stateCollector) Collect(output chan<- prometheus.Metric) {
 	}
 	output <- prometheus.MustNewConstMetric(c.healthy, prometheus.GaugeValue, 1)
 	for queue, value := range map[string]int64{
-		"approvals_pending":        stats.PendingApprovals,
-		"operations_queued":        stats.QueuedOperations,
-		"operations_executing":     stats.ExecutingOperations,
-		"notifications_pending":    stats.PendingNotifications,
-		"notifications_unresolved": stats.UnresolvedNotifications,
+		"approvals_pending":    stats.PendingApprovals,
+		"operations_queued":    stats.QueuedOperations,
+		"operations_executing": stats.ExecutingOperations,
 	} {
 		output <- prometheus.MustNewConstMetric(c.depth, prometheus.GaugeValue, float64(value), queue)
 	}

@@ -175,24 +175,11 @@ export interface components {
       duration_seconds?: number;
       max_uses?: number | null;
     };
-    NotificationDecision: {
-      /** @constant */
-      kind: "telegram";
-      renderer: string;
-      decision_token: string;
-      chat_id: number;
-      message_id: number;
-      text: string;
-      presentation_json: string;
-      presentation_digest: string;
-      rendered_digest: string;
-    };
     Decision: {
       expected_revision: number;
       idempotency_key: string;
       on_behalf_of?: string;
       constraints?: components["schemas"]["Constraints"];
-      notification?: components["schemas"]["NotificationDecision"];
     };
     BrokerRequest: {
       id: string;
@@ -218,7 +205,6 @@ export interface components {
       decided_on_behalf_of?: string;
       /** @enum {string} */
       failure_code?:
-        | "invalid_notification"
         | "plan_unavailable"
         | "plan_mismatch"
         | "credential_changed"
@@ -309,8 +295,6 @@ export interface components {
         | "idempotency_conflict"
         | "constraint_exceeded"
         | "invalid_transition"
-        | "invalid_decision_token"
-        | "invalid_notification"
         | "plan_unavailable"
         | "plan_mismatch"
         | "credential_changed"

@@ -8,7 +8,8 @@ The request API has no shell, TTY, stdin, or caller-controlled environment.
 The runtime has two processes:
 
 - `sudo-broker` is an unprivileged HTTP frontend using unYOLO policy,
-  grants, Operator V1, and optional Telegram approval.
+  grants, and Operator V1. `unyolo-telegram` can show its requests as
+  Telegram cards.
 - `sudo-broker-exec` is a root helper reachable only through a private Unix
   socket by the dedicated frontend account.
 
@@ -98,11 +99,12 @@ record while using the remaining approved window budget. Set
 single-use approval. Both modes keep the catalog command, target user, typed
 slots, host identity, and catalog digest checks.
 
-When Telegram notifications are configured, sudo-broker supplies only the
-cataloged command description and target user. It also provides bounded
-arguments plus the timeout and risk. unYOLO renders the same escaped rich approval layout and fixed
-Approve/Deny controls used by the other brokers; raw executables, environment
-values, and unrestricted command lines are never notification fields.
+For Telegram cards, sudo-broker's operator API supplies only the cataloged
+command description and target user. It also provides bounded arguments plus
+the timeout and risk. `unyolo-telegram` renders the same escaped approval
+layout and fixed Approve/Deny controls used for the other brokers; raw
+executables, environment values, and unrestricted command lines are never card
+fields. sudo-broker has no Telegram settings.
 
 See [the threat model](../../docs/security/THREAT_MODEL.md) for the security
 boundary and platform-specific guarantees.

@@ -17,6 +17,7 @@ import (
 	"github.com/osolmaz/unyolo/agent/runtime"
 	"github.com/osolmaz/unyolo/agent/v1"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfgrant"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/hfplan"
@@ -131,7 +132,7 @@ func TestInterruptedOperationCommitsReservedApproval(t *testing.T) {
 	if operation.PlanDigest == "" || operation.ApprovalID != requested.Grant.ID {
 		t.Fatalf("recovered binding = %+v", operation)
 	}
-	approved, err := handler.grants.Approve(requested.Grant.ID, requested.DecisionToken, "operator")
+	approved, err := grantstest.Approve(handler.grants, requested.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestAmbiguousExecutionRetainsApprovalReservation(t *testing.T) {
 	defer func() { _ = handler.Close() }()
 	operation, requested := seedPendingRepoCreateGrant(t, handler, "op_ambiguous", "ambiguous")
 	operation = handler.recoverOperationApproval(operation)
-	if _, err := handler.grants.Approve(requested.Grant.ID, requested.DecisionToken, "operator"); err != nil {
+	if _, err := grantstest.Approve(handler.grants, requested.Grant.ID, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	operation, _ = handler.operations.Transition(operation.ID, agentv1.StateApproved)

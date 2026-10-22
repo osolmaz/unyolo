@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/osolmaz/unyolo/approval/notifier"
 	"github.com/osolmaz/unyolo/authorization/grants"
+	"github.com/osolmaz/unyolo/authorization/grants/grantstest"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/config"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/gitproxy"
 	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policy"
@@ -30,7 +29,6 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 	upstreamRepo := seedBareRepo(t, dir)
 	upstream := newGitUpstream(t, upstreamRepo, testToken)
 	defer upstream.server.Close()
-	notifier := &captureGrantNotifier{}
 	var auditLog bytes.Buffer
 	scp, err := policy.Parse([]byte(`{"rules":[{
 		"id":"request-fetch",
@@ -44,7 +42,7 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir:     filepath.Join(dir, "state"),
@@ -54,7 +52,6 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 		Scope:           scp,
 		Audit:           audit.New(&auditLog),
 		UpstreamBaseURL: upstream.server.URL,
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -75,26 +72,25 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 	if err != nil || len(automatic) != 1 || !strings.Contains(refusal, automatic[0].ID) {
 		t.Fatalf("automatic fetch approval = %+v, err=%v, refusal=%q", automatic, err, refusal)
 	}
-	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
+	if _, err := handler.grants.CancelForClient(automatic[0].ID, "agent"); err != nil {
 		t.Fatal(err)
 	}
 
 	body := apiGrantRequestJSON(policy.OpGitFetch, "", "read once", "fetch-once", 0, 0)
 	resp, text := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(body))
-	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("fetch grant request = %d %s messages=%d, want 202 and one message", resp.StatusCode, text, len(notifier.messages))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("fetch grant request = %d %s, want 202", resp.StatusCode, text)
 	}
-	msg := notifier.messages[0]
-	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != notify.AnswerApproved {
-		t.Fatalf("grant approval answer = %+v", answer)
+	msg := decodeAPIGrantResponse(t, text)
+	if _, err := grantstest.Approve(handler.grants, msg.ID, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
 	}
 
 	resp, _ = doRequest(t, http.MethodGet, infoRefs, "Bearer "+testSecret, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetch with grant = %d, want 200", resp.StatusCode)
 	}
-	active, err := handler.grants.Get(msg.GrantID)
+	active, err := handler.grants.Get(msg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +100,7 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 
 	clone := filepath.Join(dir, "clone")
 	runClientGit(t, dir, "clone", brokerRemoteURL(broker.URL), clone)
-	used, err := handler.grants.Get(msg.GrantID)
+	used, err := handler.grants.Get(msg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,14 +109,13 @@ func TestApprovedGrantAllowsForwardedFetch(t *testing.T) {
 	}
 	assertAuditContains(t, auditLog.String(),
 		`"decision":"grant-used"`,
-		`"grant_id":"`+msg.GrantID+`"`,
-		`"matched_grant_rule_ids":["`+msg.GrantID+`"]`,
+		`"grant_id":"`+msg.ID+`"`,
+		`"matched_grant_rule_ids":["`+msg.ID+`"]`,
 	)
 }
 
 func TestForwardedExecutionApprovalAuthorizesOneExactRetry(t *testing.T) {
 	dir := t.TempDir()
-	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(`{"rules":[{
 		"id":"request-fetch-exact",
 		"effect":"request",
@@ -133,9 +128,9 @@ func TestForwardedExecutionApprovalAuthorizesOneExactRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler, err := New(Options{
-		Config: config.Config{HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
+		Config: config.Config{Operators: testOperators(), HFToken: testToken, Clients: []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir: filepath.Join(dir, "state"), MaxPackBytes: 25 * 1024 * 1024, HFTimeout: 10 * time.Second},
-		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1", GrantNotifier: notifier,
+		Scope: scp, Audit: testAuditRecorder(), UpstreamBaseURL: "http://127.0.0.1:1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +144,7 @@ func TestForwardedExecutionApprovalAuthorizesOneExactRetry(t *testing.T) {
 	if err != nil || first.Request.Grant.ID == "" || first.Request.Grant.Metadata[grants.MetadataMode] != "execution" {
 		t.Fatalf("first authorization = %+v, %+v, %v", first, decision, err)
 	}
-	approved, err := handler.grants.Approve(first.Request.Grant.ID, first.Request.DecisionToken, "operator")
+	approved, err := grantstest.Approve(handler.grants, first.Request.Grant.ID, "operator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +193,6 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	upstreamRepo := seedBareRepo(t, dir)
 	upstream := newGitUpstream(t, upstreamRepo, testToken)
 	defer upstream.server.Close()
-	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(`{"rules":[{
 		"id":"request-fetch",
 		"effect":"request",
@@ -212,7 +206,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	}
 	handler, err := New(Options{
 		Audit: testAuditRecorder(),
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir:     filepath.Join(dir, "state"),
@@ -221,7 +215,6 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 		},
 		Scope:           scp,
 		UpstreamBaseURL: upstream.server.URL,
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -243,19 +236,18 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	if err != nil || len(automatic) != 1 || !strings.Contains(refusal, automatic[0].ID) {
 		t.Fatalf("automatic LFS approval = %+v, err=%v, refusal=%q", automatic, err, refusal)
 	}
-	if err := handler.grants.Cancel(automatic[0].ID); err != nil {
+	if _, err := handler.grants.CancelForClient(automatic[0].ID, "agent"); err != nil {
 		t.Fatal(err)
 	}
 
 	grantBody := apiGrantRequestJSON(policy.OpGitFetch, "", "download one LFS object", "lfs-download", 0, 0)
 	resp, text := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(grantBody))
-	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("LFS grant request = %d %s messages=%d, want 202 and one message", resp.StatusCode, text, len(notifier.messages))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("LFS grant request = %d %s, want 202", resp.StatusCode, text)
 	}
-	msg := notifier.messages[0]
-	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != notify.AnswerApproved {
-		t.Fatalf("grant approval answer = %+v", answer)
+	msg := decodeAPIGrantResponse(t, text)
+	if _, err := grantstest.Approve(handler.grants, msg.ID, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
 	}
 
 	resp, body := doRequest(t, http.MethodPost, batchURL, "Bearer "+testSecret, strings.NewReader(fmt.Sprintf(`{"operation":"download","objects":[{"oid":%q,"size":123}]}`, oid)))
@@ -263,7 +255,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 		t.Fatalf("LFS batch with grant = %d %s, want 200", resp.StatusCode, body)
 	}
 	actionHref := assertLFSActionHref(t, body, "download", broker.URL+"/datasets/acme/repo.git/info/lfs/objects/"+oid)
-	active, err := handler.grants.Get(msg.GrantID)
+	active, err := handler.grants.Get(msg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +274,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	if got := upstream.totalHits(); got != beforeInvalidAction {
 		t.Fatalf("invalid LFS action with grant reached upstream: hits=%d want %d", got, beforeInvalidAction)
 	}
-	active, err = handler.grants.Get(msg.GrantID)
+	active, err = handler.grants.Get(msg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +286,7 @@ func TestApprovedGrantAllowsOneLFSDownloadAction(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("LFS action with grant = %d %s, want 200", resp.StatusCode, body)
 	}
-	used, err := handler.grants.Get(msg.GrantID)
+	used, err := handler.grants.Get(msg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +416,6 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 	upstreamRepo := seedBareRepo(t, dir)
 	upstream := newGitUpstream(t, upstreamRepo, testToken)
 	defer upstream.server.Close()
-	notifier := &captureGrantNotifier{}
 	scp, err := policy.Parse([]byte(`{"rules":[{
 		"id":"request-main-append",
 		"effect":"request",
@@ -438,7 +429,7 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 	}
 	handler, err := New(Options{
 		Audit: testAuditRecorder(),
-		Config: config.Config{
+		Config: config.Config{Operators: testOperators(),
 			HFToken:      testToken,
 			Clients:      []config.Client{{Name: "agent", Secret: testSecret}},
 			StateDir:     filepath.Join(dir, "state"),
@@ -447,7 +438,6 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 		},
 		Scope:           scp,
 		UpstreamBaseURL: upstream.server.URL,
-		GrantNotifier:   notifier,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -463,13 +453,12 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 		"client_request_id":"lfs-upload"
 	}`
 	resp, text := doRequest(t, http.MethodPost, broker.URL+"/api/grants", "Bearer "+testSecret, strings.NewReader(grantBody))
-	if resp.StatusCode != http.StatusAccepted || len(notifier.messages) != 1 {
-		t.Fatalf("LFS upload grant request = %d %s messages=%d, want 202 and one message", resp.StatusCode, text, len(notifier.messages))
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("LFS upload grant request = %d %s, want 202", resp.StatusCode, text)
 	}
-	msg := notifier.messages[0]
-	answer := handler.handleTelegramDecision(context.Background(), telegramGrantDecision(notify.ActionApprove, msg))
-	if answer.Answer != notify.AnswerApproved {
-		t.Fatalf("grant approval answer = %+v", answer)
+	msg := decodeAPIGrantResponse(t, text)
+	if _, err := grantstest.Approve(handler.grants, msg.ID, "operator"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
 	}
 
 	oid := strings.Repeat("d", 64)
@@ -494,7 +483,7 @@ func TestApprovedAppendGrantDoesNotSpendUseOnLFSUploadSupportTraffic(t *testing.
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("LFS upload action with grant = %d %s, want 200", resp.StatusCode, body)
 	}
-	active, err := handler.grants.Get(msg.GrantID)
+	active, err := handler.grants.Get(msg.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

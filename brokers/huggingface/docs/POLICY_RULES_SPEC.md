@@ -780,8 +780,9 @@ POST /api/operator/v1/requests/{id}/revoke
 ```
 
 These endpoints must not be reachable with the agent's broker secret. They are
-mounted on the separately authenticated operator listener. Telegram decisions
-apply to the same canonical grant state.
+mounted on the separately authenticated operator listener. `unyolo-telegram`
+decides through the same API, so its decisions apply to the same canonical
+grant state.
 
 Approving a window grant sets `status=active`, `expires_at`, and
 `uses_remaining`.

@@ -57,18 +57,6 @@ func (d *Diagnostics) OperationFinished(correlationID, operationClass, result, e
 	d.logger.InfoContext(context.Background(), "broker.operation.finished", attributes...)
 }
 
-// NotificationAttempt records one approval-channel delivery outcome.
-func (d *Diagnostics) NotificationAttempt(correlationID, result, errorCode string) {
-	if d == nil {
-		return
-	}
-	category := ErrorCategory(errorCode)
-	d.metrics.notificationAttempt(result, category)
-	d.logger.InfoContext(context.Background(), "broker.notification.delivery",
-		slog.String("provider", d.broker), slog.String("correlation_id", boundedCorrelationID(correlationID)),
-		slog.String("result", closedValue(result, dependencyResults)), slog.String("error_category", category))
-}
-
 // Retry records one durable dependency retry.
 func (d *Diagnostics) Retry(correlationID, dependency string) {
 	if d == nil {

@@ -253,11 +253,8 @@ matching semantics as static rules, but they also have runtime metadata:
 - use budget
 - status
 - approved attrs
-- decision-token verifier
 
-Generated grant rules must never use wildcard clients. Raw decision tokens must
-not be stored in grant/status objects or serialized grant JSON; brokers should
-pass the raw token only to the approval notification path.
+Generated grant rules must never use wildcard clients.
 
 ## Grant Policy
 

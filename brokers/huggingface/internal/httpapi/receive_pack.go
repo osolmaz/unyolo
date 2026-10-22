@@ -205,65 +205,57 @@ func (s *Server) readReceivePack(w http.ResponseWriter, r *http.Request, client,
 }
 
 func (s *Server) withLockedPush(w http.ResponseWriter, r *http.Request, rt route, repo mirror.Repo, req gitproxy.ReceivePackRequest, body []byte, client, target string) (int, error) {
-	var result lockedPushResult
+	var upstreamStatus int
 	lockErr := s.mirrors.WithPausableLock(repo, func(mir *mirror.Repository, pause mirror.PauseLock) error {
 		var err error
-		result, err = s.processLockedPush(w, r, rt, req, body, mir, pause, client, target)
+		upstreamStatus, err = s.processLockedPush(w, r, rt, req, body, mir, pause, client, target)
 		return err
 	})
-	s.updateGrantMessages(result.retainedGrantsToNotify, s.updateRetainedGrantReservationMessage)
-	s.updateGrantMessages(result.grantsToNotify, s.updateGrantUseMessage)
-	return result.upstreamStatus, lockErr
+	return upstreamStatus, lockErr
 }
 
-func (s *Server) processLockedPush(w http.ResponseWriter, r *http.Request, rt route, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, pause mirror.PauseLock, client, target string) (lockedPushResult, error) {
+func (s *Server) processLockedPush(w http.ResponseWriter, r *http.Request, rt route, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, pause mirror.PauseLock, client, target string) (int, error) {
 	refused, usedGrants, classes, err := s.refuseInvalidPush(w, r, req, body, mir, pause, client, target)
 	if err != nil || refused {
-		return lockedPushResult{}, err
+		return 0, err
 	}
 	requestIdentity := plandigest.Digest([]byte(client + "\x00" + target + "\x00" + plandigest.Digest(body)))
 	reservedGrants, err := s.reserveGrantUses(usedGrants, requestIdentity)
 	if err != nil {
-		return lockedPushResult{}, err
+		return 0, err
 	}
 	return s.forwardReservedPush(w, r, rt, req, body, mir, client, target, usedGrants, reservedGrants, classes)
 }
 
-func (s *Server) forwardReservedPush(w http.ResponseWriter, r *http.Request, rt route, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, client, target string, usedGrants []grantUse, reservedGrants []grants.UseReservation, classes []gitproxy.ClassifiedCommand) (lockedPushResult, error) {
+func (s *Server) forwardReservedPush(w http.ResponseWriter, r *http.Request, rt route, req gitproxy.ReceivePackRequest, body []byte, mir *mirror.Repository, client, target string, usedGrants []grantUse, reservedGrants []grants.UseReservation, classes []gitproxy.ClassifiedCommand) (int, error) {
 	statusCode, accepted, reason, definitiveReject, err := s.forwardReceivePack(w, r, rt, req, body)
-	result := lockedPushResult{upstreamStatus: statusCode}
 	if err != nil {
-		retainedGrants, retainErr := s.retainGrantUseReservations(reservedGrants)
-		result.retainedGrantsToNotify = retainedGrants
-		if retainErr != nil {
-			return result, fmt.Errorf("%w; %w", err, retainErr)
+		if retainErr := s.retainGrantUseReservations(reservedGrants); retainErr != nil {
+			return statusCode, fmt.Errorf("%w; %w", err, retainErr)
 		}
-		return result, err
+		return statusCode, err
 	}
 	if !accepted {
-		retainedGrants, err := s.handleRejectedReservedPush(client, target, pushAuditOperation(classes), reason, statusCode, definitiveReject, reservedGrants)
-		result.retainedGrantsToNotify = retainedGrants
-		return result, err
+		return statusCode, s.handleRejectedReservedPush(client, target, pushAuditOperation(classes), reason, statusCode, definitiveReject, reservedGrants)
 	}
-	s.acceptReservedPush(req, mir, client, target, statusCode, usedGrants, reservedGrants, classes, &result)
-	return result, nil
+	s.acceptReservedPush(req, mir, client, target, statusCode, usedGrants, reservedGrants, classes)
+	return statusCode, nil
 }
 
-func (s *Server) handleRejectedReservedPush(client, target, operation, reason string, statusCode int, definitiveReject bool, reservedGrants []grants.UseReservation) ([]grants.Grant, error) {
-	var retainedGrants []grants.Grant
+func (s *Server) handleRejectedReservedPush(client, target, operation, reason string, statusCode int, definitiveReject bool, reservedGrants []grants.UseReservation) error {
 	var err error
 	if definitiveReject {
-		s.releaseGrantUses(reservedGrants)
+		settleGrantUses(reservedGrants, s.grants.ReleaseUse)
 	} else {
-		retainedGrants, err = s.retainGrantUseReservations(reservedGrants)
+		err = s.retainGrantUseReservations(reservedGrants)
 	}
 	s.record(client, operation, target, audit.DecisionRefused, reason, statusCode)
-	return retainedGrants, err
+	return err
 }
 
-func (s *Server) acceptReservedPush(req gitproxy.ReceivePackRequest, mir *mirror.Repository, client, target string, statusCode int, usedGrants []grantUse, reservedGrants []grants.UseReservation, classes []gitproxy.ClassifiedCommand, result *lockedPushResult) {
+func (s *Server) acceptReservedPush(req gitproxy.ReceivePackRequest, mir *mirror.Repository, client, target string, statusCode int, usedGrants []grantUse, reservedGrants []grants.UseReservation, classes []gitproxy.ClassifiedCommand) {
 	_ = gitproxy.AdvanceAccepted(context.Background(), req, mir)
-	result.grantsToNotify = s.commitGrantUses(reservedGrants)
+	settleGrantUses(reservedGrants, s.grants.CommitUse)
 	operation := pushAuditOperation(classes)
 	if len(usedGrants) > 0 {
 		s.recordGrantUsed(client, grantAuditOperation(usedGrants), target, statusCode, grantUseIDs(usedGrants))
@@ -428,9 +420,6 @@ func (s *Server) requestAndWaitForHFPush(ctx context.Context, classes []gitproxy
 	result, err := s.requestHFTransactionGrant(input)
 	if err != nil {
 		return grants.Grant{}, err
-	}
-	if s.notifier != nil {
-		s.sweepPendingGrantApproval(ctx, result.Grant)
 	}
 	return s.waitForHFPushDecision(ctx, result.Grant.ID, pause)
 }
@@ -825,17 +814,17 @@ func (s *Server) reserveGrantUses(uses []grantUse, requestIdentity string) ([]gr
 	reserved := make([]grants.UseReservation, 0, len(uses))
 	for _, use := range uses {
 		if err := s.planValidator.ValidateExecution(use.grant); err != nil {
-			s.releaseGrantUses(reserved)
+			settleGrantUses(reserved, s.grants.ReleaseUse)
 			return nil, err
 		}
 		requestID, err := grants.DeriveUseRequestID(use.grant.ID, requestIdentity)
 		if err != nil {
-			s.releaseGrantUses(reserved)
+			settleGrantUses(reserved, s.grants.ReleaseUse)
 			return nil, err
 		}
 		reservation, err := s.grants.ReserveUse(use.grant.ID, requestID, use.grant.Operation)
 		if err != nil || !reservation.Acquired || reservation.Use.State != grants.UseReserved {
-			s.releaseGrantUses(reserved)
+			settleGrantUses(reserved, s.grants.ReleaseUse)
 			return nil, errors.Join(err, grants.ErrUseSettled)
 		}
 		reserved = append(reserved, reservation)
@@ -843,38 +832,19 @@ func (s *Server) reserveGrantUses(uses []grantUse, requestIdentity string) ([]gr
 	return reserved, nil
 }
 
-func (s *Server) commitGrantUses(reserved []grants.UseReservation) []grants.Grant {
-	updated := make([]grants.Grant, 0, len(reserved))
+// settleGrantUses commits or releases each reservation. A reservation that
+// cannot be settled stays reserved until stale-reservation recovery retains it.
+func settleGrantUses(reserved []grants.UseReservation, settle func(id, requestID string) (grants.UseReservation, error)) {
 	for _, reservation := range reserved {
-		committed, err := s.grants.CommitUse(reservation.Grant.ID, reservation.Use.RequestID)
-		if err != nil {
-			continue
+		_, _ = settle(reservation.Grant.ID, reservation.Use.RequestID)
+	}
+}
+
+func (s *Server) retainGrantUseReservations(reserved []grants.UseReservation) error {
+	for _, reservation := range reserved {
+		if _, err := s.grants.RetainUse(reservation.Grant.ID, reservation.Use.RequestID); err != nil {
+			return fmt.Errorf("retain grant reservation: %w", err)
 		}
-		updated = append(updated, committed.Grant)
 	}
-	return updated
-}
-
-func (s *Server) releaseGrantUses(reserved []grants.UseReservation) {
-	for _, reservation := range reserved {
-		_, _ = s.grants.ReleaseUse(reservation.Grant.ID, reservation.Use.RequestID)
-	}
-}
-
-func (s *Server) retainGrantUseReservations(reserved []grants.UseReservation) ([]grants.Grant, error) {
-	retained := make([]grants.Grant, 0, len(reserved))
-	for _, reservation := range reserved {
-		current, err := s.grants.RetainUse(reservation.Grant.ID, reservation.Use.RequestID)
-		if err != nil {
-			return retained, fmt.Errorf("retain grant reservation: %w", err)
-		}
-		retained = append(retained, current.Grant)
-	}
-	return retained, nil
-}
-
-func (s *Server) updateGrantMessages(updated []grants.Grant, update func(grants.Grant)) {
-	for _, grant := range updated {
-		update(grant)
-	}
+	return nil
 }

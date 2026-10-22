@@ -7,9 +7,9 @@ operation-specific cases without replacing these shared drills.
 | Failure class | Required invariant | Primary automated coverage |
 | --- | --- | --- |
 | SQLite corruption and incompatible restore | startup and restore fail closed without replacing current state | `internal/storage/state/maintenance_test.go`, `internal/storage/state/grants_test.go` |
-| Read-only or failed durable write | no decision or notification transition is reported as committed | `authorization/grants/grants_test.go`, `authorization/grants/notifications_test.go` |
-| Backward or forward wall clock | leases do not reopen authority and rate windows do not reset backward | `authorization/admission/admission_test.go`, `authorization/grants/notifications_test.go` |
-| Telegram outage, retry, duplicate callback, and cancellation | offsets and encrypted authority survive restart, callbacks remain idempotent, and polling stops | `approval/notifier/telegram/inbox_test.go`, `approval/notifier/telegram/telegram_test.go`, `authorization/grants/notifications_test.go` |
+| Read-only or failed durable write | no decision transition is reported as committed | `authorization/grants/grants_test.go`, `authorization/grants/v1_decisions_test.go` |
+| Backward or forward wall clock | leases do not reopen authority and rate windows do not reset backward | `authorization/admission/admission_test.go`, `authorization/grants/reservations_test.go` |
+| Telegram outage, retry, duplicate callback, and cancellation | offsets, cards, and encrypted callbacks survive restart, callbacks remain idempotent, and polling stops | `approval/notifier/telegram/inbox_test.go`, `approval/notifier/telegram/owner_test.go`, `approval/notifier/telegram/telegram_test.go` |
 | Provider timeout or ambiguous completion | no automatic mutation retry; authority is retained only for reconciliation | `operation/runtime/runtime_test.go`, provider recovery suites |
 | Crash before or during execution | committed plans recover; unprovable outcomes fail explicitly | `operation/runtime/runtime_test.go`, HF and GH restart suites |
 | Listener or service activation failure | no transport fallback; previous managed configuration is restored | `transport/endpoint`, `internal/host/service/install_linux_test.go`, `internal/host/service/install_darwin_test.go` |

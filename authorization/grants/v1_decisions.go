@@ -45,8 +45,6 @@ type OperatorDecision struct {
 	ExpectedRevision int64
 	IdempotencyKey   string
 	Constraints      ApprovalConstraints
-	DecisionToken    string
-	Notification     *MessageRef
 	CorrelationID    string `json:"-"`
 }
 
@@ -149,17 +147,6 @@ func currentEventCursor(data fileData) string {
 
 func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command OperatorDecision, validate ActivationCheck) (Grant, error) {
 	now := s.opts.Now().UTC()
-	if command.DecisionToken != "" && !decisionTokenMatches(grant.DecisionTokenVerifier, command.DecisionToken) {
-		return grant, ErrInvalidDecisionToken
-	}
-	if command.Notification != nil {
-		if err := validateMessageRefIntegrity(*command.Notification); err != nil {
-			if grant.Status != StatusPending {
-				return grant, ErrNotPending
-			}
-			return failedActivationGrant(grant, command, now, err), err
-		}
-	}
 	updated, err := s.applyDecisionAction(ctx, grant, command, validate, now)
 	if err != nil {
 		if failure, ok := terminalActivationFailure(err); ok {
@@ -170,8 +157,6 @@ func (s *Store) applyDecisionMutation(ctx context.Context, grant Grant, command 
 	updated.DecidedAt = now
 	updated.DecidedBy = command.Approver
 	updated.DecidedOnBehalfOf = command.OnBehalfOf
-	updated.NotificationDeliveryUnresolved = false
-	updated, _ = attachDecisionNotification(updated, command.Notification)
 	return updated, nil
 }
 
@@ -181,7 +166,7 @@ func terminalActivationFailure(err error) (*activation.Failure, bool) {
 		return nil, false
 	}
 	switch failure.Code {
-	case activation.CodeInvalidNotification, activation.CodePlanUnavailable, activation.CodePlanMismatch,
+	case activation.CodePlanUnavailable, activation.CodePlanMismatch,
 		activation.CodeCredentialChanged, activation.CodeCredentialInsufficient:
 		return failure, true
 	default:
@@ -198,10 +183,6 @@ func failedActivationGrant(grant Grant, command OperatorDecision, now time.Time,
 	grant.FailureCode = string(failure.Code)
 	grant.FailureReference = command.CorrelationID
 	grant.FailedAt = now
-	grant.NotificationDeliveryUnresolved = false
-	if failure.Code != activation.CodeInvalidNotification {
-		grant, _ = attachDecisionNotification(grant, command.Notification)
-	}
 	return grant
 }
 
@@ -294,7 +275,6 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	command.Approver = strings.TrimSpace(command.Approver)
 	command.OnBehalfOf = strings.TrimSpace(command.OnBehalfOf)
 	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
-	command.DecisionToken = strings.TrimSpace(command.DecisionToken)
 	command.CorrelationID = strings.TrimSpace(command.CorrelationID)
 	if !operatorDecisionRequired(command) {
 		return OperatorDecision{}, fmt.Errorf("%w: id, approver, revision, and idempotency key are required", ErrInvalidCommand)
@@ -305,28 +285,12 @@ func normalizeOperatorDecision(command OperatorDecision) (OperatorDecision, erro
 	if !validOperatorConstraints(command) {
 		return OperatorDecision{}, ErrInvalidCommand
 	}
-	if err := validateOperatorNotification(command); err != nil {
-		return OperatorDecision{}, ErrInvalidCommand
-	}
 	return command, nil
 }
 
 func validOperatorConstraints(command OperatorDecision) bool {
 	return command.Action == ActionApprove ||
 		(command.Constraints.Duration == 0 && !constraintUseLimitSpecified(command.Constraints))
-}
-
-func validateOperatorNotification(command OperatorDecision) error {
-	if (command.DecisionToken == "") != (command.Notification == nil) {
-		return ErrInvalidCommand
-	}
-	if command.Notification == nil {
-		return nil
-	}
-	if command.Action == ActionRevoke {
-		return ErrInvalidCommand
-	}
-	return validateMessageRefShape(*command.Notification)
 }
 
 func constraintUseLimitSpecified(constraints ApprovalConstraints) bool {
@@ -347,8 +311,7 @@ func validOperatorDecisionIdentities(command OperatorDecision) bool {
 }
 
 func validOperatorDecisionReferences(command OperatorDecision) bool {
-	return len(command.DecisionToken) <= 200 && (command.DecisionToken == "" || safeOperatorIdentity(command.DecisionToken)) &&
-		len(command.CorrelationID) <= 128 && (command.CorrelationID == "" || safeOperatorIdentity(command.CorrelationID))
+	return len(command.CorrelationID) <= 128 && (command.CorrelationID == "" || safeOperatorIdentity(command.CorrelationID))
 }
 
 func validOperatorAction(action DecisionAction) bool {

@@ -112,7 +112,7 @@ func TestPollDurableRetriesWithoutLosingTelegramUpdate(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := NewWithOptions("token", 42, server.Client(), server.URL, Options{PollTimeoutSeconds: 1})
+	client, err := New("token", 42, server.Client(), server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

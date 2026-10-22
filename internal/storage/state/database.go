@@ -26,7 +26,7 @@ const (
 	// CurrentSchemaVersion is the only state format accepted by maintenance
 	// operations in this pre-release cutover.
 	CurrentSchemaVersion  int64 = 1
-	currentSchemaContract       = "unyolo-state-v1-terminal-grant-failures"
+	currentSchemaContract       = "unyolo-state-v1-telegram-owner"
 )
 
 //go:embed migrations/*.sql
@@ -243,7 +243,7 @@ func (d *Database) SQL() *sql.DB { return d.sql }
 func (d *Database) Queries() *dbsql.Queries { return d.queries }
 
 // OperationalStats returns bounded aggregate state for health and metrics.
-// It never reads operation arguments, targets, reasons, or notification payloads.
+// It never reads operation arguments, targets, or reasons.
 func (d *Database) OperationalStats(ctx context.Context) (OperationalStats, error) {
 	if d == nil || d.queries == nil {
 		return OperationalStats{}, errors.New("state database is unavailable")
@@ -253,21 +253,17 @@ func (d *Database) OperationalStats(ctx context.Context) (OperationalStats, erro
 		return OperationalStats{}, err
 	}
 	return OperationalStats{
-		PendingApprovals:        stats.PendingApprovals,
-		QueuedOperations:        stats.QueuedOperations,
-		ExecutingOperations:     stats.ExecutingOperations,
-		PendingNotifications:    stats.PendingNotifications,
-		UnresolvedNotifications: stats.UnresolvedNotifications,
+		PendingApprovals:    stats.PendingApprovals,
+		QueuedOperations:    stats.QueuedOperations,
+		ExecutingOperations: stats.ExecutingOperations,
 	}, nil
 }
 
 // OperationalStats contains only fixed-cardinality durable-state counts.
 type OperationalStats struct {
-	PendingApprovals        int64
-	QueuedOperations        int64
-	ExecutingOperations     int64
-	PendingNotifications    int64
-	UnresolvedNotifications int64
+	PendingApprovals    int64
+	QueuedOperations    int64
+	ExecutingOperations int64
 }
 
 // IntegrityCheck runs SQLite's operational consistency check. PRAGMA queries

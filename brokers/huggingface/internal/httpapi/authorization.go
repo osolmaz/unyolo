@@ -492,7 +492,7 @@ func (s *Server) forwardWithReservedGrant(w http.ResponseWriter, r *http.Request
 	if s.recordForwardError(w, client, classified, target, statusCode, forwardErr, policy.Decision{}) {
 		return
 	}
-	s.updateGrantMessages(s.commitGrantUses([]grants.UseReservation{reserved}), s.updateGrantUseMessage)
+	settleGrantUses([]grants.UseReservation{reserved}, s.grants.CommitUse)
 	s.recordGrantUsed(client, string(classified.operation), target, statusCode, []string{reserved.Grant.ID})
 }
 
@@ -565,10 +565,7 @@ func (s *Server) closeForwardGrantReservation(reserved grants.UseReservation, er
 		_, _ = s.grants.ReleaseUse(reserved.Grant.ID, reserved.Use.RequestID)
 		return
 	}
-	current, retainErr := s.grants.RetainUse(reserved.Grant.ID, reserved.Use.RequestID)
-	if retainErr == nil {
-		s.updateGrantUseMessage(current.Grant)
-	}
+	_, _ = s.grants.RetainUse(reserved.Grant.ID, reserved.Use.RequestID)
 }
 
 func forwardErrorBeforeUpstream(err error) bool {

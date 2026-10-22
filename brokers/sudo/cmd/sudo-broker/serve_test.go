@@ -166,6 +166,21 @@ func TestParseServeOptionsRejectsUnsafeCombinations(t *testing.T) {
 	}
 }
 
+func TestParseServeOptionsRejectsRemovedTelegramFlags(t *testing.T) {
+	t.Parallel()
+	base := []string{"--policy", "/p", "--catalog", "/c", "--secrets", "/s", "--operator-secrets", "/o", "--state", "/state",
+		"--helper-socket", "/run/helper.sock", "--agent-endpoint", "tcp://127.0.0.1:9000"}
+	for _, extra := range [][]string{{"--telegram-token-file", "/t"}, {"-telegram-chat-id=1"}} {
+		_, err := parseServeOptions(append(append([]string(nil), base...), extra...))
+		if err == nil || !strings.Contains(err.Error(), "is no longer supported") || !strings.Contains(err.Error(), "telegram") {
+			t.Fatalf("parseServeOptions(%v) error = %v, want a removed flag error", extra, err)
+		}
+	}
+	if err := rejectRemovedServeFlags([]string{"--", "--telegram-chat-id"}); err != nil {
+		t.Fatalf("arguments after -- were treated as flags: %v", err)
+	}
+}
+
 func TestStatusRecorderAndShutdown(t *testing.T) {
 	t.Parallel()
 	recorder := &statusRecorder{header: make(http.Header)}

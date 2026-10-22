@@ -98,14 +98,10 @@ func TestOperationalStatsReportOnlyDurableQueueCounts(t *testing.T) {
 	maxUses := 1
 	created := GrantSnapshot{
 		Grants: []GrantRecord{{
-			ID: "grant-1", DecisionTokenVerifier: "verifier", Client: "agent-a", Operation: "repo.delete",
+			ID: "grant-1", Client: "agent-a", Operation: "repo.delete",
 			TargetJSON: []byte(`{}`), AttrsJSON: []byte(`{}`), MetadataJSON: []byte(`{}`), Status: "pending",
 			Revision: 1, CreatedAt: now, PendingExpiresAt: now.Add(time.Minute), Duration: time.Minute,
 			RequestedDuration: time.Minute, PendingTimeout: time.Minute, MaxUses: &maxUses, RequestedMaxUses: &maxUses,
-		}},
-		Outbox: []NotificationOutboxRecord{{
-			GrantID: "grant-1", Kind: "approval", PayloadJSON: []byte(`{}`), IdempotencyKey: "grant-1:approval",
-			Status: "ambiguous", AvailableAt: now, CreatedAt: now, UpdatedAt: now,
 		}},
 	}
 	if err := database.SaveGrantSnapshot(t.Context(), empty, created); err != nil {
@@ -123,7 +119,7 @@ func TestOperationalStatsReportOnlyDurableQueueCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := OperationalStats{PendingApprovals: 1, QueuedOperations: 1, ExecutingOperations: 1, UnresolvedNotifications: 1}
+	want := OperationalStats{PendingApprovals: 1, QueuedOperations: 1, ExecutingOperations: 1}
 	if stats != want {
 		t.Fatalf("OperationalStats() = %+v, want %+v", stats, want)
 	}

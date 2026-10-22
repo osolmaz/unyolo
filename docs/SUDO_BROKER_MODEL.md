@@ -32,8 +32,7 @@ unyolo should provide:
 - grant lifecycle and expiry
 - audit-safe decision metadata
 - approval workflow
-- notifier interfaces
-- reusable Telegram approval transport
+- the Telegram approval owner (`unyolo-telegram`)
 - common config, storage, and HTTP safety helpers
 
 ## sudo-broker Responsibilities

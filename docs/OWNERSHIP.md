@@ -112,19 +112,15 @@ catalogs. Future Sudo Broker MCP surfaces must consume these shared contracts.
 - fail-closed recovery of crash-stale and ambiguous reservations
 - overlapping reservation recovery measured from the most recent reserve or
   settlement, so a live newer use is never aged from an older use's start time
-- durable notification references and delivered-status keys
-- leased notification-send claims and conditional cancellation
-- durable unresolved-delivery state for ambiguous sends and lease-bound retry
-- atomic notification-reference recovery from accepted callbacks
-- atomic approve/deny plus callback-reference transactions
-- restart-safe discovery of notification updates that remain due
+- revision-bound, idempotent approve, deny, and revoke transactions
+- durable lifecycle events with resumable cursors
 - generated temporary allow rules
 - durable store interface
 - default local durable store
 - clock injection for tests
 - bounded opaque provider metadata that is persisted and included in
   idempotency, but never interpreted by unyolo policy or lifecycle code;
-  metadata must not contain credentials, decision tokens, or other secrets
+  metadata must not contain credentials or other secrets
 
 Generated grants must never use wildcard clients.
 
@@ -132,12 +128,8 @@ Generated grants must never use wildcard clients.
 
 - approval request model
 - approver matching hooks
-- decision tokens
-- callback verification
 - operator approve, deny, and revoke handling
 - requester-owned cancellation of pending requests
-- status update model
-- grant-to-notification correlation
 - fail-closed behavior for ambiguous approval state
 - shared approval-channel actor identities and terminal decision-result mapping
 
@@ -169,46 +161,30 @@ Providers supply only bounded semantic titles, summaries, targets, facts,
 warnings, risk, and plan identity. They do not supply transport markup, button
 labels, callback answers, layout, or terminal prose.
 
-### Telegram Adapter
+### Telegram Owner
 
 Telegram is a shared approval channel for `hf-broker`, `gh-broker`, and
-`sudo-broker`, so the reusable implementation and single inbound poller belong
-in unyolo.
+`sudo-broker`. A bot has one update queue, so one process owns it:
+`unyolo-telegram`. Brokers contain no Telegram code.
 
-unyolo should own:
+unyolo owns, in `unyolo-telegram`:
 
-- Bot API client
+- the only copy of the bot token and the Bot API client
+- following each broker's Operator V1 events from a durable cursor
+- sending one card per pending request and editing it when the request changes
 - canonical bounded HTML rendering and strict dynamic-value escaping
 - fixed emoji, layout, Approve/Deny controls, callback answers, and terminal
   status wording
-- sending approval messages and typed lifecycle status edits
-- immediate callback acknowledgement and decision-control removal
-- inline approve/deny buttons
-- compact broker-routed callback payloads that carry the one-time decision token
-- configured-chat filtering
-- Telegram operator metadata extraction
-- callback-query answers
-- retry behavior
-- per-message retry UX that acknowledges transient route failures without
-  blocking callbacks for healthy routes
-- one Bot API poller per bot token
-- route dispatch over authenticated Operator V1 sources
-- transport errors
-- shared tests for callback and token safety
+- a random token per card, stored only as a digest
+- compact routed callback payloads
+- accepting a click only for its own card, from the configured chat, with the
+  clicked button's expected label
+- deciding through the owning broker's Operator V1 API with the request
+  revision and an idempotency key derived from the click
+- the durable encrypted callback inbox and its retry behavior
+- exact Operator V1 contract checks before each poll batch
 
-Status: unyolo owns the reusable Telegram client and renderer, inline
-callback data, long polling, configured-chat filtering, callback answering,
-and typed status edits. The single ingress owns the bot update offset. After
-the owning broker durably commits a callback decision through Operator V1, the
-ingress acknowledges it, writes the terminal status, and removes the inline
-keyboard. The broker's durable status outbox reconciles the authoritative text
-and retries after transport failures or restart. The store owns durable
-delivery claims, notification references and presentation/render digests,
-expiry, due status updates, atomic approve/deny transitions, channel actor
-naming, and retry classification. Brokers own only provider semantics. A retry
-leaves the callback unanswered and does not advance its update offset. Several
-brokers can share one bot because broker processes only send and update
-messages; they never run competing `getUpdates` loops.
+Brokers own only provider semantics: the bounded presentation of a request.
 
 ### Control-Plane Assembly
 
