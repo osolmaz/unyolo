@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html"
 	"time"
 
 	"github.com/osolmaz/unyolo/approval/notifier"
@@ -152,6 +153,19 @@ ON CONFLICT(route) DO UPDATE SET cursor = excluded.cursor`, route, cursor)
 func (i *Inbox) clearEventCursor(ctx context.Context, route string) error {
 	_, err := i.db.ExecContext(ctx, `DELETE FROM event_cursors WHERE route = ?`, route)
 	return err
+}
+
+// cardText returns the stored HTML of the clicked card. A click on a message
+// that is not the owner's card falls back to the escaped text Telegram reported.
+func (i *Inbox) cardText(ctx context.Context, decision notify.Decision) (string, error) {
+	value, found, err := i.card(ctx, decision.Route, decision.GrantID)
+	if err != nil {
+		return "", err
+	}
+	if !found || value.State == cardSending || value.ChatID != decision.ChatID || value.MessageID != decision.MessageID {
+		return html.EscapeString(decision.MessageText), nil
+	}
+	return value.Text, nil
 }
 
 // verifyCard accepts a click only for the open card that the owner sent: the

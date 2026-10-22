@@ -267,3 +267,47 @@ func TestRenderedCardsOmitARepeatedPlanHash(t *testing.T) {
 		t.Fatalf("RenderApproval(listed plan hash) = %q, %v", listed, err)
 	}
 }
+
+func TestClickResultsRenderFromTheStoredCard(t *testing.T) {
+	inbox := openTestInbox(t)
+	if _, err := inbox.reserveCard(t.Context(), RouteGitHub, "grant-1", "token", "<b>Stored card</b>"); err != nil {
+		t.Fatal(err)
+	}
+	click := notify.Decision{Route: RouteGitHub, GrantID: "grant-1", ChatID: 123, MessageID: 9, MessageText: "Plain <text>"}
+	if text, err := inbox.cardText(t.Context(), click); err != nil || text != "Plain &lt;text&gt;" {
+		t.Fatalf("cardText(unconfirmed card) = %q, %v", text, err)
+	}
+	if err := inbox.openCard(t.Context(), RouteGitHub, "grant-1", 123, 9); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := inbox.cardText(t.Context(), click); err != nil || text != "<b>Stored card</b>" {
+		t.Fatalf("cardText(open card) = %q, %v", text, err)
+	}
+	other := click
+	other.MessageID = 10
+	if text, err := inbox.cardText(t.Context(), other); err != nil || text != "Plain &lt;text&gt;" {
+		t.Fatalf("cardText(other message) = %q, %v", text, err)
+	}
+
+	recorder := &telegramRecorder{}
+	server := httptest.NewServer(recorder.handler(t))
+	defer server.Close()
+	client, err := New("test-token", 123, server.Client(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := notify.DecisionResult{Answer: notify.AnswerApproved, MessageStatus: notify.Status{Kind: notify.StatusActive}}
+	if err := client.finishDurableDecision(t.Context(), inbox, click, result); err != nil {
+		t.Fatal(err)
+	}
+	if edit := recorder.last(); edit.method != "editMessageText" || !strings.HasPrefix(edit.payload["text"].(string), "<b>Stored card</b>") {
+		t.Fatalf("click edit = %+v, want the stored card text", edit)
+	}
+	if err := client.finishDurableDecision(t.Context(), inbox, click, notify.DecisionResult{Answer: notify.AnswerIgnored}); err != nil {
+		t.Fatalf("finishDurableDecision(no status) = %v", err)
+	}
+	_ = inbox.Close()
+	if err := client.finishDurableDecision(t.Context(), inbox, click, result); err == nil {
+		t.Fatal("finishDurableDecision() with a closed store succeeded")
+	}
+}

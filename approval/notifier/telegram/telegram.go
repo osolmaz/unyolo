@@ -118,18 +118,6 @@ func (c *Client) updateCard(ctx context.Context, chatID int64, messageID int, te
 	return err
 }
 
-func (c *Client) clearDecisionButtons(ctx context.Context, decision notify.Decision) error {
-	payload := map[string]any{
-		"chat_id":    decision.ChatID,
-		"message_id": decision.MessageID,
-		"reply_markup": map[string]any{
-			"inline_keyboard": []any{},
-		},
-	}
-	var response okResponse
-	return c.post(ctx, "editMessageReplyMarkup", payload, &response)
-}
-
 func (c *Client) getUpdates(ctx context.Context, offset int64) ([]telegramUpdate, error) {
 	payload := map[string]any{
 		"offset":          offset,

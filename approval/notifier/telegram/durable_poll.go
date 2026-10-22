@@ -3,7 +3,6 @@ package telegram
 import (
 	"context"
 	"errors"
-	"html"
 	"sync"
 	"time"
 
@@ -142,18 +141,23 @@ func (c *Client) dispatchDurableItem(ctx context.Context, inbox *Inbox,
 }
 
 func (c *Client) finishAndClose(ctx context.Context, inbox *Inbox, item queuedDecision, result notify.DecisionResult) error {
-	if err := c.finishDurableDecision(ctx, item.Decision, result); err != nil {
+	if err := c.finishDurableDecision(ctx, inbox, item.Decision, result); err != nil {
 		return inbox.retry(ctx, item)
 	}
 	return inbox.terminal(ctx, item, result.Answer)
 }
 
-func (c *Client) finishDurableDecision(ctx context.Context, decision notify.Decision, result notify.DecisionResult) error {
-	if result.MessageStatus.Kind != "" {
-		return c.editMessageStatus(ctx, decision.ChatID, decision.MessageID, html.EscapeString(decision.MessageText), result.MessageStatus)
+// finishDurableDecision shows the decision's status on the clicked message.
+// It renders from the owner's stored card, the same text that the owner uses
+// when it applies the request's event, so whichever edit lands last shows the
+// same card.
+func (c *Client) finishDurableDecision(ctx context.Context, inbox *Inbox, decision notify.Decision, result notify.DecisionResult) error {
+	if result.MessageStatus.Kind == "" {
+		return nil
 	}
-	if result.ClearButtons {
-		return c.clearDecisionButtons(ctx, decision)
+	text, err := inbox.cardText(ctx, decision)
+	if err != nil {
+		return err
 	}
-	return nil
+	return c.updateCard(ctx, decision.ChatID, decision.MessageID, text, result.MessageStatus)
 }
