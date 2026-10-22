@@ -11,7 +11,8 @@
     "gh-broker.service"
   ],
   "agent_contract": true,
-  "state_format_digest": "sha256:40f2a458b2597d39f339cefc62e15b5ea553f3636b4b1433c35b9612b125b0ed",
+  "state_format_digest": "sha256:30a6b652edc3ebd870f2c130e048d88ab6ad617f3b02699c2163cb539b27dcdc",
+  "replace_state": true,
   "state_dir": "/var/lib/gh-broker",
   "required": false,
   "setup": {

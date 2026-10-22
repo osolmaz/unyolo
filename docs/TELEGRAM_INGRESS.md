@@ -74,8 +74,11 @@ writes an environment without Telegram and removes the old
 token remains only in `/etc/unyolo-telegram`.
 
 The broker state format also changed: grants no longer carry decision tokens
-or notification records. A broker started on older state reports that fresh
-state is required.
+or notification records. Each broker's release component declares the new
+state format and asks for state replacement, so a bundle upgrade moves the old
+state directory aside as `<state-dir>.unyolo-backup-<bundle-id>` and starts the
+broker with fresh state. A broker started directly on older state reports that
+fresh state is required.
 
 ## Cards
 

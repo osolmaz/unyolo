@@ -11,7 +11,8 @@
     "sudo-broker.service"
   ],
   "agent_contract": true,
-  "state_format_digest": "sha256:aff48071775c39df55db581cef983bb348776a9e26b4f8bb94a0568f9fab6939",
+  "state_format_digest": "sha256:a1d892d59bd9962bf3f92942b3cdf17a3433652065584ffa6d30457bf2399f96",
+  "replace_state": true,
   "state_dir": "/var/lib/sudo-broker/frontend",
   "required": false,
   "setup": {

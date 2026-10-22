@@ -11,7 +11,8 @@
     "hf-broker.service"
   ],
   "agent_contract": true,
-  "state_format_digest": "sha256:d452e18ce269489c901445779fb5f8722b54ed1653e8eb1e6b18559d46ac3dc8",
+  "state_format_digest": "sha256:5918125ae583be6844da7b549276797ae94edf2aed2672e1a6df9f02ea9b1fe3",
+  "replace_state": true,
   "state_dir": "/var/lib/hf-broker",
   "required": false,
   "setup": {
