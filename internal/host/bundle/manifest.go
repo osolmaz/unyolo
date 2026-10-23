@@ -49,22 +49,26 @@ type SetupCapabilities struct {
 
 // Component is one separately released process or companion executable.
 type Component struct {
-	Name                   string        `json:"name"`
-	Source                 string        `json:"source"`
-	Destination            string        `json:"destination"`
-	SHA256                 string        `json:"sha256"`
-	BuildID                string        `json:"build_id"`
-	Role                   Role          `json:"role"`
-	Services               []string      `json:"services"`
-	OperatorEndpoint       string        `json:"operator_endpoint,omitempty"`
-	OperatorTokenFile      string        `json:"operator_token_file,omitempty"`
-	OperatorContractDigest string        `json:"operator_contract_digest,omitempty"`
-	AgentContractDigest    string        `json:"agent_contract_digest,omitempty"`
-	StateFormatDigest      string        `json:"state_format_digest"`
-	StateDir               string        `json:"state_dir,omitempty"`
-	ReplaceState           bool          `json:"replace_state,omitempty"`
-	Required               bool          `json:"required"`
-	Setup                  *SetupAdapter `json:"setup,omitempty"`
+	Name                   string   `json:"name"`
+	Source                 string   `json:"source"`
+	Destination            string   `json:"destination"`
+	SHA256                 string   `json:"sha256"`
+	BuildID                string   `json:"build_id"`
+	Role                   Role     `json:"role"`
+	Services               []string `json:"services"`
+	OperatorEndpoint       string   `json:"operator_endpoint,omitempty"`
+	OperatorTokenFile      string   `json:"operator_token_file,omitempty"`
+	OperatorContractDigest string   `json:"operator_contract_digest,omitempty"`
+	AgentContractDigest    string   `json:"agent_contract_digest,omitempty"`
+	StateFormatDigest      string   `json:"state_format_digest"`
+	StateDir               string   `json:"state_dir,omitempty"`
+	ReplaceState           bool     `json:"replace_state,omitempty"`
+	// StateFiles limits state replacement to these files in StateDir. Other
+	// files in StateDir, such as credential slots and keys, stay in place.
+	// Without it, replacement archives the whole directory.
+	StateFiles []string      `json:"state_files,omitempty"`
+	Required   bool          `json:"required"`
+	Setup      *SetupAdapter `json:"setup,omitempty"`
 }
 
 // SetupAdapter declares the fixed setup-component entrypoint and ownership.
@@ -253,6 +257,16 @@ func (c Component) validateState() error {
 	}
 	if c.ReplaceState && c.StateDir == "" {
 		return errors.New("state replacement requires a state directory")
+	}
+	if len(c.StateFiles) > 0 && !c.ReplaceState {
+		return errors.New("state files require state replacement")
+	}
+	seen := map[string]bool{}
+	for _, name := range c.StateFiles {
+		if name == "" || name == "." || name == ".." || filepath.Base(name) != name || seen[name] {
+			return errors.New("state file names must be unique plain file names")
+		}
+		seen[name] = true
 	}
 	return nil
 }

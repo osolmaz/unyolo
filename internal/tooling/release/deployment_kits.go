@@ -38,6 +38,7 @@ type deploymentReleaseComponent struct {
 	StateFormatDigest string      `json:"state_format_digest"`
 	StateDir          string      `json:"state_dir,omitempty"`
 	ReplaceState      bool        `json:"replace_state,omitempty"`
+	StateFiles        []string    `json:"state_files,omitempty"`
 	Required          bool        `json:"required"`
 	// ApprovalChannel marks a component that delivers approvals, such as the
 	// Telegram owner. Setup selects it in its own step, not in the provider
@@ -394,7 +395,8 @@ func releaseRuntimeComponent(value deploymentReleaseComponent, binary, version s
 		BuildID: version, Role: value.Role, Services: append([]string(nil), value.Services...),
 		OperatorEndpoint: value.OperatorEndpoint, OperatorTokenFile: value.OperatorTokenFile,
 		StateFormatDigest: value.StateFormatDigest, StateDir: value.StateDir, ReplaceState: value.ReplaceState,
-		Required: value.Required, Setup: value.Setup,
+		StateFiles: append([]string(nil), value.StateFiles...),
+		Required:   value.Required, Setup: value.Setup,
 	}
 	if value.AgentContract {
 		component.AgentContractDigest = contract.AgentV1Digest

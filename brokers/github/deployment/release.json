@@ -13,6 +13,11 @@
   "agent_contract": true,
   "state_format_digest": "sha256:30a6b652edc3ebd870f2c130e048d88ab6ad617f3b02699c2163cb539b27dcdc",
   "replace_state": true,
+  "state_files": [
+    "state.db",
+    "state.db-wal",
+    "state.db-shm"
+  ],
   "state_dir": "/var/lib/gh-broker",
   "required": false,
   "setup": {

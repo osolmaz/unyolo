@@ -13,6 +13,11 @@
   "agent_contract": true,
   "state_format_digest": "sha256:a1d892d59bd9962bf3f92942b3cdf17a3433652065584ffa6d30457bf2399f96",
   "replace_state": true,
+  "state_files": [
+    "state.db",
+    "state.db-wal",
+    "state.db-shm"
+  ],
   "state_dir": "/var/lib/sudo-broker/frontend",
   "required": false,
   "setup": {

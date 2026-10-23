@@ -545,3 +545,22 @@ func writeReleaseFile(t *testing.T, directory, name, body string) {
 		t.Fatal(err)
 	}
 }
+
+func TestReleaseRuntimeComponentKeepsStateFiles(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "gh-broker")
+	if err := os.WriteFile(binary, []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := deploymentReleaseComponent{
+		Name: "github", Binary: "gh-broker", Destination: "bin/gh-broker", Role: bundle.RoleProvider,
+		StateFormatDigest: "sha256:" + strings.Repeat("a", 64), StateDir: "/var/lib/gh-broker", ReplaceState: true,
+		StateFiles: []string{"state.db", "state.db-wal", "state.db-shm"},
+	}
+	component, err := releaseRuntimeComponent(descriptor, binary, "v0.1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(component.StateFiles, descriptor.StateFiles) || !component.ReplaceState {
+		t.Fatalf("runtime component = %+v", component)
+	}
+}

@@ -65,6 +65,10 @@
         "state_format_digest": { "$ref": "#/$defs/digest" },
         "state_dir": { "type": "string", "minLength": 1, "maxLength": 2048 },
         "replace_state": { "type": "boolean" },
+        "state_files": {
+          "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/]+$" }
+        },
         "required": { "type": "boolean" },
         "setup": { "$ref": "#/$defs/setup_adapter" }
       }

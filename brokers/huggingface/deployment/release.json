@@ -13,6 +13,11 @@
   "agent_contract": true,
   "state_format_digest": "sha256:5918125ae583be6844da7b549276797ae94edf2aed2672e1a6df9f02ea9b1fe3",
   "replace_state": true,
+  "state_files": [
+    "state.db",
+    "state.db-wal",
+    "state.db-shm"
+  ],
   "state_dir": "/var/lib/hf-broker",
   "required": false,
   "setup": {

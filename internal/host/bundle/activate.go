@@ -755,7 +755,7 @@ func (i Installer) prepareState(previous, candidate Manifest) error {
 			undoErr := i.undoPreparedState(candidate.BundleID, prepared)
 			return errors.Join(fmt.Errorf("component %s changes state format without explicit replacement", component.Name), undoErr)
 		}
-		if err := replaceStateDirectory(component.StateDir, stateBackupPath(component.StateDir, candidate.BundleID)); err != nil {
+		if err := replaceComponentState(component, stateBackupPath(component.StateDir, candidate.BundleID)); err != nil {
 			return errors.Join(err, i.undoPreparedState(candidate.BundleID, prepared))
 		}
 		prepared = append(prepared, component)
@@ -767,7 +767,7 @@ func (i Installer) undoPreparedState(bundleID string, components []Component) er
 	var result error
 	for index := len(components) - 1; index >= 0; index-- {
 		component := components[index]
-		result = errors.Join(result, restoreStateDirectory(component.StateDir, stateBackupPath(component.StateDir, bundleID)))
+		result = errors.Join(result, restoreComponentState(component, stateBackupPath(component.StateDir, bundleID)))
 	}
 	return result
 }

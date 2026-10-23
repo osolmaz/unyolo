@@ -118,6 +118,16 @@ running owner. Run it as the account that owns the credentials:
 sudo -u unyolo-telegram /opt/unyolo/current/bin/unyolo-telegram doctor
 ```
 
+The manual setup gives the service its operator socket groups through the
+unit's `SupplementaryGroups` instead of account membership. After a manual
+setup, run the doctor with the same groups:
+
+```sh
+sudo setpriv --reuid=unyolo-telegram --regid=unyolo-telegram \
+  --groups=gh-broker-operator,hf-broker-operator,sudo-broker-operator \
+  --reset-env /opt/unyolo/current/bin/unyolo-telegram doctor
+```
+
 ## Upgrading from broker-sent cards
 
 Older releases let each broker send its own cards. Those settings are gone:
@@ -141,10 +151,13 @@ systemd`, to write the new configuration. The manual setup removes the old
 
 The broker state format also changed: grants no longer carry decision tokens
 or notification records. Each broker's release component declares the new
-state format and asks for state replacement, so a bundle upgrade moves the old
-state directory aside as `<state-dir>.unyolo-backup-<bundle-id>` and starts the
-broker with fresh state. A broker started directly on older state reports that
-fresh state is required.
+state format and lists its grant database files (`state.db`, `state.db-wal`,
+and `state.db-shm`) for replacement. A bundle upgrade moves only those files
+into `<state-dir>.unyolo-backup-<bundle-id>` and starts the broker with a fresh
+grant database. Credential slots, keys, and other files in the state directory
+stay in place. A broker started directly on an older grant database reports
+that fresh state is required. To cut a host over by hand, stop the broker, move
+those three files aside, and start the new release.
 
 ## Cards
 
