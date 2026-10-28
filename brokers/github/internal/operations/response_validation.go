@@ -28,7 +28,16 @@ func validatedExecutionResult(binding opbinding.Binding, operation string, resul
 	if err := schemaregistry.ValidateResult(operation, result.Body); err != nil {
 		return Outcome{}, classifyResponseValidationError(binding.Method, err)
 	}
-	return Outcome{Proven: true, Result: agentOperationResult(result.Body), UpstreamStatus: result.StatusCode}, nil
+	output := agentOperationResult(result.Body)
+	if result.Pagination != nil && binding.Operation == "project.projects_list_items_for_org" && binding.Pagination == "link" {
+		// The existing items array is unchanged; metadata is an optional sibling
+		// in the existing Agent result object, not a new result envelope.
+		output, _ = json.Marshal(struct {
+			Items      json.RawMessage            `json:"items"`
+			Pagination *githubauth.RESTPagination `json:"pagination,omitempty"`
+		}{Items: result.Body, Pagination: result.Pagination})
+	}
+	return Outcome{Proven: true, Result: output, UpstreamStatus: result.StatusCode}, nil
 }
 
 func agentOperationResult(result json.RawMessage) json.RawMessage {
