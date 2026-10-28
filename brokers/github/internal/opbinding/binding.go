@@ -329,6 +329,16 @@ func safeResponseField(operation, field string) bool {
 			return false
 		}
 	}
+	// These open upstream objects need exact reviewed leaves, not the generic
+	// leaf-name allowance (which would also accept e.g. token.id).
+	switch operation {
+	case "project.projects_list_items_for_org", "project.projects_get_org_item", "project.projects_update_item_for_org":
+		return slices.Contains([]string{
+			"content.html_url", "content.id", "content.node_id", "content.number", "content.url",
+			"content_type", "created_at", "fields.data_type", "fields.id", "fields.name",
+			"fields.value.id", "fields.value.name.raw", "id", "node_id", "updated_at",
+		}, field)
+	}
 	switch parts[len(parts)-1] {
 	case "id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at":
 		return true

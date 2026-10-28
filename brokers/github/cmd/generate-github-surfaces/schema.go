@@ -52,7 +52,7 @@ func targetDescriptors(schemas map[string]map[string]any) []targetDescriptor {
 func schemasForREST(name, method, path string, operation restOperation, descriptor capability.Descriptor, components map[string]any) operationSchemas {
 	arguments := argumentsSchemaForREST(method, path, operation, descriptor.TargetKind, components)
 	arguments = projectReviewedRequestFields(name, arguments)
-	upstreamResult := responseSchema(operation, components)
+	upstreamResult := projectItemResponseSchema(name, responseSchema(operation, components))
 	result := projectedResponseSchema(upstreamResult, responseProjection(name, upstreamResult))
 	alignProjectedResultLimits(name, result, responseLimit(descriptor))
 	if runnerCredentialOutput(operation.OperationID) != nil {
@@ -713,6 +713,9 @@ func pathParameterNames(path string) []string {
 }
 
 func responseProjection(operation string, schema map[string]any) []string {
+	if organizationProjectItemReadback(operation) {
+		return projectItemResponseProjection()
+	}
 	allowed := map[string]bool{"id": true, "node_id": true, "name": true, "number": true, "state": true, "status": true,
 		"type": true, "sha": true, "url": true, "created_at": true, "updated_at": true}
 	if operation == "repo.contents.read" {
