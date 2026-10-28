@@ -71,7 +71,15 @@ func readCredentialRequest(input io.Reader) (map[string]string, error) {
 			break
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || seen[key] {
+		if !ok || key == "" || strings.ContainsRune(line, '\x00') {
+			return nil, errors.New("credential request is malformed")
+		}
+		// Git sends repeated array attributes, including empty list resets.
+		// These two advisory lists do not participate in origin/path matching.
+		if key == "capability[]" || key == "wwwauth[]" {
+			continue
+		}
+		if seen[key] {
 			return nil, errors.New("credential request is malformed")
 		}
 		values[key] = value
