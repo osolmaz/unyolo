@@ -329,6 +329,12 @@ func safeResponseField(operation, field string) bool {
 			return false
 		}
 	}
+	switch operation {
+	case "project.projects_get_field_for_org", "project.projects_list_fields_for_org":
+		return slices.Contains([]string{
+			"created_at", "data_type", "id", "name", "node_id", "options.id", "options.name.raw", "updated_at",
+		}, field)
+	}
 	switch parts[len(parts)-1] {
 	case "id", "node_id", "name", "number", "state", "status", "type", "sha", "url", "created_at", "updated_at":
 		return true

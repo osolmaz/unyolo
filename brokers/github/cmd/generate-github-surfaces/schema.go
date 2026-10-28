@@ -713,6 +713,11 @@ func pathParameterNames(path string) []string {
 }
 
 func responseProjection(operation string, schema map[string]any) []string {
+	// Preserve only option identity and its raw display name, not whole objects.
+	switch operation {
+	case "project.projects_get_field_for_org", "project.projects_list_fields_for_org":
+		return []string{"created_at", "data_type", "id", "name", "node_id", "options.id", "options.name.raw", "updated_at"}
+	}
 	allowed := map[string]bool{"id": true, "node_id": true, "name": true, "number": true, "state": true, "status": true,
 		"type": true, "sha": true, "url": true, "created_at": true, "updated_at": true}
 	if operation == "repo.contents.read" {

@@ -58971,6 +58971,28 @@
             "maxLength": 1048576,
             "type": "string"
           },
+          "data_type": {
+            "description": "The field's data type.",
+            "enum": [
+              "assignees",
+              "linked_pull_requests",
+              "reviewers",
+              "labels",
+              "milestone",
+              "repository",
+              "title",
+              "text",
+              "single_select",
+              "number",
+              "date",
+              "iteration",
+              "issue_type",
+              "parent_issue",
+              "sub_issues_progress"
+            ],
+            "maxLength": 1048576,
+            "type": "string"
+          },
           "id": {
             "description": "The unique identifier of the field.",
             "type": "integer"
@@ -58984,6 +59006,35 @@
             "description": "The node ID of the field.",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "options": {
+            "description": "The options available for single select fields.",
+            "items": {
+              "additionalProperties": false,
+              "description": "An option for a single select field",
+              "properties": {
+                "id": {
+                  "description": "The unique identifier of the option.",
+                  "maxLength": 1048576,
+                  "type": "string"
+                },
+                "name": {
+                  "additionalProperties": false,
+                  "description": "The display name of the option, in raw text and HTML formats.",
+                  "properties": {
+                    "raw": {
+                      "maxLength": 1048576,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "title": "Projects v2 Single Select Option",
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
           },
           "updated_at": {
             "description": "The time when the field was last updated.",
@@ -59342,6 +59393,28 @@
               "maxLength": 1048576,
               "type": "string"
             },
+            "data_type": {
+              "description": "The field's data type.",
+              "enum": [
+                "assignees",
+                "linked_pull_requests",
+                "reviewers",
+                "labels",
+                "milestone",
+                "repository",
+                "title",
+                "text",
+                "single_select",
+                "number",
+                "date",
+                "iteration",
+                "issue_type",
+                "parent_issue",
+                "sub_issues_progress"
+              ],
+              "maxLength": 1048576,
+              "type": "string"
+            },
             "id": {
               "description": "The unique identifier of the field.",
               "type": "integer"
@@ -59355,6 +59428,35 @@
               "description": "The node ID of the field.",
               "maxLength": 1048576,
               "type": "string"
+            },
+            "options": {
+              "description": "The options available for single select fields.",
+              "items": {
+                "additionalProperties": false,
+                "description": "An option for a single select field",
+                "properties": {
+                  "id": {
+                    "description": "The unique identifier of the option.",
+                    "maxLength": 1048576,
+                    "type": "string"
+                  },
+                  "name": {
+                    "additionalProperties": false,
+                    "description": "The display name of the option, in raw text and HTML formats.",
+                    "properties": {
+                      "raw": {
+                        "maxLength": 1048576,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "title": "Projects v2 Single Select Option",
+                "type": "object"
+              },
+              "maxItems": 100,
+              "type": "array"
             },
             "updated_at": {
               "description": "The time when the field was last updated.",

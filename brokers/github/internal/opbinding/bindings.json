@@ -35725,9 +35725,12 @@
     "response_schema": "result.project.projects_get_field_for_org.v1",
     "response_projection": [
       "created_at",
+      "data_type",
       "id",
       "name",
       "node_id",
+      "options.id",
+      "options.name.raw",
       "updated_at"
     ],
     "response_root_type": "object",
@@ -36042,9 +36045,12 @@
     "response_schema": "result.project.projects_list_fields_for_org.v1",
     "response_projection": [
       "created_at",
+      "data_type",
       "id",
       "name",
       "node_id",
+      "options.id",
+      "options.name.raw",
       "updated_at"
     ],
     "response_root_type": "array",
