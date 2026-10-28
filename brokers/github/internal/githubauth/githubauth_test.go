@@ -95,7 +95,7 @@ func TestInstallationCredentialsUseExactImmutableCacheTuple(t *testing.T) {
 	if len(requests) != 3 {
 		t.Fatalf("token requests = %d, want separate permission tuple", len(requests))
 	}
-	assertExactTokenRequest(t, requests[2], []int64{99}, map[string]string{"pull_requests": "write"})
+	assertExactTokenRequest(t, requests[2], []int64{99}, map[string]string{"contents": "read", "pull_requests": "write"})
 
 	direct, err := manager.InstallationCredential(t.Context(), 42, []int64{7, 5, 7}, map[string]string{"issues": "read"})
 	if err != nil {

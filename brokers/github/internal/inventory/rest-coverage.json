@@ -13955,6 +13955,7 @@
     ],
     "credential_kind": "installation",
     "required_github_permissions": {
+      "contents": "read",
       "pull_requests": "write"
     },
     "reason": "typed catalog operation; upstream execution intentionally deferred to later stages",

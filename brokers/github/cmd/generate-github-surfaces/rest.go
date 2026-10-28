@@ -88,6 +88,11 @@ func generateREST(state *generatedState, document openAPIDocument, permissions m
 func generateRESTOperation(state *generatedState, method, path string, operation restOperation, permissions map[string][]permissionMatch, components map[string]any) {
 	matches := permissions[method+" "+path]
 	requiredPermissions := requiredPermissionMap(matches)
+	// PR creation also needs visibility of the existing private head/base refs.
+	// Keep contents read-only; the mutation uses the existing PR write grant.
+	if operation.OperationID == "pulls/create" {
+		requiredPermissions["contents"] = "read"
+	}
 	credential := credentialKind(method, path, operation, matches)
 	disposition, reason := restDisposition(method, path, operation, credential)
 	if disposition == "internal" && credential == "unavailable" {
