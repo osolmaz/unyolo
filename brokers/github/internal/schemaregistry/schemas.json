@@ -59209,11 +59209,121 @@
         "additionalProperties": false,
         "description": "An item belonging to a project",
         "properties": {
+          "content": {
+            "additionalProperties": false,
+            "properties": {
+              "html_url": {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              "id": {
+                "type": "number"
+              },
+              "node_id": {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              "number": {
+                "type": "integer"
+              },
+              "url": {
+                "maxLength": 4096,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "content_type": {
+            "description": "The type of content tracked in a project item",
+            "enum": [
+              "Issue",
+              "PullRequest",
+              "DraftIssue"
+            ],
+            "maxLength": 1048576,
+            "title": "Projects v2 Item Content Type",
+            "type": "string"
+          },
           "created_at": {
             "description": "The time when the item was created.",
             "format": "date-time",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "data_type": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 4096,
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "name": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "raw": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 4096,
+                            "type": [
+                              "string",
+                              "number"
+                            ]
+                          },
+                          "name": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "raw": {
+                                "maxLength": 4096,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
           },
           "id": {
             "description": "The unique identifier of the project item.",
@@ -59644,11 +59754,121 @@
           "additionalProperties": false,
           "description": "An item belonging to a project",
           "properties": {
+            "content": {
+              "additionalProperties": false,
+              "properties": {
+                "html_url": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "id": {
+                  "type": "number"
+                },
+                "node_id": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "number": {
+                  "type": "integer"
+                },
+                "url": {
+                  "maxLength": 4096,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "content_type": {
+              "description": "The type of content tracked in a project item",
+              "enum": [
+                "Issue",
+                "PullRequest",
+                "DraftIssue"
+              ],
+              "maxLength": 1048576,
+              "title": "Projects v2 Item Content Type",
+              "type": "string"
+            },
             "created_at": {
               "description": "The time when the item was created.",
               "format": "date-time",
               "maxLength": 1048576,
               "type": "string"
+            },
+            "fields": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "data_type": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 4096,
+                            "type": [
+                              "string",
+                              "number"
+                            ]
+                          },
+                          "name": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "raw": {
+                                "maxLength": 4096,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 4096,
+                              "type": [
+                                "string",
+                                "number"
+                              ]
+                            },
+                            "name": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "raw": {
+                                  "maxLength": 4096,
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 100,
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "maxItems": 100,
+              "type": "array"
             },
             "id": {
               "description": "The unique identifier of the project item.",
@@ -59997,11 +60217,121 @@
         "additionalProperties": false,
         "description": "An item belonging to a project",
         "properties": {
+          "content": {
+            "additionalProperties": false,
+            "properties": {
+              "html_url": {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              "id": {
+                "type": "number"
+              },
+              "node_id": {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              "number": {
+                "type": "integer"
+              },
+              "url": {
+                "maxLength": 4096,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "content_type": {
+            "description": "The type of content tracked in a project item",
+            "enum": [
+              "Issue",
+              "PullRequest",
+              "DraftIssue"
+            ],
+            "maxLength": 1048576,
+            "title": "Projects v2 Item Content Type",
+            "type": "string"
+          },
           "created_at": {
             "description": "The time when the item was created.",
             "format": "date-time",
             "maxLength": 1048576,
             "type": "string"
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "data_type": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "maxLength": 4096,
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "name": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "raw": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 4096,
+                            "type": [
+                              "string",
+                              "number"
+                            ]
+                          },
+                          "name": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "raw": {
+                                "maxLength": 4096,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
           },
           "id": {
             "description": "The unique identifier of the project item.",
