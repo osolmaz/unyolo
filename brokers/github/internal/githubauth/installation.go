@@ -464,8 +464,10 @@ func permissionsForOperation(operation string) (map[string]string, error) {
 		return clonePermissions(descriptor.RequiredGitHubPermissions), nil
 	}
 	switch {
-	case operation == "git.fetch", operation == "git.push.advertise":
+	case operation == "git.fetch":
 		return map[string]string{"contents": "read"}, nil
+	// GitHub checks push access on the receive-pack advertisement itself,
+	// before any branch update can be submitted.
 	case strings.HasPrefix(operation, "git.push."), operation == "git.lfs.write", operation == "git.ref.delete", operation == "git.tag.update":
 		return map[string]string{"contents": "write"}, nil
 	default:
