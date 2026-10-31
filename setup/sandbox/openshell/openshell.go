@@ -467,12 +467,21 @@ func (adapter Adapter) restartGateway(ctx context.Context) error {
 	}
 }
 
-// connectSandbox attaches the providers to an existing sandbox and checks its
-// environment. A missing sandbox is left to its owner, who creates it with the
-// providers and the environment file.
+// connectSandbox checks the environment of an existing sandbox, attaches the
+// providers, and restarts the sandbox when the gateway trusts a new CA. A
+// missing sandbox, or one without the environment, is left to its owner, who
+// creates it with the providers and the environment file.
 func (adapter Adapter) connectSandbox(ctx context.Context, sandbox string, result Result) (Result, error) {
 	if !adapter.succeeds(ctx, Command{Name: "openshell", Args: []string{"sandbox", "get", sandbox}}) {
 		result.SandboxMissing = true
+		return result, nil
+	}
+	output, err := adapter.Runner.Run(ctx, Command{Name: "openshell", Args: []string{"sandbox", "exec", "--name", sandbox, "--no-tty", "--", "env"}})
+	if err != nil {
+		return Result{}, fmt.Errorf("read the environment of the sandbox %s: %w", sandbox, err)
+	}
+	if !hasEnvironment(output, result.Environment) {
+		result.SandboxRecreate = true
 		return result, nil
 	}
 	attached, err := adapter.Runner.Run(ctx, Command{Name: "openshell", Args: []string{"sandbox", "provider", "list", sandbox}})
@@ -485,14 +494,6 @@ func (adapter Adapter) connectSandbox(ctx context.Context, sandbox string, resul
 				return Result{}, err
 			}
 		}
-	}
-	output, err := adapter.Runner.Run(ctx, Command{Name: "openshell", Args: []string{"sandbox", "exec", "--name", sandbox, "--no-tty", "--", "env"}})
-	if err != nil {
-		return Result{}, fmt.Errorf("read the environment of the sandbox %s: %w", sandbox, err)
-	}
-	if !hasEnvironment(output, result.Environment) {
-		result.SandboxRecreate = true
-		return result, nil
 	}
 	if result.GatewayRestarted {
 		for _, action := range []string{"stop", "start"} {
