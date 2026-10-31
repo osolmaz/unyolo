@@ -170,7 +170,7 @@ func canonicalSetupCapabilities(goos string, _ []string) bundle.SetupCapabilitie
 	switch goos {
 	case "linux":
 		capabilities.NativeServiceBackend = "systemd"
-		capabilities.Features = []string{"native_service", "local_accounts", "local_socket"}
+		capabilities.Features = []string{"native_service", "local_accounts", "local_socket", "openshell_agent"}
 	case "darwin":
 		capabilities.NativeServiceBackend = "launchd"
 	}

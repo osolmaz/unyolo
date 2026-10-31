@@ -69,6 +69,8 @@ type AgentTarget struct {
 	ProjectDirectory string `json:"project_directory,omitempty"`
 	Service          string `json:"service,omitempty"`
 	RemoteName       string `json:"remote_name,omitempty"`
+	Runtime          string `json:"runtime,omitempty"`
+	Sandbox          string `json:"sandbox,omitempty"`
 }
 
 // Operator binds one trusted Unix account. An existing operator is a person's
@@ -316,8 +318,11 @@ func noninteractiveAccount(home, shell string) bool {
 }
 
 func validateAgentTarget(target AgentTarget) error {
-	if !slices.Contains([]string{"separate", "container", "remote", "reduced"}, target.Isolation) {
+	if !slices.Contains([]string{"separate", "container", "remote", "reduced", "sandbox"}, target.Isolation) {
 		return errors.New("target isolation is invalid")
+	}
+	if target.Kind != "sandbox" && (target.Runtime != "" || target.Sandbox != "") {
+		return errors.New("only a sandbox target names a runtime and a sandbox")
 	}
 	switch target.Kind {
 	case "local_account":
@@ -335,6 +340,11 @@ func validateAgentTarget(target AgentTarget) error {
 	case "remote":
 		if target.Isolation != "remote" || !validName(target.RemoteName) || target.AccountMode != "" || target.UnixUser != "" || target.Home != "" || target.Shell != "" || target.ProjectDirectory != "" || target.Service != "" {
 			return errors.New("remote target is invalid")
+		}
+	case "sandbox":
+		if target.Isolation != "sandbox" || target.Runtime != "openshell" || !validName(target.Sandbox) || target.AccountMode != "" || target.UnixUser != "" ||
+			target.Home != "" || target.Shell != "" || target.ProjectDirectory != "" || target.Service != "" || target.RemoteName != "" {
+			return errors.New("sandbox target is invalid")
 		}
 	default:
 		return errors.New("target kind is invalid")

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -41,6 +42,26 @@ type RenderConnection struct {
 	Home       string   `json:"home,omitempty"`
 	Container  string   `json:"container,omitempty"`
 	RemoteName string   `json:"remote_name,omitempty"`
+	Runtime    string   `json:"runtime,omitempty"`
+	Sandbox    string   `json:"sandbox,omitempty"`
+}
+
+// RenderSandboxAccess declares how an agent in a sandbox reaches a provider's
+// sandbox listener. The provider names its loopback port and what the agent
+// needs. The runtime adapter supplies the address that the sandbox uses: in
+// environment values, {host} becomes that host and port, and {origin} becomes
+// its HTTPS origin.
+type RenderSandboxAccess struct {
+	Port          int                 `json:"port"`
+	CredentialEnv string              `json:"credential_env"`
+	Environment   []RenderEnvironment `json:"environment,omitempty"`
+	Binaries      []string            `json:"binaries"`
+}
+
+// RenderEnvironment is one nonsecret environment variable for a sandbox agent.
+type RenderEnvironment struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // RenderRequest binds every nonsecret input needed for provider rendering.
@@ -94,6 +115,7 @@ type RenderResponse struct {
 	Files         []RenderFile         `json:"files,omitempty"`
 	ReviewItems   []RenderReviewItem   `json:"review_items,omitempty"`
 	SecretPrompts []RenderSecretPrompt `json:"secret_prompts,omitempty"`
+	SandboxAccess *RenderSandboxAccess `json:"sandbox_access,omitempty"`
 	RenderDigest  string               `json:"render_digest"`
 }
 
@@ -104,6 +126,7 @@ type RenderMetadata struct {
 	ComponentID   string               `json:"component_id"`
 	ReviewItems   []RenderReviewItem   `json:"review_items,omitempty"`
 	SecretPrompts []RenderSecretPrompt `json:"secret_prompts,omitempty"`
+	SandboxAccess *RenderSandboxAccess `json:"sandbox_access,omitempty"`
 	RenderDigest  string               `json:"render_digest"`
 }
 
@@ -112,8 +135,46 @@ func (response RenderResponse) Metadata() RenderMetadata {
 	return RenderMetadata{
 		APIVersion: response.APIVersion, ComponentID: response.ComponentID,
 		ReviewItems:   append([]RenderReviewItem(nil), response.ReviewItems...),
-		SecretPrompts: append([]RenderSecretPrompt(nil), response.SecretPrompts...), RenderDigest: response.RenderDigest,
+		SecretPrompts: append([]RenderSecretPrompt(nil), response.SecretPrompts...), SandboxAccess: response.SandboxAccess.clone(),
+		RenderDigest: response.RenderDigest,
 	}
+}
+
+func (access *RenderSandboxAccess) clone() *RenderSandboxAccess {
+	if access == nil {
+		return nil
+	}
+	copied := *access
+	copied.Environment = slices.Clone(access.Environment)
+	copied.Binaries = slices.Clone(access.Binaries)
+	return &copied
+}
+
+var environmentNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,127}$`)
+
+// Validate checks a bounded sandbox access declaration.
+func (access *RenderSandboxAccess) Validate() error {
+	if access == nil {
+		return nil
+	}
+	if access.Port < 1024 || access.Port > 65535 || !environmentNamePattern.MatchString(access.CredentialEnv) ||
+		len(access.Environment) > 32 || len(access.Binaries) == 0 || len(access.Binaries) > 16 {
+		return errors.New("render sandbox access is invalid")
+	}
+	seen := map[string]bool{access.CredentialEnv: true}
+	for _, variable := range access.Environment {
+		if !environmentNamePattern.MatchString(variable.Name) || seen[variable.Name] || variable.Value == "" || len(variable.Value) > 1024 ||
+			strings.ContainsAny(variable.Value, "\x00\r\n") {
+			return errors.New("render sandbox access environment is invalid or duplicated")
+		}
+		seen[variable.Name] = true
+	}
+	for _, path := range access.Binaries {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsAny(path, "\x00\r\n*") {
+			return errors.New("render sandbox access path is invalid")
+		}
+	}
+	return nil
 }
 
 // Validate checks bounded render metadata.
@@ -134,7 +195,7 @@ func (metadata RenderMetadata) Validate() error {
 			return errors.New("render metadata review item is invalid")
 		}
 	}
-	return nil
+	return metadata.SandboxAccess.Validate()
 }
 
 // Validate checks render request bounds and protocol invariants.
@@ -177,8 +238,11 @@ func (request RenderRequest) Validate() error {
 		if !identifierPattern.MatchString(connection.ID) || !identifierPattern.MatchString(connection.ClientID) || seenConnections[connection.ID] {
 			return errors.New("render request connection is invalid or duplicated")
 		}
-		if !slices.Contains([]string{"local_account", "container", "remote"}, connection.TargetKind) {
+		if !slices.Contains([]string{"local_account", "container", "remote", "sandbox"}, connection.TargetKind) {
 			return errors.New("render request connection target kind is invalid")
+		}
+		if !validSandboxTarget(connection.TargetKind, connection.Runtime, connection.Sandbox) {
+			return errors.New("render request sandbox connection is invalid")
 		}
 		seenConnections[connection.ID] = true
 	}
@@ -229,6 +293,9 @@ func (response RenderResponse) Validate() error {
 		}
 		seenSlots[prompt.Slot] = true
 	}
+	if err := response.SandboxAccess.Validate(); err != nil {
+		return err
+	}
 	if !validDigest(response.RenderDigest) {
 		return errors.New("render response digest is invalid")
 	}
@@ -252,7 +319,8 @@ func (response RenderResponse) CalculateRenderDigest() (string, error) {
 		Files         []RenderFile         `json:"files"`
 		ReviewItems   []RenderReviewItem   `json:"review_items"`
 		SecretPrompts []RenderSecretPrompt `json:"secret_prompts"`
-	}{response.ComponentID, response.Profile, files, reviewItems, secretPrompts}
+		SandboxAccess *RenderSandboxAccess `json:"sandbox_access"`
+	}{response.ComponentID, response.Profile, files, reviewItems, secretPrompts, response.SandboxAccess}
 	data, err := json.Marshal(values)
 	if err != nil {
 		return "", err

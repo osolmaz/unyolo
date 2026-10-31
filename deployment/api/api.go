@@ -59,6 +59,8 @@ type AgentBinding struct {
 	Home        string `json:"home,omitempty"`
 	Container   string `json:"container,omitempty"`
 	RemoteName  string `json:"remote_name,omitempty"`
+	Runtime     string `json:"runtime,omitempty"`
+	Sandbox     string `json:"sandbox,omitempty"`
 }
 
 // OperatorBinding is one managed operator account that receives operator
@@ -162,9 +164,12 @@ func (request Request) Validate() error {
 	}
 	for _, agent := range request.Agents {
 		if !identifierPattern.MatchString(agent.ID) || !identifierPattern.MatchString(agent.ClientID) || seenAgents[agent.ID] ||
-			!slices.Contains([]string{"local_account", "container", "remote"}, agent.TargetKind) ||
-			!slices.Contains([]string{"separate", "container", "remote", "reduced"}, agent.Isolation) {
+			!slices.Contains([]string{"local_account", "container", "remote", "sandbox"}, agent.TargetKind) ||
+			!slices.Contains([]string{"separate", "container", "remote", "reduced", "sandbox"}, agent.Isolation) {
 			return errors.New("setup-component agent binding is invalid or duplicated")
+		}
+		if !validSandboxTarget(agent.TargetKind, agent.Runtime, agent.Sandbox) {
+			return errors.New("setup-component sandbox agent binding is invalid")
 		}
 		if agent.TargetKind == "local_account" && (strings.TrimSpace(agent.UnixUser) == "" || !strings.HasPrefix(agent.Home, "/") || !slices.Contains([]string{"current", "existing", "managed"}, agent.AccountMode)) {
 			return errors.New("setup-component local agent binding is invalid")
@@ -237,6 +242,15 @@ func (response Response) Validate() error {
 		}
 	}
 	return nil
+}
+
+// validSandboxTarget reports whether a target's sandbox fields match its kind:
+// a sandbox target names its runtime and sandbox, and other targets name none.
+func validSandboxTarget(kind, runtime, sandbox string) bool {
+	if kind != "sandbox" {
+		return runtime == "" && sandbox == ""
+	}
+	return runtime == "openshell" && identifierPattern.MatchString(sandbox)
 }
 
 func digest(value []byte) string {

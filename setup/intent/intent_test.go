@@ -90,3 +90,56 @@ func TestDecodeRejectsUnknownAndSecretFields(t *testing.T) {
 		t.Fatal("expected size rejection")
 	}
 }
+
+func TestSandboxAgentIntent(t *testing.T) {
+	t.Parallel()
+	valid := func() Intent {
+		return Intent{
+			APIVersion: APIVersion, Goal: GoalCompleteLocal,
+			CredentialService: &CredentialService{Location: ServiceNative, Providers: []string{"github"}},
+			Agent:             &Agent{Location: AgentSandbox, ConnectionName: "bob", Sandbox: &Sandbox{Runtime: SandboxOpenShell, Name: "bob"}},
+			Connection:        &Connection{Transport: TransportSandbox},
+		}
+	}
+	if err := valid().Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	draft := valid()
+	draft.Agent.Sandbox.Name, draft.Agent.ConnectionName = "", ""
+	if err := draft.ValidatePartial(); err != nil {
+		t.Fatalf("ValidatePartial(draft): %v", err)
+	}
+	if err := draft.Validate(); err == nil {
+		t.Fatal("a sandbox agent without a name passed full validation")
+	}
+	for name, change := range map[string]func(*Intent){
+		"no sandbox":       func(v *Intent) { v.Agent.Sandbox = nil },
+		"other runtime":    func(v *Intent) { v.Agent.Sandbox.Runtime = "docker" },
+		"invalid name":     func(v *Intent) { v.Agent.Sandbox.Name = "Bob" },
+		"socket transport": func(v *Intent) { v.Connection = &Connection{Transport: TransportLocalSocket} },
+		"account":          func(v *Intent) { v.Agent.Account = &Account{Mode: AccountExisting, Name: "bob"} },
+		"sandbox on local": func(v *Intent) {
+			v.Agent.Location = AgentLocalAccount
+			v.Agent.Account = &Account{Mode: AccountExisting, Name: "bob"}
+		},
+		"sandbox transport fields": func(v *Intent) {
+			v.Connection = &Connection{Transport: TransportSandbox, RemoteEndpoint: "https://broker.example", ServerName: "broker.example"}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := valid()
+			change(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatalf("invalid sandbox intent passed: %#v", value.Agent)
+			}
+		})
+	}
+	local := Intent{
+		APIVersion: APIVersion, Goal: GoalAgentConnection,
+		Agent:      &Agent{Location: AgentLocalAccount, ConnectionName: "bob", Account: &Account{Mode: AccountExisting, Name: "bob"}},
+		Connection: &Connection{Transport: TransportSandbox},
+	}
+	if err := local.Validate(); err == nil {
+		t.Fatal("a local agent with the sandbox transport passed")
+	}
+}

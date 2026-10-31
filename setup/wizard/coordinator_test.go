@@ -399,3 +399,49 @@ func TestCoordinatorReturnsCancellation(t *testing.T) {
 		t.Fatalf("expected cancellation, got %v", err)
 	}
 }
+
+func TestCoordinatorConnectsAnOpenShellSandbox(t *testing.T) {
+	prompter := &scriptedPrompter{t: t, answers: []scriptedAnswer{
+		{kind: "select", stringValue: "complete_local", expectMessage: setupcopy.Screens[setupcopy.ScreenGoal].Question},
+		{kind: "select", stringValue: "native", expectMessage: setupcopy.Screens[setupcopy.ScreenServiceLocation].Question},
+		{kind: "multiselect", stringSlice: []string{"github"}, expectMessage: setupcopy.Screens[setupcopy.ScreenProviders].Question},
+		{kind: "select", stringValue: "openshell", expectMessage: setupcopy.Screens[setupcopy.ScreenAgentLocation].Question},
+		{kind: "text", stringValue: "bob", expectMessage: setupcopy.Screens[setupcopy.ScreenSandbox].Question},
+		{kind: "confirm", boolValue: true, expectMessage: "Ready to continue?"},
+	}}
+	snapshot := nativeCompleteSnapshot()
+	snapshot.Features = append(snapshot.Features, capability.FeatureOpenShellAgent)
+	coordinator := New(Options{
+		Prompter: prompter, Capabilities: snapshot,
+		Providers: []ProviderChoice{{Value: "github", Label: "GitHub", Selected: true}},
+		Initial:   State{Intent: setupintent.Intent{APIVersion: setupintent.APIVersion}},
+	})
+	result, err := coordinator.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := result.Intent.Agent
+	if agent == nil || agent.Location != setupintent.AgentSandbox || agent.Sandbox == nil || agent.Sandbox.Name != "bob" || agent.ConnectionName != "bob" {
+		t.Fatalf("agent = %#v", agent)
+	}
+	if result.Intent.Connection == nil || result.Intent.Connection.Transport != setupintent.TransportSandbox {
+		t.Fatalf("connection = %#v", result.Intent.Connection)
+	}
+	if err := result.Intent.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompter.transcript.String(), "OpenShell sandbox: bob") {
+		t.Fatalf("review does not name the sandbox:\n%s", prompter.transcript.String())
+	}
+}
+
+func TestOpenShellChoiceNeedsTheCapability(t *testing.T) {
+	if HasChoice(AgentLocationChoices(nativeCompleteSnapshot()), "openshell") {
+		t.Fatal("the OpenShell choice appeared without the capability")
+	}
+	snapshot := nativeCompleteSnapshot()
+	snapshot.Features = append(snapshot.Features, capability.FeatureOpenShellAgent)
+	if !HasChoice(availableForGoal(AgentLocationChoices(snapshot), setupintent.GoalCompleteLocal), "openshell") {
+		t.Fatal("the OpenShell choice is missing for a complete local setup")
+	}
+}

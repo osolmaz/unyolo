@@ -3,5 +3,6 @@
   "id": "github",
   "label": "GitHub",
   "hint": "Approval-gated Git, repository, organization, and account operations",
-  "selected": true
+  "selected": true,
+  "sandbox_agents": true
 }

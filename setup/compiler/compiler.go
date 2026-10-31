@@ -306,6 +306,8 @@ func compileDeployment(source installation.Installation, providers []SourceProvi
 			target.ProjectDirectory, target.Service = connection.Target.ProjectDirectory, connection.Target.Service
 		case installation.TargetRemote:
 			target.RemoteName = connection.Target.RemoteName
+		case installation.TargetSandbox:
+			target.Runtime, target.Sandbox = string(connection.Target.Runtime), connection.Target.Sandbox
 		}
 		componentIDs := append([]string(nil), connection.Providers...)
 		slices.Sort(componentIDs)
@@ -376,6 +378,7 @@ func providerRenderRequest(sourceSet string, source installation.Installation, m
 			TargetKind: string(connection.Target.Kind), Isolation: connection.Target.Isolation,
 			UnixUser: connection.Target.Account, Home: connection.Target.Home,
 			Container: connection.Target.Service, RemoteName: connection.Target.RemoteName,
+			Runtime: string(connection.Target.Runtime), Sandbox: connection.Target.Sandbox,
 		}
 		request.Connections = append(request.Connections, rendered)
 		for _, integration := range connection.Integrations {

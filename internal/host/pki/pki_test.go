@@ -54,3 +54,46 @@ func TestIssueServerRejectsInvalidCAAndNames(t *testing.T) {
 		}
 	}
 }
+
+func TestConstrainedCASignsOnlyItsNames(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	ca, err := GenerateConstrainedCA(now, 0, []string{"host.openshell.internal", "127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(ca.Certificate) {
+		t.Fatal("CA certificate was not added")
+	}
+	allowed, err := IssueServer(ca, []string{"host.openshell.internal", "127.0.0.1"}, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseLeaf(t, allowed).Verify(x509.VerifyOptions{Roots: roots, DNSName: "host.openshell.internal", CurrentTime: now.Add(time.Hour)}); err != nil {
+		t.Fatalf("allowed certificate: %v", err)
+	}
+	other, err := IssueServer(ca, []string{"example.org"}, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseLeaf(t, other).Verify(x509.VerifyOptions{Roots: roots, DNSName: "example.org", CurrentTime: now.Add(time.Hour)}); err == nil {
+		t.Fatal("certificate outside the name constraints was accepted")
+	}
+	if _, err := GenerateConstrainedCA(now, 0, []string{"*.example.org"}); err == nil {
+		t.Fatal("wildcard constraint was accepted")
+	}
+}
+
+func parseLeaf(t *testing.T, material Material) *x509.Certificate {
+	t.Helper()
+	block, _ := pem.Decode(material.Certificate)
+	if block == nil {
+		t.Fatal("no PEM certificate")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return certificate
+}

@@ -98,13 +98,14 @@ Two operational gaps also exist:
      its own credential store.
 
    Setup states which case applies before it asks for approval.
-5. **Setup owns a private certificate authority.** Setup creates one CA for the
-   host and signs the `sandbox` listener certificate with it, using only the
-   Go standard library.
+5. **Setup owns a private certificate authority.** Setup creates a CA and signs
+   the `sandbox` listener certificate with it, using only the Go standard
+   library.
    - The CA carries critical name constraints that permit only the listener
-     names, such as `host.openshell.internal`, so it cannot authenticate any
-     other site.
-   - The CA key stays on the host and only root can read it. The broker reads
+     names, `host.openshell.internal` and `127.0.0.1`, so it cannot
+     authenticate any other site.
+   - Setup clears the CA key once the certificate is signed. The key never
+     reaches a disk, and the CA can never sign anything else. The broker reads
      only the listener certificate and key files, as it does today.
    - The CA certificate is not secret. The OpenShell adapter gives it to the
      gateway through `additional_ca_bundle`. The Docker adapter mounts it into
@@ -178,13 +179,25 @@ Done in v0.9.0.
 
 ### 2. Add the sandbox listener and the sandbox agent core
 
+Built: the broker listener in PR #156, the rest with the OpenShell adapter.
+
 - **Broker.** Add the optional `sandbox` agent listener to gh-broker. It
   requires TLS and serves the same agent handler as the Unix socket, so the
   GitHub-compatible API, Git, and the agent API work on both.
-- **Setup intent.** Replace the `container` location in the setup intent with
-  one `sandbox` location that has a `runtime` field (`openshell` or `docker`).
-  The `remote` location stays as it is. This is an in-place change to setup
-  intent v1.
+- **Setup intent.** Add one `sandbox` location with a `runtime` field. It
+  accepts `openshell` today. The existing `container` location keeps its
+  Compose design until the `docker` adapter moves onto the sandbox core, and
+  `remote` stays as it is. A sandbox agent uses the `sandbox` transport, which
+  has no address fields: the broker and the adapter choose the address. This
+  is an in-place change to setup intent v1.
+- **Providers.** A provider that serves sandbox agents sets `sandbox_agents` in
+  its setup descriptor. A sandbox connection gets only those providers, so
+  `sudo-broker` never connects to a sandbox.
+- **Render metadata.** A provider's renderer declares its `sandbox_access`: the
+  loopback port of its listener, the variable for the client secret, plain
+  environment variables with `{host}` and `{origin}` for the sandbox address,
+  and the binaries that may use it. The adapter adds the runtime's address, so
+  setup holds no provider details and the broker holds no runtime details.
 - **Setup.** For a sandbox agent, setup:
   - creates the client id, the secret slot, and a policy rule set for the
     client, starting from the request-everything preset;
@@ -197,32 +210,38 @@ Done in v0.9.0.
 
 ### 3. Certificates
 
-- Setup creates the host CA once, valid for 10 years, with critical name
-  constraints for the listener names. The key file is owned by root with
-  mode `0600`.
-- Setup issues the `sandbox` listener certificate from that CA, valid for one
-  year, for the listener name and address.
-- The doctor warns 30 days before the listener certificate or the CA expires,
-  and fails after either expires. `unyolo repair` issues a new listener
-  certificate and restarts the broker. A new listener certificate needs no
-  change in OpenShell or in the sandbox.
-- A new CA is needed only when the old one expires or its key is exposed. Setup
-  then repeats the CA delivery for each adapter.
+- When the plan installs a sandbox listener certificate, setup creates one CA
+  with critical name constraints for the listener names, signs a certificate
+  valid for two years for each listener, and clears the CA key.
+- A new certificate therefore comes with a new CA. The gateway reads the CA
+  only at startup, so the adapter restarts the gateway and the connected
+  sandboxes. A setup run that keeps the certificate changes nothing in
+  OpenShell.
+- `gh-broker doctor github` warns 30 days before the listener certificate
+  expires and fails after it expires.
 
 ### 4. Build the OpenShell adapter
 
 - Write an OpenShell provider profile: one credential bound to
   `GH_ENTERPRISE_TOKEN`, endpoints for `host.openshell.internal` and the
   listener port with REST and GraphQL inspection, and binaries `gh` and `git`.
-- Write the sandbox network policy fragment and the sandbox environment.
+- The provider profile's endpoint is the sandbox network policy, so no
+  separate policy fragment is needed.
 - Write the CA bundle file and set `[openshell.supervisor.network]
-  additional_ca_bundle` in the gateway configuration. The gateway reads it only
-  at startup, so setup restarts the gateway and then stops and starts each
-  connected sandbox. This happens at the first connection and when the CA
-  changes.
-- Create the provider from the secret file and attach it to the sandbox. Setup
-  runs the `openshell` commands as the account that owns the gateway. The
-  secret is never printed.
+  additional_ca_bundle` in the gateway configuration. Setup edits the file only
+  when it has no supervisor network table, checks the result with
+  `openshell-gateway config preflight`, and restores the file if the check
+  fails. The gateway reads the CA only at startup, so setup restarts the
+  gateway and then stops and starts each connected sandbox. This happens at
+  the first connection and when the CA changes.
+- Create the provider with the client secret and attach it to the sandbox.
+  Setup runs the `openshell` commands as the account that owns the gateway,
+  which is the account that runs setup. The secret travels only in the
+  command's environment and is never printed.
+- OpenShell sets a sandbox's environment only when it creates the sandbox; a
+  provider's config keys do not reach it. Setup writes the environment to
+  `~/.config/unyolo/sandboxes/<sandbox>.env` and shows the `--provider` and
+  `--env` options for a sandbox that does not exist or lacks the environment.
 
 ### 5. Release-layout migration
 

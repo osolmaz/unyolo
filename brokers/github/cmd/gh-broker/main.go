@@ -112,7 +112,7 @@ func namedCommands() map[string]cliCommand {
 			if len(args) != 0 {
 				return errors.New("setup-component-render does not accept arguments")
 			}
-			return component.ServeRender(os.Stdin, stdout, component.StandardRenderer{})
+			return component.ServeRender(os.Stdin, stdout, githubRenderer{})
 		},
 		"state": func(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
 			return statecmd.Run(ctx, args, stdout, stderr)

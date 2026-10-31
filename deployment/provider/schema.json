@@ -24,6 +24,9 @@
     },
     "selected": {
       "type": "boolean"
+    },
+    "sandbox_agents": {
+      "type": "boolean"
     }
   }
 }

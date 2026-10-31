@@ -31,9 +31,18 @@ type StandardRenderer struct{}
 // Render performs the deterministic render exchange described by the
 // setup-component render V1 API. It runs entirely without host state,
 // network, or credential values.
-//
-//nolint:cyclop // Deterministic render binds every provider-owned resource before hashing.
 func (StandardRenderer) Render(request api.RenderRequest, profileTemplate []byte, assets map[string][]byte) (api.RenderResponse, error) {
+	profile, renderedAssets, err := RenderStandardProfile(request, profileTemplate, assets)
+	if err != nil {
+		return api.RenderResponse{}, err
+	}
+	return FinishRender(request, profile, renderedAssets)
+}
+
+// RenderStandardProfile fills the standard stores, identities, clients, and
+// policy assets of a provider-owned template. A component renderer that adds
+// its own resources calls it first and then finishes the render.
+func RenderStandardProfile(request api.RenderRequest, profileTemplate []byte, assets map[string][]byte) (Profile, map[string][]byte, error) {
 	if len(request.Profile) == 0 {
 		request.Profile = append([]byte(nil), profileTemplate...)
 	}
@@ -41,29 +50,35 @@ func (StandardRenderer) Render(request api.RenderRequest, profileTemplate []byte
 		request.Files = renderAssetFiles(assets)
 	}
 	if err := request.Validate(); err != nil {
-		return api.RenderResponse{}, err
+		return Profile{}, nil, err
 	}
 	var profile Profile
 	if err := decodeProfileTemplate(profileTemplate, &profile); err != nil {
-		return api.RenderResponse{}, err
+		return Profile{}, nil, err
 	}
 	renderStandardIdentities(&profile, request)
 	if err := renderStandardStores(&profile, request); err != nil {
-		return api.RenderResponse{}, err
+		return Profile{}, nil, err
 	}
 	renderStandardClients(&profile, request)
 	renderStandardOperatorClients(&profile, request)
 	renderedAssets := cloneAssets(assets)
 	if err := renderPolicyAssets(&profile, renderedAssets, clientsForRender(request)); err != nil {
-		return api.RenderResponse{}, err
+		return Profile{}, nil, err
 	}
-	return FinishRender(request, profile, renderedAssets)
+	return profile, renderedAssets, nil
 }
 
 // FinishRender binds rendered asset digests into the profile and returns the
 // validated, digest-bound render response with its review items and secret
 // prompts. Component renderers call it after they fill the profile.
 func FinishRender(request api.RenderRequest, profile Profile, renderedAssets map[string][]byte) (api.RenderResponse, error) {
+	return FinishSandboxRender(request, profile, renderedAssets, nil)
+}
+
+// FinishSandboxRender finishes a render that declares how agents in sandboxes
+// reach the component's sandbox listener.
+func FinishSandboxRender(request api.RenderRequest, profile Profile, renderedAssets map[string][]byte, access *api.RenderSandboxAccess) (api.RenderResponse, error) {
 	bindRenderedAssetDigests(&profile, renderedAssets)
 	renderedProfile, err := json.MarshalIndent(profile, "", "  ")
 	if err != nil {
@@ -75,7 +90,7 @@ func FinishRender(request api.RenderRequest, profile Profile, renderedAssets map
 	reviewItems := renderReviewItems(request)
 	response := api.RenderResponse{
 		APIVersion: api.RenderAPIVersion, ComponentID: request.ComponentID, Profile: renderedProfile,
-		Files: files, ReviewItems: reviewItems, SecretPrompts: prompts,
+		Files: files, ReviewItems: reviewItems, SecretPrompts: prompts, SandboxAccess: access,
 	}
 	digest, err := response.CalculateRenderDigest()
 	if err != nil {

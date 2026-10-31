@@ -32,6 +32,7 @@ const (
 	ScreenTelegramChat    = "telegram_chat"
 	ScreenAgentLocation   = "agent_location"
 	ScreenAccount         = "account"
+	ScreenSandbox         = "sandbox"
 	ScreenIsolationWarn   = "isolation_warning"
 	ScreenReview          = "review"
 	ScreenInstallCommand  = "install_command"
@@ -72,6 +73,10 @@ var Screens = map[string]Screen{
 	ScreenAccount: {
 		Question: "Which account should run the agent?",
 		Reason:   "The agent connection uses this account's home directory and identity.",
+	},
+	ScreenSandbox: {
+		Question: "Which OpenShell sandbox runs the agent?",
+		Reason:   "Enter the sandbox name from openshell sandbox list. The sandbox may not exist yet. It gets gh and git access through unYOLO and holds no provider credential.",
 	},
 	ScreenIsolationWarn: {
 		Question:  "Continue with reduced isolation?",
@@ -154,6 +159,7 @@ var AgentLocations = []AgentLocation{
 	{Value: "managed", Label: "A new separate account on this computer", Hint: "unYOLO creates a restricted account"},
 	{Value: "existing", Label: "An existing account on this computer", Hint: "Connect an account that already exists"},
 	{Value: "container", Label: "A Docker container on this computer", Hint: "Connect one Compose service"},
+	{Value: "openshell", Label: "An OpenShell sandbox on this computer", Hint: "Connect gh and git in one sandbox"},
 	{Value: "remote", Label: "Another computer", Hint: "Create a short-lived pairing invitation"},
 	{Value: "current", Label: "My current account", Hint: "Less isolation: the agent may access files available to your account"},
 }
