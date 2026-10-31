@@ -445,7 +445,7 @@ next to the local agent socket:
 
 ```sh
 GH_BROKER_SANDBOX_ENDPOINT=tls://127.0.0.1:38481
-GH_BROKER_SANDBOX_CLIENTS=bob
+GH_BROKER_SANDBOX_CLIENTS=sandbox-agent
 GH_BROKER_TLS_CERT_FILE=/etc/gh-broker/sandbox-tls.pem
 GH_BROKER_TLS_KEY_FILE=/etc/gh-broker/sandbox-tls-key.pem
 ```
