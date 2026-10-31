@@ -1,16 +1,23 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/osolmaz/unyolo/brokers/github/internal/config"
 	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/internal/host/pki"
 )
 
 func githubRenderRequest(t *testing.T, connections ...api.RenderConnection) (api.RenderRequest, map[string][]byte) {
@@ -116,4 +123,61 @@ func renderedFile(t *testing.T, response api.RenderResponse, path string) string
 	}
 	t.Fatalf("render response has no %s", path)
 	return ""
+}
+
+func TestRenderedSandboxEnvironmentLoads(t *testing.T) {
+	request, assets := githubRenderRequest(t,
+		api.RenderConnection{ID: "bob", ClientID: "bob", Providers: []string{"github"}, TargetKind: "sandbox", Isolation: "sandbox", Runtime: "openshell", Sandbox: "bob"},
+	)
+	response, err := githubRenderer{}.Render(request, request.Profile, assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(renderedFile(t, response, environmentAsset), "\n") {
+		if name, value, found := strings.Cut(line, "="); found {
+			values[name] = value
+		}
+	}
+	dir := t.TempDir()
+	write := func(name, data string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	ca, err := pki.GenerateConstrainedCA(time.Now(), time.Hour, []string{"host.openshell.internal", "127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := pki.IssueServer(ca, []string{"host.openshell.internal", "127.0.0.1"}, time.Now(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The rendered paths point at the host; the test keeps every setting and
+	// moves only the files into a temporary directory.
+	values["GH_BROKER_SECRETS_FILE"] = write("secrets", "bob = "+strings.Repeat("b", 32)+"\n")
+	values["GH_BROKER_OPERATOR_SECRETS_FILE"] = write("operator-secrets", "onur = "+strings.Repeat("o", 32)+"\n")
+	values["GH_BROKER_SCOPE_FILE"] = write("scope.json", "{}")
+	values["GH_BROKER_STATE_DIR"] = dir
+	values["GH_BROKER_GITHUB_APP_ID_FILE"] = write("app-id", "12345")
+	values["GH_BROKER_GITHUB_APP_PRIVATE_KEY_FILE"] = write("app-key.pem", string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(appKey)})))
+	values["GH_BROKER_GITHUB_WEBHOOK_SECRET_FILE"] = write("webhook-secret", "webhook")
+	values["GH_BROKER_TLS_CERT_FILE"] = write("sandbox-tls.pem", string(server.Certificate))
+	values["GH_BROKER_TLS_KEY_FILE"] = write("sandbox-tls-key.pem", string(server.PrivateKey))
+	cfg, err := config.LoadFromLookup(func(name string) (string, bool) {
+		value, found := values[name]
+		return value, found
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SandboxEndpoint == nil || cfg.SandboxEndpoint.String() != "tls://127.0.0.1:38481" || !cfg.IsSandboxClient("bob") {
+		t.Fatalf("sandbox listener = %v, clients %v", cfg.SandboxEndpoint, cfg.SandboxClients)
+	}
 }
