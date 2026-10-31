@@ -3,6 +3,8 @@ package githubdoctor
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/url"
@@ -44,6 +46,9 @@ func Run(ctx context.Context, cfg config.Config, opts Options) (unyolodoctor.Rep
 	}
 	checks := []unyolodoctor.Check{unyolodoctor.RootEquivalentCheck(agent), unyolodoctor.SeparationCheck(agent, service)}
 	checks = append(checks, localSecretChecks(cfg, agent)...)
+	if check := tlsCertificateCheck(cfg.TLSCertificateFile, time.Now().UTC()); check != nil {
+		checks = append(checks, *check)
+	}
 	storedCredentials, storedCheck := storedCredentialStatuses(cfg.StateDir, time.Now().UTC())
 	if storedCheck != nil {
 		checks = append(checks, *storedCheck)
@@ -56,7 +61,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options) (unyolodoctor.Rep
 
 func localSecretChecks(cfg config.Config, agent unyolodoctor.Identity) []unyolodoctor.Check {
 	paths := []string{cfg.GitHubTokenFile, cfg.GitHubAppPrivateKeyFile, cfg.GitHubAppClientSecretFile, cfg.GitHubWebhookSecretFile,
-		cfg.SecretsFile, cfg.OperatorSecretsFile}
+		cfg.SecretsFile, cfg.OperatorSecretsFile, cfg.TLSPrivateKeyFile}
 	checks := make([]unyolodoctor.Check, 0, len(paths)*5)
 	for _, path := range paths {
 		if path != "" {
@@ -65,6 +70,43 @@ func localSecretChecks(cfg config.Config, agent unyolodoctor.Identity) []unyolod
 	}
 	checks = append(checks, inlineCredentialChecks(cfg)...)
 	return checks
+}
+
+// certificateRenewalWindow is how long before expiry the doctor asks for a new
+// listener certificate.
+const certificateRenewalWindow = 30 * 24 * time.Hour
+
+// tlsCertificateCheck reports whether the TLS listener certificate is valid
+// now and for longer than the renewal window.
+func tlsCertificateCheck(path string, now time.Time) *unyolodoctor.Check {
+	if path == "" {
+		return nil
+	}
+	check := unyolodoctor.Check{Name: "tls_listener_certificate"}
+	certificate, err := readLeafCertificate(path)
+	switch {
+	case err != nil:
+		check.Status, check.Message = unyolodoctor.CheckFail, "TLS listener certificate cannot be read: "+err.Error()
+	case now.Before(certificate.NotBefore) || !now.Before(certificate.NotAfter):
+		check.Status, check.Message = unyolodoctor.CheckFail, "TLS listener certificate is not valid now; run unyolo repair to issue a new one"
+	case certificate.NotAfter.Sub(now) <= certificateRenewalWindow:
+		check.Status, check.Message = unyolodoctor.CheckWarn, "TLS listener certificate expires on "+certificate.NotAfter.Format(time.DateOnly)+"; run unyolo repair to issue a new one"
+	default:
+		check.Status, check.Message = unyolodoctor.CheckPass, "TLS listener certificate is valid until "+certificate.NotAfter.Format(time.DateOnly)
+	}
+	return &check
+}
+
+func readLeafCertificate(path string) (*x509.Certificate, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- operator configured certificate path.
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, errors.New("no PEM certificate")
+	}
+	return x509.ParseCertificate(block.Bytes)
 }
 
 func localCredentialStatuses(cfg config.Config, now time.Time) []unyolodoctor.CredentialStatus {

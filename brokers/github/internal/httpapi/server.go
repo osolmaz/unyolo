@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +69,7 @@ type Server struct {
 	githubCredentials   *githubauth.Manager
 	githubUserID        int64
 	githubWebhookSecret string
+	sandboxClients      []string
 	githubClient        *http.Client
 	githubGitClient     *http.Client
 	githubGitBaseURL    *url.URL
@@ -157,7 +159,7 @@ func newServerSkeleton(
 		echo: newEcho(), policy: brokerPolicy, grants: core.grants, plans: core.plans, planValidator: core.validator, control: core.control,
 		database: core.database, operations: operationStore, admission: admissionController,
 		githubCredentials: github.appSource, githubWebhookSecret: github.webhookSecret,
-		credentialStore: github.credentialStore, githubUserID: cfg.GitHubUserID,
+		credentialStore: github.credentialStore, githubUserID: cfg.GitHubUserID, sandboxClients: slices.Clone(cfg.SandboxClients),
 		githubClient: github.client, githubGitClient: github.gitClient,
 		githubGitBaseURL: github.gitBaseURL, githubAPIBaseURL: github.apiBaseURL,
 		auditWriter: core.audit, logger: slog.Default(), maxReceivePackBytes: github.receivePackLimit,

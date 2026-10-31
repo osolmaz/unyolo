@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,8 @@ type Config struct {
 	Development               bool
 	AgentEndpoint             endpoint.Endpoint
 	GitEndpoint               *endpoint.Endpoint
+	SandboxEndpoint           *endpoint.Endpoint
+	SandboxClients            []string
 	ClientID                  string
 	SharedSecret              string
 	SecretsFile               string
@@ -77,6 +80,9 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err := loadGitEndpoint(env, &cfg, development, networkExposure); err != nil {
 		return Config{}, err
 	}
+	if err := loadSandboxListener(env, &cfg, networkExposure); err != nil {
+		return Config{}, err
+	}
 	if err := cfg.loadCredentialFiles(); err != nil {
 		return Config{}, err
 	}
@@ -109,6 +115,57 @@ func loadGitEndpoint(env environment, cfg *Config, development, networkExposure 
 	}
 	cfg.GitEndpoint = &parsed
 	return nil
+}
+
+// loadSandboxListener reads the TLS listener for agents in sandboxes. Only the
+// clients it names may use it, and they may use no other listener.
+func loadSandboxListener(env environment, cfg *Config, networkExposure bool) error {
+	value := env.value("GH_BROKER_SANDBOX_ENDPOINT", "")
+	clients := env.value("GH_BROKER_SANDBOX_CLIENTS", "")
+	if value == "" {
+		if clients != "" {
+			return errors.New("GH_BROKER_SANDBOX_CLIENTS requires GH_BROKER_SANDBOX_ENDPOINT")
+		}
+		return nil
+	}
+	parsed, err := endpoint.Parse(value, endpoint.ParseOptions{AllowNetworkTLS: networkExposure})
+	if err != nil {
+		return fmt.Errorf("GH_BROKER_SANDBOX_ENDPOINT: %w", err)
+	}
+	if parsed.Scheme() != endpoint.SchemeTLS {
+		return errors.New("GH_BROKER_SANDBOX_ENDPOINT must use tls")
+	}
+	for _, other := range []*endpoint.Endpoint{&cfg.AgentEndpoint, cfg.OperatorEndpoint, cfg.GitEndpoint} {
+		if other != nil && parsed.String() == other.String() {
+			return errors.New("sandbox, agent, operator, and git endpoints must differ")
+		}
+	}
+	names, err := sandboxClientNames(clients)
+	if err != nil {
+		return err
+	}
+	cfg.SandboxEndpoint, cfg.SandboxClients = &parsed, names
+	return nil
+}
+
+func sandboxClientNames(value string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, errors.New("GH_BROKER_SANDBOX_CLIENTS is required with GH_BROKER_SANDBOX_ENDPOINT")
+	}
+	var names []string
+	seen := map[string]bool{}
+	for _, raw := range strings.Split(value, ",") {
+		name := strings.TrimSpace(raw)
+		if err := clientconfig.ValidateClientName(name); err != nil {
+			return nil, fmt.Errorf("GH_BROKER_SANDBOX_CLIENTS: client %q: %w", name, err)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("GH_BROKER_SANDBOX_CLIENTS: client %q is listed twice", name)
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names, nil
 }
 
 func loadBaseConfig(env environment) (Config, bool, bool, error) {
@@ -410,6 +467,7 @@ func (c Config) Validate() error {
 	return firstError(
 		initializedEndpoint(c.AgentEndpoint, "GH_BROKER_AGENT_ENDPOINT is required"),
 		identityStores(c),
+		sandboxClients(c),
 		operatorConfig(c),
 		githubCredential(c),
 		required(c.ScopeFile, "GH_BROKER_SCOPE_FILE is required"),
@@ -455,6 +513,21 @@ func identityStores(c Config) error {
 	return nil
 }
 
+func sandboxClients(c Config) error {
+	secrets := c.EffectiveClientSecrets()
+	for _, name := range c.SandboxClients {
+		if _, found := secrets[name]; !found {
+			return fmt.Errorf("GH_BROKER_SANDBOX_CLIENTS: client %q has no secret", name)
+		}
+	}
+	return nil
+}
+
+// IsSandboxClient reports whether client may use only the sandbox listener.
+func (c Config) IsSandboxClient(client string) bool {
+	return slices.Contains(c.SandboxClients, client)
+}
+
 func operatorConfig(c Config) error {
 	if len(c.EffectiveOperatorSecrets()) == 0 {
 		return nil
@@ -481,7 +554,7 @@ func initializedEndpoint(value endpoint.Endpoint, message string) error {
 
 func tlsFiles(c Config) error {
 	needsTLS := c.AgentEndpoint.Scheme() == endpoint.SchemeTLS || c.OperatorEndpoint != nil && c.OperatorEndpoint.Scheme() == endpoint.SchemeTLS ||
-		c.GitEndpoint != nil && c.GitEndpoint.Scheme() == endpoint.SchemeTLS
+		c.GitEndpoint != nil && c.GitEndpoint.Scheme() == endpoint.SchemeTLS || c.SandboxEndpoint != nil
 	if needsTLS != (c.TLSCertificateFile != "" && c.TLSPrivateKeyFile != "") {
 		return errors.New("GH_BROKER_TLS_CERT_FILE and GH_BROKER_TLS_KEY_FILE are required exactly for TLS listeners")
 	}

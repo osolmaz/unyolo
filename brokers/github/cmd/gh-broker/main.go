@@ -218,6 +218,9 @@ func listenGitHubEndpoints(cfg config.Config) (map[string]net.Listener, error) {
 	if cfg.GitEndpoint != nil {
 		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "git", Endpoint: *cfg.GitEndpoint})
 	}
+	if cfg.SandboxEndpoint != nil {
+		listenerSpecs = append(listenerSpecs, endpoint.Named{Name: "sandbox", Endpoint: *cfg.SandboxEndpoint})
+	}
 	tlsConfig, err := githubServerTLSConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -233,11 +236,18 @@ func githubServerTLSConfig(cfg config.Config) (*tls.Config, error) {
 }
 
 func newGitHubServers(api *httpapi.Server, listeners map[string]net.Listener, operatorEnabled bool) ([]serverhttp.Binding, error) {
-	agentServer, err := serverhttp.New(api.Handler(), serverhttp.ProfileStreaming)
+	agentServer, err := serverhttp.New(api.BindClients(api.Handler(), httpapi.HostListener), serverhttp.ProfileStreaming)
 	if err != nil {
 		return nil, err
 	}
 	servers := []serverhttp.Binding{{Server: agentServer, Listener: listeners["agent"]}}
+	if sandboxListener := listeners["sandbox"]; sandboxListener != nil {
+		sandboxServer, serverErr := serverhttp.New(api.BindClients(api.Handler(), httpapi.SandboxListener), serverhttp.ProfileStreaming)
+		if serverErr != nil {
+			return nil, serverErr
+		}
+		servers = append(servers, serverhttp.Binding{Server: sandboxServer, Listener: sandboxListener})
+	}
 	if operatorEnabled {
 		operatorServer, serverErr := serverhttp.New(api.OperatorHandler(), serverhttp.ProfileOperator)
 		if serverErr != nil {
@@ -250,7 +260,7 @@ func newGitHubServers(api *httpapi.Server, listeners map[string]net.Listener, op
 		if handlerErr != nil {
 			return nil, handlerErr
 		}
-		gitServer, serverErr := serverhttp.New(gitHandler, serverhttp.ProfileStreaming)
+		gitServer, serverErr := serverhttp.New(api.BindClients(gitHandler, httpapi.HostListener), serverhttp.ProfileStreaming)
 		if serverErr != nil {
 			return nil, serverErr
 		}
