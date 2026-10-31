@@ -87,6 +87,13 @@ func TestGitHubRendererAddsTheSandboxListener(t *testing.T) {
 	if !strings.Contains(clients, "bob=github-client-bob") || !strings.Contains(clients, "local=github-client-local") {
 		t.Fatalf("secret stores = %s", clients)
 	}
+	for _, store := range profile.SecretStores {
+		for _, entry := range store.Entries {
+			if entry.Rotate != (entry.Identity == "bob") {
+				t.Fatalf("entry %s rotate = %v; only the sandbox client rotates", entry.Identity, entry.Rotate)
+			}
+		}
+	}
 	access := response.SandboxAccess
 	if access == nil || access.Port != sandboxListenerPort || access.CredentialEnv != "GH_ENTERPRISE_TOKEN" || len(access.Binaries) != 2 || access.Environment[0].Value != "{host}" {
 		t.Fatalf("sandbox access = %+v", access)
