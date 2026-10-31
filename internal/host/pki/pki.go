@@ -27,8 +27,18 @@ type Material struct {
 }
 
 func GenerateCA(now time.Time, lifetime time.Duration) (Material, error) {
+	return GenerateConstrainedCA(now, lifetime, nil)
+}
+
+// GenerateConstrainedCA creates a CA that can sign certificates only for the
+// given DNS names and IP addresses. The constraints are critical, so a client
+// that cannot enforce them rejects the CA. With no names the CA is unconstrained.
+func GenerateConstrainedCA(now time.Time, lifetime time.Duration, names []string) (Material, error) {
 	if lifetime <= 0 {
 		lifetime = DefaultCALifetime
+	}
+	if len(names) > 32 {
+		return Material{}, errors.New("CA name constraints allow at most 32 names")
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -44,7 +54,29 @@ func GenerateCA(now time.Time, lifetime time.Duration) (Material, error) {
 		IsCA: true, BasicConstraintsValid: true, MaxPathLenZero: true,
 		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 	}
+	if err := constrainNames(template, names); err != nil {
+		return Material{}, err
+	}
 	return createMaterial(template, template, &key.PublicKey, key, key)
+}
+
+func constrainNames(template *x509.Certificate, names []string) error {
+	for _, name := range names {
+		if ip := net.ParseIP(name); ip != nil {
+			bits := 8 * len(ip.To4())
+			if bits == 0 {
+				bits = 8 * net.IPv6len
+			}
+			template.PermittedIPRanges = append(template.PermittedIPRanges, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		if strings.TrimSpace(name) == "" || strings.ContainsAny(name, " /*") {
+			return fmt.Errorf("CA name constraint %q is invalid", name)
+		}
+		template.PermittedDNSDomains = append(template.PermittedDNSDomains, name)
+	}
+	template.PermittedDNSDomainsCritical = len(names) > 0
+	return nil
 }
 
 func IssueServer(ca Material, names []string, now time.Time, lifetime time.Duration) (Material, error) {

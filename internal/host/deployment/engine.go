@@ -800,6 +800,7 @@ func agentBindings(snapshot profile.Snapshot, componentID string) []api.AgentBin
 				ID: agent.ID, ClientID: agent.ClientID, TargetKind: agent.Target.Kind, Isolation: agent.Target.Isolation,
 				AccountMode: agent.Target.AccountMode, UnixUser: agent.Target.UnixUser, Home: agent.Target.Home,
 				Container: agent.Target.Service, RemoteName: agent.Target.RemoteName,
+				Runtime: agent.Target.Runtime, Sandbox: agent.Target.Sandbox,
 			})
 		}
 	}

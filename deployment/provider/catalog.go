@@ -24,6 +24,9 @@ type Option struct {
 	Label      string `json:"label"`
 	Hint       string `json:"hint,omitempty"`
 	Selected   bool   `json:"selected"`
+	// SandboxAgents reports that the provider serves agents in sandboxes
+	// through a sandbox listener.
+	SandboxAgents bool `json:"sandbox_agents,omitempty"`
 }
 
 // LoadDirectory loads and validates every provider option in a verified staging directory.

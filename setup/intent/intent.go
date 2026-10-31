@@ -44,7 +44,14 @@ const (
 	AgentLocalAccount AgentLocation = "local_account"
 	AgentContainer    AgentLocation = "container"
 	AgentRemote       AgentLocation = "remote"
+	AgentSandbox      AgentLocation = "sandbox"
 )
+
+// SandboxRuntime names the runtime of a sandbox agent.
+type SandboxRuntime string
+
+// SandboxOpenShell is an OpenShell sandbox on this computer.
+const SandboxOpenShell SandboxRuntime = "openshell"
 
 type AccountMode string
 
@@ -59,6 +66,9 @@ type Transport string
 const (
 	TransportLocalSocket Transport = "local_socket"
 	TransportTLS         Transport = "tls"
+	// TransportSandbox reaches a broker's sandbox listener through the
+	// sandbox runtime. The broker and the runtime adapter choose the address.
+	TransportSandbox Transport = "sandbox"
 )
 
 type CredentialService struct {
@@ -76,11 +86,19 @@ type Container struct {
 	Service          string `json:"service"`
 }
 
+// Sandbox is the sandbox that runs an agent. The name may stay empty in a
+// draft until the user enters it.
+type Sandbox struct {
+	Runtime SandboxRuntime `json:"runtime"`
+	Name    string         `json:"name,omitempty"`
+}
+
 type Agent struct {
 	Location       AgentLocation `json:"location"`
 	ConnectionName string        `json:"connection_name"`
 	Account        *Account      `json:"account,omitempty"`
 	Container      *Container    `json:"container,omitempty"`
+	Sandbox        *Sandbox      `json:"sandbox,omitempty"`
 }
 
 // Telegram is the choice to send approval requests to one Telegram chat. The
@@ -146,6 +164,9 @@ func (value Intent) Validate() error {
 			return err
 		}
 	}
+	if value.Agent != nil && value.Connection != nil && (value.Agent.Location == AgentSandbox) != (value.Connection.Transport == TransportSandbox) {
+		return errors.New("a sandbox agent and only a sandbox agent uses the sandbox transport")
+	}
 	return nil
 }
 
@@ -184,9 +205,12 @@ func (value Intent) ValidatePartial() error {
 }
 
 func (value Agent) validatePartial() error {
-	if !slices.Contains([]AgentLocation{AgentLocalAccount, AgentContainer, AgentRemote}, value.Location) ||
+	if !slices.Contains([]AgentLocation{AgentLocalAccount, AgentContainer, AgentRemote, AgentSandbox}, value.Location) ||
 		value.ConnectionName != "" && !validName(value.ConnectionName) {
 		return errors.New("agent selection is invalid")
+	}
+	if (value.Location == AgentSandbox) != (value.Sandbox != nil) {
+		return errors.New("only a sandbox agent names a sandbox")
 	}
 	switch value.Location {
 	case AgentLocalAccount:
@@ -209,13 +233,21 @@ func (value Agent) validatePartial() error {
 		if value.Account != nil || value.Container != nil {
 			return errors.New("remote agent cannot contain local target fields")
 		}
+	case AgentSandbox:
+		if value.Account != nil || value.Container != nil || value.Sandbox.Runtime != SandboxOpenShell ||
+			value.Sandbox.Name != "" && !validName(value.Sandbox.Name) {
+			return errors.New("sandbox agent selection is invalid")
+		}
 	}
 	return nil
 }
 
 func (value Agent) validate() error {
-	if !slices.Contains([]AgentLocation{AgentLocalAccount, AgentContainer, AgentRemote}, value.Location) || !validName(value.ConnectionName) {
+	if !slices.Contains([]AgentLocation{AgentLocalAccount, AgentContainer, AgentRemote, AgentSandbox}, value.Location) || !validName(value.ConnectionName) {
 		return errors.New("agent selection is invalid")
+	}
+	if (value.Location == AgentSandbox) != (value.Sandbox != nil) {
+		return errors.New("only a sandbox agent names a sandbox")
 	}
 	switch value.Location {
 	case AgentLocalAccount:
@@ -240,15 +272,19 @@ func (value Agent) validate() error {
 		if value.Account != nil || value.Container != nil {
 			return errors.New("remote agent cannot contain local target fields")
 		}
+	case AgentSandbox:
+		if value.Account != nil || value.Container != nil || value.Sandbox.Runtime != SandboxOpenShell || !validName(value.Sandbox.Name) {
+			return errors.New("sandbox agent selection is invalid")
+		}
 	}
 	return nil
 }
 
 func (value Connection) validatePartial() error {
-	if !slices.Contains([]Transport{TransportLocalSocket, TransportTLS}, value.Transport) {
+	if !slices.Contains([]Transport{TransportLocalSocket, TransportTLS, TransportSandbox}, value.Transport) {
 		return errors.New("connection transport is invalid")
 	}
-	if value.Transport == TransportLocalSocket {
+	if value.Transport == TransportLocalSocket || value.Transport == TransportSandbox {
 		if value.RemoteEndpoint != "" || value.ServerName != "" {
 			return errors.New("local connection cannot contain network fields")
 		}
@@ -261,10 +297,10 @@ func (value Connection) validatePartial() error {
 }
 
 func (value Connection) validate() error {
-	if !slices.Contains([]Transport{TransportLocalSocket, TransportTLS}, value.Transport) {
+	if !slices.Contains([]Transport{TransportLocalSocket, TransportTLS, TransportSandbox}, value.Transport) {
 		return errors.New("connection transport is invalid")
 	}
-	if value.Transport == TransportLocalSocket {
+	if value.Transport == TransportLocalSocket || value.Transport == TransportSandbox {
 		if value.RemoteEndpoint != "" || value.ServerName != "" {
 			return errors.New("local connection cannot contain network fields")
 		}

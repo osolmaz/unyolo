@@ -398,7 +398,7 @@ func editOneConnection(ctx context.Context, prompter flow.SetupPrompter, existin
 	combined.Goal = setupintent.GoalCompleteLocal
 	combined.CredentialService = &setupintent.CredentialService{Location: desired.CredentialService.Location,
 		Providers: append([]string(nil), desired.CredentialService.Providers...)}
-	generated, err := installationFromIntent(combined, options.Operator, desired.Name)
+	generated, err := installationFromIntent(combined, options.Operator, desired.Name, options.ProviderOptions)
 	if err != nil {
 		return installation.Connection{}, err
 	}
@@ -475,6 +475,12 @@ func intentFromInstallation(value installation.Installation) (setupintent.Intent
 		result.Agent = &setupintent.Agent{Location: setupintent.AgentContainer, ConnectionName: connection.ID}
 	case installation.TargetRemote:
 		result.Agent = &setupintent.Agent{Location: setupintent.AgentRemote, ConnectionName: connection.ID}
+	case installation.TargetSandbox:
+		result.Agent = &setupintent.Agent{
+			Location: setupintent.AgentSandbox, ConnectionName: connection.ID,
+			Sandbox: &setupintent.Sandbox{Runtime: connection.Target.Runtime, Name: connection.Target.Sandbox},
+		}
+		result.Connection = &setupintent.Connection{Transport: setupintent.TransportSandbox}
 	default:
 		return setupintent.Intent{}, errors.New("recorded connection target is invalid")
 	}
@@ -520,8 +526,12 @@ func applyReconfiguration(ctx context.Context, prompter flow.SetupPrompter, stor
 		return err
 	}
 	defer func() { _ = worker.Close() }()
+	sandboxes, err := sandboxConnections(desired, metadata)
+	if err != nil {
+		return err
+	}
 	return store.Publish(desired, destination, func(generated string) error {
-		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, session.Store{}, nil, secretPromptIndex(metadata))
+		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, session.Store{}, nil, secretPromptIndex(metadata), sandboxes)
 	})
 }
 

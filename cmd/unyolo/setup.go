@@ -16,6 +16,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,6 +40,7 @@ import (
 	"github.com/osolmaz/unyolo/setup/installation"
 	setupintent "github.com/osolmaz/unyolo/setup/intent"
 	"github.com/osolmaz/unyolo/setup/pairingclient"
+	"github.com/osolmaz/unyolo/setup/sandbox/openshell"
 	"github.com/osolmaz/unyolo/setup/wizard"
 	"golang.org/x/term"
 )
@@ -296,7 +298,7 @@ func runSetupFlow(ctx context.Context, prompter flow.SetupPrompter, options setu
 	if err := result.Intent.Validate(); err != nil {
 		return err
 	}
-	desired, err := installationFromIntent(result.Intent, options.Operator, result.InstallationName)
+	desired, err := installationFromIntent(result.Intent, options.Operator, result.InstallationName, options.ProviderOptions)
 	if err != nil {
 		return err
 	}
@@ -318,7 +320,7 @@ func addLocalConnection(ctx context.Context, prompter flow.SetupPrompter, sessio
 	combined.CredentialService = &setupintent.CredentialService{
 		Location: current.CredentialService.Location, Providers: append([]string(nil), current.CredentialService.Providers...),
 	}
-	addition, err := installationFromIntent(combined, options.Operator, current.Name)
+	addition, err := installationFromIntent(combined, options.Operator, current.Name, options.ProviderOptions)
 	if err != nil {
 		return err
 	}
@@ -427,7 +429,7 @@ func (commandRunner) Run(ctx context.Context, name string, args ...string) ([]by
 }
 
 //nolint:cyclop // Installation assembly maps every account mode explicitly.
-func installationFromIntent(value setupintent.Intent, approver, name string) (installation.Installation, error) {
+func installationFromIntent(value setupintent.Intent, approver, name string, providers []provider.Option) (installation.Installation, error) {
 	if name == "" {
 		name = installation.DefaultName
 	}
@@ -467,7 +469,31 @@ func installationFromIntent(value setupintent.Intent, approver, name string) (in
 			Providers: append([]string(nil), value.CredentialService.Providers...), Integrations: append([]string(nil), value.Integrations...),
 		}}
 	}
+	if value.Agent != nil && value.Agent.Location == setupintent.AgentSandbox {
+		result.Connections = []installation.Connection{{
+			ID: value.Agent.ConnectionName, ClientID: value.Agent.ConnectionName,
+			Target: installation.Target{
+				Kind: installation.TargetSandbox, Isolation: "sandbox",
+				Runtime: value.Agent.Sandbox.Runtime, Sandbox: value.Agent.Sandbox.Name,
+			},
+			Providers: sandboxProviders(value.CredentialService.Providers, providers), Integrations: append([]string(nil), value.Integrations...),
+		}}
+	}
 	return result, result.Validate()
+}
+
+// sandboxProviders returns the selected providers that serve agents in
+// sandboxes. A provider without a sandbox listener, such as sudo-broker, never
+// connects to a sandbox.
+func sandboxProviders(selected []string, options []provider.Option) []string {
+	var result []string
+	for _, option := range options {
+		if option.SandboxAgents && slices.Contains(selected, option.ID) {
+			result = append(result, option.ID)
+		}
+	}
+	slices.Sort(result)
+	return result
 }
 
 func agentAccountName(agent *setupintent.Agent, current string) string {
@@ -533,8 +559,12 @@ func compileReviewAndApply(ctx context.Context, prompter flow.SetupPrompter, ses
 	if err := sessions.Save(*setupSession); err != nil {
 		return err
 	}
+	sandboxes, err := sandboxConnections(desired, metadata)
+	if err != nil {
+		return err
+	}
 	return installation.Store{Root: installRoot}.Publish(desired, destination, func(generated string) error {
-		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, sessions, setupSession, secretPromptIndex(metadata))
+		return planAndApplyInstallation(ctx, prompter, worker, filepath.Join(filepath.Dir(generated), installation.EntryFilename), generated, sessions, setupSession, secretPromptIndex(metadata), sandboxes)
 	})
 }
 
@@ -597,7 +627,10 @@ func showInstallationDetails(ctx context.Context, prompter flow.SetupPrompter, c
 }
 
 //nolint:cyclop // The apply flow keeps session bookkeeping and secret transfer together across the review.
-func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, worker protectedSetupWorker, installationPath, generated string, sessions session.Store, setupSession *session.Session, prompts map[string]api.RenderSecretPrompt) error {
+func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, worker protectedSetupWorker, installationPath, generated string, sessions session.Store, setupSession *session.Session, prompts map[string]api.RenderSecretPrompt, sandboxes []openshell.Connection) error {
+	if err := checkSandboxRuntimes(ctx, sandboxes); err != nil {
+		return err
+	}
 	progress := prompter.Progress("Checking the requested system changes")
 	planned, err := worker.PlanInstallation(installationPath, generated)
 	if err != nil {
@@ -627,7 +660,7 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		}
 		return flow.CancelledError{}
 	}
-	secrets, err := collectPlanSecrets(ctx, prompter, planned.Plan, prompts)
+	secrets, sandboxCA, err := collectPlanSecrets(ctx, prompter, planned.Plan, prompts)
 	if err != nil {
 		_ = worker.Cancel()
 		return err
@@ -650,6 +683,9 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 		return err
 	}
 	applyProgress.Stop(result.Message)
+	if err := connectSandboxes(ctx, prompter, sandboxes, secrets, sandboxCA); err != nil {
+		return err
+	}
 	if setupSession != nil {
 		setupSession.SecretSlots = nil
 	}
@@ -659,17 +695,29 @@ func planAndApplyInstallation(ctx context.Context, prompter flow.SetupPrompter, 
 	return prompter.Outro(ctx, "Setup is complete and the selected connection was verified.")
 }
 
-func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan deploymentplan.Plan, prompts map[string]api.RenderSecretPrompt) (map[string][]byte, error) {
+// collectPlanSecrets collects or generates every secret that the plan
+// installs. It also returns the CA certificate of new sandbox listener
+// certificates, or nil when the plan installs none.
+func collectPlanSecrets(ctx context.Context, prompter flow.SetupPrompter, plan deploymentplan.Plan, prompts map[string]api.RenderSecretPrompt) (map[string][]byte, []byte, error) {
+	slots := privilege.RequiredSecretSlots(plan)
+	issued, sandboxCA, err := issueSandboxTLS(slots, time.Now())
+	if err != nil {
+		return nil, nil, err
+	}
 	secrets := map[string][]byte{}
-	for _, slot := range privilege.RequiredSecretSlots(plan) {
+	for _, slot := range slots {
+		if value, found := issued[slot]; found {
+			secrets[slot] = value
+			continue
+		}
 		value, err := collectPlanSecret(ctx, prompter, slot, prompts[slot])
 		if err != nil {
 			clearSetupSecrets(secrets)
-			return nil, err
+			return nil, nil, err
 		}
 		secrets[slot] = value
 	}
-	return secrets, validateSetupSecretPairs(secrets)
+	return secrets, sandboxCA, validateSetupSecretPairs(secrets)
 }
 
 func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot string, prompt api.RenderSecretPrompt) ([]byte, error) {

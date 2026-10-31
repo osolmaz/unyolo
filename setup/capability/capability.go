@@ -27,6 +27,7 @@ const (
 	FeatureRemotePairing  Feature = "remote_pairing"
 	FeatureDockerAgent    Feature = "docker_agent"
 	FeatureDockerServices Feature = "docker_services"
+	FeatureOpenShellAgent Feature = "openshell_agent"
 )
 
 var knownFeatures = []Feature{
@@ -37,6 +38,7 @@ var knownFeatures = []Feature{
 	FeatureRemotePairing,
 	FeatureDockerAgent,
 	FeatureDockerServices,
+	FeatureOpenShellAgent,
 }
 
 // Probe performs read-only checks for one signed feature.
@@ -131,6 +133,8 @@ func (HostProbe) Available(feature Feature, serviceBackend string) bool {
 		return true
 	case FeatureDockerAgent, FeatureDockerServices:
 		return dockerComposeAvailable()
+	case FeatureOpenShellAgent:
+		return runtime.GOOS == "linux" && serviceBackend == "systemd" && hasCommands("openshell", "openshell-gateway")
 	default:
 		return false
 	}

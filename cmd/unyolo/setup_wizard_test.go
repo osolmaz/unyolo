@@ -189,7 +189,7 @@ func TestInstallationFromIntentReducedIsolationForCurrent(t *testing.T) {
 	}
 	// The unit does not require the account to actually exist; we exercise
 	// only the reduced-isolation branch.
-	result, err := installationFromIntent(intent, "onur", "")
+	result, err := installationFromIntent(intent, "onur", "", nil)
 	if err != nil {
 		// inspectAccount may fail in CI environments; the important assertion
 		// is that the reduced-isolation label is set when we can materialise

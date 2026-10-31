@@ -126,6 +126,9 @@ Where does the agent run?
 
 ○ A Docker container on this computer
 
+○ An OpenShell sandbox on this computer
+  Connect gh and git in one sandbox.
+
 ○ Another computer
 
 ○ My current account
@@ -177,6 +180,31 @@ image. It creates or prints:
 The plan must not mount provider credentials, broker state directories, or broad host directories
 into the container. Docker choices appear only when the installer can verify the selected engine
 and connection method.
+
+### OpenShell sandbox
+
+The OpenShell path connects stock `gh` and `git` in one OpenShell sandbox to the providers that
+serve sandbox agents, today GitHub. It appears when the release declares it and the host has the
+`openshell` and `openshell-gateway` commands. Setup asks for the sandbox name; the sandbox may not
+exist yet. It never connects `sudo-broker` to a sandbox.
+
+Before any administrator change, setup checks that the local OpenShell gateway runs as the
+`openshell-gateway` user service and accepts an additional destination CA, which needs OpenShell
+0.1.7 or later. After the change, it:
+
+- issues the broker's sandbox listener certificate from a new CA that is limited to
+  `host.openshell.internal` and `127.0.0.1`, and clears the CA key once the certificate is signed
+- checks the listener on the host with the new client secret
+- trusts the CA in the gateway through `additional_ca_bundle`, and restarts the gateway when the CA
+  changes; it edits `gateway.toml` only when the file has no `[openshell.supervisor.network]` table
+- creates one OpenShell provider per provider that holds the client secret, so code in the sandbox
+  sees only a placeholder
+- writes the sandbox environment to `~/.config/unyolo/sandboxes/<sandbox>.env`
+
+OpenShell sets a sandbox's environment only when it creates the sandbox. If the sandbox does not
+exist, or exists without that environment, setup shows the `--provider` and `--env` options to
+create it with. A connected sandbox gets the provider attached and is restarted when the gateway
+trusts a new CA.
 
 ### Another computer
 
@@ -320,6 +348,31 @@ A complete local setup for an existing account has this shape:
     "transport": "local_socket"
   },
   "integrations": ["openclaw"]
+}
+```
+
+A complete local setup for an OpenShell sandbox uses the `sandbox` transport, which has no address
+fields; the broker and the OpenShell adapter choose the address:
+
+```json
+{
+  "api_version": "unyolo.io/setup-intent/v1",
+  "goal": "complete_local",
+  "credential_service": {
+    "location": "native",
+    "providers": ["github"]
+  },
+  "agent": {
+    "location": "sandbox",
+    "connection_name": "bob",
+    "sandbox": {
+      "runtime": "openshell",
+      "name": "bob"
+    }
+  },
+  "connection": {
+    "transport": "sandbox"
+  }
 }
 ```
 

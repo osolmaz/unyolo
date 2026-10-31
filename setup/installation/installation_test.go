@@ -111,3 +111,28 @@ func TestInstallationDecodeRejectsUnknownFields(t *testing.T) {
 		t.Fatal("expected unknown secret field rejection")
 	}
 }
+
+func TestInstallationSandboxTarget(t *testing.T) {
+	t.Parallel()
+	value := validInstallation()
+	value.Connections[0].Target = Target{Kind: TargetSandbox, Isolation: "sandbox", Runtime: setupintent.SandboxOpenShell, Sandbox: "bob"}
+	if err := value.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	for name, change := range map[string]func(*Target){
+		"other runtime":      func(target *Target) { target.Runtime = "docker" },
+		"no sandbox":         func(target *Target) { target.Sandbox = "" },
+		"other isolation":    func(target *Target) { target.Isolation = "separate" },
+		"account fields":     func(target *Target) { target.Account, target.Home = "bob", "/home/bob" },
+		"sandbox on account": func(target *Target) { target.Kind, target.Isolation = TargetLocalAccount, "separate" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := validInstallation()
+			candidate.Connections[0].Target = value.Connections[0].Target
+			change(&candidate.Connections[0].Target)
+			if err := candidate.Validate(); err == nil {
+				t.Fatalf("invalid sandbox target passed: %#v", candidate.Connections[0].Target)
+			}
+		})
+	}
+}

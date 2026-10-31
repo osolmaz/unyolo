@@ -71,7 +71,7 @@ func TestTelegramInstallationChoices(t *testing.T) {
 		CredentialService: &setupintent.CredentialService{Location: setupintent.ServiceNative, Providers: []string{"github"}},
 		Telegram:          &setupintent.Telegram{ChatID: -100},
 	}
-	value, err := installationFromIntent(intent, "onur", "")
+	value, err := installationFromIntent(intent, "onur", "", nil)
 	if err != nil || value.Telegram == nil || value.Telegram.ChatID != -100 {
 		t.Fatalf("installation = %#v, %v", value.Telegram, err)
 	}

@@ -159,6 +159,8 @@ func (c *Coordinator) runStep(ctx context.Context, state *State, step Step) (Ste
 		return c.stepAgentLocation(ctx, state)
 	case StepAccount:
 		return c.stepAccount(ctx, state)
+	case StepSandbox:
+		return c.stepSandbox(ctx, state)
 	case StepIsolationWarn:
 		return c.stepIsolationWarning(ctx, state)
 	case StepInstallName:
@@ -328,13 +330,45 @@ func (c *Coordinator) setAgentLocation(state *State, choice string) {
 		agent.Location = setupintent.AgentContainer
 	case "remote":
 		agent.Location = setupintent.AgentRemote
+	case "openshell":
+		agent.Location = setupintent.AgentSandbox
+		agent.Sandbox = &setupintent.Sandbox{Runtime: setupintent.SandboxOpenShell}
 	}
 	state.Intent.Agent = agent
-	if choice == "container" || choice == "remote" {
+	switch choice {
+	case "container", "remote":
 		state.Intent.Connection = nil
-		return
+	case "openshell":
+		state.Intent.Connection = &setupintent.Connection{Transport: setupintent.TransportSandbox}
+	default:
+		state.Intent.Connection = &setupintent.Connection{Transport: setupintent.TransportLocalSocket}
 	}
-	state.Intent.Connection = &setupintent.Connection{Transport: setupintent.TransportLocalSocket}
+}
+
+func (c *Coordinator) stepSandbox(ctx context.Context, state *State) (Step, error) {
+	if state.Intent.Agent == nil || state.Intent.Agent.Sandbox == nil {
+		return "", errors.New("wizard: sandbox selection is missing")
+	}
+	value, err := c.options.Prompter.Text(ctx, flow.Prompt{
+		Message:      screenMessage(setupcopy.ScreenSandbox),
+		Description:  screenReason(setupcopy.ScreenSandbox),
+		InitialValue: state.Intent.Agent.Sandbox.Name,
+		Required:     true,
+		Navigation:   flow.Navigation{CanGoBack: true},
+		Validate: func(value string) error {
+			if !installationNamePattern.MatchString(value) {
+				return errors.New("use lowercase letters, digits, and hyphens between them; 1-64 characters")
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	state.Intent.Agent.Sandbox.Name = value
+	state.Intent.Agent.ConnectionName = value
+	state.Intent.Connection = &setupintent.Connection{Transport: setupintent.TransportSandbox}
+	return Next(*state, StepSandbox), nil
 }
 
 func (c *Coordinator) stepAccount(ctx context.Context, state *State) (Step, error) {
@@ -512,6 +546,11 @@ func describeAgentLocation(agent *setupintent.Agent) string {
 		return "Docker container on this computer"
 	case setupintent.AgentRemote:
 		return "another computer"
+	case setupintent.AgentSandbox:
+		if agent.Sandbox != nil && agent.Sandbox.Name != "" {
+			return "OpenShell sandbox: " + agent.Sandbox.Name
+		}
+		return "OpenShell sandbox on this computer"
 	case setupintent.AgentLocalAccount:
 		if agent.Account == nil {
 			return "local account on this computer"
@@ -532,8 +571,8 @@ func availableForGoal(choices []Choice, goal setupintent.Goal) []Choice {
 	if goal != setupintent.GoalCompleteLocal {
 		return choices
 	}
-	// Complete-local setup only supports local-account targets today; the
-	// container and remote paths ship in later slices.
+	// Complete-local setup supports local-account and OpenShell targets
+	// today; the container and remote paths ship in later slices.
 	filtered := make([]Choice, 0, len(choices))
 	for _, choice := range choices {
 		if choice.Value == "container" || choice.Value == "remote" {
@@ -553,6 +592,8 @@ func intentAgentLocationValue(agent *setupintent.Agent) string {
 		return "container"
 	case setupintent.AgentRemote:
 		return "remote"
+	case setupintent.AgentSandbox:
+		return "openshell"
 	case setupintent.AgentLocalAccount:
 		if agent.Account == nil {
 			return ""

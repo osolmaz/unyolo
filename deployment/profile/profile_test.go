@@ -294,3 +294,22 @@ func fmtHex(value []byte) string {
 	}
 	return string(result)
 }
+
+func TestValidateAgentTargetSandbox(t *testing.T) {
+	valid := AgentTarget{Kind: "sandbox", Isolation: "sandbox", Runtime: "openshell", Sandbox: "bob"}
+	if err := validateAgentTarget(valid); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]AgentTarget{
+		"other runtime":       {Kind: "sandbox", Isolation: "sandbox", Runtime: "docker", Sandbox: "bob"},
+		"no sandbox":          {Kind: "sandbox", Isolation: "sandbox", Runtime: "openshell"},
+		"account fields":      {Kind: "sandbox", Isolation: "sandbox", Runtime: "openshell", Sandbox: "bob", UnixUser: "bob"},
+		"sandbox on a remote": {Kind: "remote", Isolation: "remote", RemoteName: "bob", Sandbox: "bob"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateAgentTarget(target); err == nil {
+				t.Fatalf("invalid target passed: %+v", target)
+			}
+		})
+	}
+}

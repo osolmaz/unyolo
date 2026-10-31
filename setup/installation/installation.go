@@ -36,20 +36,23 @@ const (
 	TargetLocalAccount TargetKind = "local_account"
 	TargetContainer    TargetKind = "container"
 	TargetRemote       TargetKind = "remote"
+	TargetSandbox      TargetKind = "sandbox"
 )
 
 type Target struct {
-	Kind             TargetKind              `json:"kind"`
-	Isolation        string                  `json:"isolation"`
-	AccountMode      setupintent.AccountMode `json:"account_mode,omitempty"`
-	Account          string                  `json:"account,omitempty"`
-	Home             string                  `json:"home,omitempty"`
-	Shell            string                  `json:"shell,omitempty"`
-	UID              int                     `json:"uid,omitempty"`
-	GID              int                     `json:"gid,omitempty"`
-	ProjectDirectory string                  `json:"project_directory,omitempty"`
-	Service          string                  `json:"service,omitempty"`
-	RemoteName       string                  `json:"remote_name,omitempty"`
+	Kind             TargetKind                 `json:"kind"`
+	Isolation        string                     `json:"isolation"`
+	AccountMode      setupintent.AccountMode    `json:"account_mode,omitempty"`
+	Account          string                     `json:"account,omitempty"`
+	Home             string                     `json:"home,omitempty"`
+	Shell            string                     `json:"shell,omitempty"`
+	UID              int                        `json:"uid,omitempty"`
+	GID              int                        `json:"gid,omitempty"`
+	ProjectDirectory string                     `json:"project_directory,omitempty"`
+	Service          string                     `json:"service,omitempty"`
+	RemoteName       string                     `json:"remote_name,omitempty"`
+	Runtime          setupintent.SandboxRuntime `json:"runtime,omitempty"`
+	Sandbox          string                     `json:"sandbox,omitempty"`
 }
 
 type Connection struct {
@@ -165,8 +168,11 @@ func (value Installation) Digest() (string, error) {
 }
 
 func (value Target) validate() error {
-	if !slices.Contains([]string{"separate", "container", "remote", "reduced"}, value.Isolation) {
+	if !slices.Contains([]string{"separate", "container", "remote", "reduced", "sandbox"}, value.Isolation) {
 		return errors.New("target isolation is invalid")
+	}
+	if value.Kind != TargetSandbox && (value.Runtime != "" || value.Sandbox != "") {
+		return errors.New("only a sandbox target names a runtime and a sandbox")
 	}
 	switch value.Kind {
 	case TargetLocalAccount:
@@ -183,6 +189,11 @@ func (value Target) validate() error {
 	case TargetRemote:
 		if value.Isolation != "remote" || value.AccountMode != "" || value.Account != "" || value.Home != "" || value.Shell != "" || value.UID != 0 || value.GID != 0 || value.ProjectDirectory != "" || value.Service != "" || !validName(value.RemoteName) {
 			return errors.New("remote target is invalid")
+		}
+	case TargetSandbox:
+		if value.Isolation != "sandbox" || value.Runtime != setupintent.SandboxOpenShell || !validName(value.Sandbox) || value.AccountMode != "" || value.Account != "" ||
+			value.Home != "" || value.Shell != "" || value.UID != 0 || value.GID != 0 || value.ProjectDirectory != "" || value.Service != "" || value.RemoteName != "" {
+			return errors.New("sandbox target is invalid")
 		}
 	default:
 		return errors.New("target kind is invalid")

@@ -28,6 +28,7 @@ const (
 	StepTelegram        Step = "telegram"
 	StepAgentLocation   Step = "agent_location"
 	StepAccount         Step = "account"
+	StepSandbox         Step = "sandbox"
 	StepIsolationWarn   Step = "isolation_warning"
 	StepInstallName     Step = "installation_name"
 	StepReview          Step = "review"
@@ -43,6 +44,7 @@ var Order = []Step{
 	StepTelegram,
 	StepAgentLocation,
 	StepAccount,
+	StepSandbox,
 	StepIsolationWarn,
 	StepInstallName,
 	StepReview,
@@ -132,6 +134,11 @@ func Applies(state State, step Step) bool {
 			return false
 		}
 		return state.Intent.Agent != nil && state.Intent.Agent.Location == setupintent.AgentLocalAccount
+	case StepSandbox:
+		if goal != setupintent.GoalAgentConnection && goal != setupintent.GoalCompleteLocal {
+			return false
+		}
+		return state.Intent.Agent != nil && state.Intent.Agent.Location == setupintent.AgentSandbox
 	case StepIsolationWarn:
 		return state.Intent.Agent != nil && state.Intent.Agent.Location == setupintent.AgentLocalAccount &&
 			state.Intent.Agent.Account != nil && state.Intent.Agent.Account.Mode == setupintent.AccountCurrent
@@ -162,7 +169,7 @@ func InvalidateAfter(state *State, step Step) {
 		state.Intent.Agent, state.Intent.Connection, state.Intent.Integrations, state.Intent.Telegram = nil, nil, nil, nil
 	case StepProviders:
 		state.Intent.Agent, state.Intent.Connection, state.Intent.Integrations = nil, nil, nil
-	case StepAgentLocation, StepAccount:
+	case StepAgentLocation, StepAccount, StepSandbox:
 		state.Intent.Connection, state.Intent.Integrations = nil, nil
 	case StepInstallName:
 		state.InstallationName = ""
@@ -249,6 +256,10 @@ func AgentLocationChoices(capabilities capability.Snapshot) []Choice {
 			}
 		case "remote":
 			if !capabilities.Has(capability.FeatureRemotePairing) {
+				continue
+			}
+		case "openshell":
+			if !capabilities.Has(capability.FeatureOpenShellAgent) {
 				continue
 			}
 		}
