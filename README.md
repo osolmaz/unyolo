@@ -73,7 +73,7 @@ execution.
 
 | Directory | Component |
 | --- | --- |
-| [brokers/github](brokers/github/README.md) | `gh-broker` holds GitHub App credentials and handles Git, pull requests, and the GitHub APIs |
+| [brokers/github](brokers/github/README.md) | `gh-broker` holds the GitHub credential and handles Git, pull requests, and the GitHub APIs |
 | [brokers/huggingface](brokers/huggingface/README.md) | `hf-broker` handles Hugging Face Git, LFS, Hub operations, and inference |
 | [brokers/sudo](brokers/sudo/README.md) | `sudo-broker` runs one approved command as another Unix user |
 | [plugins/openclaw](plugins/openclaw/README.md) | OpenClaw approvals UI and broker skills |

@@ -746,16 +746,11 @@ func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot st
 		}
 		return readTelegramBotTokenFile(path)
 	}
-	if strings.Contains(slot, "github-app-private-key") {
-		path, err := prompter.Text(ctx, flow.Prompt{Message: "Path to the GitHub App private key", Description: "unYOLO reads the selected PEM file once and sends it directly to the GitHub service.", Required: true})
-		if err != nil {
+	if slot == githubTokenSlot {
+		if err := prompter.Note(ctx, "unYOLO gives the token of your GitHub CLI login to the GitHub service. The service checks every agent request against its policy before it uses the token.", "GitHub"); err != nil {
 			return nil, err
 		}
-		return readSetupCredentialFile(path)
-	}
-	if strings.Contains(slot, "github-app-id") {
-		value, err := prompter.Text(ctx, flow.Prompt{Message: "GitHub App ID", Description: "Use the numeric App ID shown in the GitHub App settings.", Required: true})
-		return []byte(value), err
+		return readGitHubCLIToken(ctx)
 	}
 	label := prompt.Label
 	if label == "" || label == slot {
@@ -767,7 +762,23 @@ func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot st
 const (
 	telegramBotTokenSlot = "telegram-bot-token" // #nosec G101 -- public credential slot name, not a credential.
 	telegramInboxKeySlot = "telegram-inbox-key"
+	githubTokenSlot      = "github-token" // #nosec G101 -- public credential slot name, not a credential.
 )
+
+// readGitHubCLIToken reads the token of this account's GitHub CLI login for
+// github.com. It is replaced in tests.
+var readGitHubCLIToken = func(ctx context.Context) ([]byte, error) {
+	output, err := exec.CommandContext(ctx, "gh", "auth", "token", "--hostname", "github.com").Output()
+	if err != nil {
+		return nil, errors.New("read the GitHub CLI token: log in with gh auth login, then run unyolo setup again")
+	}
+	defer clear(output)
+	token := bytes.TrimSpace(output)
+	if len(token) < 20 || bytes.ContainsAny(token, " \t\r\n") {
+		return nil, errors.New("the GitHub CLI login has no usable token: log in again with gh auth login")
+	}
+	return append([]byte(nil), token...), nil
+}
 
 // readTelegramBotTokenFile reads one BotFather token, such as
 // 123456789:AA..., from a regular file.
@@ -803,33 +814,10 @@ func digitsOnly(value []byte) bool {
 	return true
 }
 
-func readSetupCredentialFile(path string) ([]byte, error) {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return nil, errors.New("credential file path must be absolute and clean")
-	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() == 0 || info.Size() > 1024*1024 {
-		return nil, errors.New("credential file must be a nonempty regular file without symbolic links")
-	}
-	data, err := os.ReadFile(path) // #nosec G304 -- explicit validated user-selected credential file.
-	if err != nil {
-		return nil, err
-	}
-	if !strings.Contains(string(data), "-----BEGIN") || !strings.Contains(string(data), "PRIVATE KEY-----") {
-		clear(data)
-		return nil, errors.New("GitHub App private key file is not PEM encoded")
-	}
-	return data, nil
-}
-
 func friendlyCredentialLabel(slot string) string {
 	switch {
-	case strings.Contains(slot, "github-app-id"):
-		return "GitHub App ID"
-	case strings.Contains(slot, "github-app-private-key"):
-		return "GitHub App private key"
-	case strings.Contains(slot, "github-webhook"):
-		return "GitHub App webhook secret"
+	case slot == githubTokenSlot:
+		return "GitHub CLI token"
 	case strings.Contains(slot, "github"):
 		return "GitHub credential"
 	case strings.Contains(slot, "huggingface"):

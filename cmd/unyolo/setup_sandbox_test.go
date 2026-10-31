@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -102,5 +104,19 @@ func TestSandboxConnectionNoteListsTheCreateOptions(t *testing.T) {
 	})
 	if !strings.Contains(note, "--provider unyolo-github-bob") || !strings.Contains(note, `--env "GIT_CONFIG_VALUE_1=!gh auth git-credential"`) {
 		t.Fatalf("note =\n%s", note)
+	}
+}
+
+func TestCollectPlanSecretUsesTheGitHubCLIToken(t *testing.T) {
+	previous := readGitHubCLIToken
+	t.Cleanup(func() { readGitHubCLIToken = previous })
+	readGitHubCLIToken = func(context.Context) ([]byte, error) { return []byte("gho_token-from-the-cli-login"), nil }
+	value, err := collectPlanSecret(t.Context(), &recordingPrompter{}, githubTokenSlot, api.RenderSecretPrompt{})
+	if err != nil || string(value) != "gho_token-from-the-cli-login" {
+		t.Fatalf("collectPlanSecret() = %q, %v", value, err)
+	}
+	readGitHubCLIToken = func(context.Context) ([]byte, error) { return nil, errors.New("not logged in") }
+	if _, err := collectPlanSecret(t.Context(), &recordingPrompter{}, githubTokenSlot, api.RenderSecretPrompt{}); err == nil {
+		t.Fatal("a missing GitHub CLI login was accepted")
 	}
 }

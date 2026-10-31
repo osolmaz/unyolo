@@ -92,7 +92,7 @@ func TestDevelopmentTokenDoctorIsUnsafeInProduction(t *testing.T) {
 	if apis.repository == nil || apis.protection == nil {
 		t.Fatal("development API unavailable")
 	}
-	assertCheck(t, checks, "github_development_token", unyolodoctor.CheckFail)
+	assertCheck(t, checks, "github_token", unyolodoctor.CheckWarn)
 }
 
 func TestInlineCredentialChecksAreInconclusive(t *testing.T) {

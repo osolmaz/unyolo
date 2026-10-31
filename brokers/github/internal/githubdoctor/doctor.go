@@ -254,19 +254,20 @@ func githubDoctorAPI(ctx context.Context, cfg config.Config, baseURL *url.URL, c
 		return doctorAPIs{}, []unyolodoctor.Check{resultCheck("github_credentials", "GitHub credential provider is configured", "GitHub credential provider is invalid", err)}
 	}
 	if manager.CredentialKind() == githubauth.KindDevelopmentToken {
-		return developmentDoctorAPI(ctx, cfg.Environment, manager, owner, repo)
+		return developmentDoctorAPI(ctx, manager, owner, repo)
 	}
 	return appDoctorAPI(ctx, manager, owner, repo, requireProtection)
 }
 
-func developmentDoctorAPI(ctx context.Context, environment string, manager *githubauth.Manager, owner, repo string) (doctorAPIs, []unyolodoctor.Check) {
-	status := unyolodoctor.CheckWarn
-	message := "development-token fallback is non-production and cannot prove GitHub App permission narrowing"
-	if strings.EqualFold(environment, "production") || strings.EqualFold(environment, "prod") {
-		status = unyolodoctor.CheckFail
-		message = "development-token fallback must not be used in production"
+// developmentDoctorAPI checks a GitHub token credential. A token is a
+// supported credential: policy checks every request before the broker uses it.
+// It still gets a warning, because the broker cannot narrow a token to one
+// repository the way it narrows GitHub App installation tokens.
+func developmentDoctorAPI(ctx context.Context, manager *githubauth.Manager, owner, repo string) (doctorAPIs, []unyolodoctor.Check) {
+	check := unyolodoctor.Check{
+		Status: unyolodoctor.CheckWarn, Name: "github_token",
+		Message: "the GitHub token is not narrowed per repository; policy checks every request before the broker uses it",
 	}
-	check := unyolodoctor.Check{Status: status, Name: "github_development_token", Message: message}
 	credential, err := manager.RepositoryCredential(ctx, "repo.contents.read", owner, repo)
 	if err != nil {
 		return doctorAPIs{}, []unyolodoctor.Check{check, resultCheck("github_credentials", "development credential is usable", "development credential is unavailable", err)}
