@@ -13,7 +13,8 @@ An agent in a sandbox on the broker host, such as an OpenShell sandbox or a
 Docker container, uses stock `gh` and `git` against GitHub through gh-broker.
 The agent holds no provider credential. Approvals arrive in Telegram, and the
 buttons work for every broker. One `unyolo setup` run installs and connects all
-of it, with no manual host steps.
+of it, with no manual host steps and no outside service: no overlay network, no
+domain, and no public certificate.
 
 ## Why the current setup does not fit
 
@@ -24,6 +25,7 @@ The shipped setup supports one agent type: a local Linux account.
 - `sudo-broker` runs approved privileged commands as that agent's Linux user.
 - The setup intent already names `container` and `remote` agents, but neither
   ships, and they are designed as separate paths.
+- gh-broker has one agent listener, and it is the local Unix socket.
 
 An agent in a sandbox has no host account and cannot use host Unix sockets. For
 the broker, an OpenShell sandbox and a Docker container are the same thing: a
@@ -53,13 +55,21 @@ Two operational gaps also exist:
   narrows each request: policy, grants, and approvals decide every call, and an
   installation credential is narrowed to the target repository and minimum
   permissions.
-- One broker process per provider, each with its own listener, state, and
+- One broker process per provider, each with its own listeners, state, and
   audit stream.
 - Local account agents keep the Unix socket path unchanged.
 - The `remote` agent type keeps its pairing design.
 - The GitHub-compatible API (`/api/v3` and `/api/graphql`) on the agent
   listener, with Git on the same host. Stock `gh` uses it through `GH_HOST`, and
-  Git uses `gh auth git-credential`.
+  Git uses `gh auth git-credential`. The client secret is the token that `gh`
+  sends.
+
+## Requirements
+
+- OpenShell v0.1.7 or later. The OpenShell adapter needs the gateway setting
+  `[openshell.supervisor.network] additional_ca_bundle`, which first shipped in
+  v0.1.7-pre.1. Setup refuses an older OpenShell with a message that names the
+  required version.
 
 ## Decisions
 
@@ -67,14 +77,20 @@ Two operational gaps also exist:
    own client id, client secret, and policy rules. No Linux account is created
    for it. The client secret is a static shared secret, rotated through setup.
    Short-lived workload credentials are not planned.
-2. **Sandbox agents connect over TLS.** The agent listener listens on one
-   address that the sandboxes can reach and nothing else, for example a private
-   overlay network address or a container bridge address. There is no plain
-   TCP and no wildcard bind address.
+2. **Sandbox agents connect to a separate TLS listener.** gh-broker gets a
+   second agent listener, `sandbox`, next to the local Unix socket. It serves
+   the same agent API and accepts only TLS. The adapter selects the address:
+   - OpenShell: a loopback address on the host. The OpenShell supervisor uses
+     the host network and reaches it as `host.openshell.internal`, the name
+     that OpenShell gives to services on the gateway host. Nothing outside the
+     host can reach the listener.
+   - Docker: the container bridge address, when that adapter ships.
+
+   There is no plain TCP and no wildcard bind address.
 3. **One core, one adapter per runtime.** The setup core creates the client,
-   its secret and policy, and the TLS listener. A runtime adapter turns that
-   into the files and commands for one runtime. Brokers contain no
-   runtime-specific code.
+   its secret and policy, the certificates, and the TLS listener. A runtime
+   adapter turns that into the files and commands for one runtime, and setup
+   runs those commands. Brokers contain no runtime-specific code.
 4. **Each adapter declares where the client secret lives:**
    - `injected`: the runtime adds the secret outside the agent, so code in the
      agent cannot read it. OpenShell does this with a provider placeholder.
@@ -82,12 +98,18 @@ Two operational gaps also exist:
      its own credential store.
 
    Setup states which case applies before it asks for approval.
-5. **The broker certificate is publicly trusted by default.** Every adapter
-   works with it, and `injected` adapters whose runtime re-encrypts TLS need
-   it: OpenShell verifies the upstream against public roots. A private CA is
-   allowed when the operator chooses it. Then every agent receives the CA file,
-   and an OpenShell agent falls back to `in_agent` with `tls: skip` on the
-   broker endpoint.
+5. **Setup owns a private certificate authority.** Setup creates one CA for the
+   host and signs the `sandbox` listener certificate with it, using only the
+   Go standard library.
+   - The CA carries critical name constraints that permit only the listener
+     names, such as `host.openshell.internal`, so it cannot authenticate any
+     other site.
+   - The CA key stays on the host and only root can read it. The broker reads
+     only the listener certificate and key files, as it does today.
+   - The CA certificate is not secret. The OpenShell adapter gives it to the
+     gateway through `additional_ca_bundle`. The Docker adapter mounts it into
+     the container.
+   - No public certificate, overlay network, or domain is involved.
 6. **One Telegram owner per bot.** `unyolo-telegram` is the only process that
    holds the bot token. It follows each broker's Operator V1 event stream,
    sends and updates the approval cards, reads the button clicks, and decides
@@ -99,21 +121,21 @@ Two operational gaps also exist:
 
 ## Adapters
 
-| Adapter | Runtime | Secret | Network restriction | Enrollment |
-| --- | --- | --- | --- | --- |
-| `openshell` | OpenShell sandbox | `injected` | OpenShell network policy | Provider created from a file |
-| `docker` | Docker container on the broker host | `in_agent` | Container network | Secret file mounted read-only |
+| Adapter | Runtime | Listener address | Secret | Network restriction | CA delivery |
+| --- | --- | --- | --- | --- | --- |
+| `openshell` | OpenShell sandbox | Loopback, reached as `host.openshell.internal` | `injected` | OpenShell network policy | Gateway `additional_ca_bundle` |
+| `docker` | Docker container on the broker host | Container bridge address | `in_agent` | Container network | File mounted read-only |
 
 The adapter contract is the same for both:
 
-- **Input:** connection name, client id, secret slot, broker address, server
-  name, certificate mode, and the providers to connect.
-- **Output:** the runtime files, the commands for the operator to run, and the
+- **Input:** connection name, client id, secret slot, listener address and
+  name, CA certificate, and the providers to connect.
+- **Output:** the runtime files, the commands that setup runs, and the
   declared secret placement. A secret is written only to a file with
   owner-only access and is never printed.
 - **Agent environment:** `GH_HOST`, the Git `insteadOf` rule for
-  `https://github.com/`, `gh auth git-credential` as the Git credential
-  helper, and the CA file in private CA mode.
+  `https://github.com/`, and `gh auth git-credential` as the Git credential
+  helper.
 
 This plan builds the `openshell` adapter first. `docker` moves onto the shared
 core when it ships, and keeps its existing design for secret delivery.
@@ -121,6 +143,8 @@ core when it ships, and keeps its existing design for secret delivery.
 ## Work
 
 ### 1. Make `unyolo-telegram` the single Telegram owner
+
+Done in v0.9.0.
 
 - **Cards.** For each configured broker, `unyolo-telegram` follows the
   Operator V1 event stream (`/api/operator/v1/events`) from a cursor that it
@@ -152,42 +176,53 @@ core when it ships, and keeps its existing design for secret delivery.
 - **Docs.** Rewrite `docs/TELEGRAM_INGRESS.md` and the Telegram section of
   `docs/CHAT_APPROVAL_SECURITY.md` for the single owner when this ships.
 
-### 2. Add the sandbox agent core to setup
+### 2. Add the sandbox listener and the sandbox agent core
 
-- Replace the `container` location in the setup intent with one `sandbox`
-  location that has a `runtime` field (`openshell` or `docker`). The `remote`
-  location stays as it is. This is an in-place change to setup intent v1.
-- For a sandbox agent, setup:
+- **Broker.** Add the optional `sandbox` agent listener to gh-broker. It
+  requires TLS and serves the same agent handler as the Unix socket, so the
+  GitHub-compatible API, Git, and the agent API work on both.
+- **Setup intent.** Replace the `container` location in the setup intent with
+  one `sandbox` location that has a `runtime` field (`openshell` or `docker`).
+  The `remote` location stays as it is. This is an in-place change to setup
+  intent v1.
+- **Setup.** For a sandbox agent, setup:
   - creates the client id, the secret slot, and a policy rule set for the
     client, starting from the request-everything preset;
-  - configures the agent listener as `tls://` on the chosen address with
-    network exposure allowed, and refuses a wildcard bind address;
+  - configures the `sandbox` listener on the address that the adapter selects,
+    and refuses a wildcard bind address;
   - calls the adapter and shows its declared secret placement in the review
     step.
 - A sandbox agent creates no Linux account and no client file in a home
   directory on the broker host.
 
-### 3. Build the OpenShell adapter
+### 3. Certificates
+
+- Setup creates the host CA once, valid for 10 years, with critical name
+  constraints for the listener names. The key file is owned by root with
+  mode `0600`.
+- Setup issues the `sandbox` listener certificate from that CA, valid for one
+  year, for the listener name and address.
+- The doctor warns 30 days before the listener certificate or the CA expires,
+  and fails after either expires. `unyolo repair` issues a new listener
+  certificate and restarts the broker. A new listener certificate needs no
+  change in OpenShell or in the sandbox.
+- A new CA is needed only when the old one expires or its key is exposed. Setup
+  then repeats the CA delivery for each adapter.
+
+### 4. Build the OpenShell adapter
 
 - Write an OpenShell provider profile: one credential bound to
-  `GH_ENTERPRISE_TOKEN`, endpoints for the broker address and port with REST
-  and GraphQL inspection, and binaries `gh` and `git`.
+  `GH_ENTERPRISE_TOKEN`, endpoints for `host.openshell.internal` and the
+  listener port with REST and GraphQL inspection, and binaries `gh` and `git`.
 - Write the sandbox network policy fragment and the sandbox environment.
-- Print the `openshell provider create` and `openshell sandbox create`
-  arguments that use these files. The secret goes into the provider from a
-  file and is never printed.
-- In private CA mode, write `tls: skip` and the CA file instead, and state that
-  the client secret will be readable inside the sandbox.
-
-### 4. Certificates for the agent listener
-
-- Keep operator-supplied certificate and key files as the only certificate
-  source in the broker.
-- Setup accepts a certificate from a public CA, for example an overlay network
-  HTTPS certificate or an ACME certificate, and checks that the chain verifies
-  against public roots for the configured name.
-- The doctor warns 30 days before the certificate expires and fails after it
-  expires.
+- Write the CA bundle file and set `[openshell.supervisor.network]
+  additional_ca_bundle` in the gateway configuration. The gateway reads it only
+  at startup, so setup restarts the gateway and then stops and starts each
+  connected sandbox. This happens at the first connection and when the CA
+  changes.
+- Create the provider from the secret file and attach it to the sandbox. Setup
+  runs the `openshell` commands as the account that owns the gateway. The
+  secret is never printed.
 
 ### 5. Release-layout migration
 
@@ -207,7 +242,13 @@ core when it ships, and keeps its existing design for secret delivery.
 
 ## Verification
 
-An end-to-end run in a real OpenShell sandbox, with a broker installed by
+First, before the code: a probe in a temporary OpenShell sandbox with a test
+TLS server on a loopback address confirms that `host.openshell.internal`
+reaches it, that the gateway trusts the test CA through
+`additional_ca_bundle`, that the provider placeholder is replaced in the
+request, and that `gh` accepts the `GH_HOST` value with its port.
+
+Then an end-to-end run in a real OpenShell sandbox, with a broker installed by
 `unyolo setup` and nothing installed by hand:
 
 - `gh api`, `gh pr list`, `gh pr view --json`, `gh pr checks`, and
@@ -217,14 +258,15 @@ An end-to-end run in a real OpenShell sandbox, with a broker installed by
 - A repository without a rule returns `403`, and `curl` to the broker is
   blocked by the sandbox policy.
 - No file, environment variable, or process argument in the sandbox contains
-  the client secret in the default certificate mode.
+  the client secret.
+- The CA cannot authenticate a name outside its constraints.
+- The local Unix socket keeps working for local account agents.
 - Restarting each broker and `unyolo-telegram` keeps pending approvals,
   cards, and button handling working, and sends no duplicate cards.
 - The bot token exists only in the configuration of `unyolo-telegram`.
-- Unit and integration tests cover the sandbox intent, the adapter contract,
-  the generated OpenShell files, the Telegram owner (event following, card
-  edits, click checks, idempotent decisions, restart), its installation, and
-  the refusal cases.
+- Unit and integration tests cover the sandbox intent, the `sandbox` listener,
+  the CA and certificate issue, the adapter contract, the generated OpenShell
+  files, and the refusal cases.
 
 When the `docker` adapter ships, the same end-to-end checks run for it, except
 the secret check, which then confirms that the secret exists only in the
@@ -234,6 +276,7 @@ declared place.
 
 - Running brokers inside sandboxes or containers.
 - Exposing the agent listener to the internet.
+- Public certificates, overlay networks, or domains for sandbox agents.
 - Runtime-specific code in brokers.
 - Short-lived workload credentials for sandbox agents.
 - Agents on other computers. They stay the `remote` agent type.
