@@ -43,6 +43,7 @@ func (githubRenderer) Render(request api.RenderRequest, template []byte, assets 
 		return api.RenderResponse{}, fmt.Errorf("github component has no %s", environmentAsset)
 	}
 	rendered[environmentAsset] = append(append([]byte(nil), environment...), sandboxEnvironment(clients)...)
+	rotateSandboxSecrets(&profile, clients)
 	profile.Credentials = append(profile.Credentials,
 		component.Credential{Slot: sandboxCertificateSlot, Destination: sandboxCertificateFile, Mode: 0o600, Owner: "gh-broker", Group: "gh-broker", Encoding: "raw"},
 		component.Credential{Slot: sandboxKeySlot, Destination: sandboxKeyFile, Mode: 0o600, Owner: "gh-broker", Group: "gh-broker", Encoding: "raw"},
@@ -61,6 +62,19 @@ func sandboxClientIDs(request api.RenderRequest) []string {
 	}
 	slices.Sort(clients)
 	return clients
+}
+
+// rotateSandboxSecrets gives each sandbox client a new secret on every setup
+// run. Only the sandbox runtime holds that secret, so setup must issue it to
+// create or repair the runtime's provider.
+func rotateSandboxSecrets(profile *component.Profile, clients []string) {
+	for storeIndex := range profile.SecretStores {
+		for entryIndex, entry := range profile.SecretStores[storeIndex].Entries {
+			if slices.Contains(clients, entry.Identity) && entry.Slot == githubComponentID+"-client-"+entry.Identity {
+				profile.SecretStores[storeIndex].Entries[entryIndex].Rotate = true
+			}
+		}
+	}
 }
 
 func sandboxEnvironment(clients []string) []byte {
