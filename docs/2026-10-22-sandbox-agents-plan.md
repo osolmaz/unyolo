@@ -1,20 +1,19 @@
 ---
 date: 2026-10-22
 author: Onur Solmaz <osolmaz@users.noreply.github.com>
-title: Serve network agents in sandboxes, containers, and other computers
+title: Serve sandbox agents in OpenShell and Docker
 tags: [setup, agents, sandbox, openshell, docker, telegram, github, tls]
 ---
 
-# Serve network agents in sandboxes, containers, and other computers
+# Serve sandbox agents in OpenShell and Docker
 
 ## Goal
 
-An agent that does not run as a local account on the broker host uses stock
-`gh` and `git` against GitHub through gh-broker. This covers sandboxes such as
-OpenShell, Docker containers on the same host, and other computers. The agent
-holds no provider credential. Approvals arrive in Telegram, and the buttons
-work for every broker. One `unyolo setup` run installs and connects all of it,
-with no manual host steps.
+An agent in a sandbox on the broker host, such as an OpenShell sandbox or a
+Docker container, uses stock `gh` and `git` against GitHub through gh-broker.
+The agent holds no provider credential. Approvals arrive in Telegram, and the
+buttons work for every broker. One `unyolo setup` run installs and connects all
+of it, with no manual host steps.
 
 ## Why the current setup does not fit
 
@@ -26,10 +25,14 @@ The shipped setup supports one agent type: a local Linux account.
 - The setup intent already names `container` and `remote` agents, but neither
   ships, and they are designed as separate paths.
 
-An agent in a sandbox, a container, or on another computer has no host account
-and cannot use host Unix sockets. For the broker, all three are the same thing:
-a client that connects over the network with a secret. They differ only in how
+An agent in a sandbox has no host account and cannot use host Unix sockets. For
+the broker, an OpenShell sandbox and a Docker container are the same thing: a
+client that connects over the network with a secret. They differ only in how
 the secret reaches the agent and how the runtime restricts the agent's network.
+
+An agent on another computer is not a sandbox agent. It stays the `remote`
+agent type, with the one-use pairing designed in `GUIDED_INSTALLATION.md`, and
+it is not part of this plan.
 
 Two operational gaps also exist:
 
@@ -53,18 +56,19 @@ Two operational gaps also exist:
 - One broker process per provider, each with its own listener, state, and
   audit stream.
 - Local account agents keep the Unix socket path unchanged.
+- The `remote` agent type keeps its pairing design.
 - The GitHub-compatible API (`/api/v3` and `/api/graphql`) on the agent
   listener, with Git on the same host. Stock `gh` uses it through `GH_HOST`, and
   Git uses `gh auth git-credential`.
 
 ## Decisions
 
-1. **A network agent is a broker client, not an account.** Each agent gets its
+1. **A sandbox agent is a broker client, not an account.** Each agent gets its
    own client id, client secret, and policy rules. No Linux account is created
    for it. The client secret is a static shared secret, rotated through setup.
    Short-lived workload credentials are not planned.
-2. **Network agents connect over TLS.** The agent listener listens on one
-   address that the agents can reach and nothing else, for example a private
+2. **Sandbox agents connect over TLS.** The agent listener listens on one
+   address that the sandboxes can reach and nothing else, for example a private
    overlay network address or a container bridge address. There is no plain
    TCP and no wildcard bind address.
 3. **One core, one adapter per runtime.** The setup core creates the client,
@@ -89,9 +93,9 @@ Two operational gaps also exist:
    sends and updates the approval cards, reads the button clicks, and decides
    through the owning broker's Operator V1 API. Brokers contain no Telegram
    code and no Telegram configuration. The operator inbox stays the same.
-7. **No `sudo-broker` for network agents.** It runs host commands as root for a
-   local agent account. A network agent has no such account and must not run
-   host commands. Setup refuses to connect `sudo-broker` to a network agent.
+7. **No `sudo-broker` for sandbox agents.** It runs host commands as root for a
+   local agent account. A sandbox agent has no such account and must not run
+   host commands. Setup refuses to connect `sudo-broker` to a sandbox agent.
 
 ## Adapters
 
@@ -99,23 +103,20 @@ Two operational gaps also exist:
 | --- | --- | --- | --- | --- |
 | `openshell` | OpenShell sandbox | `injected` | OpenShell network policy | Provider created from a file |
 | `docker` | Docker container on the broker host | `in_agent` | Container network | Secret file mounted read-only |
-| `remote` | Another computer | `in_agent` | The other computer's firewall | One-use pairing, as designed in `GUIDED_INSTALLATION.md` |
 
-The adapter contract is the same for all three:
+The adapter contract is the same for both:
 
 - **Input:** connection name, client id, secret slot, broker address, server
   name, certificate mode, and the providers to connect.
 - **Output:** the runtime files, the commands for the operator to run, and the
   declared secret placement. A secret is written only to a file with
-  owner-only access, or sent through the enrollment flow, and is never
-  printed.
+  owner-only access and is never printed.
 - **Agent environment:** `GH_HOST`, the Git `insteadOf` rule for
   `https://github.com/`, `gh auth git-credential` as the Git credential
   helper, and the CA file in private CA mode.
 
-This plan builds the `openshell` adapter first. `docker` and `remote` move onto
-the shared core when they ship, and keep their existing designs for secret
-delivery and enrollment.
+This plan builds the `openshell` adapter first. `docker` moves onto the shared
+core when it ships, and keeps its existing design for secret delivery.
 
 ## Work
 
@@ -151,19 +152,19 @@ delivery and enrollment.
 - **Docs.** Rewrite `docs/TELEGRAM_INGRESS.md` and the Telegram section of
   `docs/CHAT_APPROVAL_SECURITY.md` for the single owner when this ships.
 
-### 2. Add the network agent core to setup
+### 2. Add the sandbox agent core to setup
 
-- Replace the separate `container` and `remote` locations in the setup intent
-  with one `network` location that has a `runtime` field (`openshell`,
-  `docker`, or `remote`). This is an in-place change to setup intent v1.
-- For a network agent, setup:
+- Replace the `container` location in the setup intent with one `sandbox`
+  location that has a `runtime` field (`openshell` or `docker`). The `remote`
+  location stays as it is. This is an in-place change to setup intent v1.
+- For a sandbox agent, setup:
   - creates the client id, the secret slot, and a policy rule set for the
     client, starting from the request-everything preset;
   - configures the agent listener as `tls://` on the chosen address with
     network exposure allowed, and refuses a wildcard bind address;
   - calls the adapter and shows its declared secret placement in the review
     step.
-- A network agent creates no Linux account and no client file in a home
+- A sandbox agent creates no Linux account and no client file in a home
   directory on the broker host.
 
 ### 3. Build the OpenShell adapter
@@ -202,7 +203,7 @@ delivery and enrollment.
 ### 6. Hugging Face
 
 - Out of scope for this plan. A later plan adds a compatible endpoint for the
-  Hugging Face client in the same way, so a network agent can use stock `hf`.
+  Hugging Face client in the same way, so a sandbox agent can use stock `hf`.
 
 ## Verification
 
@@ -220,21 +221,22 @@ An end-to-end run in a real OpenShell sandbox, with a broker installed by
 - Restarting each broker and `unyolo-telegram` keeps pending approvals,
   cards, and button handling working, and sends no duplicate cards.
 - The bot token exists only in the configuration of `unyolo-telegram`.
-- Unit and integration tests cover the network intent, the adapter contract,
+- Unit and integration tests cover the sandbox intent, the adapter contract,
   the generated OpenShell files, the Telegram owner (event following, card
   edits, click checks, idempotent decisions, restart), its installation, and
   the refusal cases.
 
-When the `docker` and `remote` adapters ship, the same end-to-end checks run
-for them, except the secret check, which then confirms that the secret exists
-only in the declared place.
+When the `docker` adapter ships, the same end-to-end checks run for it, except
+the secret check, which then confirms that the secret exists only in the
+declared place.
 
 ## Non-goals
 
 - Running brokers inside sandboxes or containers.
 - Exposing the agent listener to the internet.
 - Runtime-specific code in brokers.
-- Short-lived workload credentials for network agents.
+- Short-lived workload credentials for sandbox agents.
+- Agents on other computers. They stay the `remote` agent type.
 - Adapters for other runtimes in this plan.
 - Approving through a different chat application.
 - Compatibility with the older release layout after the cutover.
