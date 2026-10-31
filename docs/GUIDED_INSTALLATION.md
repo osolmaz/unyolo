@@ -290,7 +290,8 @@ You need the bot token file from BotFather and the chat ID.
 When the user accepts, the installer asks for the chat ID. Group and channel IDs are negative.
 Only button presses from this chat can decide a request. The bot token is a credential: the
 installer asks for the path of the token file when it collects credentials, reads the file once,
-and sends the token only to the Telegram component. The intent and the installation record keep
+and sends the token only to the Telegram component. The file holds only the token, or it is an
+environment file with one `TELEGRAM_BOT_TOKEN` line. The intent and the installation record keep
 only the chat ID.
 
 The Telegram owner is a managed approver. Setup creates the noninteractive `unyolo-telegram`

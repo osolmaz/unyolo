@@ -740,7 +740,7 @@ func collectPlanSecret(ctx context.Context, prompter flow.SetupPrompter, slot st
 		return encoded, nil
 	}
 	if slot == telegramBotTokenSlot {
-		path, err := prompter.Text(ctx, flow.Prompt{Message: "Path to the Telegram bot token file", Description: "unYOLO reads the file once and gives the token only to the Telegram approval service.", Required: true})
+		path, err := prompter.Text(ctx, flow.Prompt{Message: "Path to the Telegram bot token file", Description: "The file holds only the token, or it is an environment file with a TELEGRAM_BOT_TOKEN line. unYOLO reads it once and gives the token only to the Telegram approval service.", Required: true})
 		if err != nil {
 			return nil, err
 		}
@@ -781,7 +781,8 @@ var readGitHubCLIToken = func(ctx context.Context) ([]byte, error) {
 }
 
 // readTelegramBotTokenFile reads one BotFather token, such as
-// 123456789:AA..., from a regular file.
+// 123456789:AA..., from a regular file. The file holds only the token, or it is
+// an environment file with one TELEGRAM_BOT_TOKEN line.
 func readTelegramBotTokenFile(path string) ([]byte, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return nil, errors.New("telegram bot token file path must be absolute and clean")
@@ -794,7 +795,7 @@ func readTelegramBotTokenFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	token := bytes.TrimSpace(data)
+	token := telegramTokenValue(bytes.TrimSpace(data))
 	bot, secret, found := bytes.Cut(token, []byte(":"))
 	if !found || len(bot) == 0 || len(secret) < 20 || bytes.ContainsAny(token, " \t\r\n") || !digitsOnly(bot) {
 		clear(data)
@@ -803,6 +804,25 @@ func readTelegramBotTokenFile(path string) ([]byte, error) {
 	result := append([]byte(nil), token...)
 	clear(data)
 	return result, nil
+}
+
+// telegramTokenValue returns the value of the one TELEGRAM_BOT_TOKEN line of
+// an environment file, or the content unchanged when it is not one.
+func telegramTokenValue(content []byte) []byte {
+	var value []byte
+	found := 0
+	for _, line := range bytes.Split(content, []byte("\n")) {
+		line = bytes.TrimPrefix(bytes.TrimSpace(line), []byte("export "))
+		name, rest, assignment := bytes.Cut(line, []byte("="))
+		if assignment && string(bytes.TrimSpace(name)) == "TELEGRAM_BOT_TOKEN" {
+			value = bytes.Trim(bytes.TrimSpace(rest), `"'`)
+			found++
+		}
+	}
+	if found != 1 {
+		return content
+	}
+	return value
 }
 
 func digitsOnly(value []byte) bool {
