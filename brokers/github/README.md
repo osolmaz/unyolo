@@ -438,6 +438,29 @@ Git requests without credentials with a `Basic` challenge.
 Point Git remotes at the same host, for example with
 `git config --global url."https://broker.example.internal:8443/".insteadOf https://github.com/`.
 
+### Sandbox listener
+
+Agents in sandboxes, such as OpenShell sandboxes, use a separate TLS listener
+next to the local agent socket:
+
+```sh
+GH_BROKER_SANDBOX_ENDPOINT=tls://127.0.0.1:38481
+GH_BROKER_SANDBOX_CLIENTS=bob
+GH_BROKER_TLS_CERT_FILE=/etc/gh-broker/sandbox-tls.pem
+GH_BROKER_TLS_KEY_FILE=/etc/gh-broker/sandbox-tls-key.pem
+```
+
+The listener serves the same agent API, GitHub-compatible API, and Git routes
+as the agent socket. Only the clients that `GH_BROKER_SANDBOX_CLIENTS` names
+may use it, and every other listener refuses them, so a client secret that a
+sandbox holds works only on the sandbox listener. Each named client needs a
+secret in `GH_BROKER_SECRETS_FILE`. The endpoint must use `tls://`; a
+non-loopback address also needs `GH_BROKER_NETWORK_EXPOSURE=allow`.
+
+`unyolo setup` configures this listener when it connects an OpenShell sandbox.
+`gh-broker doctor github` warns 30 days before the listener certificate
+expires and fails after it expires.
+
 gh-broker serves a request only when it classifies it before any upstream
 call:
 

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/osolmaz/unyolo/internal/host/pki"
 )
 
 func TestLoadFromLookupReadsExplicitDevelopmentConfiguration(t *testing.T) {
@@ -309,4 +311,67 @@ func writeFile(t *testing.T, dir, name, value string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestLoadReadsSandboxListener(t *testing.T) {
+	values := sandboxValues(t)
+	cfg, err := LoadFromLookup(mapLookup(values))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SandboxEndpoint == nil || cfg.SandboxEndpoint.String() != "tls://127.0.0.1:38481" {
+		t.Fatalf("sandbox endpoint = %+v", cfg.SandboxEndpoint)
+	}
+	if !cfg.IsSandboxClient("sandbox-a") || cfg.IsSandboxClient("agent-a") || len(cfg.SandboxClients) != 1 {
+		t.Fatalf("sandbox clients = %#v", cfg.SandboxClients)
+	}
+}
+
+func TestLoadRejectsInvalidSandboxListener(t *testing.T) {
+	for name, test := range map[string]struct {
+		change  func(map[string]string)
+		message string
+	}{
+		"clients without endpoint": {func(v map[string]string) { delete(v, "GH_BROKER_SANDBOX_ENDPOINT") }, "requires GH_BROKER_SANDBOX_ENDPOINT"},
+		"endpoint without clients": {func(v map[string]string) { delete(v, "GH_BROKER_SANDBOX_CLIENTS") }, "GH_BROKER_SANDBOX_CLIENTS is required"},
+		"plain tcp":                {func(v map[string]string) { v["GH_BROKER_SANDBOX_ENDPOINT"] = "tcp://127.0.0.1:38481" }, "must use tls"},
+		"network address":          {func(v map[string]string) { v["GH_BROKER_SANDBOX_ENDPOINT"] = "tls://192.0.2.10:38481" }, "network exposure"},
+		"shared with agent":        {func(v map[string]string) { v["GH_BROKER_AGENT_ENDPOINT"] = "tls://127.0.0.1:38481" }, "must differ"},
+		"unknown client":           {func(v map[string]string) { v["GH_BROKER_SANDBOX_CLIENTS"] = "sandbox-b" }, `client "sandbox-b" has no secret`},
+		"duplicate client":         {func(v map[string]string) { v["GH_BROKER_SANDBOX_CLIENTS"] = "sandbox-a, sandbox-a" }, "listed twice"},
+		"empty client":             {func(v map[string]string) { v["GH_BROKER_SANDBOX_CLIENTS"] = "sandbox-a," }, `client ""`},
+		"missing certificate":      {func(v map[string]string) { delete(v, "GH_BROKER_TLS_CERT_FILE") }, "required exactly for TLS listeners"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			values := sandboxValues(t)
+			test.change(values)
+			if _, err := LoadFromLookup(mapLookup(values)); err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatalf("LoadFromLookup() error = %v, want %q", err, test.message)
+			}
+		})
+	}
+}
+
+func sandboxValues(t *testing.T) map[string]string {
+	t.Helper()
+	dir := t.TempDir()
+	now := time.Now()
+	ca, err := pki.GenerateCA(now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := pki.IssueServer(ca, []string{"host.openshell.internal", "127.0.0.1"}, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := developmentValues()
+	delete(values, "GH_BROKER_SHARED_SECRET")
+	delete(values, "GH_BROKER_CLIENT_ID")
+	values["GH_BROKER_SECRETS_FILE"] = writeFile(t, dir, "clients",
+		"agent-a = "+strings.Repeat("a", minimumSharedSecretBytes)+"\nsandbox-a = "+strings.Repeat("b", minimumSharedSecretBytes)+"\n")
+	values["GH_BROKER_SANDBOX_ENDPOINT"] = "tls://127.0.0.1:38481"
+	values["GH_BROKER_SANDBOX_CLIENTS"] = "sandbox-a"
+	values["GH_BROKER_TLS_CERT_FILE"] = writeFile(t, dir, "tls.pem", string(server.Certificate))
+	values["GH_BROKER_TLS_KEY_FILE"] = writeFile(t, dir, "tls-key.pem", string(server.PrivateKey))
+	return values
 }

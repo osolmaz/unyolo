@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/osolmaz/unyolo/brokers/github/internal/githubauth"
 	"github.com/osolmaz/unyolo/credential/store"
 	unyolodoctor "github.com/osolmaz/unyolo/internal/host/doctor"
+	"github.com/osolmaz/unyolo/internal/host/pki"
 )
 
 func TestRunWithTokenChecksRepoAndRuleset(t *testing.T) {
@@ -285,4 +288,40 @@ func assertCheck(t *testing.T, checks []unyolodoctor.Check, name string, status 
 		}
 	}
 	t.Fatalf("check %s missing", name)
+}
+
+func TestTLSCertificateCheckFollowsTheRenewalWindow(t *testing.T) {
+	issued := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	ca, err := pki.GenerateCA(issued, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := pki.IssueServer(ca, []string{"host.openshell.internal"}, issued, 90*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "tls.pem")
+	if err := os.WriteFile(path, server.Certificate, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		now    time.Time
+		status unyolodoctor.CheckStatus
+	}{
+		"valid":          {issued.Add(24 * time.Hour), unyolodoctor.CheckPass},
+		"renewal window": {issued.Add(70 * 24 * time.Hour), unyolodoctor.CheckWarn},
+		"expired":        {issued.Add(91 * 24 * time.Hour), unyolodoctor.CheckFail},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if check := tlsCertificateCheck(path, test.now); check == nil || check.Status != test.status {
+				t.Fatalf("check = %+v, want %s", check, test.status)
+			}
+		})
+	}
+	if check := tlsCertificateCheck(filepath.Join(t.TempDir(), "missing.pem"), issued); check == nil || check.Status != unyolodoctor.CheckFail {
+		t.Fatalf("missing certificate check = %+v", check)
+	}
+	if check := tlsCertificateCheck("", issued); check != nil {
+		t.Fatalf("unconfigured check = %+v", check)
+	}
 }

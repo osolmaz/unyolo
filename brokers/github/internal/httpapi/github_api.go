@@ -37,8 +37,8 @@ func (s *Server) registerGitHubAPI(auth security.TokenAuth) {
 func githubTokenScheme(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		header := c.Request().Header
-		if scheme, value, found := strings.Cut(strings.TrimSpace(header.Get("Authorization")), " "); found && strings.EqualFold(scheme, "token") {
-			header.Set("Authorization", "Bearer "+strings.TrimSpace(value))
+		if value := header.Get("Authorization"); bearerFromTokenScheme(value) != value {
+			header.Set("Authorization", bearerFromTokenScheme(value))
 		}
 		return next(c)
 	}
