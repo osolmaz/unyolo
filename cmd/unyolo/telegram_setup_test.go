@@ -26,20 +26,30 @@ func TestReadTelegramBotTokenFile(t *testing.T) {
 	if err != nil || string(value) != token {
 		t.Fatalf("readTelegramBotTokenFile() = %q, %v", value, err)
 	}
+	for name, content := range map[string]string{
+		"env file":         "OTHER=1\nTELEGRAM_BOT_TOKEN=" + token + "\n",
+		"exported, quoted": "export TELEGRAM_BOT_TOKEN=\"" + token + "\"\n",
+	} {
+		if value, err := readTelegramBotTokenFile(write(strings.ReplaceAll(name, " ", "-"), content)); err != nil || string(value) != token {
+			t.Fatalf("%s: readTelegramBotTokenFile() = %q, %v", name, value, err)
+		}
+	}
 	link := filepath.Join(directory, "link")
 	if err := os.Symlink(filepath.Join(directory, "token"), link); err != nil {
 		t.Fatal(err)
 	}
 	for name, path := range map[string]string{
-		"relative":     "token",
-		"missing":      filepath.Join(directory, "missing"),
-		"symlink":      link,
-		"empty":        write("empty", ""),
-		"no separator": write("plain", strings.Repeat("A", 40)),
-		"bad bot id":   write("bot", "bot:"+strings.Repeat("A", 35)),
-		"short secret": write("short", "123:abc"),
-		"two tokens":   write("two", token+" "+token),
-		"too large":    write("large", strings.Repeat("1", 2048)),
+		"relative":            "token",
+		"missing":             filepath.Join(directory, "missing"),
+		"symlink":             link,
+		"empty":               write("empty", ""),
+		"no separator":        write("plain", strings.Repeat("A", 40)),
+		"bad bot id":          write("bot", "bot:"+strings.Repeat("A", 35)),
+		"short secret":        write("short", "123:abc"),
+		"two tokens":          write("two", token+" "+token),
+		"too large":           write("large", strings.Repeat("1", 2048)),
+		"env without token":   write("env-other", "OTHER="+token+"\n"),
+		"env with two tokens": write("env-two", "TELEGRAM_BOT_TOKEN="+token+"\nTELEGRAM_BOT_TOKEN="+token+"\n"),
 	} {
 		if _, err := readTelegramBotTokenFile(path); err == nil {
 			t.Fatalf("%s token file was accepted", name)
