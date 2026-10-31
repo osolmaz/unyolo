@@ -1,8 +1,8 @@
 # gh-broker
 
-gh-broker is a GitHub access broker for coding agents. It keeps GitHub App
-credentials on the broker host and exposes only the Git and API operations
-allowed by `scope.json`.
+gh-broker is a GitHub access broker for coding agents. It keeps the GitHub
+credential on the broker host, a GitHub token or GitHub App credentials, and
+exposes only the Git and API operations allowed by `scope.json`.
 
 GitHub credential material must never appear in an API response, log, error, or
 helper output. Callers name an operation and target. The broker selects the
@@ -23,10 +23,19 @@ Pin a release from [unYOLO releases](https://github.com/osolmaz/unyolo/releases)
 with `VERSION=<version>`, or choose the target directory with
 `INSTALL_DIR=/absolute/path`.
 
+## Guided setup
+
+`unyolo setup` installs gh-broker with the token of the GitHub CLI login of the
+account that runs setup, from `gh auth token`. The broker uses that token for a
+GitHub call only after policy allows the request. A token is not narrowed per
+repository, so `doctor github` reports a warning. To narrow every call to one
+repository and the minimum permissions, use GitHub App credentials, as below.
+
 ## Production setup on Linux
 
-Production uses GitHub App credentials. Create the App, collect its id,
-private key, and webhook secret as protected files, then run:
+With GitHub App credentials, each call uses an installation token narrowed to
+the target repository. Create the App, collect its id, private key, and webhook
+secret as protected files, then run:
 
 ```sh
 sudo gh-broker setup systemd \
@@ -110,10 +119,9 @@ reports the owned configuration, and `gh-broker git uninstall` removes only
 that exact provider installation. The listener port is selected and persisted
 by the deployment; unYOLO has no fixed Git port.
 
-### Development token fallback
+### Token credential
 
-For local development only, a fine-grained token in a protected file can
-replace the GitHub App:
+A GitHub token in a protected file can replace the GitHub App:
 
 ```sh
 sudo gh-broker setup systemd \
@@ -126,9 +134,8 @@ sudo gh-broker setup systemd \
   --operator-user operator-a
 ```
 
-This fallback is protected-file-only and non-production. `doctor github`
-returns an unsafe result if it is selected with
-`GH_BROKER_ENVIRONMENT=production`. Inline PAT configuration is rejected.
+The token must come from a protected file; inline token configuration is
+rejected. `doctor github` warns that the token is not narrowed per repository.
 
 ### Enroll a GitHub App user credential
 
