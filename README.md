@@ -91,7 +91,8 @@ curl -fsSL https://unyolo.o9.nz/install.sh | sh
 Guided setup starts with your goal. On Linux, it can install only the command,
 install selected credential services, connect a local agent to an existing
 installation, or set up both together. Local agents can use the current account,
-an existing account, or a new restricted account. Setup can later add or remove
+an existing account, a new restricted account, or an OpenShell sandbox, where
+stock `gh` and `git` reach GitHub through the broker. Setup can later add or remove
 credential services, approvers, and connections, repair the saved installation,
 or remove resources it can still prove it created.
 
