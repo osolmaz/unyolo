@@ -173,7 +173,7 @@ func Render(renderer Renderer, input Profile) (Artifacts, error) {
 		return Artifacts{}, err
 	}
 	effective, counts := applyDeniedOperations(operations, profile.DeniedOperations)
-	policyJSON, err := renderer.RenderPolicy(profile, effective)
+	policyJSON, err := renderPolicy(renderer, profile, effective)
 	if err != nil {
 		return Artifacts{}, fmt.Errorf("render %s policy: %w", renderer.ProviderID(), err)
 	}
@@ -185,6 +185,18 @@ func Render(renderer Renderer, input Profile) (Artifacts, error) {
 		return Artifacts{}, err
 	}
 	return Artifacts{Profile: profile, Manifest: manifest, ProfileJSON: profileJSON, PolicyJSON: policyJSON, ManifestJSON: manifestJSON}, nil
+}
+
+// renderPolicy renders the provider policy. A profile without clients has
+// no rules, because a rule must name at least one client; the broker then
+// denies every request.
+func renderPolicy(renderer Renderer, profile Profile, effective []EffectiveOperation) ([]byte, error) {
+	if len(profile.Clients) == 0 {
+		return MarshalCanonical(struct {
+			Rules []struct{} `json:"rules"`
+		}{Rules: []struct{}{}})
+	}
+	return renderer.RenderPolicy(profile, effective)
 }
 
 func renderManifest(renderer Renderer, profile Profile, operations []Operation, effective []EffectiveOperation, counts OperationCounts, policyJSON []byte) (Manifest, []byte, []byte, error) {
@@ -357,7 +369,7 @@ func normalizeProfile(renderer Renderer, profile Profile, known map[string]bool,
 	if err := validateProfileIdentity(renderer, profile); err != nil {
 		return Profile{}, err
 	}
-	clients, err := normalizeExactValues("clients", profile.Clients, false)
+	clients, err := normalizeExactValues("clients", profile.Clients, true)
 	if err != nil {
 		return Profile{}, err
 	}
@@ -425,7 +437,7 @@ func normalizeProfileFields(renderer Renderer, profile Profile) (Profile, error)
 	if profile.Version != ProfileVersion || profile.Preset != renderer.PresetName() {
 		return Profile{}, errors.New("policy profile version or preset is invalid")
 	}
-	clients, err := normalizeExactValues("clients", profile.Clients, false)
+	clients, err := normalizeExactValues("clients", profile.Clients, true)
 	if err != nil {
 		return Profile{}, err
 	}

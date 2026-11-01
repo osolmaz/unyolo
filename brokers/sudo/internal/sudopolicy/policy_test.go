@@ -34,6 +34,24 @@ func TestShippedPoliciesRespectOperationBounds(t *testing.T) {
 	}
 }
 
+func TestPolicyWithoutRulesIsValid(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("the shipped sudo catalog targets Linux systemd")
+	}
+	catalogData, err := os.ReadFile("../../deployment/files/sudo/catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := catalog.Parse(catalogData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := corepolicy.Parse([]byte("{\n  \"rules\": []\n}\n"), Registry(snapshot)); err != nil {
+		t.Fatalf("a policy without rules, as setup renders it without clients, is invalid: %v", err)
+	}
+}
+
 func TestRegistryAndRequest(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()

@@ -92,3 +92,16 @@ func assertEffect(t *testing.T, artifacts Artifacts, name string, want string) {
 		t.Fatalf("operation %s effect = %s, want %s", name, got, want)
 	}
 }
+
+func TestProfileWithoutClientsRendersAValidEmptyPolicy(t *testing.T) {
+	artifacts, err := Render(NewProfile(nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (renderer{}).ValidatePolicy(artifacts.PolicyJSON); err != nil {
+		t.Fatalf("policy without clients is invalid: %v", err)
+	}
+	if report := Check(artifacts.ProfileJSON, artifacts.ManifestJSON, artifacts.PolicyJSON); report.Status != DriftCurrent {
+		t.Fatalf("drift report for a profile without clients = %+v", report)
+	}
+}

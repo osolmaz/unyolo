@@ -139,6 +139,43 @@ func TestRewriteClientArraysHandlesInlineAndMultilineLists(t *testing.T) {
 	}
 }
 
+func TestRewriteClientArraysWritesAnEmptyList(t *testing.T) {
+	t.Parallel()
+	for input, want := range map[string]string{
+		"{\n  \"clients\": [\"agent\"],\n  \"allow\": true\n}\n":           "{\n  \"clients\": [],\n  \"allow\": true\n}\n",
+		"{\n  \"clients\": [\n    \"agent\"\n  ],\n  \"allow\": true\n}\n": "{\n  \"clients\": [],\n  \"allow\": true\n}\n",
+		"{\n  \"version\": 1,\n  \"clients\": [\n    \"agent\"\n  ]\n}\n":  "{\n  \"version\": 1,\n  \"clients\": []\n}\n",
+	} {
+		updated, err := rewriteClientArrays([]byte(input), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(updated) != want {
+			t.Fatalf("rewriteClientArrays(%q) = %q, want %q", input, updated, want)
+		}
+	}
+}
+
+func TestRenderPolicyAssetsWithoutClientsRemovesEveryRule(t *testing.T) {
+	t.Parallel()
+	scope := "{\n  \"rules\": [\n    {\n      \"id\": \"agent-read\",\n      \"clients\": [\n        \"agent\"\n      ]\n    }\n  ]\n}\n"
+	profileDocument := "{\n  \"version\": 1,\n  \"clients\": [\n    \"agent\"\n  ]\n}\n"
+	profile := Profile{Files: []ManagedFile{
+		{ID: "scope", Source: Reference{Path: "files/provider/scope.json"}},
+		{ID: "profile", Source: Reference{Path: "files/provider/policy-profile.json"}},
+	}}
+	assets := map[string][]byte{"files/provider/scope.json": []byte(scope), "files/provider/policy-profile.json": []byte(profileDocument)}
+	if err := renderPolicyAssets(&profile, assets, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(assets["files/provider/scope.json"]); got != emptyPolicy {
+		t.Fatalf("scope without clients = %q", got)
+	}
+	if got := string(assets["files/provider/policy-profile.json"]); got != "{\n  \"version\": 1,\n  \"clients\": []\n}\n" {
+		t.Fatalf("profile without clients = %q", got)
+	}
+}
+
 func TestRenderRequestRejectsInvalidInputs(t *testing.T) {
 	t.Parallel()
 	request, _ := standardRenderRequest()
