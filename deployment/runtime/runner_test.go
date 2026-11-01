@@ -105,6 +105,22 @@ func TestRunnerRejectsInvalidCommandsAndResponses(t *testing.T) {
 	}
 }
 
+func TestRunnerReportsTheAdapterError(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := api.Request{
+		APIVersion: api.APIVersion, Action: api.ActionPlan,
+		DeploymentDigest: digestForTest("deployment"), ComponentID: "fake",
+		Profile: json.RawMessage(`{"api_version":"fake/v1"}`),
+	}
+	_, err = (Runner{}).Run(context.Background(), Command{Executable: executable, Arguments: []string{"-test.run=TestAdapterHelper", "--", "fail"}}, request, nil)
+	if err == nil || !strings.Contains(err.Error(), `service account "fake" does not match the profile`) {
+		t.Fatalf("Run() error = %v, want the adapter's message", err)
+	}
+}
+
 func TestRunnerRejectsWritableSecretDescriptor(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "secret")
 	if err != nil {
@@ -135,6 +151,10 @@ func TestAdapterHelper(t *testing.T) {
 		os.Exit(2)
 	}
 	status := os.Args[len(os.Args)-1]
+	if status == "fail" {
+		_, _ = fmt.Fprintln(os.Stderr, "service account \"fake\" does not match the profile")
+		os.Exit(1)
+	}
 	response := api.Response{
 		APIVersion: api.APIVersion, ComponentID: request.ComponentID, Status: status,
 		PlanDigest: digestForTest("component-plan"),
