@@ -183,7 +183,11 @@ func dispatchWithoutInspection(ctx context.Context, request api.Request, profile
 		}
 		response := api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "valid"}
 		if request.Action == api.ActionRollback {
-			if err := rollback(ctx, config, request.RollbackHandle); err != nil {
+			operatorPaths, err := operatorClientPaths(profile, request.Operators)
+			if err != nil {
+				return api.Response{}, true, err
+			}
+			if err := rollback(ctx, config, request.RollbackHandle, operatorPaths); err != nil {
 				return api.Response{}, true, err
 			}
 			response.Status, response.PlanDigest = "rolled_back", request.PlanDigest
@@ -423,7 +427,11 @@ func dispatch(ctx context.Context, request api.Request, profile Profile, config 
 		}
 		return api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "verified", Verification: evidence}, nil
 	case api.ActionRollback:
-		if err := rollback(ctx, config, request.RollbackHandle); err != nil {
+		operatorPaths, err := operatorClientPaths(profile, request.Operators)
+		if err != nil {
+			return api.Response{}, err
+		}
+		if err := rollback(ctx, config, request.RollbackHandle, operatorPaths); err != nil {
 			return api.Response{}, err
 		}
 		return api.Response{APIVersion: api.APIVersion, ComponentID: config.ComponentID, Status: "rolled_back", PlanDigest: request.PlanDigest}, nil

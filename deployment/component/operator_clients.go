@@ -58,6 +58,28 @@ func inspectOperatorClients(profile Profile, state *inspected) error {
 	return nil
 }
 
+// operatorClientPaths returns the document path of every operator client of
+// the profile, in the home of its bound approver.
+func operatorClientPaths(profile Profile, operators []api.OperatorBinding) ([]string, error) {
+	homes := make(map[string]string, len(operators))
+	for _, operator := range operators {
+		homes[operator.ID] = operator.Home
+	}
+	paths := make([]string, 0, len(profile.OperatorClients))
+	for _, client := range profile.OperatorClients {
+		home, bound := homes[client.OperatorID]
+		if !bound {
+			return nil, errors.New("component operator client binding is invalid")
+		}
+		path, err := clientconfig.OperatorPath(home, client.BrokerName)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
 func operatorClientActionID(client OperatorClient) string {
 	return "operator-client-" + client.OperatorID
 }

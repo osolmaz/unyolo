@@ -3,6 +3,7 @@ package component
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -144,4 +145,42 @@ func secretDescriptor(t *testing.T, value string) int {
 		t.Fatal(err)
 	}
 	return descriptor
+}
+
+func TestRollbackRemovesTheOperatorClientsItDelivered(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	config := Config{AllowedPaths: []string{root}, BackupDirectory: filepath.Join(root, "backups")}
+	profile := Profile{OperatorClients: []OperatorClient{{OperatorID: "telegram", BrokerName: "gh-broker", SecretSlot: "github-approver-telegram", Endpoint: "unix:///run/operator.sock"}}}
+	operators := []api.OperatorBinding{{ID: "telegram", UnixUser: "unyolo-telegram", Home: home}}
+	paths, err := operatorClientPaths(profile, operators)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := filepath.Join(home, ".config", "gh-broker", "operator.json")
+	if len(paths) != 1 || paths[0] != document {
+		t.Fatalf("operator client paths = %v", paths)
+	}
+	record, err := createBackup(t.Context(), config, []string{document}, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(document), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(document, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := rollback(t.Context(), config, record.ID, nil); err == nil {
+		t.Fatal("rollback restored an operator client path that no approver binds")
+	}
+	if err := rollback(t.Context(), config, record.ID, paths); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(document); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the delivered operator client remains: %v", err)
+	}
+	if _, err := operatorClientPaths(profile, nil); err == nil {
+		t.Fatal("an operator client without a bound approver was accepted")
+	}
 }

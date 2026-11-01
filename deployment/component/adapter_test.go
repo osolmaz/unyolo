@@ -484,7 +484,7 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	if err := os.Chmod(directory, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := rollback(t.Context(), config, record.ID); err != nil {
+	if err := rollback(t.Context(), config, record.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(file)
@@ -507,7 +507,7 @@ func TestBackupAndRollbackHelpers(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(config.BackupDirectory, finalized.ID+".json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("finalized backup remains: %v", err)
 	}
-	if err := rollback(t.Context(), config, "missing"); err == nil {
+	if err := rollback(t.Context(), config, "missing", nil); err == nil {
 		t.Fatal("missing rollback handle was accepted")
 	}
 	outside := Config{AllowedPaths: []string{root}, BackupDirectory: "/outside"}

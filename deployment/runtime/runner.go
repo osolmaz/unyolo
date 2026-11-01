@@ -79,6 +79,9 @@ func (runner Runner) Run(ctx context.Context, command Command, request api.Reque
 		if errors.Is(commandContext.Err(), context.DeadlineExceeded) {
 			return api.Response{}, errors.New("setup-component adapter timed out")
 		}
+		if message := strings.TrimSpace(stderr.data.String()); message != "" {
+			return api.Response{}, fmt.Errorf("setup-component adapter failed: %w: %s", err, message)
+		}
 		return api.Response{}, fmt.Errorf("setup-component adapter failed: %w", err)
 	}
 	if output.overflowed {

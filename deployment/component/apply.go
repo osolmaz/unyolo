@@ -71,6 +71,10 @@ type backupEntry struct {
 
 //nolint:cyclop // Ordered account, file, credential, and client phases share one rollback boundary.
 func apply(ctx context.Context, request api.Request, profile Profile, config Config, state inspected) (handle string, returnErr error) {
+	operatorPaths, err := operatorClientPaths(profile, request.Operators)
+	if err != nil {
+		return "", rolledBackApplyError{cause: err}
+	}
 	paths := changedPaths(profile, state)
 	record, err := createBackup(ctx, config, paths, profile)
 	if err != nil {
@@ -80,7 +84,7 @@ func apply(ctx context.Context, request api.Request, profile Profile, config Con
 	}
 	defer func() {
 		if returnErr != nil {
-			if rollbackErr := rollback(ctx, config, record.ID); rollbackErr != nil {
+			if rollbackErr := rollback(ctx, config, record.ID, operatorPaths); rollbackErr != nil {
 				returnErr = errors.Join(returnErr, rollbackErr)
 			} else {
 				returnErr = rolledBackApplyError{cause: returnErr}
@@ -644,8 +648,12 @@ func verify(ctx context.Context, profile Profile, config Config, state inspected
 	return evidence, nil
 }
 
+// rollback restores one backup record. It restores only paths that the
+// component owns, agent client documents, and the operator client documents
+// that the component delivers to its bound approvers.
+//
 //nolint:cyclop // Rollback restores every bounded backup record and identity change in reverse mutation order.
-func rollback(ctx context.Context, config Config, handle string) error {
+func rollback(ctx context.Context, config Config, handle string, operatorPaths []string) error {
 	if len(handle) != 32 {
 		return errors.New("component rollback handle is invalid")
 	}
@@ -664,7 +672,7 @@ func rollback(ctx context.Context, config Config, handle string) error {
 	var backupAncestor *backupEntry
 	for index := len(record.Entries) - 1; index >= 0; index-- {
 		entry := record.Entries[index]
-		if !ownedPath(entry.Path, config.AllowedPaths) && !isAgentClientPath(entry.Path) {
+		if !ownedPath(entry.Path, config.AllowedPaths) && !isAgentClientPath(entry.Path) && !slices.Contains(operatorPaths, entry.Path) {
 			return errors.New("component rollback path exceeds ownership")
 		}
 		if ownedPath(config.BackupDirectory, []string{entry.Path}) {
