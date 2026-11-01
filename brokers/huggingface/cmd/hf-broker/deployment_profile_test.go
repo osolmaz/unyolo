@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/osolmaz/unyolo/brokers/huggingface/internal/policypreset"
 	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/deployment/component"
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
@@ -45,5 +46,35 @@ func TestReleaseDeploymentProfileMatchesHuggingFaceAdapter(t *testing.T) {
 	var response api.Response
 	if err := deploymentruntime.ReadFrame(&output, &response); err != nil || response.Status != "valid" {
 		t.Fatalf("profile response = %+v, %v", response, err)
+	}
+}
+
+func TestReleaseDeploymentWithoutClientsRendersACurrentEmptyPolicy(t *testing.T) {
+	template, err := os.ReadFile("../../deployment/profile.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets := map[string][]byte{}
+	for _, name := range []string{"scope.json", "policy-profile.json", "policy-manifest.json"} {
+		data, err := os.ReadFile("../../deployment/files/huggingface/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assets["files/huggingface/"+name] = data
+	}
+	request := api.RenderRequest{
+		APIVersion: api.RenderAPIVersion, ComponentID: "huggingface", OperatingSystem: "linux", Architecture: "arm64",
+		Profile: template, Approvers: []api.RenderApprover{{ID: "operator", Account: "unyolo-telegram"}},
+	}
+	_, rendered, err := component.RenderStandardProfile(request, template, assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(rendered["files/huggingface/scope.json"]); got != "{\n  \"rules\": []\n}\n" {
+		t.Fatalf("scope without clients = %.200q", got)
+	}
+	report := policypreset.Check(rendered["files/huggingface/policy-profile.json"], rendered["files/huggingface/policy-manifest.json"], rendered["files/huggingface/scope.json"])
+	if report.Status != policypreset.DriftCurrent {
+		t.Fatalf("policy without clients is not current: %+v", report)
 	}
 }

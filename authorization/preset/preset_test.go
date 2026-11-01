@@ -111,6 +111,24 @@ func TestLifecycleDetectsAuthorizationFingerprintChanges(t *testing.T) {
 	}
 }
 
+func TestProfileWithoutClientsRendersNoRules(t *testing.T) {
+	renderer := fixtureRenderer("provider-a")
+	artifacts, err := Render(renderer, NewProfile(renderer, nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(artifacts.PolicyJSON) != "{\n  \"rules\": []\n}\n" {
+		t.Fatalf("policy without clients = %q", artifacts.PolicyJSON)
+	}
+	if !slices.Equal(artifacts.Profile.Clients, []string{}) {
+		t.Fatalf("profile clients = %#v", artifacts.Profile.Clients)
+	}
+	report := Check(renderer, artifacts.ProfileJSON, artifacts.ManifestJSON, artifacts.PolicyJSON)
+	if report.Status != DriftCurrent {
+		t.Fatalf("drift report for a profile without clients = %+v", report)
+	}
+}
+
 func TestLifecycleRejectsMalformedInputs(t *testing.T) {
 	renderer := fixtureRenderer("provider-a")
 	badOperations := fixtureRenderer("provider-a")
@@ -120,7 +138,6 @@ func TestLifecycleRejectsMalformedInputs(t *testing.T) {
 		profile  Profile
 	}{
 		{renderer, Profile{}},
-		{renderer, NewProfile(renderer, nil, nil)},
 		{renderer, NewProfile(renderer, []string{" agent-a"}, nil)},
 		{renderer, NewProfile(renderer, []string{"agent-a"}, []string{"unknown.operation"})},
 		{renderer, Profile{Version: 1, Preset: renderer.PresetName(), Clients: []string{"agent-a"}, ProtectedTargets: []ProtectedTarget{{Kind: "repo", Type: "dataset", Owner: "acme", Name: "state"}}}},

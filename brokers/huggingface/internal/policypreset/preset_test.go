@@ -126,12 +126,24 @@ func TestFingerprintPreservesCatalogEffectUnderOperatorOverride(t *testing.T) {
 	}
 }
 
+func TestProfileWithoutClientsRendersAValidEmptyPolicy(t *testing.T) {
+	artifacts, err := Render(NewProfile(nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (renderer{}).ValidatePolicy(artifacts.PolicyJSON); err != nil {
+		t.Fatalf("policy without clients is invalid: %v", err)
+	}
+	if report := Check(artifacts.ProfileJSON, artifacts.ManifestJSON, artifacts.PolicyJSON); report.Status != shared.DriftCurrent {
+		t.Fatalf("drift report for a profile without clients = %+v", report)
+	}
+}
+
 func TestProfileRejectsInvalidAndAmbiguousInputs(t *testing.T) {
 	tests := []Profile{
 		{},
 		{Version: 2, Preset: RequestAllAgentOperations, Clients: []string{"agent"}},
 		{Version: 1, Preset: "unknown", Clients: []string{"agent"}},
-		NewProfile(nil, nil),
 		NewProfile([]string{"agent", "agent"}, nil),
 		NewProfile([]string{" agent"}, nil),
 		NewProfile([]string{"agent"}, []string{"repo.unknown"}),

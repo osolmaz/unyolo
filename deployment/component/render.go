@@ -274,6 +274,12 @@ func renderPolicyAssets(profile *Profile, assets map[string][]byte, clients []st
 		if !exists {
 			return fmt.Errorf("managed policy asset %q is unavailable", managed.Source.Path)
 		}
+		if len(clients) == 0 && hasRules(data) {
+			// No connection uses the component, so no rule can name a
+			// client. The broker then denies every request.
+			assets[managed.Source.Path] = []byte(emptyPolicy)
+			continue
+		}
 		updated, err := rewriteClientArrays(data, clients)
 		if err != nil {
 			return fmt.Errorf("render policy asset %q: %w", managed.Source.Path, err)
@@ -300,6 +306,19 @@ func renderPolicyAssets(profile *Profile, assets map[string][]byte, clients []st
 	}
 	assets[manifestPath] = append(updated, '\n')
 	return nil
+}
+
+// emptyPolicy is the canonical policy without rules, as the policy presets
+// render it for a profile without clients.
+const emptyPolicy = "{\n  \"rules\": []\n}\n"
+
+func hasRules(data []byte) bool {
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(data, &document); err != nil {
+		return false
+	}
+	_, found := document["rules"]
+	return found
 }
 
 func rewriteClientArrays(data []byte, clients []string) ([]byte, error) {
@@ -346,6 +365,11 @@ func rewriteClientArrays(data []byte, clients []string) ([]byte, error) {
 		}
 		if closing == len(lines) {
 			return nil, errors.New("policy client list is not closed")
+		}
+		if len(clients) == 0 {
+			result[len(result)-1] = line + strings.TrimSpace(lines[closing])
+			index, replacements = closing, replacements+1
+			continue
 		}
 		for clientIndex, client := range clients {
 			encoded, err := json.Marshal(client)
