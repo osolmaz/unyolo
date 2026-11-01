@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/osolmaz/unyolo/brokers/github/internal/policypreset"
 	"github.com/osolmaz/unyolo/deployment/api"
 	"github.com/osolmaz/unyolo/deployment/component"
 	deploymentruntime "github.com/osolmaz/unyolo/deployment/runtime"
@@ -50,5 +51,25 @@ func validateReleaseDeploymentProfile(t *testing.T, path, id string, config comp
 	var response api.Response
 	if err := deploymentruntime.ReadFrame(&output, &response); err != nil || response.Status != "valid" {
 		t.Fatalf("profile response = %+v, %v", response, err)
+	}
+}
+
+// The shipped policy assets must be the preset render for the template
+// client, because setup only rewrites their client lists.
+func TestReleasePolicyAssetsMatchThePresetRender(t *testing.T) {
+	artifacts, err := policypreset.Render(policypreset.NewProfile([]string{"agent"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string][]byte{
+		"scope.json": artifacts.PolicyJSON, "policy-profile.json": artifacts.ProfileJSON, "policy-manifest.json": artifacts.ManifestJSON,
+	} {
+		got, err := os.ReadFile("../../deployment/files/github/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s is not the current preset render; run gh-broker policy render --client agent", name)
+		}
 	}
 }

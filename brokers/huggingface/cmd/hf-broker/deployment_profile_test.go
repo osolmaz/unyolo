@@ -78,3 +78,23 @@ func TestReleaseDeploymentWithoutClientsRendersACurrentEmptyPolicy(t *testing.T)
 		t.Fatalf("policy without clients is not current: %+v", report)
 	}
 }
+
+// The shipped policy assets must be the preset render for the template
+// client, because setup only rewrites their client lists.
+func TestReleasePolicyAssetsMatchThePresetRender(t *testing.T) {
+	artifacts, err := policypreset.Render(policypreset.NewProfile([]string{"agent"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string][]byte{
+		"scope.json": artifacts.PolicyJSON, "policy-profile.json": artifacts.ProfileJSON, "policy-manifest.json": artifacts.ManifestJSON,
+	} {
+		got, err := os.ReadFile("../../deployment/files/huggingface/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s is not the current preset render; run hf-broker policy render --client agent", name)
+		}
+	}
+}
