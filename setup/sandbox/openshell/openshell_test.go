@@ -171,6 +171,8 @@ func TestConnectUpdatesAnExistingSandbox(t *testing.T) {
 			return []byte(`{"id":"unyolo-github","resource_version":3}`), nil
 		case strings.HasPrefix(line, "openshell sandbox provider list"):
 			return []byte("NAME  TYPE\nbob-discord  discord-bot\n"), nil
+		case strings.HasPrefix(line, "openshell sandbox get"):
+			return []byte(readySandbox), nil
 		case strings.HasPrefix(line, "openshell sandbox exec"):
 			return []byte("HOME=/home/agent\n" + expected), nil
 		}
@@ -206,6 +208,8 @@ func TestConnectReportsASandboxWithoutTheEnvironment(t *testing.T) {
 			return nil, errFailed
 		case strings.HasPrefix(line, "openshell sandbox provider list"):
 			return []byte("NAME  TYPE\nunyolo-github-bob  unyolo-github\n"), nil
+		case strings.HasPrefix(line, "openshell sandbox get"):
+			return []byte(readySandbox), nil
 		case strings.HasPrefix(line, "openshell sandbox exec"):
 			return []byte("HOME=/home/agent\n"), nil
 		}
@@ -218,6 +222,53 @@ func TestConnectReportsASandboxWithoutTheEnvironment(t *testing.T) {
 	}
 	if !result.SandboxRecreate || len(runner.ran("openshell sandbox provider attach")) != 0 || len(runner.ran("openshell sandbox stop")) != 0 {
 		t.Fatalf("result = %+v, commands %+v", result, runner.commands)
+	}
+}
+
+const readySandbox = "Sandbox:\n\n  Id: 1\n  Name: bob\n  Phase: Ready\n"
+
+func TestConnectWaitsForTheSandboxAfterTheGatewayRestart(t *testing.T) {
+	gets := 0
+	runner := newFakeRunner(func(line string, _ Command) ([]byte, error) {
+		switch {
+		case strings.HasPrefix(line, "openshell profile export"), strings.HasPrefix(line, "openshell provider get"):
+			return nil, errFailed
+		case strings.HasPrefix(line, "openshell sandbox get"):
+			gets++
+			if gets < 3 {
+				return []byte("Sandbox:\n\n  Name: bob\n  Phase: Provisioning\n"), nil
+			}
+			return []byte(readySandbox), nil
+		case strings.HasPrefix(line, "openshell sandbox exec"):
+			if gets < 3 {
+				t.Fatal("the adapter ran a command in the sandbox before it was ready")
+			}
+			return []byte("HOME=/home/agent\n"), nil
+		}
+		return nil, nil
+	})
+	adapter, _ := testAdapter(t, runner, baseConfig)
+	adapter.GatewayTimeout = 10 * time.Second
+	result, err := adapter.Connect(t.Context(), testConnection([]byte(testSecret)), []byte("CA PEM"))
+	if err != nil || !result.SandboxRecreate || gets != 3 {
+		t.Fatalf("result = %+v, %v after %d reads", result, err, gets)
+	}
+}
+
+func TestConnectStopsWhenTheSandboxStaysUnready(t *testing.T) {
+	runner := newFakeRunner(func(line string, _ Command) ([]byte, error) {
+		switch {
+		case strings.HasPrefix(line, "openshell profile export"), strings.HasPrefix(line, "openshell provider get"):
+			return nil, errFailed
+		case strings.HasPrefix(line, "openshell sandbox get"):
+			return []byte("Sandbox:\n\n  Name: bob\n  Phase: Provisioning\n"), nil
+		}
+		return nil, nil
+	})
+	adapter, _ := testAdapter(t, runner, baseConfig)
+	_, err := adapter.Connect(t.Context(), testConnection([]byte(testSecret)), []byte("CA PEM"))
+	if err == nil || !strings.Contains(err.Error(), "the sandbox bob is not ready (phase: Provisioning)") || len(runner.ran("openshell sandbox exec")) != 0 {
+		t.Fatalf("Connect() error = %v, commands %+v", err, runner.commands)
 	}
 }
 

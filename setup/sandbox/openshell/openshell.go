@@ -94,7 +94,8 @@ type Adapter struct {
 	// ConfigHome is the gateway owner's configuration directory, such as
 	// ~/.config. OpenShell keeps gateway.toml in its openshell folder.
 	ConfigHome string
-	// GatewayTimeout bounds the wait for the gateway after a restart.
+	// GatewayTimeout bounds the wait for the gateway after a restart, and the
+	// wait for a sandbox to be ready.
 	GatewayTimeout time.Duration
 }
 
@@ -447,11 +448,7 @@ func (adapter Adapter) restartGateway(ctx context.Context) error {
 	if _, err := adapter.Runner.Run(ctx, Command{Name: "systemctl", Args: []string{"--user", "restart", gatewayService}}); err != nil {
 		return err
 	}
-	timeout := adapter.GatewayTimeout
-	if timeout <= 0 {
-		timeout = time.Minute
-	}
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(adapter.waitTimeout())
 	for {
 		if adapter.succeeds(ctx, Command{Name: "openshell", Args: []string{"sandbox", "list"}}) {
 			return nil
@@ -467,6 +464,44 @@ func (adapter Adapter) restartGateway(ctx context.Context) error {
 	}
 }
 
+func (adapter Adapter) waitTimeout() time.Duration {
+	if adapter.GatewayTimeout <= 0 {
+		return time.Minute
+	}
+	return adapter.GatewayTimeout
+}
+
+// waitForSandbox waits until the sandbox is ready. After a gateway restart a
+// sandbox reconnects for a short time, and commands in it fail until then.
+func (adapter Adapter) waitForSandbox(ctx context.Context, sandbox string) error {
+	deadline := time.Now().Add(adapter.waitTimeout())
+	for {
+		output, err := adapter.Runner.Run(ctx, Command{Name: "openshell", Args: []string{"sandbox", "get", sandbox}})
+		phase := sandboxPhase(output)
+		if err == nil && phase == "Ready" {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the sandbox %s is not ready (phase: %s)", sandbox, phase)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// sandboxPhase reads the phase from `openshell sandbox get` output.
+func sandboxPhase(output []byte) string {
+	for _, line := range strings.Split(string(output), "\n") {
+		if value, found := strings.CutPrefix(strings.TrimSpace(line), "Phase:"); found {
+			return strings.TrimSpace(value)
+		}
+	}
+	return "unknown"
+}
+
 // connectSandbox checks the environment of an existing sandbox, attaches the
 // providers, and restarts the sandbox when the gateway trusts a new CA. A
 // missing sandbox, or one without the environment, is left to its owner, who
@@ -475,6 +510,9 @@ func (adapter Adapter) connectSandbox(ctx context.Context, sandbox string, resul
 	if !adapter.succeeds(ctx, Command{Name: "openshell", Args: []string{"sandbox", "get", sandbox}}) {
 		result.SandboxMissing = true
 		return result, nil
+	}
+	if err := adapter.waitForSandbox(ctx, sandbox); err != nil {
+		return Result{}, err
 	}
 	output, err := adapter.Runner.Run(ctx, Command{Name: "openshell", Args: []string{"sandbox", "exec", "--name", sandbox, "--no-tty", "--", "env"}})
 	if err != nil {
