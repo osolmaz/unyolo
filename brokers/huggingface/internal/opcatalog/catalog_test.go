@@ -194,8 +194,20 @@ func TestGitFetchUsesNativeProtocolBinding(t *testing.T) {
 	if !found || descriptor.Implementation != StatusImplemented || descriptor.ExecutorKind != "native-protocol" {
 		t.Fatalf("git.fetch descriptor = %+v, found = %t", descriptor, found)
 	}
-	if descriptor.DefaultPolicyEffect != DefaultEffectRequest {
-		t.Fatalf("git.fetch default policy effect = %q, want request", descriptor.DefaultPolicyEffect)
+}
+
+// TestGitOperationsMatchTheirHubEquivalents keeps Git and the Hub API
+// consistent: an agent gets the same default answer for the same data.
+func TestGitOperationsMatchTheirHubEquivalents(t *testing.T) {
+	for git, hub := range map[string]string{
+		"git.fetch": "repo.contents.read", "git.push.append": "repo.file.upload", "git.push.force": "repo.file.delete",
+		"git.ref.delete": "repo.branch.delete", "git.tag.update": "repo.tag.create",
+	} {
+		gitDescriptor, gitFound := ByName(git)
+		hubDescriptor, hubFound := ByName(hub)
+		if !gitFound || !hubFound || gitDescriptor.DefaultPolicyEffect != hubDescriptor.DefaultPolicyEffect {
+			t.Errorf("%s defaults to %q, but its Hub equivalent %s defaults to %q", git, gitDescriptor.DefaultPolicyEffect, hub, hubDescriptor.DefaultPolicyEffect)
+		}
 	}
 }
 

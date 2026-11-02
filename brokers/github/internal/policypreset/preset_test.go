@@ -15,7 +15,7 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := OperationCounts{Total: 1436, Allow: 611, Request: 515, Deny: 310}
+	want := OperationCounts{Total: 1445, Allow: 614, Request: 521, Deny: 310}
 	if artifacts.Manifest.Provider != "github" || artifacts.Manifest.OperationCounts != want {
 		t.Fatalf("manifest = %+v, want provider github and counts %+v", artifacts.Manifest, want)
 	}
@@ -23,17 +23,87 @@ func TestRenderRequestAllAgentOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rendered policy is invalid: %v", err)
 	}
-	fetch := policy.Request{Client: "agent-a", Operation: policy.OperationGitFetch,
-		Target: policy.Target{Kind: "repo", Owner: "acme", Name: "public"}}
+	repo := policy.Target{Kind: "repo", Owner: "acme", Name: "private"}
+	fetch := policy.Request{Client: "agent-a", Operation: policy.OperationGitFetch, Target: repo}
 	if decision := rendered.EvaluateAnonymous(fetch); !decision.Allowed || decision.CredentialUse != corepolicy.CredentialUseNone {
 		t.Fatalf("anonymous fetch decision = %+v", decision)
 	}
-	if decision := rendered.EvaluateGrantRequest(fetch); decision.Effect != policy.EffectRequest || decision.CredentialUse != corepolicy.CredentialUseManaged {
+	if decision := rendered.Evaluate(fetch); !decision.Allowed || decision.CredentialUse != corepolicy.CredentialUseManaged {
 		t.Fatalf("managed fetch decision = %+v", decision)
 	}
+	push := policy.Request{Client: "agent-a", Operation: policy.OperationGitPushBranchCreate, Target: repo,
+		Attrs: map[string]string{"ref": "refs/heads/topic"}}
+	if decision := rendered.EvaluateGrantRequest(push); decision.Effect != policy.EffectRequest || decision.GrantPolicy == nil {
+		t.Fatalf("push decision = %+v", decision)
+	}
 	assertEffect(t, artifacts, "repo.contents.read", "allow")
+	assertEffect(t, artifacts, "graphql.read", "allow")
+	assertEffect(t, artifacts, "git.push.force", "request")
 	assertEffect(t, artifacts, "repo.delete", "request")
 	assertEffect(t, artifacts, "pull_request.merge_admin", "request")
+}
+
+// TestProtocolOperationsMatchTheirRESTEquivalents keeps Git, GraphQL, and REST
+// consistent: an agent gets the same default answer for the same data.
+func TestProtocolOperationsMatchTheirRESTEquivalents(t *testing.T) {
+	equivalents := map[policy.Operation][]string{
+		policy.OperationGitFetch:            {"repo.contents.read", "repo.download_tarball_archive", "git.get_blob"},
+		policy.OperationGitLFSWrite:         {"repo.create_or_update_file_contents"},
+		policy.OperationGitPushAdvertise:    {"git.list_matching_refs", "branch.repos_list_branches"},
+		policy.OperationGitPushBranchCreate: {"git.create_ref"},
+		policy.OperationGitPushFastForward:  {"git.update_ref"},
+		policy.OperationGitPushForce:        {"git.update_ref"},
+		policy.OperationGitRefDelete:        {"git.delete_ref"},
+		policy.OperationGitTagUpdate:        {"git.create_ref", "git.update_ref"},
+		policy.OperationGraphQLRead:         {"repo.contents.read", "pull_request.list", "issue.issues_list_for_repo"},
+	}
+	if len(equivalents) != len(protocolOperations) {
+		t.Fatalf("equivalents cover %d protocol operations, want %d", len(equivalents), len(protocolOperations))
+	}
+	for _, protocol := range protocolOperations {
+		names, found := equivalents[protocol.name]
+		if !found {
+			t.Fatalf("protocol operation %s has no REST equivalent", protocol.name)
+		}
+		for _, name := range names {
+			descriptor, found := opcatalog.ByName(name)
+			if !found || descriptor.DefaultPolicyEffect != protocol.effect {
+				t.Errorf("%s defaults to %s, but its REST equivalent %s defaults to %s", protocol.name, protocol.effect, name, descriptor.DefaultPolicyEffect)
+			}
+		}
+	}
+}
+
+func TestEveryAgentProtocolOperationHasAPresetEffect(t *testing.T) {
+	registry, err := policy.CatalogRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range registry.Operations {
+		if _, catalog := opcatalog.ByName(name); catalog || name == string(policy.OperationWebhookGitHubReceive) {
+			continue
+		}
+		if !isProtocolOperation(name) {
+			t.Errorf("protocol operation %s has no preset effect", name)
+		}
+	}
+}
+
+func TestDeniedProtocolOperationBlocksAnonymousUse(t *testing.T) {
+	artifacts, err := Render(NewProfile([]string{"agent-a"}, []string{"git.fetch"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEffect(t, artifacts, "git.fetch", "deny")
+	rendered, err := policy.Parse(artifacts.PolicyJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetch := policy.Request{Client: "agent-a", Operation: policy.OperationGitFetch,
+		Target: policy.Target{Kind: "repo", Owner: "acme", Name: "public"}}
+	if decision := rendered.EvaluateAnonymous(fetch); decision.Allowed {
+		t.Fatalf("denied fetch was allowed anonymously: %+v", decision)
+	}
 }
 
 func TestRenderNormalizesAndPreservesDenyOverrides(t *testing.T) {

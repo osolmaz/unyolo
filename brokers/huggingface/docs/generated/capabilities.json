@@ -1354,7 +1354,7 @@
     "agent_facing": true,
     "mcp_tool": "hf_git_fetch",
     "cli_command": "git fetch",
-    "default_policy_effect": "request",
+    "default_policy_effect": "allow",
     "executor_kind": "native-protocol"
   },
   {
