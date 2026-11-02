@@ -2,9 +2,9 @@
   "version": 1,
   "provider": "github",
   "preset": "request-all-agent-operations",
-  "catalog_digest": "sha256:86ac6c39c4fcc8923b3def86eeae68eae86a7076caa70d90d287f3873fc077b2",
+  "catalog_digest": "sha256:edb5c2c1854c78e9f48294e4a8582780f5400de32abdd13fa98bb346ca1c744b",
   "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
-  "policy_digest": "sha256:4d2734d6365b3d0ec817d4794e882311a9688cff8cd8099ef5d293da11d19e30",
+  "policy_digest": "sha256:e3cd079bf5dab630281e3133b55fd305629b2b79ec398e34781485149e99dfd2",
   "operation_counts": {
     "total": 1445,
     "allow": 614,
@@ -3061,7 +3061,7 @@
       "name": "git.fetch",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:f6c56baf90cecfca5c82073626882d470c33b39c35d09dd4d79eea2c15434218",
+      "authorization_digest": "sha256:e070063ee650946db18a2bd4cd9fad67352b2ba301dc5c0919e3190286e773be",
       "effect": "allow"
     },
     {
@@ -3089,7 +3089,7 @@
       "name": "git.lfs.write",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:9240d3a947f5b48ebae216f43fac93b27cf709efa4a4abd07a0f6c12f0df3d8e",
+      "authorization_digest": "sha256:22d8ce89cf93a6b421b5879e65357fe22f3d06fa252312ee456550f73f372db7",
       "effect": "request"
     },
     {
@@ -3103,42 +3103,42 @@
       "name": "git.push.advertise",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:9240d3a947f5b48ebae216f43fac93b27cf709efa4a4abd07a0f6c12f0df3d8e",
+      "authorization_digest": "sha256:22d8ce89cf93a6b421b5879e65357fe22f3d06fa252312ee456550f73f372db7",
       "effect": "allow"
     },
     {
       "name": "git.push.branch_create",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:ba748165e6732d293e0f430f18e447a2ec31389f51b290752b56496d6445151e",
+      "authorization_digest": "sha256:5ec1bc7ba9e128d44648ddcd9e6a07a14eea12332ddcb18b176805233ae83da4",
       "effect": "request"
     },
     {
       "name": "git.push.fast_forward",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:ba748165e6732d293e0f430f18e447a2ec31389f51b290752b56496d6445151e",
+      "authorization_digest": "sha256:5ec1bc7ba9e128d44648ddcd9e6a07a14eea12332ddcb18b176805233ae83da4",
       "effect": "request"
     },
     {
       "name": "git.push.force",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:ba748165e6732d293e0f430f18e447a2ec31389f51b290752b56496d6445151e",
+      "authorization_digest": "sha256:5ec1bc7ba9e128d44648ddcd9e6a07a14eea12332ddcb18b176805233ae83da4",
       "effect": "request"
     },
     {
       "name": "git.ref.delete",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:ba748165e6732d293e0f430f18e447a2ec31389f51b290752b56496d6445151e",
+      "authorization_digest": "sha256:5ec1bc7ba9e128d44648ddcd9e6a07a14eea12332ddcb18b176805233ae83da4",
       "effect": "request"
     },
     {
       "name": "git.tag.update",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:ba748165e6732d293e0f430f18e447a2ec31389f51b290752b56496d6445151e",
+      "authorization_digest": "sha256:5ec1bc7ba9e128d44648ddcd9e6a07a14eea12332ddcb18b176805233ae83da4",
       "effect": "request"
     },
     {
@@ -3152,7 +3152,7 @@
       "name": "graphql.read",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:9240d3a947f5b48ebae216f43fac93b27cf709efa4a4abd07a0f6c12f0df3d8e",
+      "authorization_digest": "sha256:22d8ce89cf93a6b421b5879e65357fe22f3d06fa252312ee456550f73f372db7",
       "effect": "allow"
     },
     {

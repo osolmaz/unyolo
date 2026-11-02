@@ -2,6 +2,7 @@ package policypreset
 
 import (
 	"bytes"
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -83,9 +84,39 @@ func TestEveryAgentProtocolOperationHasAPresetEffect(t *testing.T) {
 		if _, catalog := opcatalog.ByName(name); catalog || name == string(policy.OperationWebhookGitHubReceive) {
 			continue
 		}
-		if !isProtocolOperation(name) {
+		if _, found := protocolOperationByName(name); !found {
 			t.Errorf("protocol operation %s has no preset effect", name)
 		}
+	}
+}
+
+// TestPushApprovalMatchesRESTRefWriteApproval keeps a push and the same ref
+// change through REST on one approval policy, so an operator rule that asks for
+// a push with the default approval overlays the preset.
+func TestPushApprovalMatchesRESTRefWriteApproval(t *testing.T) {
+	artifacts, err := Render(NewProfile([]string{"agent-a"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := policy.Parse(artifacts.PolicyJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := policy.Target{Kind: "repo", Owner: "acme", Name: "app"}
+	ref := map[string]string{"ref": "refs/heads/topic"}
+	rest := rendered.EvaluateGrantRequest(policy.Request{Client: "agent-a", Operation: "git.create_ref", Target: repo, Attrs: ref})
+	push := rendered.EvaluateGrantRequest(policy.Request{Client: "agent-a", Operation: policy.OperationGitPushBranchCreate, Target: repo, Attrs: ref})
+	if rest.GrantPolicy == nil || push.GrantPolicy == nil || *rest.GrantPolicy != *push.GrantPolicy {
+		t.Fatalf("push approval = %+v, REST ref write approval = %+v", push.GrantPolicy, rest.GrantPolicy)
+	}
+	var scope policy.Scope
+	if err := json.Unmarshal(artifacts.PolicyJSON, &scope); err != nil {
+		t.Fatal(err)
+	}
+	scope.Rules = append(scope.Rules, policy.Rule{ID: "operator-tag-update", Effect: policy.EffectRequest, Clients: []string{"agent-a"},
+		Operations: []policy.Operation{policy.OperationGitTagUpdate}, Targets: []policy.Target{{Kind: "repo", Owner: "acme", Name: "app"}}})
+	if _, err := policy.New(scope); err != nil {
+		t.Fatalf("operator push rule with the default approval does not overlay the preset: %v", err)
 	}
 }
 
