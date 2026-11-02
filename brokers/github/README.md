@@ -67,7 +67,8 @@ policy after reviewing the printed digest and operation-count preview.
 The preset gives each Git and GraphQL operation the default of the REST
 operations that read or change the same data: clone, fetch, GraphQL reads,
 and the push ref listing are allowed like REST reads, and pushes and LFS
-uploads require approval like REST ref and file writes.
+uploads require approval like REST ref and file writes. A push approval uses
+the same default approval policy as a REST ref write.
 macOS uses `gh-broker setup launchd` with the same credential flags.
 
 To also enable encrypted GitHub App user credentials, add the App's OAuth

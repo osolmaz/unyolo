@@ -79,6 +79,9 @@ func (renderer) Operations() ([]shared.Operation, error) {
 type protocolOperation struct {
 	name   policy.Operation
 	effect opcatalog.DefaultPolicyEffect
+	// transfer gives an approval the transfer session window. Ref updates use
+	// the default approval of the REST ref writes instead.
+	transfer bool
 }
 
 // protocolOperations are the Git smart-HTTP and GitHub-compatible GraphQL read
@@ -86,15 +89,15 @@ type protocolOperation struct {
 // matches the REST operations that read or change the same data, so an agent
 // gets the same answer through Git, GraphQL, and REST.
 var protocolOperations = []protocolOperation{
-	{policy.OperationGitFetch, opcatalog.DefaultEffectAllow},
-	{policy.OperationGitLFSWrite, opcatalog.DefaultEffectRequest},
-	{policy.OperationGitPushAdvertise, opcatalog.DefaultEffectAllow},
-	{policy.OperationGitPushBranchCreate, opcatalog.DefaultEffectRequest},
-	{policy.OperationGitPushFastForward, opcatalog.DefaultEffectRequest},
-	{policy.OperationGitPushForce, opcatalog.DefaultEffectRequest},
-	{policy.OperationGitRefDelete, opcatalog.DefaultEffectRequest},
-	{policy.OperationGitTagUpdate, opcatalog.DefaultEffectRequest},
-	{policy.OperationGraphQLRead, opcatalog.DefaultEffectAllow},
+	{policy.OperationGitFetch, opcatalog.DefaultEffectAllow, true},
+	{policy.OperationGitLFSWrite, opcatalog.DefaultEffectRequest, true},
+	{policy.OperationGitPushAdvertise, opcatalog.DefaultEffectAllow, true},
+	{policy.OperationGitPushBranchCreate, opcatalog.DefaultEffectRequest, false},
+	{policy.OperationGitPushFastForward, opcatalog.DefaultEffectRequest, false},
+	{policy.OperationGitPushForce, opcatalog.DefaultEffectRequest, false},
+	{policy.OperationGitRefDelete, opcatalog.DefaultEffectRequest, false},
+	{policy.OperationGitTagUpdate, opcatalog.DefaultEffectRequest, false},
+	{policy.OperationGraphQLRead, opcatalog.DefaultEffectAllow, true},
 }
 
 func buildProtocolOperations() ([]shared.Operation, error) {
@@ -108,7 +111,10 @@ func buildProtocolOperations() ([]shared.Operation, error) {
 		if !found {
 			return nil, fmt.Errorf("protocol operation %q is not registered", protocol.name)
 		}
-		digest, err := shared.AuthorizationDigest(spec)
+		digest, err := shared.AuthorizationDigest(struct {
+			Spec        corepolicy.OperationSpec `json:"spec"`
+			GrantPolicy *corepolicy.GrantPolicy  `json:"grant_policy"`
+		}{Spec: spec, GrantPolicy: protocol.grantPolicy()})
 		if err != nil {
 			return nil, fmt.Errorf("fingerprint operation %s: %w", protocol.name, err)
 		}
@@ -118,8 +124,21 @@ func buildProtocolOperations() ([]shared.Operation, error) {
 	return operations, nil
 }
 
-func isProtocolOperation(name string) bool {
-	return slices.ContainsFunc(protocolOperations, func(protocol protocolOperation) bool { return string(protocol.name) == name })
+// grantPolicy is the approval policy of a requestable rule for this operation.
+// Nil selects the default approval of the REST ref writes.
+func (protocol protocolOperation) grantPolicy() *corepolicy.GrantPolicy {
+	if !protocol.transfer {
+		return nil
+	}
+	return transportGrantPolicy()
+}
+
+func protocolOperationByName(name string) (protocolOperation, bool) {
+	index := slices.IndexFunc(protocolOperations, func(protocol protocolOperation) bool { return string(protocol.name) == name })
+	if index < 0 {
+		return protocolOperation{}, false
+	}
+	return protocolOperations[index], true
 }
 
 func indexTargets(targets []targetregistry.Descriptor) map[string]targetregistry.Descriptor {
@@ -190,12 +209,13 @@ func presetRule(clients []string, operation shared.EffectiveOperation) (policy.R
 		rule.Targets = []policy.Target{wildcardTarget(descriptor.TargetKind)}
 		return rule, nil
 	}
-	if !isProtocolOperation(operation.Name) {
+	protocol, found := protocolOperationByName(operation.Name)
+	if !found {
 		return policy.Rule{}, fmt.Errorf("operation %q disappeared during policy render", operation.Name)
 	}
 	rule.Targets = []policy.Target{wildcardTarget("repo")}
 	if rule.Effect == policy.EffectRequest {
-		rule.GrantPolicy = transportGrantPolicy()
+		rule.GrantPolicy = protocol.grantPolicy()
 	}
 	return rule, nil
 }
@@ -209,10 +229,9 @@ func transportAnonymousRule(clients []string) policy.Rule {
 	}
 }
 
-// transportGrantPolicy bounds one Git or GraphQL approval to a one-hour
-// session window with a fifteen-minute approval wait, generous enough for
-// clone, fetch, LFS transfers, pushes, and GitHub CLI reads of the approved
-// repository.
+// transportGrantPolicy bounds one transfer approval to a one-hour session
+// window with a fifteen-minute approval wait, generous enough for clone, fetch,
+// LFS transfers, and GitHub CLI reads of the approved repository.
 func transportGrantPolicy() *corepolicy.GrantPolicy {
 	return &corepolicy.GrantPolicy{
 		Mode: string(corepolicy.GrantModeWindow), DefaultMinutes: 60, MaxMinutes: 10080, RequestTTLMinutes: 15,

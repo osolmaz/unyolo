@@ -6955,15 +6955,7 @@
           "owner": "*",
           "name": "*"
         }
-      ],
-      "grant_policy": {
-        "mode": "window",
-        "default_minutes": 60,
-        "max_minutes": 10080,
-        "request_ttl_minutes": 15,
-        "default_max_uses": 1000000,
-        "max_uses": 1000000
-      }
+      ]
     },
     {
       "id": "preset-git-push-fast_forward",
@@ -6980,15 +6972,7 @@
           "owner": "*",
           "name": "*"
         }
-      ],
-      "grant_policy": {
-        "mode": "window",
-        "default_minutes": 60,
-        "max_minutes": 10080,
-        "request_ttl_minutes": 15,
-        "default_max_uses": 1000000,
-        "max_uses": 1000000
-      }
+      ]
     },
     {
       "id": "preset-git-push-force",
@@ -7005,15 +6989,7 @@
           "owner": "*",
           "name": "*"
         }
-      ],
-      "grant_policy": {
-        "mode": "window",
-        "default_minutes": 60,
-        "max_minutes": 10080,
-        "request_ttl_minutes": 15,
-        "default_max_uses": 1000000,
-        "max_uses": 1000000
-      }
+      ]
     },
     {
       "id": "preset-git-ref-delete",
@@ -7030,15 +7006,7 @@
           "owner": "*",
           "name": "*"
         }
-      ],
-      "grant_policy": {
-        "mode": "window",
-        "default_minutes": 60,
-        "max_minutes": 10080,
-        "request_ttl_minutes": 15,
-        "default_max_uses": 1000000,
-        "max_uses": 1000000
-      }
+      ]
     },
     {
       "id": "preset-git-tag-update",
@@ -7055,15 +7023,7 @@
           "owner": "*",
           "name": "*"
         }
-      ],
-      "grant_policy": {
-        "mode": "window",
-        "default_minutes": 60,
-        "max_minutes": 10080,
-        "request_ttl_minutes": 15,
-        "default_max_uses": 1000000,
-        "max_uses": 1000000
-      }
+      ]
     },
     {
       "id": "preset-git-update_ref",
