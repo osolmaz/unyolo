@@ -76,15 +76,15 @@ func (renderer) Operations() ([]shared.Operation, error) {
 	return operations, nil
 }
 
-// protocolOperations are the Git smart-HTTP and GitHub-compatible GraphQL read
-// operations, which the REST catalog does not cover. Each default effect
-// matches the REST operations that read or change the same data, so an agent
-// gets the same answer through Git, GraphQL, and REST.
 type protocolOperation struct {
 	name   policy.Operation
 	effect opcatalog.DefaultPolicyEffect
 }
 
+// protocolOperations are the Git smart-HTTP and GitHub-compatible GraphQL read
+// operations, which the REST catalog does not cover. Each default effect
+// matches the REST operations that read or change the same data, so an agent
+// gets the same answer through Git, GraphQL, and REST.
 var protocolOperations = []protocolOperation{
 	{policy.OperationGitFetch, opcatalog.DefaultEffectAllow},
 	{policy.OperationGitLFSWrite, opcatalog.DefaultEffectRequest},
