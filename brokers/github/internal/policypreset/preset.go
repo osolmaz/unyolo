@@ -4,6 +4,7 @@ package policypreset
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	usebudget "github.com/osolmaz/unyolo/authorization/budget"
@@ -62,7 +63,63 @@ func (renderer) Operations() ([]shared.Operation, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildOperations(descriptors, indexTargets(targets), indexBindings(bindings))
+	operations, err := buildOperations(descriptors, indexTargets(targets), indexBindings(bindings))
+	if err != nil {
+		return nil, err
+	}
+	protocol, err := buildProtocolOperations()
+	if err != nil {
+		return nil, err
+	}
+	operations = append(operations, protocol...)
+	slices.SortFunc(operations, func(a, b shared.Operation) int { return strings.Compare(a.Name, b.Name) })
+	return operations, nil
+}
+
+// protocolOperations are the Git smart-HTTP and GitHub-compatible GraphQL read
+// operations, which the REST catalog does not cover. Each default effect
+// matches the REST operations that read or change the same data, so an agent
+// gets the same answer through Git, GraphQL, and REST.
+type protocolOperation struct {
+	name   policy.Operation
+	effect opcatalog.DefaultPolicyEffect
+}
+
+var protocolOperations = []protocolOperation{
+	{policy.OperationGitFetch, opcatalog.DefaultEffectAllow},
+	{policy.OperationGitLFSWrite, opcatalog.DefaultEffectRequest},
+	{policy.OperationGitPushAdvertise, opcatalog.DefaultEffectAllow},
+	{policy.OperationGitPushBranchCreate, opcatalog.DefaultEffectRequest},
+	{policy.OperationGitPushFastForward, opcatalog.DefaultEffectRequest},
+	{policy.OperationGitPushForce, opcatalog.DefaultEffectRequest},
+	{policy.OperationGitRefDelete, opcatalog.DefaultEffectRequest},
+	{policy.OperationGitTagUpdate, opcatalog.DefaultEffectRequest},
+	{policy.OperationGraphQLRead, opcatalog.DefaultEffectAllow},
+}
+
+func buildProtocolOperations() ([]shared.Operation, error) {
+	registry, err := policy.CatalogRegistry()
+	if err != nil {
+		return nil, err
+	}
+	operations := make([]shared.Operation, 0, len(protocolOperations))
+	for _, protocol := range protocolOperations {
+		spec, found := registry.Operation(string(protocol.name))
+		if !found {
+			return nil, fmt.Errorf("protocol operation %q is not registered", protocol.name)
+		}
+		digest, err := shared.AuthorizationDigest(spec)
+		if err != nil {
+			return nil, fmt.Errorf("fingerprint operation %s: %w", protocol.name, err)
+		}
+		operations = append(operations, shared.Operation{Name: string(protocol.name), OperationRevision: 1,
+			DefaultEffect: protocol.effect, AuthorizationDigest: digest})
+	}
+	return operations, nil
+}
+
+func isProtocolOperation(name string) bool {
+	return slices.ContainsFunc(protocolOperations, func(protocol protocolOperation) bool { return string(protocol.name) == name })
 }
 
 func indexTargets(targets []targetregistry.Descriptor) map[string]targetregistry.Descriptor {
@@ -109,58 +166,52 @@ func policyAttributes(operation string) []string {
 }
 
 func (renderer) RenderPolicy(profile shared.Profile, operations []shared.EffectiveOperation) ([]byte, error) {
-	scope := policy.Scope{Rules: make([]policy.Rule, 0, len(operations))}
+	scope := policy.Scope{Rules: make([]policy.Rule, 0, len(operations)+1)}
 	for _, operation := range operations {
-		descriptor, found := opcatalog.ByName(operation.Name)
-		if !found {
-			return nil, fmt.Errorf("operation %q disappeared during policy render", operation.Name)
+		rule, err := presetRule(profile.Clients, operation)
+		if err != nil {
+			return nil, err
 		}
-		scope.Rules = append(scope.Rules, policy.Rule{
-			ID: "preset-" + strings.ReplaceAll(operation.Name, ".", "-"), Effect: policy.Effect(operation.Effect),
-			Clients: profile.Clients, Operations: []policy.Operation{policy.Operation(operation.Name)},
-			Targets: []policy.Target{wildcardTarget(descriptor.TargetKind)},
-		})
+		scope.Rules = append(scope.Rules, rule)
 	}
-	scope.Rules = append(scope.Rules, transportAnonymousRules(profile.Clients)...)
-	scope.Rules = append(scope.Rules, transportRequestRules(profile.Clients)...)
+	scope.Rules = append(scope.Rules, transportAnonymousRule(profile.Clients))
 	if _, err := policy.New(scope); err != nil {
 		return nil, err
 	}
 	return shared.MarshalCanonical(scope)
 }
 
-func transportAnonymousRules(clients []string) []policy.Rule {
-	return []policy.Rule{{
+func presetRule(clients []string, operation shared.EffectiveOperation) (policy.Rule, error) {
+	rule := policy.Rule{
+		ID: "preset-" + strings.ReplaceAll(operation.Name, ".", "-"), Effect: policy.Effect(operation.Effect),
+		Clients: clients, Operations: []policy.Operation{policy.Operation(operation.Name)},
+	}
+	if descriptor, found := opcatalog.ByName(operation.Name); found {
+		rule.Targets = []policy.Target{wildcardTarget(descriptor.TargetKind)}
+		return rule, nil
+	}
+	if !isProtocolOperation(operation.Name) {
+		return policy.Rule{}, fmt.Errorf("operation %q disappeared during policy render", operation.Name)
+	}
+	rule.Targets = []policy.Target{wildcardTarget("repo")}
+	if rule.Effect == policy.EffectRequest {
+		rule.GrantPolicy = transportGrantPolicy()
+	}
+	return rule, nil
+}
+
+func transportAnonymousRule(clients []string) policy.Rule {
+	return policy.Rule{
 		ID: "preset-git-fetch-anonymous", Effect: policy.EffectAllow,
 		Clients: clients, Operations: []policy.Operation{policy.OperationGitFetch},
 		Targets:        []policy.Target{wildcardTarget("repo")},
 		CredentialUses: []corepolicy.CredentialUse{corepolicy.CredentialUseNone},
-	}}
-}
-
-// transportRequestOperations are the Git smart-HTTP and GitHub-compatible
-// GraphQL read operations every preset deployment exposes as requestable. The
-// catalog covers typed API operations only, so transport rules are appended
-// directly.
-var transportRequestOperations = []policy.Operation{
-	policy.OperationGitFetch, policy.OperationGitLFSWrite, policy.OperationGitPushAdvertise, policy.OperationGraphQLRead,
-}
-
-func transportRequestRules(clients []string) []policy.Rule {
-	rules := make([]policy.Rule, 0, len(transportRequestOperations))
-	for _, operation := range transportRequestOperations {
-		rules = append(rules, policy.Rule{
-			ID: "preset-" + strings.ReplaceAll(string(operation), ".", "-"), Effect: policy.EffectRequest,
-			Clients: clients, Operations: []policy.Operation{operation},
-			Targets: []policy.Target{wildcardTarget("repo")}, GrantPolicy: transportGrantPolicy(),
-		})
 	}
-	return rules
 }
 
-// transportGrantPolicy bounds one fetch, LFS, or GraphQL read approval to a
-// one-hour session window with a fifteen-minute approval wait, generous enough
-// for clone, fetch, LFS transfers, and GitHub CLI reads of the approved
+// transportGrantPolicy bounds one Git or GraphQL approval to a one-hour
+// session window with a fifteen-minute approval wait, generous enough for
+// clone, fetch, LFS transfers, pushes, and GitHub CLI reads of the approved
 // repository.
 func transportGrantPolicy() *corepolicy.GrantPolicy {
 	return &corepolicy.GrantPolicy{

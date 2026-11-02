@@ -23,7 +23,7 @@ func TestPolicyRenderCheckAndDoctor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "Rendered request-all-agent-operations for 1436 operation(s)") {
+	if !strings.Contains(stdout.String(), "Rendered request-all-agent-operations for 1445 operation(s)") {
 		t.Fatalf("render output = %q", stdout.String())
 	}
 	stdout.Reset()

@@ -26,7 +26,9 @@ would otherwise be allow or request. Operations that are implemented on a
 provider-native data plane, such as git smart HTTP or the OpenAI-compatible
 inference HTTP surface, use the `native-protocol` executor binding and keep
 their catalog default effect; they are not advertised as bounded agent
-operation executions. Catalog validation also prevents high-risk,
+operation executions. A Git operation has the same default effect as the Hub
+operation that reads or changes the same data, so `git.fetch` is allowed like
+`repo.contents.read`, and pushes require approval like file uploads. Catalog validation also prevents high-risk,
 critical, provider-executed, explicit-only, or sealed operations from
 defaulting to `allow`.
 
