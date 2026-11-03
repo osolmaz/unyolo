@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	sharedpreset "github.com/osolmaz/unyolo/authorization/preset"
 	ghpolicy "github.com/osolmaz/unyolo/brokers/github/internal/policy"
@@ -16,7 +17,7 @@ import (
 
 const policyUsage = `usage:
   gh-broker policy render --output <scope.json> --profile-out <profile.json> --manifest-out <manifest.json> [flags]
-  gh-broker policy check --file <scope.json>`
+  gh-broker policy check --file <scope.json> [--file <scope.local.json>]`
 
 func runPolicy(stdout, stderr io.Writer, args []string) error {
 	if len(args) == 0 {
@@ -99,20 +100,22 @@ func runPolicyCheck(stdout, stderr io.Writer, args []string) error {
 	var output bytes.Buffer
 	fs := flag.NewFlagSet("gh-broker policy check", flag.ContinueOnError)
 	fs.SetOutput(&output)
-	path := fs.String("file", "", "scope policy file")
+	var paths unyolosetup.StringListFlag
+	fs.Var(&paths, "file", "scope policy file; repeat it to check files that the broker loads together")
 	if err := parseCommandFlags(stderr, fs, &output, args, "invalid policy check flags"); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || *path == "" {
+	if fs.NArg() != 0 || len(paths) == 0 {
 		return exitError{code: 64, message: "policy check requires --file"}
 	}
-	data, err := os.ReadFile(*path) // #nosec G304 -- operator-supplied policy path.
-	if err != nil {
-		return fmt.Errorf("read policy: %w", err)
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("read policy: %w", err)
+		}
 	}
-	if _, err := ghpolicy.Parse(data); err != nil {
+	if _, err := ghpolicy.LoadFiles(paths...); err != nil {
 		return exitError{code: 1, message: err.Error()}
 	}
-	_, err = fmt.Fprintf(stdout, "Policy is valid: %s\n", *path)
+	_, err := fmt.Fprintf(stdout, "Policy is valid: %s\n", strings.Join(paths, ", "))
 	return err
 }

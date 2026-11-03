@@ -2,6 +2,7 @@ GH_BROKER_DEVELOPMENT=false
 GH_BROKER_AGENT_ENDPOINT=activation://agent
 GH_BROKER_SECRETS_FILE=/etc/gh-broker/secrets
 GH_BROKER_SCOPE_FILE=/etc/gh-broker/scope.json
+GH_BROKER_LOCAL_SCOPE_FILE=/etc/gh-broker/scope.local.json
 GH_BROKER_STATE_DIR=/var/lib/gh-broker
 GH_BROKER_OPERATOR_SECRETS_FILE=/etc/gh-broker/operator-secrets
 GH_BROKER_OPERATOR_ENDPOINT=activation://operator
