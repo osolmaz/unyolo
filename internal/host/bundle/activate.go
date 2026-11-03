@@ -248,8 +248,10 @@ func (i Installer) Rollback(ctx context.Context) error {
 }
 
 // RollbackCandidate compensates one transaction-bound activation, including a
-// first installation that has no previous runtime bundle.
-func (i Installer) RollbackCandidate(ctx context.Context, candidate string) error {
+// first installation that has no previous runtime bundle. previous is the
+// bundle that was active before the transaction. When the failed activation
+// already restored it, the rollback has nothing left to do.
+func (i Installer) RollbackCandidate(ctx context.Context, candidate, previous string) error {
 	if err := i.normalize(); err != nil {
 		return err
 	}
@@ -261,7 +263,74 @@ func (i Installer) RollbackCandidate(ctx context.Context, candidate string) erro
 	if err := i.recoverInterruptedActivation(); err != nil {
 		return err
 	}
-	return i.rollbackCandidateLocked(ctx, candidate)
+	return i.rollbackCandidateLocked(ctx, candidate, previous)
+}
+
+// RestartActive restarts and verifies the services of the active bundle.
+// Setup calls it after a rollback restored the earlier service configuration,
+// so that the services load it. It also clears the recovery mark that a failed
+// activation leaves when it restored the bundle but could not start its
+// services.
+func (i Installer) RestartActive(ctx context.Context) error {
+	if err := i.normalize(); err != nil {
+		return err
+	}
+	lock, err := acquireLock(i.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.close()
+	if err := i.recoverInterruptedActivation(); err != nil {
+		return err
+	}
+	active, manifest, err := i.currentManifest()
+	if err != nil || active == "" {
+		return err
+	}
+	record, err := i.readActivation()
+	if err != nil || record.ActiveBundleID != active {
+		return errors.Join(err, errors.New("host activation record and current release are inconsistent; run doctor"))
+	}
+	if err := i.verifyRelease(manifest, filepath.Join(i.Paths.Root, "releases", active)); err != nil {
+		return err
+	}
+	if err := i.restartServices(ctx, manifest); err != nil {
+		return err
+	}
+	if !record.RecoveryRequired {
+		return nil
+	}
+	record.RecoveryRequired = false
+	if record.PreviousBundleID == record.ActiveBundleID {
+		record.PreviousBundleID = ""
+	}
+	return writeJSONAtomic(filepath.Join(i.Paths.StateDir, activationFilename), record, 0o600)
+}
+
+// RecoveryRequired reports whether a failed activation left its transaction
+// unfinished or left the active bundle marked for recovery.
+func (i Installer) RecoveryRequired() (bool, error) {
+	if err := i.normalize(); err != nil {
+		return false, err
+	}
+	if _, found, err := i.readActivationTransaction(); err != nil || found {
+		return found, err
+	}
+	snapshot, err := i.activationSnapshot()
+	return snapshot != nil && snapshot.RecoveryRequired, err
+}
+
+func (i Installer) restartServices(ctx context.Context, manifest Manifest) error {
+	if err := i.Manager.Reload(ctx); err != nil {
+		return err
+	}
+	if err := i.stop(ctx, manifest); err != nil {
+		return err
+	}
+	if err := i.enableServices(ctx, manifest); err != nil {
+		return err
+	}
+	return i.startAndVerify(ctx, manifest)
 }
 
 // DeactivateCandidate idempotently removes an installation-owned active
@@ -297,7 +366,7 @@ func (i Installer) DeactivateCandidate(ctx context.Context, candidate string) er
 		return errors.New("runtime activation record and current release are inconsistent")
 	}
 	if snapshot != nil && snapshot.ActiveBundleID == candidate {
-		if err := i.rollbackCandidateLocked(ctx, candidate); err != nil {
+		if err := i.rollbackCandidateLocked(ctx, candidate, ""); err != nil {
 			return err
 		}
 	}
@@ -399,7 +468,7 @@ func (i Installer) DeactivateInstallation(ctx context.Context, candidate, baseli
 	return syncDirectory(filepath.Join(i.Paths.Root, "releases"))
 }
 
-func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate string) error {
+func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate, previous string) error {
 	snapshot, err := i.activationSnapshot()
 	if err != nil {
 		return err
@@ -416,6 +485,9 @@ func (i Installer) rollbackCandidateLocked(ctx context.Context, candidate string
 	}
 	record := *snapshot
 	if record.ActiveBundleID != candidate {
+		if previous != "" && record.ActiveBundleID == previous {
+			return nil
+		}
 		return errors.New("active unYOLO bundle changed before transaction rollback")
 	}
 	activeManifest, err := i.manifest(record.ActiveBundleID)

@@ -230,6 +230,84 @@ func TestApplyRecoversBeforeReplanning(t *testing.T) {
 	}
 }
 
+func TestPlanReviewFinishesAnUnfinishedRollbackBeforePlanning(t *testing.T) {
+	pack, state, transactionPath := unfinishedTransactionFixture(t, func(snapshot profile.Snapshot) transaction.Journal {
+		return transaction.Journal{
+			APIVersion: transaction.APIVersion, ID: "recovery", DeploymentDigest: snapshot.Digest,
+			PlanDigest: engineDigest("host-plan"), CandidateBundle: snapshot.Manifest.BundleID, Phase: "recovery_required",
+			Steps: []transaction.StepRecord{
+				{ID: "component.fake", Kind: "component:fake", State: "complete", RollbackHandle: "rollback-id"},
+				{ID: "runtime.activate", Kind: "runtime", State: "running"},
+				{ID: "host.verify", Kind: "verification", State: "pending"},
+			},
+		}
+	})
+	engine, err := New(Options{
+		Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}, Manager: fakeManager{}, Development: true, Identity: engineTestIdentity(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.PlanReview(t.Context(), pack); err == nil || !strings.Contains(err.Error(), "during planning") {
+		t.Fatalf("PlanReview() error = %v", err)
+	}
+	if _, err := os.Stat(transactionPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unfinished transaction was not rolled back before planning: %v", err)
+	}
+}
+
+func TestPlanReviewKeepsATransactionOfAnotherConfiguration(t *testing.T) {
+	pack, state, transactionPath := unfinishedTransactionFixture(t, func(profile.Snapshot) transaction.Journal {
+		return transaction.Journal{
+			APIVersion: transaction.APIVersion, ID: "recovery", DeploymentDigest: engineDigest("other-deployment"),
+			PlanDigest: engineDigest("host-plan"), CandidateBundle: "other-bundle", Phase: "recovery_required",
+			Steps: []transaction.StepRecord{{ID: "component.fake", Kind: "component:fake", State: "complete", RollbackHandle: "rollback-id"}},
+		}
+	})
+	engine, err := New(Options{
+		Paths: bundle.Paths{Root: t.TempDir(), StateDir: state}, Manager: fakeManager{}, Development: true, Identity: engineTestIdentity(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.PlanReview(t.Context(), pack); err == nil || !strings.Contains(err.Error(), "original locked deployment pack") {
+		t.Fatalf("PlanReview() error = %v", err)
+	}
+	if _, err := os.Stat(transactionPath); err != nil {
+		t.Fatalf("transaction of another configuration was removed: %v", err)
+	}
+}
+
+// unfinishedTransactionFixture locks the test pack and writes the journal that
+// journal returns for it as an unfinished transaction.
+func unfinishedTransactionFixture(t *testing.T, journal func(profile.Snapshot) transaction.Journal) (string, string, string) {
+	t.Helper()
+	pack := engineTestPack(t)
+	if err := os.WriteFile(filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"fake/v1","test_plan_status":"valid"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := profile.Lock(pack, false); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := profile.Load(pack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(journal(snapshot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transactionPath := filepath.Join(state, "deployment-transaction.json")
+	if err := os.WriteFile(transactionPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return pack, state, transactionPath
+}
+
 func TestPlanRejectsNonPlanningAdapterStatus(t *testing.T) {
 	pack := engineTestPack(t)
 	if err := os.WriteFile(filepath.Join(pack, "components", "fake.json"), []byte(`{"api_version":"fake/v1","test_plan_status":"valid"}`), 0o600); err != nil {

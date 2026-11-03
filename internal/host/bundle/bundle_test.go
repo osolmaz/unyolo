@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -488,6 +489,94 @@ func TestActivateRecordsRecoveryRequiredWhenRollbackFails(t *testing.T) {
 	}
 }
 
+func TestRollbackCandidateAcceptsThePredecessorThatActivationRestored(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Nanosecond, ReadyInterval: time.Nanosecond, Probe: failBuildReadiness("two")}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if err := installer.Activate(t.Context(), two, twoData, artifacts); err == nil {
+		t.Fatal("activation succeeded despite failed readiness")
+	}
+	if err := installer.RollbackCandidate(t.Context(), "bundle-two", "bundle-one"); err != nil {
+		t.Fatalf("rollback after the restored activation = %v", err)
+	}
+	if err := installer.RollbackCandidate(t.Context(), "bundle-two", "bundle-other"); err == nil {
+		t.Fatal("rollback accepted an active bundle that is not the predecessor")
+	}
+	assertCurrentBundle(t, root, "bundle-one")
+}
+
+func TestRestartActiveFinishesARollbackThatCouldNotStartServices(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager,
+		ReadyTimeout: time.Nanosecond, ReadyInterval: time.Nanosecond, Probe: failBuildReadiness("two")}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	manager.failStartBundle = "bundle-one"
+	two, twoData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-two", "two"))
+	if err := installer.Activate(t.Context(), two, twoData, artifacts); err == nil {
+		t.Fatal("activation succeeded despite failed rollback")
+	}
+	if err := installer.RestartActive(t.Context()); err == nil {
+		t.Fatal("restart succeeded while the services cannot start")
+	}
+	manager.failStartBundle = ""
+	if err := installer.RestartActive(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	record, err := installer.readActivation()
+	if err != nil || record.RecoveryRequired || record.ActiveBundleID != "bundle-one" {
+		t.Fatalf("activation record = %+v, %v", record, err)
+	}
+	if !manager.active["gh.service"] || !manager.active["telegram.service"] {
+		t.Fatalf("services did not start: %v", manager.active)
+	}
+	if err := installer.RollbackCandidate(t.Context(), "bundle-two", "bundle-one"); err != nil {
+		t.Fatalf("rollback after the finished recovery = %v", err)
+	}
+}
+
+func TestRestartActiveClearsARecoveryMarkWithoutATransaction(t *testing.T) {
+	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
+	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
+	installer := Installer{Paths: Paths{Root: root, StateDir: state}, Manager: manager, Now: time.Now, Probe: func(context.Context, Component) error { return nil }}
+	one, oneData := writeManifestArtifacts(t, artifacts, testManifest(t, "bundle-one", "one"))
+	if err := installer.Activate(t.Context(), one, oneData, artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.writeRecoveryRecord("bundle-one", "bundle-two"); err != nil {
+		t.Fatal(err)
+	}
+	manager.actions = nil
+	if err := installer.RestartActive(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	record, err := installer.readActivation()
+	if err != nil || record.RecoveryRequired || record.ActiveBundleID != "bundle-one" || record.PreviousBundleID != "" {
+		t.Fatalf("activation record = %+v, %v", record, err)
+	}
+	if !slices.Contains(manager.actions, "reload") || !slices.Contains(manager.actions, "stop:gh.service") || !slices.Contains(manager.actions, "start:gh.service") {
+		t.Fatalf("services were not restarted: %v", manager.actions)
+	}
+}
+
+func failBuildReadiness(buildID string) func(context.Context, Component) error {
+	return func(_ context.Context, component Component) error {
+		if component.BuildID == buildID && component.Role == RoleConsumer {
+			return errors.New("injected readiness failure")
+		}
+		return nil
+	}
+}
+
 func TestActivateRecoversPreviousServicesAfterPartialStopFailure(t *testing.T) {
 	root, state, artifacts := filepath.Join(t.TempDir(), "root"), filepath.Join(t.TempDir(), "state"), t.TempDir()
 	manager := &fakeManager{root: root, destinations: map[string]string{"gh.service": "bin/gh", "telegram.service": "bin/telegram"}, active: map[string]bool{}}
@@ -570,13 +659,13 @@ func TestRollbackCandidateRestoresFirstInstall(t *testing.T) {
 	if err := installer.Activate(t.Context(), manifest, data, artifacts); err != nil {
 		t.Fatal(err)
 	}
-	if err := installer.RollbackCandidate(t.Context(), "other-bundle"); err == nil {
+	if err := installer.RollbackCandidate(t.Context(), "other-bundle", ""); err == nil {
 		t.Fatal("transaction rollback accepted a changed active bundle")
 	}
-	if err := installer.RollbackCandidate(t.Context(), manifest.BundleID); err != nil {
+	if err := installer.RollbackCandidate(t.Context(), manifest.BundleID, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := installer.RollbackCandidate(t.Context(), manifest.BundleID); err != nil {
+	if err := installer.RollbackCandidate(t.Context(), manifest.BundleID, ""); err != nil {
 		t.Fatalf("completed transaction rollback was not idempotent: %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(root, "current")); !errors.Is(err, os.ErrNotExist) {

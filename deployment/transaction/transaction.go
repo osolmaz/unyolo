@@ -88,7 +88,8 @@ func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDi
 	for index, step := range steps {
 		journal.Steps[index].State = "running"
 		if err := coordinator.write(journal); err != nil {
-			return coordinator.rollback(ctx, journal, steps, index-1, err)
+			journal.Steps[index].State = "pending"
+			return coordinator.rollback(ctx, journal, stepCompensations(steps), err)
 		}
 		handle, applyErr := step.Apply(ctx)
 		if applyErr != nil {
@@ -96,21 +97,12 @@ func (coordinator Coordinator) Run(ctx context.Context, deploymentDigest, planDi
 			if err := coordinator.write(journal); err != nil {
 				return errors.Join(applyErr, err)
 			}
-			if err := step.RollbackRunning(ctx); err != nil {
-				journal.Phase = "recovery_required"
-				_ = coordinator.write(journal)
-				return errors.Join(applyErr, err)
-			}
-			journal.Steps[index].State = "rolled_back"
-			if err := coordinator.write(journal); err != nil {
-				return errors.Join(applyErr, err)
-			}
-			return coordinator.rollback(ctx, journal, steps, index-1, applyErr)
+			return coordinator.rollback(ctx, journal, stepCompensations(steps), applyErr)
 		}
 		journal.Steps[index].State = "complete"
 		journal.Steps[index].RollbackHandle = handle
 		if err := coordinator.write(journal); err != nil {
-			return coordinator.rollback(ctx, journal, steps, index, err)
+			return coordinator.rollback(ctx, journal, stepCompensations(steps), err)
 		}
 	}
 	journal.Phase = "committed"
@@ -148,9 +140,10 @@ func (coordinator Coordinator) Finalize(ctx context.Context, handlers map[string
 	return coordinator.clear()
 }
 
-// Recover rolls back a noncommitted journal with matching step handlers.
-//
-//nolint:cyclop // Recovery handles committed, uncertain, missing-handler, failed, and durable rollback states.
+// Recover rolls back a noncommitted journal with matching step handlers. A
+// step that was still running uses the handler for "running:" plus its kind.
+// Without that handler, the step's outcome is uncertain and needs manual
+// recovery.
 func (coordinator Coordinator) Recover(ctx context.Context, handlers map[string]func(context.Context, string) error) error {
 	journal, found, err := coordinator.read()
 	if err != nil || !found {
@@ -159,60 +152,96 @@ func (coordinator Coordinator) Recover(ctx context.Context, handlers map[string]
 	if journal.Phase == "committed" {
 		return errors.New("committed host deployment transaction requires finalization")
 	}
-	for index := len(journal.Steps) - 1; index >= 0; index-- {
-		record := journal.Steps[index]
-		if record.State == "running" {
-			journal.Phase = "recovery_required"
-			if err := coordinator.write(journal); err != nil {
-				return err
+	compensations := map[int]compensation{}
+	for index, record := range journal.Steps {
+		switch record.State {
+		case "running":
+			handler := handlers["running:"+record.Kind]
+			if handler == nil {
+				journal.Phase = "recovery_required"
+				if err := coordinator.write(journal); err != nil {
+					return err
+				}
+				return fmt.Errorf("transaction step %q has an uncertain apply outcome; manual recovery is required", record.ID)
 			}
-			return fmt.Errorf("transaction step %q has an uncertain apply outcome; manual recovery is required", record.ID)
-		}
-		if record.State != "complete" {
-			continue
-		}
-		handler := handlers[record.Kind]
-		if handler == nil {
-			journal.Phase = "recovery_required"
-			_ = coordinator.write(journal)
-			return fmt.Errorf("recovery handler for %q is unavailable", record.Kind)
-		}
-		if err := handler(ctx, record.RollbackHandle); err != nil {
-			journal.Phase = "recovery_required"
-			_ = coordinator.write(journal)
-			return err
-		}
-		journal.Steps[index].State = "rolled_back"
-		if err := coordinator.write(journal); err != nil {
-			return err
+			compensations[index] = compensation{running: func(ctx context.Context) error { return handler(ctx, "") }}
+		case "complete":
+			handler := handlers[record.Kind]
+			if handler == nil {
+				journal.Phase = "recovery_required"
+				_ = coordinator.write(journal)
+				return fmt.Errorf("recovery handler for %q is unavailable", record.Kind)
+			}
+			compensations[index] = compensation{complete: handler}
 		}
 	}
-	return coordinator.clear()
+	return coordinator.rollback(ctx, journal, func(index int) compensation { return compensations[index] }, nil)
 }
 
-func (coordinator Coordinator) rollback(ctx context.Context, journal Journal, steps []Step, last int, cause error) error {
+// compensation undoes one step: complete undoes a finished step with its
+// rollback handle, and running undoes a step whose apply did not finish.
+type compensation struct {
+	complete func(context.Context, string) error
+	running  func(context.Context) error
+}
+
+func stepCompensations(steps []Step) func(int) compensation {
+	return func(index int) compensation {
+		return compensation{complete: steps[index].Rollback, running: steps[index].RollbackRunning}
+	}
+}
+
+// rollback undoes every running and completed step, the newest first. One
+// undo can depend on another that comes later: a runtime can start again
+// only after the components restore their earlier configuration. So each
+// failed undo is tried once more after all the others.
+func (coordinator Coordinator) rollback(ctx context.Context, journal Journal, compensations func(int) compensation, cause error) error {
 	journal.Phase = "rolling_back"
 	_ = coordinator.write(journal)
-	var rollbackErrors []error
-	for index := last; index >= 0; index-- {
-		if journal.Steps[index].State != "complete" {
-			continue
-		}
-		if err := steps[index].Rollback(ctx, journal.Steps[index].RollbackHandle); err != nil {
-			rollbackErrors = append(rollbackErrors, err)
-			continue
-		}
-		journal.Steps[index].State = "rolled_back"
-		if err := coordinator.write(journal); err != nil {
-			rollbackErrors = append(rollbackErrors, err)
+	var pending []int
+	for index := len(journal.Steps) - 1; index >= 0; index-- {
+		if state := journal.Steps[index].State; state == "running" || state == "complete" {
+			pending = append(pending, index)
 		}
 	}
-	if len(rollbackErrors) > 0 {
+	var failures []error
+	for attempt := 0; attempt < 2 && len(pending) > 0; attempt++ {
+		var failed []int
+		failures = nil
+		for _, index := range pending {
+			undone, err := coordinator.compensate(ctx, &journal, index, compensations(index))
+			if err != nil {
+				failures = append(failures, err)
+			}
+			if !undone {
+				failed = append(failed, index)
+			}
+		}
+		pending = failed
+	}
+	if len(pending) > 0 || len(failures) > 0 {
 		journal.Phase = "recovery_required"
 		_ = coordinator.write(journal)
-		return errors.Join(append([]error{cause}, rollbackErrors...)...)
+		return errors.Join(append([]error{cause}, failures...)...)
 	}
 	return errors.Join(cause, coordinator.clear())
+}
+
+// compensate undoes one step and records it. It reports whether the undo
+// itself succeeded, even when the record write afterwards failed.
+func (coordinator Coordinator) compensate(ctx context.Context, journal *Journal, index int, undo compensation) (bool, error) {
+	record := journal.Steps[index]
+	var err error
+	if record.State == "running" {
+		err = undo.running(ctx)
+	} else {
+		err = undo.complete(ctx, record.RollbackHandle)
+	}
+	if err != nil {
+		return false, err
+	}
+	journal.Steps[index].State = "rolled_back"
+	return true, coordinator.write(*journal)
 }
 
 func (coordinator Coordinator) read() (Journal, bool, error) {
