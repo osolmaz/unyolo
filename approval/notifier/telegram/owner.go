@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -37,6 +39,7 @@ type Owner struct {
 	routes     map[string]CardSource
 	retryDelay time.Duration
 	newToken   func() (string, error)
+	logger     *slog.Logger
 }
 
 // NewOwner builds the card owner for the configured broker routes.
@@ -78,16 +81,24 @@ func (o *Owner) Run(ctx context.Context) error {
 }
 
 func (o *Owner) runRoute(ctx context.Context, route string, source CardSource) {
+	failures := newRetryLog(o.logger, routeBrokerNames[route]+" approval cards")
 	for ctx.Err() == nil {
-		if err := o.follow(ctx, route, source); err != nil {
-			wait(ctx, o.retryDelay)
+		err := o.follow(ctx, route, source, failures)
+		if err == nil || ctx.Err() != nil {
+			continue
 		}
+		// io.EOF means that the broker ended the event stream, for example
+		// to restart. The owner reconnects without a failure.
+		if !errors.Is(err, io.EOF) {
+			failures.failed(err)
+		}
+		wait(ctx, o.retryDelay)
 	}
 }
 
 // follow applies events from the stored cursor. Without a cursor, or after
 // the broker dropped it, it first rebuilds the cards from a fresh list.
-func (o *Owner) follow(ctx context.Context, route string, source CardSource) error {
+func (o *Owner) follow(ctx context.Context, route string, source CardSource, failures *retryLog) error {
 	cursor, err := o.startCursor(ctx, route, source)
 	if err != nil {
 		return err
@@ -100,7 +111,7 @@ func (o *Owner) follow(ctx context.Context, route string, source CardSource) err
 		return err
 	}
 	defer func() { _ = stream.Close() }()
-	return o.applyEvents(ctx, route, source, stream)
+	return o.applyEvents(ctx, route, source, stream, failures)
 }
 
 // startCursor returns the stored event cursor, or the cursor of a fresh
@@ -115,7 +126,7 @@ func (o *Owner) startCursor(ctx context.Context, route string, source CardSource
 
 // applyEvents applies each event and stores its cursor only after the card
 // matches the request, so a restart repeats an unfinished event.
-func (o *Owner) applyEvents(ctx context.Context, route string, source CardSource, stream operatorv1.EventStream) error {
+func (o *Owner) applyEvents(ctx context.Context, route string, source CardSource, stream operatorv1.EventStream, failures *retryLog) error {
 	for {
 		event, err := stream.Receive(ctx)
 		if err != nil {
@@ -127,6 +138,7 @@ func (o *Owner) applyEvents(ctx context.Context, route string, source CardSource
 		if err := o.inbox.saveEventCursor(ctx, route, event.Cursor); err != nil {
 			return err
 		}
+		failures.recovered()
 	}
 }
 

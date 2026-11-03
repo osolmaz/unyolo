@@ -22,11 +22,12 @@ func (c *Client) PollDurableReady(ctx context.Context, inbox *Inbox,
 	if inbox == nil || handler == nil {
 		return errors.New("telegram durable poll requires an inbox and handler")
 	}
+	failures := newRetryLog(c.logger, "approval polling")
 	for ctx.Err() == nil {
 		if err := verifyDurableRoutes(ctx, ready); err != nil {
 			return err
 		}
-		retry, err := c.pollDurableOnce(ctx, inbox, handler)
+		retry, err := c.pollDurableOnce(ctx, inbox, handler, failures)
 		if err != nil {
 			return err
 		}
@@ -47,25 +48,33 @@ func verifyDurableRoutes(ctx context.Context, ready func(context.Context) error)
 }
 
 func (c *Client) pollDurableOnce(ctx context.Context, inbox *Inbox,
-	handler func(context.Context, notify.Decision) notify.DecisionResult) (bool, error) {
+	handler func(context.Context, notify.Decision) notify.DecisionResult, failures *retryLog) (bool, error) {
 	if err := c.dispatchPending(ctx, inbox, handler); err != nil {
-		return retryDurablePoll()
+		return retryDurablePoll(ctx, failures, err)
 	}
 	offset, err := inbox.nextOffset(ctx)
 	if err != nil {
-		return retryDurablePoll()
+		return retryDurablePoll(ctx, failures, err)
 	}
 	updates, err := c.getUpdates(ctx, offset)
 	if errors.Is(err, ErrAnotherOwner) {
 		return false, err
 	}
 	if err != nil {
-		return retryDurablePoll()
+		return retryDurablePoll(ctx, failures, err)
 	}
+	failures.recovered()
 	return false, c.persistUpdates(ctx, inbox, updates)
 }
 
-func retryDurablePoll() (bool, error) { return true, nil }
+// retryDurablePoll logs a failure of one poll, unless the poll ended because
+// the service stops, and asks the loop to retry.
+func retryDurablePoll(ctx context.Context, failures *retryLog, err error) (bool, error) {
+	if ctx.Err() == nil {
+		failures.failed(err)
+	}
+	return true, nil
+}
 
 func (c *Client) persistUpdates(ctx context.Context, inbox *Inbox, updates []telegramUpdate) error {
 	for _, update := range updates {
