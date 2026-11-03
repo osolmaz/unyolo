@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,10 +18,12 @@ import (
 	"github.com/osolmaz/unyolo/authorization/decision"
 	"github.com/osolmaz/unyolo/authorization/grants"
 	"github.com/osolmaz/unyolo/authorization/policy"
+	"github.com/osolmaz/unyolo/broker/controlplane"
 	"github.com/osolmaz/unyolo/operator/client"
 	"github.com/osolmaz/unyolo/operator/fake"
 	"github.com/osolmaz/unyolo/operator/v1"
 	"github.com/osolmaz/unyolo/telemetry/audit"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 const testOperatorSecret = "operator-secret-with-enough-entropy"
@@ -201,6 +204,50 @@ func TestOperatorV1EventStream(t *testing.T) {
 	event, err := stream.Receive(ctx)
 	if err != nil || event.Kind != "request.created" || event.RequestID == "" {
 		t.Fatalf("Receive() = %+v, %v", event, err)
+	}
+}
+
+func TestOperatorV1EventStreamEndsWhenTheServerShutsDown(t *testing.T) {
+	store := grants.New(filepath.Join(t.TempDir(), "grants.json"), grants.Options{})
+	runtime, err := controlplane.New(controlplane.Options{
+		Broker: "fake-broker", Store: store, OperatorSecrets: map[string]string{"onur": testOperatorSecret},
+		ClientSecrets: map[string]string{"bob": "client-secret-with-enough-entropy"}, Audit: audit.New(io.Discard),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := serverhttp.New(runtime.OperatorHandler, serverhttp.ProfileOperator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { _ = server.Close() })
+	client, err := operatorclient.New("tcp://"+listener.Addr().String(), testOperatorSecret, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestGrant(t, store, "stream")
+	stream, err := client.Watch(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stream.Close() }()
+	if _, err := stream.Receive(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if err := serverhttp.Shutdown([]serverhttp.Binding{{Server: server, Listener: listener}}); err != nil {
+		t.Fatalf("Shutdown() = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("Shutdown() waited %s for the event stream", elapsed)
+	}
+	if _, err := stream.Receive(t.Context()); err == nil {
+		t.Fatal("the event stream stayed open after the shutdown")
 	}
 }
 
