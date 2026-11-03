@@ -34,6 +34,7 @@ const (
 	ghSecretsFileName              = "secrets"
 	ghOperatorSecretsFileName      = "operator-secrets"
 	ghScopeFileName                = "scope.json"
+	ghLocalScopeFileName           = "scope.local.json"
 	ghPolicyProfileFileName        = "policy-profile.json"
 	ghPolicyManifestFileName       = "policy-manifest.json"
 	ghEnvFileName                  = "env"
@@ -52,6 +53,7 @@ type systemdPlan struct {
 	secretsPath         string
 	operatorSecretsPath string
 	scopePath           string
+	localScopePath      string
 	policyProfilePath   string
 	policyManifestPath  string
 	envPath             string
@@ -118,6 +120,7 @@ func systemdSetupPlan(opts setupSystemdOptions) systemdPlan {
 		secretsPath:         filepath.Join(opts.ConfigDir, ghSecretsFileName),
 		operatorSecretsPath: filepath.Join(opts.ConfigDir, ghOperatorSecretsFileName),
 		scopePath:           filepath.Join(opts.ConfigDir, ghScopeFileName),
+		localScopePath:      filepath.Join(opts.ConfigDir, ghLocalScopeFileName),
 		policyProfilePath:   filepath.Join(opts.ConfigDir, ghPolicyProfileFileName),
 		policyManifestPath:  filepath.Join(opts.ConfigDir, ghPolicyManifestFileName),
 		envPath:             filepath.Join(opts.ConfigDir, ghEnvFileName),
@@ -413,6 +416,7 @@ func renderEnvFile(plan systemdPlan) string {
 		"GH_BROKER_CLIENT_ID=" + opts.ClientName + "\n" +
 		"GH_BROKER_SECRETS_FILE=" + plan.secretsPath + "\n" +
 		"GH_BROKER_SCOPE_FILE=" + plan.scopePath + "\n" +
+		"GH_BROKER_LOCAL_SCOPE_FILE=" + plan.localScopePath + "\n" +
 		"GH_BROKER_STATE_DIR=" + opts.StateDir + "\n" +
 		"GH_BROKER_OPERATOR_ID=" + opts.OperatorID + "\n" +
 		"GH_BROKER_OPERATOR_SECRETS_FILE=" + plan.operatorSecretsPath + "\n" +

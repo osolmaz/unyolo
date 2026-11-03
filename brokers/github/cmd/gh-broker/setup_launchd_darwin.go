@@ -118,7 +118,7 @@ func ghLaunchdEnvironment(plan systemdPlan) map[string]string {
 	values := map[string]string{
 		"GH_BROKER_DEVELOPMENT": "false", "GH_BROKER_AGENT_ENDPOINT": "activation://agent",
 		"GH_BROKER_CLIENT_ID": plan.opts.ClientName, "GH_BROKER_SECRETS_FILE": plan.secretsPath,
-		"GH_BROKER_SCOPE_FILE": plan.scopePath, "GH_BROKER_STATE_DIR": plan.opts.StateDir,
+		"GH_BROKER_SCOPE_FILE": plan.scopePath, "GH_BROKER_LOCAL_SCOPE_FILE": plan.localScopePath, "GH_BROKER_STATE_DIR": plan.opts.StateDir,
 		"GH_BROKER_OPERATOR_ID": plan.opts.OperatorID, "GH_BROKER_OPERATOR_SECRETS_FILE": plan.operatorSecretsPath,
 		"GH_BROKER_OPERATOR_ENDPOINT": "activation://operator", "GH_BROKER_GITHUB_HTTP_TIMEOUT": "30",
 		"GH_BROKER_GITHUB_STREAM_TIMEOUT": "600", "GH_BROKER_MAX_RECEIVE_PACK_BYTES": "26214400",

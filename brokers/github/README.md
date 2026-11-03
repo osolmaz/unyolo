@@ -321,6 +321,18 @@ a rule has attrs, every operation in that rule must support every attr; split
 rules when operations need different attrs. Start from
 [scope.example.json](scope.example.json).
 
+gh-broker also loads `scope.local.json` from the same directory when that file
+exists. Setup replaces `scope.json` on every run and never writes the local
+file, so put the rules that you add yourself there. The broker checks the rules
+of both files as one policy: rule IDs must be unique across the files, and a
+deny rule in either file wins. Check both files together before you restart
+the broker:
+
+```sh
+gh-broker policy check --file /etc/gh-broker/scope.json \
+  --file /etc/gh-broker/scope.local.json
+```
+
 The default production-oriented workflow is:
 
 - allow fetch, repository listing, and content reads for scoped repositories
@@ -538,6 +550,8 @@ Deployment safety settings:
   Unix socket unless the deployment explicitly selects TCP.
 - `GH_BROKER_STATE_DIR` and `GH_BROKER_SCOPE_FILE` are required and must be
   absolute in production.
+- `GH_BROKER_LOCAL_SCOPE_FILE` is optional and must be absolute in production.
+  When the file exists, its rules are added to the scope file.
 - `GH_BROKER_GITHUB_HTTP_TIMEOUT` defaults to 30 seconds;
   `GH_BROKER_GITHUB_STREAM_TIMEOUT` defaults to 600 seconds;
   `GH_BROKER_MAX_RECEIVE_PACK_BYTES` defaults to 25 MiB.

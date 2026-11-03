@@ -42,6 +42,25 @@ func TestPolicyRenderCheckAndDoctor(t *testing.T) {
 	}
 }
 
+func TestPolicyCheckValidatesFilesTogether(t *testing.T) {
+	dir := t.TempDir()
+	rule := `{"rules":[{"id":"same","effect":"allow","clients":["agent-a"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}]}]}`
+	scope, local := filepath.Join(dir, "scope.json"), filepath.Join(dir, "scope.local.json")
+	for _, path := range []string{scope, local} {
+		if err := os.WriteFile(path, []byte(rule), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if err := runWithArgs(context.Background(), []string{"policy", "check", "--file", scope}, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	err := runWithArgs(context.Background(), []string{"policy", "check", "--file", scope, "--file", local}, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "duplicate rule id") {
+		t.Fatalf("check of two files with one rule id = %v", err)
+	}
+}
+
 func TestPolicyRenderRequiresExplicitReplace(t *testing.T) {
 	dir := t.TempDir()
 	args := []string{"render", "--output", filepath.Join(dir, "scope.json"), "--profile-out", filepath.Join(dir, "profile.json"), "--manifest-out", filepath.Join(dir, "manifest.json")}

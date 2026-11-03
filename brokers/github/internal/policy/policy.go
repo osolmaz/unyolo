@@ -95,17 +95,35 @@ type Policy struct {
 	core *corepolicy.Policy
 }
 
-func LoadFile(file string) (*Policy, error) {
-	// #nosec G304 -- policy file is an operator-managed config path, not request input.
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("read scope file: %w", err)
+// LoadFiles reads every scope file and validates all of their rules together
+// as one policy. Rule IDs must be unique across the files.
+func LoadFiles(files ...string) (*Policy, error) {
+	var rules []Rule
+	for _, file := range files {
+		// #nosec G304 -- policy files are operator-managed config paths, not request input.
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("read scope file: %w", err)
+		}
+		parsed, err := parseRules(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		rules = append(rules, parsed...)
 	}
-	return Parse(data)
+	return New(Scope{Rules: rules})
 }
 
 // Parse strictly decodes and validates one GitHub scope policy.
 func Parse(data []byte) (*Policy, error) {
+	rules, err := parseRules(data)
+	if err != nil {
+		return nil, err
+	}
+	return New(Scope{Rules: rules})
+}
+
+func parseRules(data []byte) ([]Rule, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var raw scopeFile
@@ -121,7 +139,7 @@ func Parse(data []byte) (*Policy, error) {
 	if raw.Rules == nil {
 		return nil, errors.New("parse scope policy: rules is required")
 	}
-	return New(Scope{Rules: *raw.Rules})
+	return *raw.Rules, nil
 }
 
 func New(scope Scope) (*Policy, error) {

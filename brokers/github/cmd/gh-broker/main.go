@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"os/signal"
@@ -200,7 +201,11 @@ func newGitHubAPI(ctx context.Context, cfg config.Config) (*httpapi.Server, erro
 	if err := githubsurface.Validate(); err != nil {
 		return nil, fmt.Errorf("validate generated GitHub surface: %w", err)
 	}
-	brokerPolicy, err := policy.LoadFile(cfg.ScopeFile)
+	scopeFiles, err := brokerScopeFiles(cfg)
+	if err != nil {
+		return nil, err
+	}
+	brokerPolicy, err := policy.LoadFiles(scopeFiles...)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +215,22 @@ func newGitHubAPI(ctx context.Context, cfg config.Config) (*httpapi.Server, erro
 	}
 	api.Start(ctx)
 	return api, nil
+}
+
+// brokerScopeFiles returns the setup-managed scope file and, when it exists,
+// the local scope file. Setup replaces the scope file on every run and never
+// writes the local file, so rules that the operator adds stay in place.
+func brokerScopeFiles(cfg config.Config) ([]string, error) {
+	files := []string{cfg.ScopeFile}
+	if cfg.LocalScopeFile == "" {
+		return files, nil
+	}
+	if _, err := os.Stat(cfg.LocalScopeFile); errors.Is(err, fs.ErrNotExist) {
+		return files, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("read local scope file: %w", err)
+	}
+	return append(files, cfg.LocalScopeFile), nil
 }
 
 func listenGitHubEndpoints(cfg config.Config) (map[string]net.Listener, error) {

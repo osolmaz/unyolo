@@ -47,9 +47,9 @@ func TestPolicyCanAllowDirectMainPushForSpecificRepo(t *testing.T) {
 
 func TestScopeExampleSeparatesDirectAndApprovalOperations(t *testing.T) {
 	t.Parallel()
-	p, err := LoadFile(filepath.Join("..", "..", "scope.example.json"))
+	p, err := LoadFiles(filepath.Join("..", "..", "scope.example.json"))
 	if err != nil {
-		t.Fatalf("LoadFile(scope.example.json) error = %v", err)
+		t.Fatalf("LoadFiles(scope.example.json) error = %v", err)
 	}
 
 	allowed := []Request{
@@ -618,17 +618,17 @@ func TestLoadFileRejectsUnsafeOrUnknownScope(t *testing.T) {
 		"trailing json":     `{"rules":[{"id":"ok","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}]}]}{"rules":[]}`,
 	}
 	for name, body := range cases {
-		if _, err := LoadFile(writeScopeFile(t, body)); err == nil {
-			t.Fatalf("%s LoadFile() error = nil, want error", name)
+		if _, err := LoadFiles(writeScopeFile(t, body)); err == nil {
+			t.Fatalf("%s LoadFiles() error = nil, want error", name)
 		}
 	}
 }
 
 func TestLoadFileAcceptsExplicitDenyAllScope(t *testing.T) {
 	t.Parallel()
-	policy, err := LoadFile(writeScopeFile(t, `{"rules":[]}`))
+	policy, err := LoadFiles(writeScopeFile(t, `{"rules":[]}`))
 	if err != nil {
-		t.Fatalf("LoadFile(empty rules) error = %v", err)
+		t.Fatalf("LoadFiles(empty rules) error = %v", err)
 	}
 	decision := policy.Evaluate(Request{
 		Client:    "bob",
@@ -729,6 +729,30 @@ func exampleRepoRequest(operation Operation, owner string, name string, attrs ma
 	request := repoRequest(operation, owner, name, attrs)
 	request.Client = "agent-a"
 	return request
+}
+
+func TestLoadFilesAppliesTheRulesOfEveryFile(t *testing.T) {
+	t.Parallel()
+	scope := writeScopeFile(t, `{"rules":[{"id":"fetch-all","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}]}]}`)
+	local := writeScopeFile(t, `{"rules":[{"id":"deny-private","effect":"deny","clients":["bob"],"operations":["*"],"targets":[{"kind":"repo","owner":"osolmaz","name":"private"}]}]}`)
+	p, err := LoadFiles(scope, local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision := p.Evaluate(repoRequest(OperationGitFetch, "osolmaz", "public", nil)); !decision.Allowed {
+		t.Fatalf("public fetch decision = %+v, want allowed", decision)
+	}
+	if decision := p.Evaluate(repoRequest(OperationGitFetch, "osolmaz", "private", nil)); decision.Allowed || decision.Effect != EffectDeny {
+		t.Fatalf("private fetch decision = %+v, want the local deny", decision)
+	}
+}
+
+func TestLoadFilesRejectsARuleIDInTwoFiles(t *testing.T) {
+	t.Parallel()
+	body := `{"rules":[{"id":"same","effect":"allow","clients":["bob"],"operations":["git.fetch"],"targets":[{"kind":"repo","owner":"osolmaz","name":"*"}]}]}`
+	if _, err := LoadFiles(writeScopeFile(t, body), writeScopeFile(t, body)); err == nil || !strings.Contains(err.Error(), "duplicate rule id") {
+		t.Fatalf("LoadFiles() error = %v, want a duplicate rule id", err)
+	}
 }
 
 func writeScopeFile(t *testing.T, body string) string {

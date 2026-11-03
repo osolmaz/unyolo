@@ -38,6 +38,8 @@
     <string>600</string>
     <key>GH_BROKER_GITHUB_TOKEN_FILE</key>
     <string>/Library/Application Support/unyolo/etc/gh-broker/github-token</string>
+    <key>GH_BROKER_LOCAL_SCOPE_FILE</key>
+    <string>/Library/Application Support/unyolo/etc/gh-broker/scope.local.json</string>
     <key>GH_BROKER_MAX_RECEIVE_PACK_BYTES</key>
     <string>26214400</string>
     <key>GH_BROKER_OPERATOR_ENDPOINT</key>

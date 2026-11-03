@@ -53,6 +53,7 @@ type Config struct {
 	GitHubAPIBaseURL          string
 	GitHubWebBaseURL          string
 	ScopeFile                 string
+	LocalScopeFile            string
 	StateDir                  string
 	GitHubHTTPTimeout         time.Duration
 	GitHubStreamTimeout       time.Duration
@@ -205,6 +206,7 @@ func loadBaseConfig(env environment) (Config, bool, bool, error) {
 		GitHubAPIBaseURL:          env.value("GH_BROKER_GITHUB_API_URL", "https://api.github.com/"),
 		GitHubWebBaseURL:          env.value("GH_BROKER_GITHUB_WEB_URL", "https://github.com/"),
 		ScopeFile:                 env.value("GH_BROKER_SCOPE_FILE", ""),
+		LocalScopeFile:            env.value("GH_BROKER_LOCAL_SCOPE_FILE", ""),
 		StateDir:                  env.value("GH_BROKER_STATE_DIR", ""),
 		TLSCertificateFile:        env.value("GH_BROKER_TLS_CERT_FILE", ""),
 		TLSPrivateKeyFile:         env.value("GH_BROKER_TLS_KEY_FILE", ""),
@@ -571,6 +573,9 @@ func productionPaths(c Config) error {
 		return nil
 	}
 	paths := map[string]string{"GH_BROKER_SCOPE_FILE": c.ScopeFile, "GH_BROKER_STATE_DIR": c.StateDir}
+	if c.LocalScopeFile != "" {
+		paths["GH_BROKER_LOCAL_SCOPE_FILE"] = c.LocalScopeFile
+	}
 	if c.TLSCertificateFile != "" {
 		paths["GH_BROKER_TLS_CERT_FILE"], paths["GH_BROKER_TLS_KEY_FILE"] = c.TLSCertificateFile, c.TLSPrivateKeyFile
 	}

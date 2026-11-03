@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -266,6 +267,23 @@ func TestBuildServersAddsDedicatedOperatorEndpoint(t *testing.T) {
 	t.Cleanup(func() { _ = serverhttp.Shutdown(servers) })
 	if len(servers) != 3 || servers[1].Listener.Addr().Network() != "unix" || servers[1].Server.WriteTimeout != 0 || servers[1].Server.ReadTimeout != 15*time.Second || servers[2].Listener.Addr().Network() != "tcp" {
 		t.Fatalf("servers = %+v", servers)
+	}
+}
+
+func TestBrokerScopeFilesAddsTheLocalFileOnlyWhenItExists(t *testing.T) {
+	cfg := config.Config{ScopeFile: "/etc/gh-broker/scope.json"}
+	if files, err := brokerScopeFiles(cfg); err != nil || !slices.Equal(files, []string{cfg.ScopeFile}) {
+		t.Fatalf("files without a local file = %v, %v", files, err)
+	}
+	cfg.LocalScopeFile = filepath.Join(t.TempDir(), "scope.local.json")
+	if files, err := brokerScopeFiles(cfg); err != nil || !slices.Equal(files, []string{cfg.ScopeFile}) {
+		t.Fatalf("files with a missing local file = %v, %v", files, err)
+	}
+	if err := os.WriteFile(cfg.LocalScopeFile, []byte(`{"rules":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if files, err := brokerScopeFiles(cfg); err != nil || !slices.Equal(files, []string{cfg.ScopeFile, cfg.LocalScopeFile}) {
+		t.Fatalf("files with a local file = %v, %v", files, err)
 	}
 }
 
