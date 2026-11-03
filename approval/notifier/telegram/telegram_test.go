@@ -43,6 +43,17 @@ func TestSendCardAndUpdateCard(t *testing.T) {
 	assertEmptyKeyboard(t, calls[1])
 }
 
+func TestLongPollEndsBeforeTheDefaultRequestTimeout(t *testing.T) {
+	client, err := New("test-token", 123, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	poll := time.Duration(pollTimeoutSeconds) * time.Second
+	if client.client.Timeout != defaultRequestTimeout || poll >= client.client.Timeout {
+		t.Fatalf("long poll = %s, request timeout = %s", poll, client.client.Timeout)
+	}
+}
+
 func TestUpdateCardTreatsUnmodifiedMessageAsDelivered(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

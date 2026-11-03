@@ -19,9 +19,12 @@ import (
 )
 
 const (
-	defaultBaseURL     = "https://api.telegram.org"
-	callbackPrefix     = "bk"
-	pollTimeoutSeconds = 30
+	defaultBaseURL        = "https://api.telegram.org"
+	callbackPrefix        = "bk"
+	defaultRequestTimeout = 30 * time.Second
+	// pollTimeoutSeconds keeps an idle long poll shorter than the request
+	// timeout, so that Telegram ends it before the client gives up on it.
+	pollTimeoutSeconds = 25
 )
 
 const (
@@ -70,7 +73,7 @@ func New(token string, chatID int64, httpClient *http.Client, baseURL string) (*
 		return nil, errors.New("telegram chat id is required")
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		httpClient = &http.Client{Timeout: defaultRequestTimeout}
 	}
 	if baseURL == "" {
 		baseURL = defaultBaseURL
