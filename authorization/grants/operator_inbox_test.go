@@ -42,6 +42,26 @@ func TestQueryGrantsPaginatesDeterministically(t *testing.T) {
 	}
 }
 
+func TestQueryGrantsOfAnEmptyStoreReturnsACursorToWatchFrom(t *testing.T) {
+	now := time.Date(2026, 7, 11, 1, 2, 3, 0, time.UTC)
+	ids := []string{"grant-a"}
+	store := newDeterministicStore(t, func() time.Time { return now }, &ids)
+	page, err := store.QueryGrants(Query{StatusGroup: StatusGroupPending})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.EventCursor == "" {
+		t.Fatal("empty store returned no event cursor")
+	}
+	if _, _, err := store.Request(testOperatorRequest("a")); err != nil {
+		t.Fatal(err)
+	}
+	events, err := store.EventsAfter(page.EventCursor, 10)
+	if err != nil || len(events.Events) != 1 || events.Events[0].Kind != EventRequestCreated {
+		t.Fatalf("events after the empty-store cursor = %+v, %v", events, err)
+	}
+}
+
 func TestOperatorDecisionsCheckRevisionAndOnlyNarrowApproval(t *testing.T) {
 	store := New(t.TempDir()+"/grants.json", Options{})
 	result, _, err := store.Request(testOperatorRequest("decision"))

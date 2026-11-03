@@ -76,7 +76,9 @@ func (s *Store) QueryGrants(query Query) (Page, error) {
 		return Page{}, err
 	}
 	page := buildGrantPage(data.Grants, query, cursor)
-	if query.Cursor == "" && data.NextEvent > 1 {
+	if query.Cursor == "" {
+		// A store without events returns the cursor before its first event,
+		// so that a client can watch from the start.
 		page.EventCursor = encodeEventCursor(data.NextEvent - 1)
 	}
 	return page, nil
