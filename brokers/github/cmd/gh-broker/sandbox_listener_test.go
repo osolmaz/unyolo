@@ -39,7 +39,9 @@ func TestSandboxListenerServesOnlySandboxClients(t *testing.T) {
 	go func() { done <- serveServers(ctx, servers) }()
 	t.Cleanup(func() {
 		cancel()
-		<-done
+		if err := <-done; err != nil {
+			t.Errorf("serveServers() = %v", err)
+		}
 	})
 
 	sandboxClient := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: "host.openshell.internal", MinVersion: tls.VersionTLS12}}}
