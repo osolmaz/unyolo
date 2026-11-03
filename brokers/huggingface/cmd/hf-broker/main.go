@@ -27,12 +27,14 @@ import (
 	"github.com/osolmaz/unyolo/internal/strictjson"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 	"github.com/osolmaz/unyolo/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/http"
 	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 var version = "dev"
 
 func main() {
+	httpx.EnableHTTP2HealthChecks()
 	os.Exit(exitCodeForRun(run(), os.Stderr))
 }
 
