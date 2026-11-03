@@ -11,11 +11,13 @@ import (
 	"syscall"
 
 	"github.com/osolmaz/unyolo/deployment/component"
+	"github.com/osolmaz/unyolo/transport/http"
 )
 
 var version = "dev"
 
 func main() {
+	httpx.EnableHTTP2HealthChecks()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {

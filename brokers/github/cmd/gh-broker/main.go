@@ -20,6 +20,7 @@ import (
 	"github.com/osolmaz/unyolo/deployment/component"
 	"github.com/osolmaz/unyolo/internal/storage/command"
 	"github.com/osolmaz/unyolo/transport/endpoint"
+	"github.com/osolmaz/unyolo/transport/http"
 	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
@@ -28,6 +29,7 @@ var version = "dev"
 type cliCommand func(context.Context, []string, io.Writer, io.Writer) error
 
 func main() {
+	httpx.EnableHTTP2HealthChecks()
 	os.Exit(mainCode())
 }
 
