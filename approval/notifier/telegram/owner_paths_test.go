@@ -108,7 +108,7 @@ func TestOwnerFollowReportsSourceAndStoreFailures(t *testing.T) {
 	for name, build := range tests {
 		t.Run(name, func(t *testing.T) {
 			owner, source := build(t)
-			if err := owner.follow(t.Context(), RouteGitHub, source); err == nil || errors.Is(err, io.EOF) {
+			if err := owner.follow(t.Context(), RouteGitHub, source, discardRetryLog()); err == nil || errors.Is(err, io.EOF) {
 				t.Fatalf("follow() error = %v, want a failure", err)
 			}
 		})

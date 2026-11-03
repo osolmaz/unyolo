@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -62,6 +63,7 @@ type Client struct {
 	chatID  int64
 	baseURL string
 	client  *http.Client
+	logger  *slog.Logger
 }
 
 // New returns a Telegram client.

@@ -182,7 +182,7 @@ func TestOwnerSendsNoCardForRequestDecidedBeforeItWasListed(t *testing.T) {
 	source := newFakeCardSource(requestWithStatus("grant-1", grants.StatusActive))
 	owner, recorder := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
 	source.events = []operatorv1.Event{{Cursor: "cursor-1", Kind: "request.approved", RequestID: "grant-1"}}
-	if err := owner.follow(t.Context(), RouteGitHub, source); !errors.Is(err, io.EOF) {
+	if err := owner.follow(t.Context(), RouteGitHub, source, discardRetryLog()); !errors.Is(err, io.EOF) {
 		t.Fatalf("follow() error = %v, want end of stream", err)
 	}
 	if methods := recorder.methods(); len(methods) != 0 {
@@ -198,7 +198,7 @@ func TestOwnerCardLifecycle(t *testing.T) {
 	source := newFakeCardSource(requestWithStatus("grant-1", grants.StatusPending))
 	owner, recorder := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
 
-	if err := owner.follow(t.Context(), RouteGitHub, source); !errors.Is(err, io.EOF) {
+	if err := owner.follow(t.Context(), RouteGitHub, source, discardRetryLog()); !errors.Is(err, io.EOF) {
 		t.Fatalf("first follow() error = %v", err)
 	}
 	sent := recorder.last()
@@ -217,7 +217,7 @@ func TestOwnerCardLifecycle(t *testing.T) {
 
 	source.set(requestWithStatus("grant-1", grants.StatusActive))
 	source.events = []operatorv1.Event{{Cursor: "cursor-1", RequestID: "grant-1"}}
-	if err := owner.follow(t.Context(), RouteGitHub, source); !errors.Is(err, io.EOF) {
+	if err := owner.follow(t.Context(), RouteGitHub, source, discardRetryLog()); !errors.Is(err, io.EOF) {
 		t.Fatalf("second follow() error = %v", err)
 	}
 	if source.watchedAt[1] != "cursor-0" || recorder.last().method != "editMessageText" ||
@@ -230,7 +230,7 @@ func TestOwnerCardLifecycle(t *testing.T) {
 
 	source.set(requestWithStatus("grant-1", grants.StatusConsumed))
 	source.events = []operatorv1.Event{{Cursor: "cursor-2", RequestID: "grant-1"}}
-	_ = owner.follow(t.Context(), RouteGitHub, source)
+	_ = owner.follow(t.Context(), RouteGitHub, source, discardRetryLog())
 	if stored, _, _ := inbox.card(t.Context(), RouteGitHub, "grant-1"); stored.State != cardClosed {
 		t.Fatalf("consumed card state = %q, want closed", stored.State)
 	}
@@ -243,13 +243,13 @@ func TestOwnerRestartDoesNotSendDuplicateCards(t *testing.T) {
 	inbox := openTestInbox(t)
 	source := newFakeCardSource(requestWithStatus("grant-1", grants.StatusPending))
 	first, recorder := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
-	_ = first.follow(t.Context(), RouteGitHub, source)
+	_ = first.follow(t.Context(), RouteGitHub, source, discardRetryLog())
 	if err := inbox.clearEventCursor(t.Context(), RouteGitHub); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
 	second.client = first.client
-	_ = second.follow(t.Context(), RouteGitHub, source)
+	_ = second.follow(t.Context(), RouteGitHub, source, discardRetryLog())
 	if methods := strings.Join(recorder.methods(), ","); methods != "sendMessage" {
 		t.Fatalf("Telegram calls after restart = %s, want one card", methods)
 	}
@@ -262,7 +262,7 @@ func TestOwnerResendsCardInterruptedBeforeTelegramConfirmed(t *testing.T) {
 	}
 	source := newFakeCardSource(requestWithStatus("grant-1", grants.StatusPending))
 	owner, recorder := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
-	_ = owner.follow(t.Context(), RouteGitHub, source)
+	_ = owner.follow(t.Context(), RouteGitHub, source, discardRetryLog())
 	stored, _, _ := inbox.card(t.Context(), RouteGitHub, "grant-1")
 	if strings.Join(recorder.methods(), ",") != "sendMessage" || stored.State != cardOpen || bytes.Equal(stored.TokenDigest, tokenDigest("old-token")) {
 		t.Fatalf("resent card = %+v calls=%v", stored, recorder.methods())
@@ -277,14 +277,14 @@ func TestOwnerResyncsAfterExpiredCursor(t *testing.T) {
 	source := newFakeCardSource()
 	source.watchErr = &operatorclient.Error{Status: http.StatusGone, Code: "cursor_expired"}
 	owner, _ := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
-	if err := owner.follow(t.Context(), RouteGitHub, source); err != nil {
+	if err := owner.follow(t.Context(), RouteGitHub, source, discardRetryLog()); err != nil {
 		t.Fatalf("follow() with an expired cursor error = %v, want resync on the next pass", err)
 	}
 	if cursor, _ := inbox.eventCursor(t.Context(), RouteGitHub); cursor != "" {
 		t.Fatalf("expired cursor kept: %q", cursor)
 	}
 	source.watchErr = nil
-	_ = owner.follow(t.Context(), RouteGitHub, source)
+	_ = owner.follow(t.Context(), RouteGitHub, source, discardRetryLog())
 	if strings.Join(source.watchedAt, ",") != "old,cursor-0" {
 		t.Fatalf("watched cursors = %v", source.watchedAt)
 	}
@@ -294,7 +294,7 @@ func TestOwnerClosesCardsOfMissingRequests(t *testing.T) {
 	inbox := openTestInbox(t)
 	source := newFakeCardSource(requestWithStatus("grant-1", grants.StatusPending))
 	owner, recorder := newTestOwner(t, inbox, map[string]CardSource{RouteGitHub: source})
-	_ = owner.follow(t.Context(), RouteGitHub, source)
+	_ = owner.follow(t.Context(), RouteGitHub, source, discardRetryLog())
 	source.mu.Lock()
 	delete(source.requests, "grant-1")
 	source.mu.Unlock()
