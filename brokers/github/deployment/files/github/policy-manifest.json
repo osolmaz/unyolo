@@ -2,7 +2,7 @@
   "version": 1,
   "provider": "github",
   "preset": "request-all-agent-operations",
-  "catalog_digest": "sha256:edb5c2c1854c78e9f48294e4a8582780f5400de32abdd13fa98bb346ca1c744b",
+  "catalog_digest": "sha256:d803daccd6a048e030e9e43948c7f4fad6223d7ec1b218ef2a53e097ae70359f",
   "profile_digest": "sha256:caa0c182295221ab53e7de3e601d3db386600ba626dc3c37eeb2ce611306e3c4",
   "policy_digest": "sha256:e3cd079bf5dab630281e3133b55fd305629b2b79ec398e34781485149e99dfd2",
   "operation_counts": {
@@ -6414,7 +6414,7 @@
       "name": "project.projects_get_field_for_org",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:56f37b2eae7e4b463b22960752a89f5b442edebd08cf90483b8c8c39941d3940",
+      "authorization_digest": "sha256:f0a49ac7870603f2f513866ab4aa35b27bcbfa6ea284fdda7430326f38e09e02",
       "effect": "allow"
     },
     {
@@ -6442,7 +6442,7 @@
       "name": "project.projects_get_org_item",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:710c18d664e2a0811fe06a70e1d082a30762b9cc602fceeb444012bc00aa18ee",
+      "authorization_digest": "sha256:dac6dbde331726358408877da29dfa607e98d35f4b82a173753a974317678fa5",
       "effect": "allow"
     },
     {
@@ -6456,7 +6456,7 @@
       "name": "project.projects_list_fields_for_org",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:ee7502eb690f776a4cf9e26629951b7bc3b25d3275a62ba2e20b4a7fccb4087a",
+      "authorization_digest": "sha256:48e62e6b0ea8c77e2fb2ad6d7069042e6926fb09887e192751697dd9586d530a",
       "effect": "allow"
     },
     {
@@ -6484,7 +6484,7 @@
       "name": "project.projects_list_items_for_org",
       "operation_revision": 1,
       "default_effect": "allow",
-      "authorization_digest": "sha256:93888bb451e213da476cd44f47dd300b9f29042621eb80ad949551c83c96f2d5",
+      "authorization_digest": "sha256:0f3f6874d52df5b221c8c0ed29fc4c12eb5cf81adf7fd24775522df34d836d31",
       "effect": "allow"
     },
     {
@@ -6512,7 +6512,7 @@
       "name": "project.projects_update_item_for_org",
       "operation_revision": 1,
       "default_effect": "request",
-      "authorization_digest": "sha256:23c84224ac21448a109c38c08dc25daf2077581578d6cd90923ce9b44a95a429",
+      "authorization_digest": "sha256:4a8aa2b2ad6fe5417068a6c5a26fd1194fab956db5d1c61723132f1e94200c7f",
       "effect": "request"
     },
     {
