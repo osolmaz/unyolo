@@ -23,7 +23,6 @@ import (
 type ExecutionResult struct {
 	StatusCode int
 	Body       json.RawMessage
-	Pagination *RESTPagination `json:"pagination,omitempty"`
 }
 
 // UserIdentity is the immutable public identity represented by a selected
@@ -622,11 +621,7 @@ func decodeRESTResponse(response *http.Response, binding opbinding.Binding) (Exe
 	if err != nil {
 		return ExecutionResult{}, errors.New("encode projected GitHub response")
 	}
-	result := ExecutionResult{StatusCode: response.StatusCode, Body: encoded}
-	if _, isArray := value.([]any); isArray {
-		result.Pagination = restPagination(response, binding)
-	}
-	return result, nil
+	return ExecutionResult{StatusCode: response.StatusCode, Body: encoded}, nil
 }
 
 func emptyRESTResult(rootType string) json.RawMessage {
