@@ -253,7 +253,10 @@ func (s *eventStream) receiveNext() (operatorv1.Event, error) {
 			return eventFromWire(wire), err
 		}
 	}
-	return operatorv1.Event{}, s.scanner.Err()
+	if err := s.scanner.Err(); err != nil {
+		return operatorv1.Event{}, err
+	}
+	return operatorv1.Event{}, io.EOF
 }
 
 func (s *eventStream) Close() error { return s.body.Close() }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -47,7 +48,35 @@ func New(handler http.Handler, profile Profile) (*http.Server, error) {
 	default:
 		return nil, errors.New("HTTP server profile is invalid")
 	}
+	stopping := make(chan struct{})
+	var stop sync.Once
+	server.RegisterOnShutdown(func() { stop.Do(func() { close(stopping) }) })
+	server.BaseContext = func(net.Listener) context.Context {
+		return context.WithValue(context.Background(), stoppingKey{}, (<-chan struct{})(stopping))
+	}
 	return server, nil
+}
+
+type stoppingKey struct{}
+
+// UntilShutdown returns a context that ends with ctx or when the server that
+// serves the request starts to shut down. A handler that keeps a request open,
+// such as an event stream, uses it, so that a shutdown does not wait for the
+// handler. Other requests keep running until they finish.
+func UntilShutdown(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	stopping, found := ctx.Value(stoppingKey{}).(<-chan struct{})
+	if !found {
+		return ctx, cancel
+	}
+	go func() {
+		select {
+		case <-stopping:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
 }
 
 // Serve runs every binding under one cancellable lifecycle and joins shutdown.
@@ -88,15 +117,26 @@ func serveBindings(bindings []Binding) <-chan error {
 	return errorsChannel
 }
 
-// Shutdown gracefully stops every server and closes every listener.
+// Shutdown gracefully stops every server at the same time and closes every
+// listener.
 func Shutdown(bindings []Binding) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var result error
+	results := make(chan error, len(bindings))
 	for _, binding := range bindings {
-		if binding.Server != nil {
-			result = errors.Join(result, binding.Server.Shutdown(ctx))
-		}
+		go func(server *http.Server) {
+			if server == nil {
+				results <- nil
+				return
+			}
+			results <- server.Shutdown(ctx)
+		}(binding.Server)
+	}
+	var result error
+	for range bindings {
+		result = errors.Join(result, <-results)
+	}
+	for _, binding := range bindings {
 		if binding.Listener != nil {
 			if err := binding.Listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				result = errors.Join(result, err)

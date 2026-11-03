@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -97,6 +98,9 @@ func TestClientWatchesOperatorV1Events(t *testing.T) {
 	received, err := stream.Receive(t.Context())
 	if err != nil || received.Cursor != event.Cursor {
 		t.Fatalf("Receive() = %+v, %v", received, err)
+	}
+	if _, err := stream.Receive(t.Context()); !errors.Is(err, io.EOF) {
+		t.Fatalf("Receive() after the stream ended = %v, want io.EOF", err)
 	}
 }
 

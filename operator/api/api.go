@@ -30,6 +30,7 @@ import (
 	"github.com/osolmaz/unyolo/protocol/operatorwire"
 	"github.com/osolmaz/unyolo/telemetry/audit"
 	"github.com/osolmaz/unyolo/transport/http"
+	"github.com/osolmaz/unyolo/transport/http/server"
 )
 
 const (
@@ -377,24 +378,28 @@ func (h *handler) events(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "text/event-stream")
 	writer.Header().Set("Connection", "keep-alive")
 	writer.WriteHeader(http.StatusOK)
+	// The stream ends when the server starts to shut down. The client then
+	// reconnects to the next broker process from its last cursor.
+	stream, stop := serverhttp.UntilShutdown(request.Context())
+	defer stop()
 	for {
 		cursor, err = writeEventPage(writer, page, cursor)
 		if err != nil {
 			return
 		}
 		flusher.Flush()
-		page, err = h.nextEventPage(writer, flusher, request, page, cursor)
+		page, err = h.nextEventPage(stream, writer, flusher, page, cursor)
 		if err != nil {
 			return
 		}
 	}
 }
 
-func (h *handler) nextEventPage(writer io.Writer, flusher http.Flusher, request *http.Request, current grants.EventPage, cursor string) (grants.EventPage, error) {
+func (h *handler) nextEventPage(stream context.Context, writer io.Writer, flusher http.Flusher, current grants.EventPage, cursor string) (grants.EventPage, error) {
 	if current.HasMore {
 		return h.inbox.Store().EventsAfter(cursor, 100)
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), eventHeartbeat)
+	ctx, cancel := context.WithTimeout(stream, eventHeartbeat)
 	defer cancel()
 	page, err := h.inbox.Store().WaitForEvents(ctx, cursor)
 	if !errors.Is(err, context.DeadlineExceeded) {
