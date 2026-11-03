@@ -72,8 +72,8 @@ type Result struct {
 }
 
 type deploymentEngine interface {
-	Plan(context.Context, string) (hostdeployment.Planned, error)
-	PlanInstallation(context.Context, string, string) (hostdeployment.Planned, error)
+	PlanReview(context.Context, string) (hostdeployment.Planned, error)
+	PlanInstallationReview(context.Context, string, string) (hostdeployment.Planned, error)
 	ApplyDescriptors(context.Context, string, string, map[string]*os.File) (hostdeployment.Verification, error)
 	ApplyInstallationDescriptors(context.Context, string, string, string, map[string]*os.File) (hostdeployment.Verification, error)
 	PlanRemoval(context.Context, bool) (hostdeployment.RemovalPlan, error)
@@ -100,9 +100,9 @@ func Serve(ctx context.Context, input io.Reader, output io.Writer, engine deploy
 	var planned hostdeployment.Planned
 	var err error
 	if request.InputKind == InputKindInstallation {
-		planned, err = engine.PlanInstallation(ctx, request.Installation, request.Profile)
+		planned, err = engine.PlanInstallationReview(ctx, request.Installation, request.Profile)
 	} else {
-		planned, err = engine.Plan(ctx, request.Profile)
+		planned, err = engine.PlanReview(ctx, request.Profile)
 	}
 	if err != nil {
 		return err

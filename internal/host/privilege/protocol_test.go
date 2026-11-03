@@ -25,11 +25,11 @@ type fakeDeploymentEngine struct {
 	removalErr    error
 }
 
-func (engine *fakeDeploymentEngine) Plan(context.Context, string) (hostdeployment.Planned, error) {
+func (engine *fakeDeploymentEngine) PlanReview(context.Context, string) (hostdeployment.Planned, error) {
 	return engine.planned, nil
 }
 
-func (engine *fakeDeploymentEngine) PlanInstallation(context.Context, string, string) (hostdeployment.Planned, error) {
+func (engine *fakeDeploymentEngine) PlanInstallationReview(context.Context, string, string) (hostdeployment.Planned, error) {
 	return engine.planned, nil
 }
 

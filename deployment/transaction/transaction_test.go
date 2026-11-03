@@ -46,6 +46,39 @@ func TestRunPreservesJournalWhenRunningCompensationFails(t *testing.T) {
 	}
 }
 
+func TestRunRetriesAFailedUndoAfterTheEarlierSteps(t *testing.T) {
+	coordinator := Coordinator{StateDirectory: filepath.Join(t.TempDir(), "state")}
+	var calls []string
+	configRestored := false
+	steps := []Step{
+		{ID: "component", Kind: "component:one", Apply: func(context.Context) (string, error) { return "handle", nil },
+			Rollback: func(context.Context, string) error {
+				calls = append(calls, "rollback-component")
+				configRestored = true
+				return nil
+			}, RollbackRunning: func(context.Context) error { return nil }},
+		{ID: "runtime", Kind: "runtime", Apply: func(context.Context) (string, error) { return "", errors.New("activation failed") },
+			Rollback: func(context.Context, string) error { return nil },
+			RollbackRunning: func(context.Context) error {
+				calls = append(calls, "rollback-runtime")
+				if !configRestored {
+					return errors.New("old services need the old configuration")
+				}
+				return nil
+			}},
+	}
+	if err := coordinator.Run(context.Background(), "deployment", "plan", "candidate", "previous", steps); err == nil {
+		t.Fatal("Run() succeeded")
+	}
+	want := []string{"rollback-runtime", "rollback-component", "rollback-runtime"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+	if _, found, err := coordinator.read(); err != nil || found {
+		t.Fatalf("journal remains: found=%v err=%v", found, err)
+	}
+}
+
 func TestRunCommitsAndRejectsInvalidSteps(t *testing.T) {
 	coordinator := Coordinator{StateDirectory: filepath.Join(t.TempDir(), "state")}
 	applied := false
@@ -127,6 +160,78 @@ func TestRecoverPreservesUncertainRunningStep(t *testing.T) {
 	}
 	current, found, err := coordinator.read()
 	if err != nil || !found || current.Phase != "recovery_required" || current.Steps[0].State != "running" {
+		t.Fatalf("journal = %#v, found=%v, err=%v", current, found, err)
+	}
+}
+
+func TestRecoverUndoesARunningStepWithItsRunningHandler(t *testing.T) {
+	coordinator := Coordinator{StateDirectory: filepath.Join(t.TempDir(), "state")}
+	if err := ensureTestDirectory(coordinator.StateDirectory); err != nil {
+		t.Fatal(err)
+	}
+	journal := Journal{
+		APIVersion: APIVersion, ID: "id", DeploymentDigest: "deployment", PlanDigest: "plan",
+		CandidateBundle: "candidate", Phase: "recovery_required",
+		Steps: []StepRecord{
+			{ID: "component", Kind: "component:one", State: "complete", RollbackHandle: "handle"},
+			{ID: "runtime", Kind: "runtime", State: "running"},
+		},
+	}
+	if err := coordinator.write(journal); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	configRestored := false
+	err := coordinator.Recover(context.Background(), map[string]func(context.Context, string) error{
+		"component:one": func(context.Context, string) error {
+			calls = append(calls, "component")
+			configRestored = true
+			return nil
+		},
+		"running:runtime": func(context.Context, string) error {
+			calls = append(calls, "runtime")
+			if !configRestored {
+				return errors.New("old services need the old configuration")
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"runtime", "component", "runtime"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+	if _, found, err := coordinator.read(); err != nil || found {
+		t.Fatalf("journal remains: found=%v err=%v", found, err)
+	}
+}
+
+func TestRecoverKeepsTheJournalWhenAnUndoKeepsFailing(t *testing.T) {
+	coordinator := Coordinator{StateDirectory: filepath.Join(t.TempDir(), "state")}
+	if err := ensureTestDirectory(coordinator.StateDirectory); err != nil {
+		t.Fatal(err)
+	}
+	journal := Journal{
+		APIVersion: APIVersion, ID: "id", DeploymentDigest: "deployment", PlanDigest: "plan",
+		CandidateBundle: "candidate", Phase: "recovery_required",
+		Steps: []StepRecord{
+			{ID: "one", Kind: "component:one", State: "complete", RollbackHandle: "one"},
+			{ID: "two", Kind: "component:two", State: "complete", RollbackHandle: "two"},
+		},
+	}
+	if err := coordinator.write(journal); err != nil {
+		t.Fatal(err)
+	}
+	err := coordinator.Recover(context.Background(), map[string]func(context.Context, string) error{
+		"component:one": func(context.Context, string) error { return nil },
+		"component:two": func(context.Context, string) error { return errors.New("restore failed") },
+	})
+	if err == nil {
+		t.Fatal("Recover() succeeded")
+	}
+	current, found, err := coordinator.read()
+	if err != nil || !found || current.Phase != "recovery_required" || current.Steps[0].State != "rolled_back" || current.Steps[1].State != "complete" {
 		t.Fatalf("journal = %#v, found=%v, err=%v", current, found, err)
 	}
 }

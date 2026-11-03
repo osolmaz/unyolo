@@ -152,6 +152,99 @@ func (engine *Engine) PlanInstallation(ctx context.Context, installationPath, pr
 	return engine.Plan(ctx, compiledRoot)
 }
 
+// PlanReview plans for the setup review. First it finishes the rollback of an
+// earlier setup run that could not undo all of its changes. That run started
+// the rollback, and the review must show the host as it was before that run.
+func (engine *Engine) PlanReview(ctx context.Context, profileRoot string) (Planned, error) {
+	if err := engine.finishInterruptedSetupAt(ctx, profileRoot); err != nil {
+		return Planned{}, err
+	}
+	return engine.Plan(ctx, profileRoot)
+}
+
+// PlanInstallationReview is PlanReview for an installer-generated deployment.
+func (engine *Engine) PlanInstallationReview(ctx context.Context, installationPath, profileRoot string) (Planned, error) {
+	compiledRoot, err := engine.compileInstallationSource(installationPath, profileRoot)
+	if err != nil {
+		return Planned{}, err
+	}
+	defer func() { _ = os.RemoveAll(compiledRoot) }()
+	return engine.PlanReview(ctx, compiledRoot)
+}
+
+func (engine *Engine) finishInterruptedSetupAt(ctx context.Context, profileRoot string) error {
+	if err := engine.requirePrivileged(); err != nil {
+		return err
+	}
+	lock, err := acquireHostLock(engine.options.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.close() }()
+	snapshot, err := profile.Load(profileRoot)
+	if err != nil {
+		return err
+	}
+	if err := engine.verifySnapshotTrust(snapshot); err != nil {
+		return err
+	}
+	return engine.finishInterruptedSetup(ctx, snapshot)
+}
+
+// finishInterruptedSetup completes an earlier transaction: it finalizes a
+// committed one and rolls back any other. When that rollback touched the
+// runtime or a service, or a failed activation left the runtime marked for
+// recovery, it restarts the active release so that its services load the
+// restored configuration. The caller holds the host lock.
+func (engine *Engine) finishInterruptedSetup(ctx context.Context, snapshot profile.Snapshot) error {
+	coordinator := transaction.Coordinator{StateDirectory: engine.options.Paths.StateDir}
+	pending, found, err := coordinator.Pending()
+	if err != nil {
+		return err
+	}
+	if found && pending.DeploymentDigest != snapshot.Digest {
+		return errors.New("unfinished transaction requires its original locked deployment pack")
+	}
+	recovery := Planned{Snapshot: snapshot, ActiveBundleID: pending.PreviousBundle}
+	committedRecovery := found && pending.Phase == "committed"
+	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(recovery)); err != nil {
+		return err
+	}
+	if err := coordinator.Recover(ctx, engine.recoveryHandlers(recovery)); err != nil {
+		return err
+	}
+	if found {
+		if committedRecovery {
+			if err := engine.commitPendingReceipt(ctx); err != nil {
+				return err
+			}
+		} else if err := DiscardPendingReceipt(engine.options.Paths.StateDir); err != nil {
+			return err
+		}
+	}
+	restart := found && !committedRecovery && journalTouchedServices(pending)
+	if !restart {
+		if restart, err = engine.installer().RecoveryRequired(); err != nil {
+			return err
+		}
+	}
+	if restart {
+		return engine.installer().RestartActive(ctx)
+	}
+	return nil
+}
+
+// journalTouchedServices reports whether a transaction reached a step that
+// stops or starts services.
+func journalTouchedServices(journal transaction.Journal) bool {
+	for _, step := range journal.Steps {
+		if step.State != "pending" && (step.Kind == "runtime" || strings.HasPrefix(step.Kind, "service:")) {
+			return true
+		}
+	}
+	return false
+}
+
 func (engine *Engine) compileInstallationSource(installationPath, profileRoot string) (string, error) {
 	data, err := os.ReadFile(installationPath) // #nosec G304 -- explicit root-worker input verified by strict decoding.
 	if err != nil {
@@ -342,30 +435,8 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 	if err := engine.verifySnapshotTrust(snapshot); err != nil {
 		return Verification{}, err
 	}
-	coordinator := transaction.Coordinator{StateDirectory: engine.options.Paths.StateDir}
-	pending, found, err := coordinator.Pending()
-	if err != nil {
+	if err := engine.finishInterruptedSetup(ctx, snapshot); err != nil {
 		return Verification{}, err
-	}
-	recovery := Planned{Snapshot: snapshot}
-	committedRecovery := found && pending.Phase == "committed"
-	if found && pending.DeploymentDigest != snapshot.Digest {
-		return Verification{}, errors.New("unfinished transaction requires its original locked deployment pack")
-	}
-	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(recovery)); err != nil {
-		return Verification{}, err
-	}
-	if err := coordinator.Recover(ctx, engine.recoveryHandlers(recovery)); err != nil {
-		return Verification{}, err
-	}
-	if found {
-		if committedRecovery {
-			if err := engine.commitPendingReceipt(ctx); err != nil {
-				return Verification{}, err
-			}
-		} else if err := DiscardPendingReceipt(engine.options.Paths.StateDir); err != nil {
-			return Verification{}, err
-		}
 	}
 	planned, err := engine.Plan(ctx, profileRoot)
 	if err != nil {
@@ -395,12 +466,18 @@ func (engine *Engine) ApplyDescriptors(ctx context.Context, profileRoot, expecte
 	if err := StagePendingReceipt(engine.options.Paths.StateDir, pendingReceipt); err != nil {
 		return Verification{}, fmt.Errorf("stage ownership receipt: %w", err)
 	}
-	steps, err := engine.steps(planned, secretFiles)
+	touchedServices := false
+	steps, err := engine.steps(planned, secretFiles, &touchedServices)
 	if err != nil {
 		return Verification{}, errors.Join(err, DiscardPendingReceipt(engine.options.Paths.StateDir))
 	}
+	coordinator := transaction.Coordinator{StateDirectory: engine.options.Paths.StateDir}
 	if err := coordinator.Run(ctx, planned.Snapshot.Digest, planned.Plan.Digest, planned.Snapshot.Manifest.BundleID, planned.ActiveBundleID, steps); err != nil {
-		return Verification{}, errors.Join(err, DiscardPendingReceipt(engine.options.Paths.StateDir))
+		err = errors.Join(err, DiscardPendingReceipt(engine.options.Paths.StateDir))
+		if _, unfinished, pendingErr := coordinator.Pending(); touchedServices && pendingErr == nil && !unfinished {
+			err = errors.Join(err, engine.installer().RestartActive(ctx))
+		}
+		return Verification{}, err
 	}
 	if err := coordinator.Finalize(ctx, engine.finalizationHandlers(planned)); err != nil {
 		return Verification{}, err
@@ -829,8 +906,11 @@ func (engine *Engine) adapterCommand(snapshot profile.Snapshot, id string, stage
 	return adapterruntime.Command{Executable: path, Arguments: append([]string(nil), component.Setup.Arguments...)}, nil
 }
 
+// steps builds the transaction. touchedServices becomes true when a step
+// starts to stop or start services, so that a rollback restarts them.
+//
 //nolint:cyclop // Transaction assembly binds component, identity, runtime, service, and uncertain-step compensation.
-func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([]transaction.Step, error) {
+func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File, touchedServices *bool) ([]transaction.Step, error) {
 	responseByID := map[string]api.Response{}
 	for _, response := range planned.Responses {
 		responseByID[response.ComponentID] = response
@@ -879,14 +959,15 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 		steps = append(steps, transaction.Step{
 			ID: "runtime.activate", Kind: "runtime",
 			Apply: func(ctx context.Context) (string, error) {
+				*touchedServices = true
 				manifestFile := planned.Snapshot.Files[planned.Snapshot.Deployment.Runtime.Activation.Path]
 				return "", engine.installer().Activate(ctx, planned.Snapshot.Manifest, manifestFile.Data, planned.Snapshot.Root)
 			},
 			Rollback: func(ctx context.Context, _ string) error {
-				return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID)
+				return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID, planned.ActiveBundleID)
 			},
 			RollbackRunning: func(ctx context.Context) error {
-				return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID)
+				return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID, planned.ActiveBundleID)
 			},
 		})
 	} else {
@@ -895,6 +976,7 @@ func (engine *Engine) steps(planned Planned, secretFiles map[string]*os.File) ([
 			steps = append(steps, transaction.Step{
 				ID: "service." + service, Kind: "service:" + service,
 				Apply: func(ctx context.Context) (string, error) {
+					*touchedServices = true
 					if err := engine.options.Manager.Stop(ctx, service); err != nil {
 						return "", err
 					}
@@ -1012,10 +1094,11 @@ func (engine *Engine) finalizationHandlers(planned Planned) map[string]func(cont
 }
 
 func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.Context, string) error {
+	rollbackRuntime := func(ctx context.Context, _ string) error {
+		return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID, planned.ActiveBundleID)
+	}
 	handlers := map[string]func(context.Context, string) error{
-		"runtime": func(ctx context.Context, _ string) error {
-			return engine.installer().RollbackCandidate(ctx, planned.Snapshot.Manifest.BundleID)
-		},
+		"runtime": rollbackRuntime, "running:runtime": rollbackRuntime,
 		"verification": func(context.Context, string) error { return nil },
 	}
 	responseByID := map[string]api.Response{}
@@ -1041,7 +1124,8 @@ func (engine *Engine) recoveryHandlers(planned Planned) map[string]func(context.
 	}
 	for _, service := range recoveryServices(planned) {
 		service := service
-		handlers["service:"+service] = func(ctx context.Context, _ string) error { return engine.options.Manager.Start(ctx, service) }
+		start := func(ctx context.Context, _ string) error { return engine.options.Manager.Start(ctx, service) }
+		handlers["service:"+service], handlers["running:service:"+service] = start, start
 	}
 	for kind := range engine.cleanupHandlers() {
 		handlers[kind] = engine.restoreStaleClient
