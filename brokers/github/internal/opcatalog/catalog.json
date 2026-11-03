@@ -34382,6 +34382,7 @@
     "executor_kind": "rest-binding",
     "reconciler_kind": "none",
     "required_github_permissions": {
+      "contents": "read",
       "pull_requests": "write"
     },
     "required_repository_selection": true

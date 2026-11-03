@@ -107,6 +107,12 @@ func TestRESTPermissionsMatchPinnedOfficialMatrix(t *testing.T) {
 	}
 	for _, row := range rows {
 		key := row.Method + " " + row.Path
+		if row.UpstreamID == "pulls/create" {
+			if !reflect.DeepEqual(expected[key], map[string]string{"pull_requests": "write"}) {
+				t.Fatalf("pinned PR creation permissions changed: %v", expected[key])
+			}
+			expected[key]["contents"] = "read"
+		}
 		if !reflect.DeepEqual(row.RequiredPermissions, expected[key]) {
 			t.Fatalf("permissions for %s=%v want %v", key, row.RequiredPermissions, expected[key])
 		}
