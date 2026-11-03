@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -246,15 +245,7 @@ func TestBuildServersAddsDedicatedOperatorEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.OperatorEndpoint = &operator
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	gitAddress := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
-	gitEndpoint, err := endpoint.Parse("tcp://"+gitAddress, endpoint.ParseOptions{})
+	gitEndpoint, err := endpoint.Parse("tcp://127.0.0.1:0", endpoint.ParseOptions{AllowEphemeralTCP: true})
 	if err != nil {
 		t.Fatal(err)
 	}

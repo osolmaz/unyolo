@@ -58,7 +58,8 @@ func HTTPReadyCheck(rawURL string, client *http.Client) ReadinessCheck {
 }
 
 func waitForReadiness(ctx context.Context, check ReadinessCheck, timeout, interval time.Duration) error {
-	readyContext, cancel := context.WithTimeout(ctx, durationOr(timeout, defaultReadinessTimeout))
+	deadline := time.Now().Add(durationOr(timeout, defaultReadinessTimeout))
+	readyContext, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	ticker := time.NewTicker(durationOr(interval, defaultReadinessInterval))
 	defer ticker.Stop()
@@ -66,7 +67,9 @@ func waitForReadiness(ctx context.Context, check ReadinessCheck, timeout, interv
 		if readyContext.Err() != nil {
 			return errServiceReadinessFailed
 		}
-		if err := check(readyContext); err == nil && readyContext.Err() == nil {
+		// A check that ends after the deadline does not count, even when the
+		// context timer has not fired yet.
+		if err := check(readyContext); err == nil && readyContext.Err() == nil && time.Now().Before(deadline) {
 			return nil
 		}
 		select {

@@ -116,7 +116,9 @@ func serveIngress(ctx context.Context, built ingress) error {
 	go func() { owned <- built.owner.Run(ctx) }()
 	err := built.client.PollDurableReady(ctx, built.inbox, built.dispatcher.Handle, built.dispatcher.Compatible)
 	cancel()
-	<-owned
+	if ownerErr := <-owned; !errors.Is(ownerErr, context.Canceled) {
+		err = errors.Join(err, ownerErr)
+	}
 	if errors.Is(err, context.Canceled) {
 		return nil
 	}
